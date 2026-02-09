@@ -338,7 +338,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
     if (showFontColorPicker) {
         ColorPickerDialog(
             title = stringResource(MR.strings.pref_novel_font_color),
-            initialColor = if (fontColor > 0) fontColor else 0xFF000000.toInt(),
+            initialColor = if (fontColor != 0) fontColor else 0xFF000000.toInt(),
             onDismiss = { showFontColorPicker = false },
             onConfirm = { color ->
                 screenModel.preferences.novelFontColor().set(color)
@@ -350,7 +350,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
     if (showBgColorPicker) {
         ColorPickerDialog(
             title = stringResource(MR.strings.pref_novel_background_color),
-            initialColor = if (backgroundColor > 0) backgroundColor else 0xFFFFFFFF.toInt(),
+            initialColor = if (backgroundColor != 0) backgroundColor else 0xFFFFFFFF.toInt(),
             onDismiss = { showBgColorPicker = false },
             onConfirm = { color ->
                 screenModel.preferences.novelBackgroundColor().set(color)
