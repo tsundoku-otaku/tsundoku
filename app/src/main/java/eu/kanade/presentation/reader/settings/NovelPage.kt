@@ -91,6 +91,7 @@ private val novelThemes = listOf(
     "Dark" to "dark",
     "Sepia" to "sepia",
     "Black" to "black",
+    "Grey" to "grey",
     "Custom" to "custom",
 )
 
@@ -125,6 +126,7 @@ private val fontColors = listOf(
     "Gray" to 0xFF808080.toInt(),
     "Dark Gray" to 0xFF404040.toInt(),
     "Light Gray" to 0xFFC0C0C0.toInt(),
+    "OffWhite" to 0xFFCCCCCC.toInt(),
     "Sepia" to 0xFF5C4033.toInt(),
     "Custom" to Int.MIN_VALUE,
 )
@@ -139,6 +141,7 @@ private val backgroundColors = listOf(
     "Dark Gray" to 0xFF1A1A1A.toInt(),
     "Sepia" to 0xFFF4ECD8.toInt(),
     "Cream" to 0xFFFFFDD0.toInt(),
+    "Charcoal" to 0xFF292832.toInt(),
     "Custom" to Int.MIN_VALUE,
 )
 
