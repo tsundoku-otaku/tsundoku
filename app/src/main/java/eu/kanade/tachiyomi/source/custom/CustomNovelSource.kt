@@ -382,7 +382,7 @@ data class CustomSourceConfig(
     val novelIdSelector: String? = null,
     val novelIdAttr: String? = null,
     val novelIdPattern: String? = null,
-    val reverseChapters: Boolean = false,
+    val reverseChapters: Boolean = true,
     val useCloudflare: Boolean = true,
     val useNewChapterEndpoint: Boolean = false,
     val postSearch: Boolean = false,
