@@ -74,6 +74,7 @@ import tachiyomi.domain.chapter.repository.ChapterRepository
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.history.interactor.GetNextChapters
 import tachiyomi.domain.history.interactor.GetTotalReadDuration
+import tachiyomi.domain.history.interactor.RefreshHistoryCache
 import tachiyomi.domain.history.interactor.RemoveHistory
 import tachiyomi.domain.history.interactor.UpsertHistory
 import tachiyomi.domain.history.repository.HistoryRepository
@@ -106,6 +107,7 @@ import tachiyomi.domain.track.repository.TrackRepository
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.domain.updates.interactor.ClearUpdatesCache
 import tachiyomi.domain.updates.interactor.GetUpdates
+import tachiyomi.domain.updates.interactor.RefreshUpdatesCache
 import tachiyomi.domain.updates.repository.UpdatesRepository
 import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
@@ -136,6 +138,10 @@ class DomainModule : InjektModule {
         addSingletonFactory { GetLibraryManga(get()) }
         // Singleton for library cache management
         addSingletonFactory { RefreshLibraryCache(get()) }
+        // Singleton for history cache management
+        addSingletonFactory { RefreshHistoryCache(get()) }
+        // Singleton for updates cache management
+        addSingletonFactory { RefreshUpdatesCache(get()) }
         addFactory { GetMangaWithChapters(get(), get()) }
         addFactory { GetMangaByUrlAndSourceId(get()) }
         addFactory { GetManga(get()) }

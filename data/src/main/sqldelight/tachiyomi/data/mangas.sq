@@ -62,6 +62,48 @@ BEGIN
     );
 END;
 
+-- Triggers for history_cache and updates_cache
+
+-- Update history_cache when manga is updated (title, thumbnail, etc.)
+CREATE TRIGGER history_cache_manga_update
+AFTER UPDATE ON mangas
+WHEN old.title != new.title OR old.thumbnail_url != new.thumbnail_url OR old.favorite != new.favorite OR old.cover_last_modified != new.cover_last_modified
+BEGIN
+    UPDATE history_cache
+    SET manga_title = new.title,
+        manga_thumbnail_url = new.thumbnail_url,
+        manga_favorite = new.favorite,
+        manga_cover_last_modified = new.cover_last_modified
+    WHERE manga_id = new._id;
+END;
+
+-- Update updates_cache when manga is updated
+CREATE TRIGGER updates_cache_manga_update
+AFTER UPDATE ON mangas
+WHEN old.title != new.title OR old.thumbnail_url != new.thumbnail_url OR old.cover_last_modified != new.cover_last_modified
+BEGIN
+    UPDATE updates_cache
+    SET manga_title = new.title,
+        thumbnail_url = new.thumbnail_url,
+        cover_last_modified = new.cover_last_modified
+    WHERE manga_id = new._id;
+END;
+
+-- Remove from updates_cache when manga is unfavorited
+CREATE TRIGGER updates_cache_manga_unfavorite
+AFTER UPDATE OF favorite ON mangas
+WHEN new.favorite = 0 AND old.favorite = 1
+BEGIN
+    DELETE FROM updates_cache WHERE manga_id = old._id;
+END;
+
+-- Delete from updates_cache when manga is deleted
+CREATE TRIGGER updates_cache_manga_delete
+AFTER DELETE ON mangas
+BEGIN
+    DELETE FROM updates_cache WHERE manga_id = old._id;
+END;
+
 getMangaById:
 SELECT *
 FROM mangas
@@ -192,7 +234,7 @@ WHERE favorite = 1
 AND source = :sourceId;
 
 getDuplicateLibraryManga:
-SELECT M.*, 
+SELECT M.*,
   (SELECT COUNT(*) FROM chapters WHERE manga_id = M._id) AS chapter_count,
   (SELECT COUNT(*) FROM chapters WHERE manga_id = M._id AND read = 1) AS read_count
 FROM mangas M
@@ -228,12 +270,12 @@ JOIN mangas b
    AND b.favorite = 1
    -- Filter by first character to reduce comparison set
    AND substr(lower(trim(a.title)), 1, 1) = substr(lower(trim(b.title)), 1, 1)
-   -- Only check containment if lengths differ significantly  
+   -- Only check containment if lengths differ significantly
    AND (length(trim(a.title)) < length(trim(b.title)) * 0.8 OR length(trim(b.title)) < length(trim(a.title)) * 0.8)
    AND (lower(trim(b.title)) LIKE '%' || lower(trim(a.title)) || '%'
         OR lower(trim(a.title)) LIKE '%' || lower(trim(b.title)) || '%')
 ORDER BY a.title
-LIMIT 50;
+;
 
 -- Find duplicates by URL within the same source/extension
 findDuplicatesByUrl:
@@ -348,11 +390,11 @@ SELECT last_insert_rowid();
 -- Returns count of updated rows
 normalizeUrls:
 UPDATE mangas
-SET url = 
-    CASE 
-        WHEN instr(url, '#') > 0 THEN 
+SET url =
+    CASE
+        WHEN instr(url, '#') > 0 THEN
             rtrim(substr(url, 1, instr(url, '#') - 1), '/')
-        ELSE 
+        ELSE
             rtrim(url, '/')
     END
 WHERE url LIKE '%/' OR url LIKE '%#%';
@@ -361,13 +403,13 @@ WHERE url LIKE '%/' OR url LIKE '%#%';
 -- First removes trailing slashes and fragments, then removes double slashes (preserving protocol ://)
 normalizeUrlsAdvanced:
 UPDATE mangas
-SET url = 
+SET url =
     replace(
         replace(
-            CASE 
-                WHEN instr(url, '#') > 0 THEN 
+            CASE
+                WHEN instr(url, '#') > 0 THEN
                     rtrim(substr(url, 1, instr(url, '#') - 1), '/')
-                ELSE 
+                ELSE
                     rtrim(url, '/')
             END,
             '://', '###PROTOCOL###'
@@ -384,28 +426,28 @@ WHERE url LIKE '%###PROTOCOL###%';
 
 -- Get potential duplicates after normalization (source, normalized_url pairs that would conflict)
 getPotentialNormalizationDuplicates:
-SELECT 
-    m1._id AS id1, 
-    m1.title AS title1, 
+SELECT
+    m1._id AS id1,
+    m1.title AS title1,
     m1.url AS url1,
-    m2._id AS id2, 
-    m2.title AS title2, 
+    m2._id AS id2,
+    m2.title AS title2,
     m2.url AS url2,
     m1.source
 FROM mangas m1
 INNER JOIN mangas m2 ON m1.source = m2.source AND m1._id < m2._id
-WHERE 
+WHERE
     rtrim(
-        CASE 
+        CASE
             WHEN instr(m1.url, '#') > 0 THEN substr(m1.url, 1, instr(m1.url, '#') - 1)
             ELSE m1.url
-        END, 
+        END,
         '/'
     ) = rtrim(
-        CASE 
+        CASE
             WHEN instr(m2.url, '#') > 0 THEN substr(m2.url, 1, instr(m2.url, '#') - 1)
             ELSE m2.url
-        END, 
+        END,
         '/'
     );
 

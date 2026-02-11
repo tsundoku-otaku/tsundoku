@@ -13,6 +13,48 @@ CREATE INDEX history_history_chapter_id_index ON history(chapter_id);
 -- Performance index for libraryView
 CREATE INDEX history_chapter_last_read_index ON history(chapter_id, last_read);
 
+-- Triggers for history_cache
+
+-- Update history_cache when history is inserted
+CREATE TRIGGER history_cache_insert
+AFTER INSERT ON history
+BEGIN
+    INSERT OR REPLACE INTO history_cache (
+        _id, manga_id, chapter_id, manga_title, manga_thumbnail_url, manga_source,
+        manga_favorite, manga_cover_last_modified, chapter_number, last_read, time_read
+    )
+    VALUES (
+        new._id,
+        (SELECT manga_id FROM chapters WHERE _id = new.chapter_id),
+        new.chapter_id,
+        (SELECT title FROM mangas WHERE _id = (SELECT manga_id FROM chapters WHERE _id = new.chapter_id)),
+        (SELECT thumbnail_url FROM mangas WHERE _id = (SELECT manga_id FROM chapters WHERE _id = new.chapter_id)),
+        (SELECT source FROM mangas WHERE _id = (SELECT manga_id FROM chapters WHERE _id = new.chapter_id)),
+        (SELECT favorite FROM mangas WHERE _id = (SELECT manga_id FROM chapters WHERE _id = new.chapter_id)),
+        (SELECT cover_last_modified FROM mangas WHERE _id = (SELECT manga_id FROM chapters WHERE _id = new.chapter_id)),
+        (SELECT chapter_number FROM chapters WHERE _id = new.chapter_id),
+        new.last_read,
+        new.time_read
+    );
+END;
+
+-- Update history_cache when history is updated
+CREATE TRIGGER history_cache_update
+AFTER UPDATE ON history
+BEGIN
+    UPDATE history_cache
+    SET last_read = new.last_read,
+        time_read = new.time_read
+    WHERE _id = new._id;
+END;
+
+-- Delete from history_cache when history is deleted
+CREATE TRIGGER history_cache_delete
+AFTER DELETE ON history
+BEGIN
+    DELETE FROM history_cache WHERE _id = old._id;
+END;
+
 getHistoryByMangaId:
 SELECT
 H._id,
@@ -73,3 +115,8 @@ WHERE chapter_id = :chapterId;
 getReadDuration:
 SELECT coalesce(sum(time_read), 0)
 FROM history;
+
+countDistinctManga:
+SELECT COUNT(DISTINCT C.manga_id)
+FROM history H
+JOIN chapters C ON H.chapter_id = C._id;

@@ -89,6 +89,10 @@ DELETE FROM history_cache;
 touchCache:
 UPDATE history_cache SET _id = _id WHERE 0;
 
+-- Count all history cache entries
+countAll:
+SELECT COUNT(*) FROM history_cache;
+
 -- Refresh history cache from source tables
 refreshAll:
 INSERT OR REPLACE INTO history_cache (

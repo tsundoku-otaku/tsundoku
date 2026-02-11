@@ -10,10 +10,14 @@ interface UpdatesRepository {
     fun subscribeAll(after: Long, limit: Long): Flow<List<UpdatesWithRelations>>
 
     fun subscribeWithRead(read: Boolean, after: Long, limit: Long): Flow<List<UpdatesWithRelations>>
-    
+
     suspend fun clearAllUpdates()
-    
+
     suspend fun clearUpdatesOlderThan(timestamp: Long)
-    
+
     suspend fun clearUpdatesKeepLatest(keep: Long)
+
+    suspend fun refreshUpdatesCache()
+
+    suspend fun checkUpdatesCacheIntegrity(): Pair<Long, Long>
 }

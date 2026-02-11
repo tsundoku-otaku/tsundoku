@@ -86,4 +86,20 @@ class HistoryRepositoryImpl(
             logcat(LogPriority.ERROR, throwable = e)
         }
     }
+
+    override suspend fun refreshHistoryCache() {
+        logcat(LogPriority.INFO) { "HistoryRepositoryImpl.refreshHistoryCache: Refreshing entire history cache" }
+        val queryStart = System.currentTimeMillis()
+        handler.await(inTransaction = true) {
+            history_cacheQueries.refreshAll()
+        }
+        val queryDuration = System.currentTimeMillis() - queryStart
+        logcat(LogPriority.INFO) { "HistoryRepositoryImpl.refreshHistoryCache: Cache refresh completed in ${queryDuration}ms" }
+    }
+
+    override suspend fun checkHistoryCacheIntegrity(): Pair<Long, Long> {
+        val historyCount = handler.awaitOne { historyQueries.countDistinctManga() }
+        val cacheCount = handler.awaitOne { history_cacheQueries.countAll() }
+        return Pair(historyCount, cacheCount)
+    }
 }
