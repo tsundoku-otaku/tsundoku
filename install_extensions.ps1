@@ -63,7 +63,7 @@ if ($devices.Count -gt 0) {
 }
 
 if ($All -or $AppOnly) {
-    Write-Host "Building Mihon app..."
+    Write-Host "Building Tsundoku app..."
     Push-Location $PSScriptRoot
     .\gradlew :app:assembleDebug
     $appApk = Get-ChildItem -Path "app\build\outputs\apk\debug\*.apk" | Select-Object -First 1

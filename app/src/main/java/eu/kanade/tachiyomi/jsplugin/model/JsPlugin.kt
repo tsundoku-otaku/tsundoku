@@ -21,8 +21,8 @@ data class JsPlugin(
     var repositoryUrl: String? = null,
 ) {
     companion object {
-        /** Package name prefix for novel JS plugins - unique to mihonnovel fork */
-        const val PKG_PREFIX = "app.mihonnovel.jsplugin."
+        /** Package name prefix for novel JS plugins - unique to tsundoku fork */
+        const val PKG_PREFIX = "app.tsundoku.jsplugin."
     }
     
     /**

@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   get_tag:
-    if: github.repository == 'mihonapp/mihon'
+    if: github.repository == 'tsundoku-otaku/tsundoku'
     name: Extract tag name
     runs-on: 'ubuntu-24.04'
     outputs:
@@ -22,7 +22,7 @@ jobs:
         run: echo "tag=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_OUTPUT
 
   build:
-    if: github.repository == 'mihonapp/mihon'
+    if: github.repository == 'tsundoku-otaku/tsundoku'
     name: Build
     runs-on: 'ubuntu-24.04'
     needs: get_tag
@@ -58,25 +58,25 @@ jobs:
         run: |
           set -e
 
-          mv app/build/outputs/apk/release/app-universal-release-unsigned-signed.apk mihon-${{ needs.get_tag.outputs.tag }}.apk
-          mv app/build/outputs/apk/release/app-arm64-v8a-release-unsigned-signed.apk mihon-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
-          mv app/build/outputs/apk/release/app-armeabi-v7a-release-unsigned-signed.apk mihon-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
-          mv app/build/outputs/apk/release/app-x86-release-unsigned-signed.apk mihon-x86-${{ needs.get_tag.outputs.tag }}.apk
-          mv app/build/outputs/apk/release/app-x86_64-release-unsigned-signed.apk mihon-x86_64-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-universal-release-unsigned-signed.apk tsundoku-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-arm64-v8a-release-unsigned-signed.apk tsundoku-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-armeabi-v7a-release-unsigned-signed.apk tsundoku-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-x86-release-unsigned-signed.apk tsundoku-x86-${{ needs.get_tag.outputs.tag }}.apk
+          mv app/build/outputs/apk/release/app-x86_64-release-unsigned-signed.apk tsundoku-x86_64-${{ needs.get_tag.outputs.tag }}.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
-          name: mihon
+          name: tsundoku
           path: |
-            mihon-${{ needs.get_tag.outputs.tag }}.apk
-            mihon-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
-            mihon-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
-            mihon-x86-${{ needs.get_tag.outputs.tag }}.apk
-            mihon-x86_64-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-x86-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-x86_64-${{ needs.get_tag.outputs.tag }}.apk
 
   build_foss:
-    if: github.repository == 'mihonapp/mihon'
+    if: github.repository == 'tsundoku-otaku/tsundoku'
     name: Build (FOSS)
     runs-on: ubuntu-24.04
     needs: get_tag
@@ -114,16 +114,16 @@ jobs:
         run: |
           set -e
 
-          mv app/build/outputs/apk/foss/app-universal-foss-unsigned-signed.apk mihon-${{ needs.get_tag.outputs.tag }}-foss.apk
+          mv app/build/outputs/apk/foss/app-universal-foss-unsigned-signed.apk tsundoku-${{ needs.get_tag.outputs.tag }}-foss.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
-          name: mihon-foss
-          path: mihon-${{ needs.get_tag.outputs.tag }}-foss.apk
+          name: tsundoku-foss
+          path: tsundoku-${{ needs.get_tag.outputs.tag }}-foss.apk
 
   release:
-    if: github.repository == 'mihonapp/mihon'
+    if: github.repository == 'tsundoku-otaku/tsundoku'
     name: Create GitHub Release
     runs-on: ubuntu-24.04
     needs: [get_tag, build, build_foss]
@@ -139,16 +139,16 @@ jobs:
         with:
           failOnError: false
           name: |
-            mihon
-            mihon-foss
+            tsundoku
+            tsundoku-foss
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
           tag_name: ${{ needs.get_tag.outputs.tag }}
-          name: Mihon ${{ needs.get_tag.outputs.tag }}
+          name: Tsundoku ${{ needs.get_tag.outputs.tag }}
           body: |
-            Check out the [past release notes](https://github.com/mihonapp/mihon/releases) if you’re upgrading from an earlier version. Consider [donating via Open Collective](https://opencollective.com/mihon/contribute) to help keep Mihon improving!
+            Check out the [past release notes](https://github.com/tsundoku-otaku/tsundoku/releases) if you’re upgrading from an earlier version. Consider [donating via Open Collective](https://opencollective.com/tsundoku/contribute) to help keep Tsundoku improving!
 
             <!-->
 
@@ -158,14 +158,14 @@ jobs:
 
             > [!TIP]
             >
-            > ### If you are unsure which version to download then go with `mihon-${{ needs.get_tag.outputs.tag }}.apk`
+            > ### If you are unsure which version to download then go with `tsundoku-${{ needs.get_tag.outputs.tag }}.apk`
           files: |
-            mihon-${{ needs.get_tag.outputs.tag }}.apk
-            mihon-${{ needs.get_tag.outputs.tag }}-foss.apk
-            mihon-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
-            mihon-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
-            mihon-x86-${{ needs.get_tag.outputs.tag }}.apk
-            mihon-x86_64-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-${{ needs.get_tag.outputs.tag }}-foss.apk
+            tsundoku-arm64-v8a-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-x86-${{ needs.get_tag.outputs.tag }}.apk
+            tsundoku-x86_64-${{ needs.get_tag.outputs.tag }}.apk
           draft: true
           prerelease: false
-          token: ${{ secrets.MIHON_BOT_TOKEN }}
+          token: ${{ secrets.TSUNDOKU_BOT_TOKEN }}

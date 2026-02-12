@@ -157,7 +157,7 @@ object AboutScreen : Screen() {
                 item {
                     TextPreferenceWidget(
                         title = stringResource(MR.strings.privacy_policy),
-                        onPreferenceClick = { uriHandler.openUri("https://mihon.app/privacy/") },
+                        onPreferenceClick = { uriHandler.openUri("https://tsundoku.app/privacy/") },
                     )
                 }
 
@@ -171,32 +171,32 @@ object AboutScreen : Screen() {
                         LinkIcon(
                             label = stringResource(MR.strings.website),
                             icon = Icons.Outlined.Public,
-                            url = "https://mihon.app",
+                            url = "https://tsundoku.app",
                         )
-                        LinkIcon(
-                            label = "Discord",
-                            icon = CustomIcons.Discord,
-                            url = "https://discord.gg/mihon",
-                        )
-                        LinkIcon(
-                            label = "X",
-                            icon = CustomIcons.X,
-                            url = "https://x.com/mihonapp",
-                        )
-                        LinkIcon(
-                            label = "Facebook",
-                            icon = CustomIcons.Facebook,
-                            url = "https://facebook.com/mihonapp",
-                        )
-                        LinkIcon(
-                            label = "Reddit",
-                            icon = CustomIcons.Reddit,
-                            url = "https://www.reddit.com/r/mihonapp",
-                        )
+                        // LinkIcon(
+                        //     label = "Discord",
+                        //     icon = CustomIcons.Discord,
+                        //     url = "https://discord.gg/tsundoku",
+                        // )
+                        // LinkIcon(
+                        //     label = "X",
+                        //     icon = CustomIcons.X,
+                        //     url = "https://x.com/tsundoku-otaku",
+                        // )
+                        // LinkIcon(
+                        //     label = "Facebook",
+                        //     icon = CustomIcons.Facebook,
+                        //     url = "https://facebook.com/tsundoku-otaku",
+                        // )
+                        // LinkIcon(
+                        //     label = "Reddit",
+                        //     icon = CustomIcons.Reddit,
+                        //     url = "https://www.reddit.com/r/tsundoku-otaku",
+                        // )
                         LinkIcon(
                             label = "GitHub",
                             icon = CustomIcons.Github,
-                            url = "https://github.com/mihonapp",
+                            url = "https://github.com/tsundoku-otaku",
                         )
                     }
                 }

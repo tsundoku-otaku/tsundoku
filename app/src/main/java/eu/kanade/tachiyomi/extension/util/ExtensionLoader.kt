@@ -254,10 +254,10 @@ internal object ExtensionLoader {
         val appInfo = pkgInfo.applicationInfo!!
         val pkgName = pkgInfo.packageName
 
-        // Support both old "Tachiyomi: " and new "MihonNovel: " prefixes
+        // Support both old "Tachiyomi: " and new "Tsundoku: " prefixes
         val appLabel = pkgManager.getApplicationLabel(appInfo).toString()
         val extName = when {
-            appLabel.startsWith("MihonNovel: ") -> appLabel.substringAfter("MihonNovel: ")
+            appLabel.startsWith("Tsundoku: ") -> appLabel.substringAfter("Tsundoku: ")
             appLabel.startsWith("Tachiyomi: ") -> appLabel.substringAfter("Tachiyomi: ")
             else -> appLabel
         }
@@ -325,11 +325,11 @@ internal object ExtensionLoader {
                 // Try the class name as-is first
                 val classesToTry = mutableListOf(className)
                 
-                // If the package uses app.mihonnovel namespace, also try eu.kanade.tachiyomi namespace
+                // If the package uses app.tsundoku namespace, also try eu.kanade.tachiyomi namespace
                 // This handles extensions that were migrated to new package names but still have
                 // classes in the old namespace
-                if (className.startsWith("app.mihonnovel.extension.")) {
-                    val fallbackClass = className.replace("app.mihonnovel.extension.", "eu.kanade.tachiyomi.extension.")
+                if (className.startsWith("app.tsundoku.extension.")) {
+                    val fallbackClass = className.replace("app.tsundoku.extension.", "eu.kanade.tachiyomi.extension.")
                     classesToTry.add(fallbackClass)
                 }
                 

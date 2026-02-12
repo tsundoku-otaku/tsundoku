@@ -24,7 +24,7 @@ android {
     namespace = "eu.kanade.tachiyomi"
 
     defaultConfig {
-        applicationId = "app.mihonnovel"
+        applicationId = "app.tsundoku"
 
         versionCode = 16
         versionName = "0.19.3"

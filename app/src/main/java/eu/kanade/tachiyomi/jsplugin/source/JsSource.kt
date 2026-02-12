@@ -203,7 +203,7 @@ class JsSource(
             throw e
         }
 
-        val token = "mihon_${System.nanoTime()}"
+        val token = "tsundoku_${System.nanoTime()}"
         try {
             logcat(LogPriority.DEBUG) { "JsSource[$pluginId]: Executing: $methodCall" }
 
@@ -211,26 +211,26 @@ class JsSource(
             instance.execute(
                 """
                 (function() {
-                    globalThis.__mihon_result_$token = null;
-                    globalThis.__mihon_error_$token = null;
-                    globalThis.__mihon_done_$token = false;
+                    globalThis.__tsundoku_result_$token = null;
+                    globalThis.__tsundoku_error_$token = null;
+                    globalThis.__tsundoku_done_$token = false;
 
                     try {
                         var maybePromise = ($methodCall);
                         Promise.resolve(maybePromise).then(function(result) {
                             try {
-                                globalThis.__mihon_result_$token = JSON.stringify(result);
+                                globalThis.__tsundoku_result_$token = JSON.stringify(result);
                             } catch(e) {
-                                globalThis.__mihon_result_$token = 'null';
+                                globalThis.__tsundoku_result_$token = 'null';
                             }
-                            globalThis.__mihon_done_$token = true;
+                            globalThis.__tsundoku_done_$token = true;
                         }).catch(function(e) {
-                            globalThis.__mihon_error_$token = (e && e.stack) ? (String(e) + '\n' + e.stack) : String(e);
-                            globalThis.__mihon_done_$token = true;
+                            globalThis.__tsundoku_error_$token = (e && e.stack) ? (String(e) + '\n' + e.stack) : String(e);
+                            globalThis.__tsundoku_done_$token = true;
                         });
                     } catch(e) {
-                        globalThis.__mihon_error_$token = (e && e.stack) ? (String(e) + '\n' + e.stack) : String(e);
-                        globalThis.__mihon_done_$token = true;
+                        globalThis.__tsundoku_error_$token = (e && e.stack) ? (String(e) + '\n' + e.stack) : String(e);
+                        globalThis.__tsundoku_done_$token = true;
                     }
                 })();
                 """.trimIndent()
@@ -241,7 +241,7 @@ class JsSource(
             var attempts = 0
             val maxAttempts = 600 // 30 seconds max (600 * 50ms)
             while (attempts < maxAttempts) {
-                val done = instance.execute("globalThis.__mihon_done_$token") as? Boolean ?: false
+                val done = instance.execute("globalThis.__tsundoku_done_$token") as? Boolean ?: false
                 if (done) break
                 attempts++
                 // Give async functions time to execute their Kotlin coroutines
@@ -256,14 +256,14 @@ class JsSource(
             }
 
             // Read results FIRST before cleanup
-            val error = instance.execute("globalThis.__mihon_error_$token") as? String
-            val jsonResult = instance.execute("globalThis.__mihon_result_$token") as? String
+            val error = instance.execute("globalThis.__tsundoku_error_$token") as? String
+            val jsonResult = instance.execute("globalThis.__tsundoku_result_$token") as? String
 
             // Cleanup global variables AFTER reading
             instance.execute("""
-                delete globalThis.__mihon_result_$token;
-                delete globalThis.__mihon_error_$token;
-                delete globalThis.__mihon_done_$token;
+                delete globalThis.__tsundoku_result_$token;
+                delete globalThis.__tsundoku_error_$token;
+                delete globalThis.__tsundoku_done_$token;
                 if (globalThis.__clearCheerioCache) {
                     globalThis.__clearCheerioCache();
                 }
@@ -354,7 +354,7 @@ class JsSource(
     }
 
     /**
-     * Convert Mihon FilterList back to JS filter object format for plugin.
+     * Convert Tsundoku FilterList back to JS filter object format for plugin.
      * Uses JsonObject builder to avoid kotlinx.serialization issues with Map<String, Any>.
      */
     private fun convertFiltersToJs(filters: FilterList): String {

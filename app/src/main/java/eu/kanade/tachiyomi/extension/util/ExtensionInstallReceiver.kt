@@ -66,7 +66,7 @@ internal class ExtensionInstallReceiver(private val listener: Listener) : Broadc
                     
                     // Add retry mechanism for replaced packages
                     // Sometimes the package manager reports REPLACED before the new info is available
-                    // This is particularly common with mihonnovel extensions
+                    // This is particularly common with tsundoku novel extensions
                     var result = getExtensionFromIntent(context, intent)
                     var retries = 0
                     val maxRetries = 15

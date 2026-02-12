@@ -430,7 +430,7 @@ actual class LocalNovelSource(
 
     companion object {
         const val ID = 1L // Different from LocalSource ID (0L)
-        const val HELP_URL = "https://mihon.app/docs/guides/local-source/"
+        const val HELP_URL = "https://tsundoku.app/docs/guides/local-source/"
 
         private val LATEST_THRESHOLD = 7.days.inWholeMilliseconds
 

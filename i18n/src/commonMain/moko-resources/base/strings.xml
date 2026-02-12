@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">Mihon</string>
+    <string name="app_name" translatable="false">Tsundoku</string>
 
     <string name="pref_font_size">Font size</string>
     <string name="pref_font_family">Font family</string>

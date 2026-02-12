@@ -545,7 +545,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
      */
     private fun writeResultFile(added: Int, skipped: Int, errored: Int): File {
         try {
-            val file = context.createFileInCacheDir("mihon_mass_import_results.txt")
+            val file = context.createFileInCacheDir("tsundoku_mass_import_results.txt")
             file.bufferedWriter().use { out ->
                 out.write("=== Mass Import Results ===\n")
                 out.write("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n\n")
