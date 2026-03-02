@@ -63,6 +63,7 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.ui.manga.ChapterList
 import eu.kanade.tachiyomi.ui.manga.MangaScreenModel
+import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import kotlinx.coroutines.launch
 import tachiyomi.domain.chapter.model.Chapter
@@ -366,11 +367,26 @@ private fun MangaScreenSmallImpl(
                     scrollScope.launch { chapterListState.animateScrollToItem(0) }
                 },
                 onClickScrollToLastRead = {
-                    val lastReadIndex = listItem.indexOfFirst { it is ChapterList.Item && it.chapter.read }
-                    if (lastReadIndex != -1) {
-                        scrollScope.launch {
-                            val halfHeight = chapterListState.layoutInfo.viewportSize.height / 2
-                            chapterListState.animateScrollToItem(lastReadIndex + 4, scrollOffset = -halfHeight)
+                    // Use same logic as the FAB resume button
+                    val targetChapter = state.chapters.getNextUnread(state.manga)
+                    android.util.Log.d(
+                        "ScrollToLastRead",
+                        "Small | target=${targetChapter?.name} (id=${targetChapter?.id}), " +
+                            "listItems=${listItem.size}, sortDesc=${state.manga.sortDescending()}",
+                    )
+                    if (targetChapter != null) {
+                        val targetIndex = listItem.indexOfFirst {
+                            it is ChapterList.Item && it.chapter.id == targetChapter.id
+                        }
+                        android.util.Log.d(
+                            "ScrollToLastRead",
+                            "Small | targetIndex=$targetIndex, scrollIndex=${targetIndex + 4}",
+                        )
+                        if (targetIndex != -1) {
+                            scrollScope.launch {
+                                val halfHeight = chapterListState.layoutInfo.viewportSize.height / 2
+                                chapterListState.animateScrollToItem(targetIndex + 4, scrollOffset = -halfHeight)
+                            }
                         }
                     }
                 },
@@ -653,11 +669,26 @@ fun MangaScreenLargeImpl(
                     scrollScope.launch { chapterListState.animateScrollToItem(0) }
                 },
                 onClickScrollToLastRead = {
-                    val lastReadIndex = listItem.indexOfFirst { it is ChapterList.Item && it.chapter.read }
-                    if (lastReadIndex != -1) {
-                        scrollScope.launch {
-                            val halfHeight = chapterListState.layoutInfo.viewportSize.height / 2
-                            chapterListState.animateScrollToItem(lastReadIndex + 1, scrollOffset = -halfHeight)
+                    // Use same logic as the FAB resume button
+                    val targetChapter = state.chapters.getNextUnread(state.manga)
+                    android.util.Log.d(
+                        "ScrollToLastRead",
+                        "Large | target=${targetChapter?.name} (id=${targetChapter?.id}), " +
+                            "listItems=${listItem.size}, sortDesc=${state.manga.sortDescending()}",
+                    )
+                    if (targetChapter != null) {
+                        val targetIndex = listItem.indexOfFirst {
+                            it is ChapterList.Item && it.chapter.id == targetChapter.id
+                        }
+                        android.util.Log.d(
+                            "ScrollToLastRead",
+                            "Large | targetIndex=$targetIndex, scrollIndex=${targetIndex + 1}",
+                        )
+                        if (targetIndex != -1) {
+                            scrollScope.launch {
+                                val halfHeight = chapterListState.layoutInfo.viewportSize.height / 2
+                                chapterListState.animateScrollToItem(targetIndex + 1, scrollOffset = -halfHeight)
+                            }
                         }
                     }
                 },
