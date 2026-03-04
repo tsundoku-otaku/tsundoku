@@ -268,30 +268,40 @@ object NovelViewerTextUtils {
         }
 
         // Trigger loading if still queued.
-        // IMPORTANT: loadPage() never returns (suspends forever), so fire-and-forget with launch.
+        // IMPORTANT: loadPage() never returns (suspends forever), so launch in scope
+        // and keep the job reference so it gets cancelled with the scope.
+        var loadJob: kotlinx.coroutines.Job? = null
         if (page.status is Page.State.Queue) {
-            scope.launch(Dispatchers.IO) {
-                loader.loadPage(page)
+            loadJob = scope.launch(Dispatchers.IO) {
+                try {
+                    loader.loadPage(page)
+                } catch (_: kotlinx.coroutines.CancellationException) {
+                    // Expected when scope is cancelled
+                }
             }
         }
 
         // Wait for statusFlow to emit Ready or Error
-        val finalState = withTimeout(timeoutMs) {
-            page.statusFlow.first { state ->
-                state is Page.State.Ready || state is Page.State.Error
+        return try {
+            val finalState = withTimeout(timeoutMs) {
+                page.statusFlow.first { state ->
+                    state is Page.State.Ready || state is Page.State.Error
+                }
             }
-        }
 
-        return when (finalState) {
-            is Page.State.Ready -> {
-                logcat(LogPriority.DEBUG) { "$tag: page ready, text.length=${page.text?.length ?: 0}" }
-                !page.text.isNullOrBlank()
+            when (finalState) {
+                is Page.State.Ready -> {
+                    logcat(LogPriority.DEBUG) { "$tag: page ready, text.length=${page.text?.length ?: 0}" }
+                    !page.text.isNullOrBlank()
+                }
+                is Page.State.Error -> {
+                    logcat(LogPriority.ERROR) { "$tag: page error: ${finalState.error.message}" }
+                    false
+                }
+                else -> false
             }
-            is Page.State.Error -> {
-                logcat(LogPriority.ERROR) { "$tag: page error: ${finalState.error.message}" }
-                false
-            }
-            else -> false
+        } finally {
+            loadJob?.cancel()
         }
     }
 }

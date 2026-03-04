@@ -1315,12 +1315,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         evaluateJavascriptSafe("(function(){$js})();", null)
     }
 
-    /** Escape a string for safe embedding inside a JS double-quoted literal. */
+    /**
+     * Escape a string for safe embedding inside a JS double-quoted literal.
+     * Also escapes `</script>` sequences which would prematurely close the script tag.
+     */
     private fun String.jsEscape(): String =
         this.replace("\\", "\\\\")
             .replace("\"", "\\\"")
             .replace("\n", "\\n")
             .replace("\r", "\\r")
+            .replace("</script>", "<\\/script>")
+            .replace("</Script>", "<\\/Script>")
+            .replace("</SCRIPT>", "<\\/SCRIPT>")
 
     /**
      * Apply user-configured find & replace rules to content.
