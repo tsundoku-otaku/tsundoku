@@ -286,8 +286,8 @@ class CustomSourceManager(
 
         // Step 3: Test Search with a longer, more common query
         try {
-            // Use "love" as it's common in many novel sites
-            val searchQuery = "love"
+            // Use "a" as it's common in many novel sites, will fail with non latin sites. maybe make this configurable?
+            val searchQuery = "a"
             val search = source.getSearchManga(1, searchQuery, eu.kanade.tachiyomi.source.model.FilterList())
             val success = search.mangas.isNotEmpty()
             results["search"] = TestStepResult(
@@ -384,11 +384,16 @@ class CustomSourceManager(
                                 message = if (content.isNotBlank()) {
                                     "Content length: ${content.length} chars"
                                 } else {
-                                    "Empty content"
+                                    "Empty content - check content selectors or base source compatibility"
                                 },
                                 data = mapOf(
                                     "Preview" to preview,
                                 ),
+                            )
+                        } else {
+                            results["content"] = TestStepResult(
+                                success = false,
+                                message = "No pages returned from getPageList",
                             )
                         }
                     } catch (e: Exception) {

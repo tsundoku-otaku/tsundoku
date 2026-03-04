@@ -23,10 +23,17 @@ fun List<Double>.missingChaptersCount(): Int {
         // Convert to integers, as we cannot check if 16.5 is missing
         .map(Double::toInt)
         // Only keep unique chapters so that -1 or 16 are not counted multiple times
-        .distinct()
-        .sorted()
+        .toSortedSet()
+        .toList()
 
     if (chapters.isEmpty()) {
+        return 0
+    }
+
+    // Guard against outliers: if the range between min and max is absurdly large
+    // relative to the actual chapter count, skip the calculation to avoid OOM
+    val range = chapters.last() - chapters.first()
+    if (range > chapters.size * 10 || range > 10_000) {
         return 0
     }
 

@@ -268,27 +268,37 @@ class MigrationListScreenModel(
             mutableState.update { it.copy(dialog = Dialog.Progress(0f)) }
             val items = items
             try {
-                items.forEachIndexed { index, manga ->
-                    try {
-                        ensureActive()
-                        val target = manga.searchResult.value.let {
-                            if (it is SearchResult.Success) {
-                                it.manga
-                            } else {
-                                null
+                // Use semaphore to allow limited concurrency for migrations
+                // (each migration involves network calls that benefit from parallelism)
+                val migrationSemaphore = Semaphore(3)
+                val completed = java.util.concurrent.atomic.AtomicInteger(0)
+
+                items.map { manga ->
+                    async {
+                        migrationSemaphore.withPermit {
+                            try {
+                                ensureActive()
+                                val target = manga.searchResult.value.let {
+                                    if (it is SearchResult.Success) {
+                                        it.manga
+                                    } else {
+                                        null
+                                    }
+                                }
+                                if (target != null) {
+                                    migrateManga(current = manga.manga, target = target, replace = replace)
+                                }
+                            } catch (e: Exception) {
+                                if (e is CancellationException) throw e
+                                logcat(LogPriority.WARN, throwable = e)
+                            }
+                            val done = completed.incrementAndGet()
+                            mutableState.update {
+                                it.copy(dialog = Dialog.Progress((done.toFloat() / items.size).coerceAtMost(1f)))
                             }
                         }
-                        if (target != null) {
-                            migrateManga(current = manga.manga, target = target, replace = replace)
-                        }
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
-                        logcat(LogPriority.WARN, throwable = e)
                     }
-                    mutableState.update {
-                        it.copy(dialog = Dialog.Progress((index.toFloat() / items.size).coerceAtMost(1f)))
-                    }
-                }
+                }.awaitAll()
 
                 navigateBack()
             } finally {

@@ -1,7 +1,6 @@
 package eu.kanade.domain.source.interactor
 
 import eu.kanade.domain.source.service.SourcePreferences
-import eu.kanade.tachiyomi.source.isNovelSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import tachiyomi.core.common.util.lang.compareToWithCollator
@@ -14,7 +13,7 @@ import java.util.Collections
 class GetNovelSourcesWithFavoriteCount(
     private val repository: SourceRepository,
     private val preferences: SourcePreferences,
-    private val sourceManager: SourceManager,
+    @Suppress("unused") private val sourceManager: SourceManager,
 ) {
 
     fun subscribe(): Flow<List<Pair<Source, Long>>> {
@@ -25,8 +24,7 @@ class GetNovelSourcesWithFavoriteCount(
         ) { direction, mode, list ->
             list
                 .filter { (source, _) ->
-                    val actualSource = sourceManager.get(source.id)
-                    !source.isLocal() && actualSource?.isNovelSource() == true
+                    !source.isLocal() && source.isNovelSource
                 }
                 .sortedWith(sortFn(direction, mode))
         }

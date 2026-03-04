@@ -2,7 +2,10 @@ package eu.kanade.tachiyomi.source.custom
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.NovelSource
+import eu.kanade.tachiyomi.source.fetchNovelPageText
+import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -50,11 +53,12 @@ class CustomNovelSource(
     /**
      * When basedOnSourceId is set, we delegate all fetching/parsing to the base
      * extension source but substitute our own baseUrl in requests.
+     * Supports HttpSource (APK extensions), JsSource (JS plugins), and any CatalogueSource.
      */
-    private val baseSource: HttpSource? by lazy {
+    private val baseSource: CatalogueSource? by lazy {
         config.basedOnSourceId?.let { sourceId ->
             try {
-                Injekt.get<SourceManager>().get(sourceId) as? HttpSource
+                Injekt.get<SourceManager>().get(sourceId) as? CatalogueSource
             } catch (_: Exception) {
                 null
             }
@@ -219,12 +223,12 @@ class CustomNovelSource(
 
     override suspend fun fetchPageText(page: Page): String {
         val bs = baseSource
-        if (bs is NovelSource) {
-            return bs.fetchPageText(page)
+        if (bs != null && bs.isNovelSource()) {
+            return bs.fetchNovelPageText(page)
         }
 
-        // If based on extension but source unavailable/incompatible, return empty
-        if (config.basedOnSourceId != null) return ""
+        // If based on extension but source is not a novel source, fall through to CSS selectors
+        // This allows hybrid setups where browsing is delegated but content uses custom selectors
 
         val response = client.newCall(GET(baseUrl + page.url, headers)).awaitSuccess()
         val document = response.asJsoup()

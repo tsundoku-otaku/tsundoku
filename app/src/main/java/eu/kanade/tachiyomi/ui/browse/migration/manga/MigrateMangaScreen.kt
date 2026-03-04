@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.browse.migration.manga
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
@@ -8,7 +9,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.FlashOn
+import androidx.compose.material.icons.outlined.SelectAll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.SmallExtendedFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.animateFloatingActionButton
@@ -19,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -29,6 +34,7 @@ import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.flow.collectLatest
 import mihon.feature.migration.config.MigrationConfigScreen
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
@@ -73,26 +79,52 @@ data class MigrateMangaScreen(
                             navigator.pop()
                         }
                     },
+                    actionModeCounter = state.selection.size,
+                    onCancelActionMode = { screenModel.clearSelection() },
+                    actionModeActions = {
+                        IconButton(onClick = { screenModel.selectAll() }) {
+                            Icon(
+                                imageVector = Icons.Outlined.SelectAll,
+                                contentDescription = stringResource(MR.strings.action_select_all),
+                            )
+                        }
+                    },
                     scrollBehavior = scrollBehavior,
                 )
             },
             floatingActionButton = {
-                SmallExtendedFloatingActionButton(
-                    text = { Text(text = stringResource(MR.strings.migrationConfigScreen_continueButtonText)) },
-                    icon = {
-                        Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null)
-                    },
-                    onClick = {
-                        val selection = state.selection
-                        screenModel.clearSelection()
-                        navigator.push(MigrationConfigScreen(selection))
-                    },
-                    expanded = lazyListState.shouldExpandFAB(),
-                    modifier = Modifier.animateFloatingActionButton(
-                        visible = state.selectionMode,
-                        alignment = Alignment.BottomEnd,
-                    ),
-                )
+                Column(horizontalAlignment = Alignment.End) {
+                    SmallExtendedFloatingActionButton(
+                        text = { Text(text = stringResource(MR.strings.action_quick_migrate)) },
+                        icon = {
+                            Icon(imageVector = Icons.Outlined.FlashOn, contentDescription = null)
+                        },
+                        onClick = { screenModel.showQuickMigrateDialog() },
+                        expanded = lazyListState.shouldExpandFAB(),
+                        modifier = Modifier
+                            .padding(bottom = 8.dp)
+                            .animateFloatingActionButton(
+                                visible = state.selectionMode,
+                                alignment = Alignment.BottomEnd,
+                            ),
+                    )
+                    SmallExtendedFloatingActionButton(
+                        text = { Text(text = stringResource(MR.strings.migrationConfigScreen_continueButtonText)) },
+                        icon = {
+                            Icon(imageVector = Icons.AutoMirrored.Outlined.ArrowForward, contentDescription = null)
+                        },
+                        onClick = {
+                            val selection = state.selection
+                            screenModel.clearSelection()
+                            navigator.push(MigrationConfigScreen(selection))
+                        },
+                        expanded = lazyListState.shouldExpandFAB(),
+                        modifier = Modifier.animateFloatingActionButton(
+                            visible = state.selectionMode,
+                            alignment = Alignment.BottomEnd,
+                        ),
+                    )
+                }
             },
         ) { contentPadding ->
             if (state.isEmpty) {
@@ -112,11 +144,36 @@ data class MigrateMangaScreen(
             )
         }
 
+        when (val dialog = state.dialog) {
+            is MigrateMangaScreenModel.Dialog.QuickMigrateSourcePicker -> {
+                QuickMigrateSourcePickerDialog(
+                    sources = screenModel.availableSources,
+                    onSourceSelected = { screenModel.checkQuickMigrate(it) },
+                    onDismissRequest = { screenModel.dismissDialog() },
+                )
+            }
+            is MigrateMangaScreenModel.Dialog.QuickMigrateConfirm -> {
+                QuickMigrateConfirmDialog(
+                    targetSourceName = dialog.targetSourceName,
+                    totalCount = dialog.totalCount,
+                    skipCount = dialog.skipCount,
+                    onConfirm = { screenModel.executeQuickMigrate(dialog.targetSourceId) },
+                    onDismissRequest = { screenModel.dismissDialog() },
+                )
+            }
+            null -> {}
+        }
+
         LaunchedEffect(Unit) {
             screenModel.events.collectLatest { event ->
                 when (event) {
                     MigrationMangaEvent.FailedFetchingFavorites -> {
                         context.toast(MR.strings.internal_error)
+                    }
+                    is MigrationMangaEvent.QuickMigrateComplete -> {
+                        context.toast(
+                            context.stringResource(MR.strings.quick_migrate_complete, event.count),
+                        )
                     }
                 }
             }

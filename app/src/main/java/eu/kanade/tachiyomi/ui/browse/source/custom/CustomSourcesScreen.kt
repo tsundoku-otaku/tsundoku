@@ -64,10 +64,12 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.source.custom.CustomSourceConfig
 import eu.kanade.tachiyomi.source.custom.CustomSourceManager
+import tachiyomi.domain.source.service.SourceManager
 import eu.kanade.tachiyomi.source.custom.SourceTestResult
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
+import eu.kanade.tachiyomi.jsplugin.JsPluginManager
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
@@ -664,9 +666,28 @@ class CustomSourceEditorScreen(
             }
         }
 
+        // Resolve effective basedOnSourceId: prefer constructor param, fall back to loaded config
+        val effectiveBasedOnSourceId = remember {
+            basedOnSourceId ?: initialConfig?.basedOnSourceId
+        }
+
+        // Resolve language from base source when available
+        val baseLang = remember(effectiveBasedOnSourceId) {
+            effectiveBasedOnSourceId?.let { id ->
+                (Injekt.get<SourceManager>().get(id))?.lang
+            }
+        }
+
         // State for form fields
         var name by remember { mutableStateOf(initialConfig?.name ?: "") }
         var baseUrl by remember { mutableStateOf(initialConfig?.baseUrl ?: "https://") }
+        var language by remember {
+            // For new sources based on a base extension, inherit the base source's language
+            val isNew = sourceId == null
+            mutableStateOf(
+                if (isNew && baseLang != null) baseLang else initialConfig?.language ?: "en",
+            )
+        }
         var popularUrl by remember { mutableStateOf(initialConfig?.popularUrl ?: "") }
         var latestUrl by remember { mutableStateOf(initialConfig?.latestUrl ?: "") }
         var searchUrl by remember { mutableStateOf(initialConfig?.searchUrl ?: "") }
@@ -746,8 +767,18 @@ class CustomSourceEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = language,
+                    onValueChange = { language = it },
+                    label = { Text("Language code (e.g. en, ja, zh)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
                 // Show info card when based on extension
-                if (basedOnSourceId != null) {
+                if (effectiveBasedOnSourceId != null) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Card(
                         colors = CardDefaults.cardColors(
@@ -880,7 +911,7 @@ class CustomSourceEditorScreen(
                 }
 
                 // URLs Section (only for manual/selector-based sources)
-                if (basedOnSourceId == null) {
+                if (effectiveBasedOnSourceId == null) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = stringResource(TDMR.strings.custom_source_url_patterns),
@@ -996,7 +1027,7 @@ class CustomSourceEditorScreen(
                     modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text(stringResource(TDMR.strings.custom_source_content_selector_hint)) },
                 )
-                } // end if (basedOnSourceId == null)
+                } // end if (effectiveBasedOnSourceId == null)
 
                 // Error message
                 errorMessage?.let {
@@ -1022,7 +1053,7 @@ class CustomSourceEditorScreen(
                                 detailsTitleSelector, detailsDescriptionSelector,
                                 chaptersListSelector, contentPrimarySelector,
                                 sourceId, useCloudflare, reverseChapters, postSearch,
-                                basedOnSourceId, isNovel,
+                                effectiveBasedOnSourceId, isNovel, language,
                             )
 
                             val result = if (sourceId != null) {
@@ -1041,7 +1072,7 @@ class CustomSourceEditorScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSaving && name.isNotBlank() && baseUrl.isNotBlank() &&
-                        (basedOnSourceId != null || (
+                        (effectiveBasedOnSourceId != null || (
                             popularUrl.isNotBlank() && searchUrl.isNotBlank() &&
                             popularListSelector.isNotBlank() && detailsTitleSelector.isNotBlank() &&
                             chaptersListSelector.isNotBlank() && contentPrimarySelector.isNotBlank()
@@ -1076,10 +1107,12 @@ class CustomSourceEditorScreen(
         postSearch: Boolean,
         basedOnSourceId: Long? = null,
         isNovel: Boolean = true,
+        language: String = "en",
     ): CustomSourceConfig {
         return CustomSourceConfig(
             name = name,
             baseUrl = baseUrl.trimEnd('/'),
+            language = language,
             id = existingId,
             popularUrl = popularUrl,
             latestUrl = latestUrl.ifBlank { null },
@@ -1112,7 +1145,7 @@ class CustomSourceEditorScreen(
 
 /**
  * Dialog to pick an installed extension source to base a custom source on.
- * Shows all installed extensions grouped by extension name.
+ * Shows all installed extensions (APK and JS plugins).
  */
 @Composable
 private fun ExtensionSourcePickerDialog(
@@ -1120,13 +1153,15 @@ private fun ExtensionSourcePickerDialog(
     onPick: (name: String, baseUrl: String, sourceId: Long) -> Unit,
 ) {
     val extensionManager: ExtensionManager = remember { Injekt.get() }
+    val jsPluginManager: JsPluginManager = remember { Injekt.get() }
     val installedExtensions by extensionManager.installedExtensionsFlow.collectAsState()
+    val jsSources by jsPluginManager.jsSources.collectAsState()
 
     // Collect novel extension sources: extension name → list of (Source, ExtensionName)
     data class SourceEntry(val sourceId: Long, val sourceName: String, val baseUrl: String, val extensionName: String, val lang: String)
 
-    val novelSources = remember(installedExtensions) {
-        installedExtensions
+    val novelSources = remember(installedExtensions, jsSources) {
+        val apkSources = installedExtensions
             .flatMap { ext ->
                 ext.sources.mapNotNull { source ->
                     val httpSource = source as? HttpSource ?: return@mapNotNull null
@@ -1139,7 +1174,19 @@ private fun ExtensionSourcePickerDialog(
                     )
                 }
             }
-            .sortedBy { it.extensionName }
+
+        val jsEntries = jsSources.mapNotNull { source ->
+            val jsSource = source as? eu.kanade.tachiyomi.jsplugin.source.JsSource ?: return@mapNotNull null
+            SourceEntry(
+                sourceId = jsSource.id,
+                sourceName = jsSource.name,
+                baseUrl = jsSource.baseUrl,
+                extensionName = "[JS] ${jsSource.name}",
+                lang = jsSource.lang,
+            )
+        }
+
+        (apkSources + jsEntries).sortedBy { it.extensionName }
     }
 
     var nameOverride by remember { mutableStateOf("") }

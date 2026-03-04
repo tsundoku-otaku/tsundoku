@@ -1,10 +1,11 @@
 package eu.kanade.domain.source.interactor
 
 import eu.kanade.domain.source.service.SourcePreferences
-import eu.kanade.tachiyomi.source.isNovelSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.Pin
 import tachiyomi.domain.source.model.Pins
 import tachiyomi.domain.source.model.Source
@@ -15,7 +16,7 @@ import tachiyomi.source.local.isLocalNovel
 class GetEnabledNovelSources(
     private val repository: SourceRepository,
     private val preferences: SourcePreferences,
-    private val sourceManager: SourceManager,
+    @Suppress("unused") private val sourceManager: SourceManager,
 ) {
 
     fun subscribe(): Flow<List<Source>> {
@@ -26,10 +27,13 @@ class GetEnabledNovelSources(
             preferences.lastUsedSource().changes(),
             repository.getSources(),
         ) { pinnedSourceIds, enabledLanguages, disabledSources, lastUsedSource, sources ->
+            logcat(LogPriority.DEBUG) {
+                "GetEnabledNovelSources: ${sources.size} total sources, enabledLangs=$enabledLanguages"
+            }
             sources
                 .filter { it.lang in enabledLanguages || it.isLocalNovel() }
                 .filterNot { it.id.toString() in disabledSources }
-                .filter { sourceManager.get(it.id)?.isNovelSource() == true || it.isLocalNovel() }
+                .filter { it.isNovelSource || it.isLocalNovel() }
                 .sortedWith(
                     // Local novel source always appears first
                     compareBy<Source> { if (it.isLocalNovel()) 0 else 1 }

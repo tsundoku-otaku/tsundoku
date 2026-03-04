@@ -731,7 +731,10 @@ class BrowseSourceScreenModel(
     }
 
     /**
-     * Translate all currently loaded manga titles
+     * Called when translate titles is toggled on.
+     * Actual translation is UI-driven: when translateTitles=true, grid items call
+     * onMangaVisible(manga) on recomposition, which feeds the translation channel.
+     * This method clears any stale translations and validates engine readiness.
      */
     private fun translateCurrentTitles() {
         translationJob?.cancel()
@@ -739,13 +742,14 @@ class BrowseSourceScreenModel(
             try {
                 val engine = translationEngineManager.getSelectedEngine()
                 val targetLang = translationPreferences.targetLanguage().get()
-                val sourceLang = translationPreferences.sourceLanguage().get()
-
-                // Get current manga list from pager (this is a simplified approach)
-                // We'll translate titles as they become available
                 logcat { "Translation enabled: engine=${engine.name}, target=$targetLang" }
+
+                // Clear stale translations so items get re-translated with current settings
+                mutableState.update { it.copy(translatedTitles = emptyMap()) }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR) { "Failed to initialize translation: ${e.message}" }
+                // Disable translate titles if engine init fails
+                mutableState.update { it.copy(translateTitles = false) }
             }
         }
     }
