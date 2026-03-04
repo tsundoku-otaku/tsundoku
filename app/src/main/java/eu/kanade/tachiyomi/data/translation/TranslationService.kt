@@ -593,7 +593,8 @@ class TranslationService(
                             var entry = zis.nextEntry
                             while (entry != null) {
                                 if (!entry.isDirectory && (entry.name.endsWith(".html") || entry.name.endsWith(".txt"))) {
-                                    val text = zis.bufferedReader().use { it.readText() }
+                                    val bytes = zis.readBytes()
+                                    val text = bytes.toString(Charsets.UTF_8)
                                     entries.add(entry.name to text)
                                 }
                                 zis.closeEntry()
