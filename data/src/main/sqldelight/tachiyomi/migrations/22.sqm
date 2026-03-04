@@ -1,0 +1,5 @@
+-- Remove translated_chapters table: translations now stored entirely on filesystem
+DROP INDEX IF EXISTS translated_chapters_chapter_id_index;
+DROP INDEX IF EXISTS translated_chapters_manga_id_index;
+DROP INDEX IF EXISTS translated_chapters_language_index;
+DROP TABLE IF EXISTS translated_chapters;

@@ -1,17 +1,15 @@
 package tachiyomi.domain.translation.model
 
 /**
- * Represents a translated chapter stored in the database.
+ * Represents a translated chapter stored on the filesystem.
  */
 data class TranslatedChapter(
-    val id: Long = 0,
     val chapterId: Long,
     val mangaId: Long,
     val targetLanguage: String,
     val engineId: String,
     val translatedContent: String,
     val dateTranslated: Long = System.currentTimeMillis(),
-    val isCached: Boolean = true,
 )
 
 /**
@@ -29,6 +27,7 @@ data class TranslationTask(
     val errorMessage: String? = null,
     val retryCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
+    val forceRetranslate: Boolean = false,
 )
 
 /**
@@ -53,6 +52,9 @@ data class TranslationProgress(
     val currentChapterProgress: Float, // 0.0 to 1.0
     val isRunning: Boolean,
     val isPaused: Boolean,
+    val currentChunkIndex: Int = 0,
+    val totalChunks: Int = 0,
+    val isCancelling: Boolean = false,
 ) {
     val overallProgress: Float
         get() = if (totalChapters > 0) {
@@ -79,3 +81,21 @@ data class TranslatedLanguages(
     val mangaId: Long,
     val languages: List<String>,
 )
+
+/**
+ * Controls which content variant is used for EPUB export.
+ */
+enum class TranslationMode(val key: String) {
+    /** Export only the original (source) content. */
+    ORIGINAL("original"),
+    /** Export only translated content; skip chapters without a translation. */
+    TRANSLATED("translated"),
+    /** Export two separate EPUB files — one original, one translated. */
+    BOTH("both"),
+    ;
+
+    companion object {
+        fun fromKey(key: String): TranslationMode =
+            entries.firstOrNull { it.key == key } ?: ORIGINAL
+    }
+}

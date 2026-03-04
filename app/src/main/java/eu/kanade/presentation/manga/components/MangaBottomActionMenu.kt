@@ -83,6 +83,9 @@ fun MangaBottomActionMenu(
     onDeleteClicked: (() -> Unit)? = null,
     onRemoveFromDbClicked: (() -> Unit)? = null,
     onDeleteRangeClicked: (() -> Unit)? = null,
+    onDeleteTranslationClicked: (() -> Unit)? = null,
+    onTranslateClicked: (() -> Unit)? = null,
+    onRetranslateClicked: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -189,7 +192,7 @@ fun MangaBottomActionMenu(
                     )
                 }
                 // Overflow menu with additional actions
-                if (onDeleteRangeClicked != null) {
+                if (onDeleteRangeClicked != null || onDeleteTranslationClicked != null || onTranslateClicked != null || onRetranslateClicked != null) {
                     var overflowMenuOpen by remember { mutableStateOf(false) }
                     Button(
                         title = stringResource(MR.strings.label_more),
@@ -203,13 +206,42 @@ fun MangaBottomActionMenu(
                             onDismissRequest = { overflowMenuOpen = false },
                             offset = DpOffset(0.dp, 0.dp),
                         ) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(TDMR.strings.action_delete_range)) },
-                                onClick = {
-                                    overflowMenuOpen = false
-                                    onDeleteRangeClicked()
-                                },
-                            )
+                            if (onDeleteRangeClicked != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(TDMR.strings.action_delete_range)) },
+                                    onClick = {
+                                        overflowMenuOpen = false
+                                        onDeleteRangeClicked()
+                                    },
+                                )
+                            }
+                            if (onDeleteTranslationClicked != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(TDMR.strings.action_delete_translation)) },
+                                    onClick = {
+                                        overflowMenuOpen = false
+                                        onDeleteTranslationClicked()
+                                    },
+                                )
+                            }
+                            if (onTranslateClicked != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(TDMR.strings.action_translate)) },
+                                    onClick = {
+                                        overflowMenuOpen = false
+                                        onTranslateClicked()
+                                    },
+                                )
+                            }
+                            if (onRetranslateClicked != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(TDMR.strings.action_retranslate)) },
+                                    onClick = {
+                                        overflowMenuOpen = false
+                                        onRetranslateClicked()
+                                    },
+                                )
+                            }
                         }
                     }
                 }

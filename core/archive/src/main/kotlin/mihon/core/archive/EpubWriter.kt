@@ -10,8 +10,14 @@ import java.util.zip.ZipOutputStream
 /**
  * EPUB writer for creating EPUB 3.0 files.
  * Creates a valid EPUB with proper structure: mimetype, META-INF/container.xml, content.opf, nav.xhtml, and chapter HTML files.
+ *
+ * @param deflateLevel Deflate compression level (0-9). 0 = no compression (stored), 9 = max compression.
+ *                     Default is [java.util.zip.Deflater.DEFAULT_COMPRESSION] (-1).
+ *                     The `mimetype` entry is ALWAYS stored uncompressed per the EPUB spec, regardless of this setting.
  */
-class EpubWriter {
+class EpubWriter(
+    private val deflateLevel: Int = java.util.zip.Deflater.DEFAULT_COMPRESSION,
+) {
 
     data class Chapter(
         val title: String,
@@ -46,6 +52,8 @@ class EpubWriter {
         val bookId = UUID.randomUUID().toString()
 
         ZipOutputStream(outputStream).use { zip ->
+            // Set the compression level for all entries except mimetype
+            zip.setLevel(deflateLevel)
             // mimetype must be first entry and stored uncompressed
             writeMimetype(zip)
 
@@ -203,7 +211,10 @@ $spineItems
     }
 
     private fun writeEntry(zip: ZipOutputStream, path: String, content: ByteArray) {
-        zip.putNextEntry(ZipEntry(path))
+        val entry = ZipEntry(path).apply {
+            method = ZipEntry.DEFLATED
+        }
+        zip.putNextEntry(entry)
         zip.write(content)
         zip.closeEntry()
     }
@@ -226,9 +237,10 @@ $spineItems
             metadata: Metadata,
             chapters: List<Chapter>,
             coverImage: ByteArray? = null,
+            deflateLevel: Int = java.util.zip.Deflater.DEFAULT_COMPRESSION,
         ) {
             file.outputStream().use { outputStream ->
-                EpubWriter().write(outputStream, metadata, chapters, coverImage)
+                EpubWriter(deflateLevel).write(outputStream, metadata, chapters, coverImage)
             }
         }
     }

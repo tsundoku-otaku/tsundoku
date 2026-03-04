@@ -23,9 +23,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.translation.model.TranslationMode
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.CheckboxItem
+import tachiyomi.presentation.core.components.RadioItem
 import tachiyomi.presentation.core.i18n.stringResource
 
 /**
@@ -33,7 +35,7 @@ import tachiyomi.presentation.core.i18n.stringResource
  */
 data class EpubExportOptions(
     val downloadedOnly: Boolean = false,
-    val preferTranslated: Boolean = false,
+    val translationMode: TranslationMode = TranslationMode.ORIGINAL,
     // Filename options
     val includeChapterCount: Boolean = false,
     val includeChapterRange: Boolean = false,
@@ -57,12 +59,14 @@ fun BatchExportEpubDialog(
         )
     }
     var downloadedOnly by remember { mutableStateOf(false) }
-    var preferTranslated by remember { mutableStateOf(false) }
+    var translationMode by remember { mutableStateOf(TranslationMode.ORIGINAL) }
     var includeChapterCount by remember { mutableStateOf(false) }
     var includeChapterRange by remember { mutableStateOf(false) }
     var includeStatus by remember { mutableStateOf(false) }
 
-    val mimeType = if (isSingleNovel) "application/epub+zip" else "application/zip"
+    // "Both" mode produces two EPUBs → always ZIP; multi-novel → always ZIP
+    val needsZip = !isSingleNovel || translationMode == TranslationMode.BOTH
+    val mimeType = if (needsZip) "application/zip" else "application/epub+zip"
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(mimeType),
@@ -72,7 +76,7 @@ fun BatchExportEpubDialog(
                 uri,
                 EpubExportOptions(
                     downloadedOnly = downloadedOnly,
-                    preferTranslated = preferTranslated,
+                    translationMode = translationMode,
                     includeChapterCount = includeChapterCount,
                     includeChapterRange = includeChapterRange,
                     includeStatus = includeStatus,
@@ -139,10 +143,30 @@ fun BatchExportEpubDialog(
                     onClick = { downloadedOnly = !downloadedOnly },
                 )
 
-                CheckboxItem(
-                    label = stringResource(TDMR.strings.epub_prefer_translated),
-                    checked = preferTranslated,
-                    onClick = { preferTranslated = !preferTranslated },
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(TDMR.strings.epub_translation_mode),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+
+                RadioItem(
+                    label = stringResource(TDMR.strings.epub_translation_original),
+                    selected = translationMode == TranslationMode.ORIGINAL,
+                    onClick = { translationMode = TranslationMode.ORIGINAL },
+                )
+
+                RadioItem(
+                    label = stringResource(TDMR.strings.epub_translation_translated),
+                    selected = translationMode == TranslationMode.TRANSLATED,
+                    onClick = { translationMode = TranslationMode.TRANSLATED },
+                )
+
+                RadioItem(
+                    label = stringResource(TDMR.strings.epub_translation_both),
+                    selected = translationMode == TranslationMode.BOTH,
+                    onClick = { translationMode = TranslationMode.BOTH },
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -178,10 +202,10 @@ fun BatchExportEpubDialog(
                         stringResource(TDMR.strings.epub_downloaded_only_info)
                     } else {
                         stringResource(TDMR.strings.epub_source_info)
-                    } + if (preferTranslated) {
-                        stringResource(TDMR.strings.epub_translated_info)
-                    } else {
-                        ""
+                    } + when (translationMode) {
+                        TranslationMode.TRANSLATED -> " " + stringResource(TDMR.strings.epub_translation_translated_info)
+                        TranslationMode.BOTH -> " " + stringResource(TDMR.strings.epub_translation_both_info)
+                        else -> ""
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -191,7 +215,12 @@ fun BatchExportEpubDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    launcher.launch(filename)
+                    val launchName = if (needsZip && !filename.endsWith(".zip")) {
+                        filename.removeSuffix(".epub") + ".zip"
+                    } else {
+                        filename
+                    }
+                    launcher.launch(launchName)
                 },
             ) {
                 Text(stringResource(TDMR.strings.action_export_epub))

@@ -197,6 +197,13 @@ class MangaScreen(
             onMarkPreviousAsReadClicked = screenModel::markPreviousChapterRead,
             onMultiDeleteClicked = screenModel::showDeleteChapterDialog,
             onMultiRemoveFromDbClicked = screenModel::showRemoveChaptersFromDbDialog,
+            onMultiDeleteTranslationClicked = screenModel::deleteTranslations,
+            onTranslateSelectedClicked = { chapters ->
+                screenModel.translateSelectedChapters(chapters, forceRetranslate = false)
+            },
+            onRetranslateSelectedClicked = { chapters ->
+                screenModel.translateSelectedChapters(chapters, forceRetranslate = true)
+            },
             onChapterSwipe = screenModel::chapterSwipe,
             onChapterSelected = screenModel::toggleSelection,
             onAllChapterSelected = screenModel::toggleAllSelection,
@@ -273,6 +280,7 @@ class MangaScreen(
                     // Initiated from the context of [dialog.target] so we show [dialog.current].
                     onClickTitle = { navigator.push(MangaScreen(dialog.current.id)) },
                     onDismissRequest = onDismissRequest,
+                    showQuickOption = true,
                 )
             }
             MangaScreenModel.Dialog.SettingsSheet -> ChapterSettingsDialog(
@@ -377,13 +385,7 @@ class MangaScreen(
                     manga = dialog.manga,
                     onDismissRequest = onDismissRequest,
                     onConfirm = { details ->
-                        screenModel.saveTranslatedDetails(
-                            details.translatedTitle,
-                            details.translatedDescription,
-                            details.translatedGenres,
-                            details.addToAltTitles,
-                            details.saveTagsToNotes,
-                        )
+                        screenModel.applyTranslatedDetails(details)
                     },
                 )
             }
@@ -392,8 +394,8 @@ class MangaScreen(
                     manga = dialog.manga,
                     chapters = dialog.chapters,
                     onDismissRequest = onDismissRequest,
-                    onExport = { uri ->
-                        screenModel.exportAsEpub(dialog.manga, dialog.chapters, uri)
+                    onExport = { uri, options ->
+                        screenModel.exportAsEpub(dialog.manga, dialog.chapters, uri, options)
                     },
                 )
             }

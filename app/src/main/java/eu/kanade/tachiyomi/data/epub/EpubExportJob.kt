@@ -29,9 +29,11 @@ import mihon.core.archive.EpubWriter
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.translation.model.TranslationMode
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -51,6 +53,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
     private val downloadProvider: DownloadProvider = Injekt.get()
     private val networkHelper: NetworkHelper = Injekt.get()
     private val translatedChapterRepository: TranslatedChapterRepository = Injekt.get()
+    private val downloadPreferences: DownloadPreferences = Injekt.get()
 
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_EPUB_EXPORT) {
         setSmallIcon(android.R.drawable.ic_menu_save)
@@ -64,12 +67,14 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
         val mangaIds = inputData.getLongArray(KEY_MANGA_IDS)?.toList() ?: return Result.failure()
         val uriString = inputData.getString(KEY_OUTPUT_URI) ?: return Result.failure()
         val downloadedOnly = inputData.getBoolean(KEY_DOWNLOADED_ONLY, false)
-        val preferTranslated = inputData.getBoolean(KEY_PREFER_TRANSLATED, false)
+        val translationMode = TranslationMode.fromKey(
+            inputData.getString(KEY_TRANSLATION_MODE) ?: TranslationMode.ORIGINAL.key,
+        )
         val includeChapterCount = inputData.getBoolean(KEY_INCLUDE_CHAPTER_COUNT, false)
         val includeChapterRange = inputData.getBoolean(KEY_INCLUDE_CHAPTER_RANGE, false)
         val includeStatus = inputData.getBoolean(KEY_INCLUDE_STATUS, false)
 
-        logcat(LogPriority.INFO) { "EPUB Export starting: ${mangaIds.size} novels, downloadedOnly=$downloadedOnly" }
+        logcat(LogPriority.INFO) { "EPUB Export starting: ${mangaIds.size} novels, downloadedOnly=$downloadedOnly, translationMode=$translationMode" }
 
         try {
             setForegroundSafely()
@@ -83,7 +88,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                     mangaIds = mangaIds,
                     outputUri = Uri.parse(uriString),
                     downloadedOnly = downloadedOnly,
-                    preferTranslated = preferTranslated,
+                    translationMode = translationMode,
                     includeChapterCount = includeChapterCount,
                     includeChapterRange = includeChapterRange,
                     includeStatus = includeStatus,
@@ -117,12 +122,12 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
         mangaIds: List<Long>,
         outputUri: Uri,
         downloadedOnly: Boolean,
-        preferTranslated: Boolean,
+        translationMode: TranslationMode,
         includeChapterCount: Boolean,
         includeChapterRange: Boolean,
         includeStatus: Boolean,
     ) {
-        logcat(LogPriority.INFO) { "performExport called with ${mangaIds.size} manga IDs, outputUri=$outputUri" }
+        logcat(LogPriority.INFO) { "performExport called with ${mangaIds.size} manga IDs, outputUri=$outputUri, translationMode=$translationMode" }
 
         val mangaList = mangaIds.mapNotNull { mangaRepository.getMangaById(it) }
         if (mangaList.isEmpty()) {
@@ -161,16 +166,23 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                         continue
                     }
 
-                    val epubChapters = mutableListOf<EpubWriter.Chapter>()
-                    var firstChapterNum = Double.MAX_VALUE
-                    var lastChapterNum = Double.MIN_VALUE
+                    // ── Collect content per chapter ──────────────────────
+                    data class ChapterContent(
+                        val name: String,
+                        val chapterNumber: Double,
+                        val order: Int,
+                        val originalContent: String?,
+                        val translatedContent: String?,
+                    )
 
-                    // Get translated chapter IDs if preferTranslated is enabled
-                    val translatedChapterIds = if (preferTranslated) {
-                        translatedChapterRepository.getTranslatedChapterIds(manga.id)
+                    // Identify which chapters have translations
+                    val translatedChapterIds = if (translationMode != TranslationMode.ORIGINAL) {
+                        translatedChapterRepository.getTranslatedChapterIds(chapters.map { it.id })
                     } else {
                         emptySet()
                     }
+
+                    val chapterContents = mutableListOf<ChapterContent>()
 
                     for ((chapterIndex, chapter) in chapters.withIndex()) {
                         val isDownloaded = downloadManager.isChapterDownloaded(
@@ -187,7 +199,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                             logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: isDownloaded=$isDownloaded, hasTranslation=$hasTranslation" }
                         }
 
-                        // Skip undownloaded chapters if downloadedOnly
+                        // Skip undownloaded chapters if downloadedOnly and no translation available
                         if (downloadedOnly && !isDownloaded && !hasTranslation) {
                             if (chapterIndex < 3) {
                                 logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: skipping - not downloaded and downloadedOnly=true" }
@@ -195,146 +207,52 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                             continue
                         }
 
-                        // If not downloadedOnly, also try to include undownloaded chapters
-                        // but only if we have some content for them
+                        // ── Original content ──
+                        var originalContent: String? = null
+                        if (translationMode != TranslationMode.TRANSLATED && isDownloaded) {
+                            originalContent = readOriginalContent(manga, chapter, source)
+                        }
 
-                        // Try to get content
-                        var content: String? = null
-
-                        // Try translated content first
-                        if (preferTranslated && hasTranslation) {
+                        // ── Translated content ──
+                        var translatedContent: String? = null
+                        if (translationMode != TranslationMode.ORIGINAL && hasTranslation) {
                             try {
                                 val translations = translatedChapterRepository.getAllTranslationsForChapter(chapter.id)
-                                content = translations.firstOrNull()?.translatedContent
+                                translatedContent = translations.firstOrNull()?.translatedContent
                             } catch (e: Exception) {
                                 logcat(LogPriority.WARN, e) { "Failed to get translation for chapter: ${chapter.name}" }
                             }
                         }
 
-                        // Fall back to downloaded content
-                        if (content == null && isDownloaded) {
-                            try {
-                                // First try to find the chapter directory (uncompressed or cbz)
-                                val chapterDirOrCbz = downloadProvider.findChapterDir(
-                                    chapter.name,
-                                    chapter.scanlator,
-                                    chapter.url,
-                                    manga.title,
-                                    source,
-                                )
-
-                                logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: chapterDir found=${chapterDirOrCbz != null}, exists=${chapterDirOrCbz?.exists()}, name=${chapterDirOrCbz?.name}" }
-
-                                if (chapterDirOrCbz != null) {
-                                    // Check if it's a CBZ file
-                                    val isCbz = chapterDirOrCbz.name?.endsWith(".cbz") == true
-
-                                    if (isCbz) {
-                                        // Read content from CBZ archive
-                                        logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: reading from CBZ archive" }
-                                        content = readContentFromCbz(chapterDirOrCbz.uri)
-                                    } else {
-                                        // It's a directory, list files
-                                        val allFiles = chapterDirOrCbz.listFiles() ?: emptyArray()
-                                        logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: found ${allFiles.size} files in dir" }
-
-                                        val htmlFiles = allFiles.filter {
-                                            it.isFile && it.name?.endsWith(".html") == true
-                                        }.sortedBy { it.name }
-
-                                        // Also check for .txt files as fallback
-                                        val txtFiles = allFiles.filter {
-                                            it.isFile && it.name?.endsWith(".txt") == true
-                                        }.sortedBy { it.name }
-
-                                        logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: htmlFiles=${htmlFiles.size}, txtFiles=${txtFiles.size}" }
-                                        allFiles.take(5).forEach { file ->
-                                            logcat(LogPriority.DEBUG) { "  - ${file.name}" }
-                                        }
-
-                                        val filesToRead = htmlFiles.ifEmpty { txtFiles }
-
-                                        if (filesToRead.isNotEmpty()) {
-                                            val sb = StringBuilder()
-                                            filesToRead.forEachIndexed { i, file ->
-                                                val fileContent = context.contentResolver.openInputStream(file.uri)?.use {
-                                                    it.bufferedReader().readText()
-                                                } ?: ""
-                                                sb.append(fileContent)
-                                                if (i < filesToRead.size - 1) {
-                                                    sb.append("\n\n")
-                                                }
-                                            }
-                                            content = sb.toString()
-                                            logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: read content length=${content?.length ?: 0}" }
-                                        }
-                                    }
-                                }
-
-                                // If no content found, try CBZ archive in manga directory
-                                if (content == null) {
-                                    val mangaDir = downloadProvider.findMangaDir(manga.title, source)
-                                    if (mangaDir != null) {
-                                        val cbzFiles = mangaDir.listFiles()?.filter {
-                                            it.isFile && it.name?.endsWith(".cbz") == true
-                                        } ?: emptyList()
-
-                                        // Find CBZ file matching this chapter
-                                        val chapterDirNames = downloadProvider.getValidChapterDirNames(
-                                            chapter.name,
-                                            chapter.scanlator,
-                                            chapter.url,
-                                        )
-
-                                        val matchingCbz = cbzFiles.find { cbzFile ->
-                                            val cbzBaseName = cbzFile.name?.removeSuffix(".cbz") ?: ""
-                                            chapterDirNames.any { it == cbzBaseName }
-                                        }
-
-                                        if (matchingCbz != null) {
-                                            logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: found CBZ archive ${matchingCbz.name}" }
-                                            content = readContentFromCbz(matchingCbz.uri)
-                                            if (content == null) {
-                                                logcat(LogPriority.WARN) { "${manga.title} ch ${chapter.name}: CBZ found but no readable content" }
-                                            }
-                                        } else {
-                                            logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: no matching CBZ found. Available: ${cbzFiles.map { it.name }}" }
-                                            logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: looking for: $chapterDirNames" }
-                                        }
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                logcat(LogPriority.ERROR, e) { "Failed to read downloaded chapter: ${chapter.name}" }
-                            }
+                        // For ORIGINAL mode -> need original; for TRANSLATED mode -> need translated;
+                        // for BOTH -> gather whatever is available
+                        val hasUsableContent = when (translationMode) {
+                            TranslationMode.ORIGINAL -> originalContent != null && originalContent.isNotBlank()
+                            TranslationMode.TRANSLATED -> translatedContent != null && translatedContent.isNotBlank()
+                            TranslationMode.BOTH -> (originalContent != null && originalContent.isNotBlank()) ||
+                                (translatedContent != null && translatedContent.isNotBlank())
                         }
 
-                        if (content == null && isDownloaded) {
-                            logcat(LogPriority.WARN) { "${manga.title} ch ${chapter.name}: marked as downloaded but no content could be read" }
-                        }
-
-                        if (content != null && content.isNotBlank()) {
-                            val chNum = chapter.chapterNumber
-                            if (chNum < firstChapterNum) firstChapterNum = chNum
-                            if (chNum > lastChapterNum) lastChapterNum = chNum
-
-                            epubChapters.add(
-                                EpubWriter.Chapter(
-                                    title = chapter.name,
-                                    content = content,
+                        if (hasUsableContent) {
+                            chapterContents.add(
+                                ChapterContent(
+                                    name = chapter.name,
+                                    chapterNumber = chapter.chapterNumber,
                                     order = chapterIndex,
+                                    originalContent = originalContent?.takeIf { it.isNotBlank() },
+                                    translatedContent = translatedContent?.takeIf { it.isNotBlank() },
                                 ),
                             )
                         }
                     }
 
-                    // Skip novels without any exported chapters
-                    if (epubChapters.isEmpty()) {
-                        logcat(LogPriority.WARN) { "${manga.title}: No chapters could be exported (chapters=${chapters.size}, downloadedOnly=$downloadedOnly)" }
+                    if (chapterContents.isEmpty()) {
+                        logcat(LogPriority.WARN) { "${manga.title}: No chapters could be exported (chapters=${chapters.size}, downloadedOnly=$downloadedOnly, translationMode=$translationMode)" }
                         skippedCount++
                         continue
                     }
 
-                    logcat(LogPriority.INFO) { "${manga.title}: Exporting ${epubChapters.size} chapters" }
+                    logcat(LogPriority.INFO) { "${manga.title}: Exporting ${chapterContents.size} chapters (mode=$translationMode)" }
 
                     // Get cover image
                     val coverImage = try {
@@ -356,55 +274,114 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                         publisher = source.name,
                     )
 
-                    // Build filename
-                    val filenameBuilder = StringBuilder(sanitizeFilename(manga.title))
-                    if (includeChapterCount) {
-                        filenameBuilder.append(" [${epubChapters.size}ch]")
-                    }
-                    if (includeChapterRange && firstChapterNum != Double.MAX_VALUE) {
-                        val firstCh = if (firstChapterNum == firstChapterNum.toLong().toDouble()) {
-                            firstChapterNum.toLong().toString()
-                        } else {
-                            firstChapterNum.toString()
+                    // ── Build EPUB file(s) based on translation mode ──
+                    fun buildFilename(suffix: String? = null): String {
+                        val filenameBuilder = StringBuilder(sanitizeFilename(manga.title))
+                        if (includeChapterCount) {
+                            filenameBuilder.append(" [${chapterContents.size}ch]")
                         }
-                        val lastCh = if (lastChapterNum == lastChapterNum.toLong().toDouble()) {
-                            lastChapterNum.toLong().toString()
-                        } else {
-                            lastChapterNum.toString()
+                        if (includeChapterRange) {
+                            val firstChapterNum = chapterContents.minOf { it.chapterNumber }
+                            val lastChapterNum = chapterContents.maxOf { it.chapterNumber }
+                            val firstCh = if (firstChapterNum == firstChapterNum.toLong().toDouble()) {
+                                firstChapterNum.toLong().toString()
+                            } else {
+                                firstChapterNum.toString()
+                            }
+                            val lastCh = if (lastChapterNum == lastChapterNum.toLong().toDouble()) {
+                                lastChapterNum.toLong().toString()
+                            } else {
+                                lastChapterNum.toString()
+                            }
+                            if (firstCh != lastCh) {
+                                filenameBuilder.append(" [ch$firstCh-$lastCh]")
+                            } else {
+                                filenameBuilder.append(" [ch$firstCh]")
+                            }
                         }
-                        if (firstCh != lastCh) {
-                            filenameBuilder.append(" [ch$firstCh-$lastCh]")
-                        } else {
-                            filenameBuilder.append(" [ch$firstCh]")
+                        if (includeStatus) {
+                            val statusStr = when (manga.status) {
+                                SManga.ONGOING.toLong() -> "Ongoing"
+                                SManga.COMPLETED.toLong() -> "Completed"
+                                SManga.LICENSED.toLong() -> "Licensed"
+                                SManga.PUBLISHING_FINISHED.toLong() -> "Finished"
+                                SManga.CANCELLED.toLong() -> "Cancelled"
+                                SManga.ON_HIATUS.toLong() -> "Hiatus"
+                                else -> null
+                            }
+                            statusStr?.let { filenameBuilder.append(" [$it]") }
                         }
-                    }
-                    if (includeStatus) {
-                        val statusStr = when (manga.status) {
-                            SManga.ONGOING.toLong() -> "Ongoing"
-                            SManga.COMPLETED.toLong() -> "Completed"
-                            SManga.LICENSED.toLong() -> "Licensed"
-                            SManga.PUBLISHING_FINISHED.toLong() -> "Finished"
-                            SManga.CANCELLED.toLong() -> "Cancelled"
-                            SManga.ON_HIATUS.toLong() -> "Hiatus"
-                            else -> null
-                        }
-                        statusStr?.let { filenameBuilder.append(" [$it]") }
-                    }
-                    filenameBuilder.append(".epub")
-
-                    // Write EPUB to temp file
-                    val filename = filenameBuilder.toString()
-                    val tempFile = File(tempDir, filename)
-                    tempFile.outputStream().use { outputStream ->
-                        EpubWriter().write(
-                            outputStream = outputStream,
-                            metadata = metadata,
-                            chapters = epubChapters,
-                            coverImage = coverImage,
-                        )
+                        suffix?.let { filenameBuilder.append(" [$it]") }
+                        filenameBuilder.append(".epub")
+                        return filenameBuilder.toString()
                     }
 
-                    logcat(LogPriority.INFO) { "Exported ${manga.title}: ${epubChapters.size} chapters" }
+                    fun writeEpub(
+                        filename: String,
+                        epubMetadata: EpubWriter.Metadata,
+                        chapters: List<EpubWriter.Chapter>,
+                        cover: ByteArray?,
+                    ) {
+                        val tempFile = File(tempDir, filename)
+                        val deflateLevel = downloadPreferences.epubCompressionLevel().get()
+                        tempFile.outputStream().use { outputStream ->
+                            EpubWriter(deflateLevel).write(
+                                outputStream = outputStream,
+                                metadata = epubMetadata,
+                                chapters = chapters,
+                                coverImage = cover,
+                            )
+                        }
+                    }
+
+                    when (translationMode) {
+                        TranslationMode.ORIGINAL -> {
+                            val epubChapters = chapterContents.mapNotNull { ch ->
+                                ch.originalContent?.let {
+                                    EpubWriter.Chapter(title = ch.name, content = it, order = ch.order)
+                                }
+                            }
+                            if (epubChapters.isNotEmpty()) {
+                                writeEpub(buildFilename(), metadata, epubChapters, coverImage)
+                            }
+                        }
+                        TranslationMode.TRANSLATED -> {
+                            val epubChapters = chapterContents.mapNotNull { ch ->
+                                ch.translatedContent?.let {
+                                    EpubWriter.Chapter(title = ch.name, content = it, order = ch.order)
+                                }
+                            }
+                            if (epubChapters.isNotEmpty()) {
+                                writeEpub(buildFilename(), metadata, epubChapters, coverImage)
+                            }
+                        }
+                        TranslationMode.BOTH -> {
+                            // Original EPUB
+                            val originalChapters = chapterContents.mapNotNull { ch ->
+                                ch.originalContent?.let {
+                                    EpubWriter.Chapter(title = ch.name, content = it, order = ch.order)
+                                }
+                            }
+                            if (originalChapters.isNotEmpty()) {
+                                writeEpub(buildFilename("Original"), metadata, originalChapters, coverImage)
+                            }
+
+                            // Translated EPUB
+                            val translatedChapters = chapterContents.mapNotNull { ch ->
+                                ch.translatedContent?.let {
+                                    EpubWriter.Chapter(title = ch.name, content = it, order = ch.order)
+                                }
+                            }
+                            if (translatedChapters.isNotEmpty()) {
+                                val translatedMetadata = metadata.copy(
+                                    title = "${manga.title} [Translated]",
+                                )
+                                writeEpub(buildFilename("Translated"), translatedMetadata, translatedChapters, coverImage)
+                            }
+                        }
+                    }
+
+                    logcat(LogPriority.INFO) { "Exported ${manga.title}: ${chapterContents.size} chapters" }
                     successCount++
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR, e) { "Failed to export ${manga.title}" }
@@ -423,8 +400,8 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                 return
             }
 
-            if (totalCount > 1) {
-                // Create ZIP for multiple novels
+            if (tempFiles.size > 1 || totalCount > 1) {
+                // Create ZIP for multiple files (multiple novels OR both-mode producing two files)
                 logcat(LogPriority.INFO) { "Writing ${tempFiles.size} EPUBs to ZIP at $outputUri" }
                 context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                     ZipOutputStream(outputStream).use { zipOut ->
@@ -461,6 +438,91 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
             // Cleanup
             tempDir.deleteRecursively()
         }
+    }
+
+    /**
+     * Read original (source) content for a chapter from the download directory or CBZ archive.
+     */
+    private fun readOriginalContent(
+        manga: Manga,
+        chapter: tachiyomi.domain.chapter.model.Chapter,
+        source: eu.kanade.tachiyomi.source.Source,
+    ): String? {
+        try {
+            val chapterDirOrCbz = downloadProvider.findChapterDir(
+                chapter.name,
+                chapter.scanlator,
+                chapter.url,
+                manga.title,
+                source,
+            )
+
+            logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: chapterDir found=${chapterDirOrCbz != null}, exists=${chapterDirOrCbz?.exists()}, name=${chapterDirOrCbz?.name}" }
+
+            if (chapterDirOrCbz != null) {
+                val isCbz = chapterDirOrCbz.name?.endsWith(".cbz") == true
+
+                if (isCbz) {
+                    logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: reading from CBZ archive" }
+                    val content = readContentFromCbz(chapterDirOrCbz.uri)
+                    if (content != null) return content
+                } else {
+                    val allFiles = chapterDirOrCbz.listFiles() ?: emptyArray()
+                    val htmlFiles = allFiles.filter {
+                        it.isFile && it.name?.endsWith(".html") == true
+                    }.sortedBy { it.name }
+
+                    val txtFiles = allFiles.filter {
+                        it.isFile && it.name?.endsWith(".txt") == true
+                    }.sortedBy { it.name }
+
+                    val filesToRead = htmlFiles.ifEmpty { txtFiles }
+
+                    if (filesToRead.isNotEmpty()) {
+                        val sb = StringBuilder()
+                        filesToRead.forEachIndexed { i, file ->
+                            val fileContent = context.contentResolver.openInputStream(file.uri)?.use {
+                                it.bufferedReader().readText()
+                            } ?: ""
+                            sb.append(fileContent)
+                            if (i < filesToRead.size - 1) {
+                                sb.append("\n\n")
+                            }
+                        }
+                        val content = sb.toString()
+                        logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: read content length=${content.length}" }
+                        if (content.isNotBlank()) return content
+                    }
+                }
+            }
+
+            // If no content found, try CBZ archive in manga directory
+            val mangaDir = downloadProvider.findMangaDir(manga.title, source)
+            if (mangaDir != null) {
+                val cbzFiles = mangaDir.listFiles()?.filter {
+                    it.isFile && it.name?.endsWith(".cbz") == true
+                } ?: emptyList()
+
+                val chapterDirNames = downloadProvider.getValidChapterDirNames(
+                    chapter.name,
+                    chapter.scanlator,
+                    chapter.url,
+                )
+
+                val matchingCbz = cbzFiles.find { cbzFile ->
+                    val cbzBaseName = cbzFile.name?.removeSuffix(".cbz") ?: ""
+                    chapterDirNames.any { it == cbzBaseName }
+                }
+
+                if (matchingCbz != null) {
+                    logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: found CBZ archive ${matchingCbz.name}" }
+                    return readContentFromCbz(matchingCbz.uri)
+                }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to read downloaded chapter: ${chapter.name}" }
+        }
+        return null
     }
 
     private fun updateProgress(current: Int, total: Int, title: String) {
@@ -589,7 +651,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
         private const val KEY_MANGA_IDS = "manga_ids"
         private const val KEY_OUTPUT_URI = "output_uri"
         private const val KEY_DOWNLOADED_ONLY = "downloaded_only"
-        private const val KEY_PREFER_TRANSLATED = "prefer_translated"
+        private const val KEY_TRANSLATION_MODE = "translation_mode"
         private const val KEY_INCLUDE_CHAPTER_COUNT = "include_chapter_count"
         private const val KEY_INCLUDE_CHAPTER_RANGE = "include_chapter_range"
         private const val KEY_INCLUDE_STATUS = "include_status"
@@ -599,7 +661,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
             mangaIds: List<Long>,
             outputUri: Uri,
             downloadedOnly: Boolean = false,
-            preferTranslated: Boolean = false,
+            translationMode: TranslationMode = TranslationMode.ORIGINAL,
             includeChapterCount: Boolean = false,
             includeChapterRange: Boolean = false,
             includeStatus: Boolean = false,
@@ -608,7 +670,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                 KEY_MANGA_IDS to mangaIds.toLongArray(),
                 KEY_OUTPUT_URI to outputUri.toString(),
                 KEY_DOWNLOADED_ONLY to downloadedOnly,
-                KEY_PREFER_TRANSLATED to preferTranslated,
+                KEY_TRANSLATION_MODE to translationMode.key,
                 KEY_INCLUDE_CHAPTER_COUNT to includeChapterCount,
                 KEY_INCLUDE_CHAPTER_RANGE to includeChapterRange,
                 KEY_INCLUDE_STATUS to includeStatus,
