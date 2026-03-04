@@ -171,12 +171,6 @@ private fun ColumnScope.FilterPage(
         state = filterNovel,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterNovel) },
     )
-    val filterCustomExtension by screenModel.libraryPreferences.filterCustomExtension().collectAsState()
-    TriStateItem(
-        label = stringResource(MR.strings.action_filter_custom_extension),
-        state = filterCustomExtension,
-        onClick = { screenModel.toggleFilter(LibraryPreferences::filterCustomExtension) },
-    )
 
     val filterChapterCount by screenModel.libraryPreferences.filterChapterCount().collectAsState()
     val chapterCountThreshold by screenModel.libraryPreferences.filterChapterCountThreshold().collectAsState()

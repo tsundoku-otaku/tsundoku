@@ -1,11 +1,10 @@
 package tachiyomi.domain.translation.repository
 
-import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.translation.model.TranslatedChapter
-import tachiyomi.domain.translation.model.TranslationInfo
 
 /**
  * Repository interface for managing translated chapters.
+ * All storage is filesystem-based (no database table).
  */
 interface TranslatedChapterRepository {
 
@@ -20,29 +19,19 @@ interface TranslatedChapterRepository {
     suspend fun getAllTranslationsForChapter(chapterId: Long): List<TranslatedChapter>
 
     /**
-     * Get all translated languages for a manga.
-     */
-    suspend fun getTranslatedLanguagesForManga(mangaId: Long): List<String>
-
-    /**
      * Check if a chapter has a translation for a specific language.
      */
     suspend fun hasTranslation(chapterId: Long, targetLanguage: String): Boolean
 
     /**
-     * Get chapters with translations for a manga.
+     * Get set of chapter IDs that have any translation, from the given candidate IDs.
      */
-    fun getChaptersWithTranslationsAsFlow(mangaId: Long): Flow<List<TranslationInfo>>
+    suspend fun getTranslatedChapterIds(chapterIds: Collection<Long>): Set<Long>
 
     /**
-     * Get chapters with translations for a manga (suspend).
+     * Get all distinct languages across the given chapter IDs.
      */
-    suspend fun getChaptersWithTranslations(mangaId: Long): List<TranslationInfo>
-
-    /**
-     * Get set of chapter IDs that have any translation for a manga.
-     */
-    suspend fun getTranslatedChapterIds(mangaId: Long): Set<Long>
+    suspend fun getTranslatedLanguagesForChapters(chapterIds: Collection<Long>): List<String>
 
     /**
      * Insert or update a translated chapter.
@@ -54,8 +43,14 @@ interface TranslatedChapterRepository {
      */
     suspend fun deleteTranslation(chapterId: Long, targetLanguage: String)
 
+    /**
+     * Delete all translations.
+     */
     suspend fun deleteAll()
 
+    /**
+     * Get all translations.
+     */
     suspend fun getAll(): List<TranslatedChapter>
 
     /**
@@ -64,9 +59,9 @@ interface TranslatedChapterRepository {
     suspend fun deleteAllForChapter(chapterId: Long)
 
     /**
-     * Delete all translations for a manga.
+     * Delete all translations for chapters belonging to a manga.
      */
-    suspend fun deleteAllForManga(mangaId: Long)
+    suspend fun deleteAllForChapters(chapterIds: Collection<Long>)
 
     /**
      * Get the total cache size in bytes.
@@ -77,4 +72,25 @@ interface TranslatedChapterRepository {
      * Clear old cached translations.
      */
     suspend fun clearOldCache(olderThan: Long)
+
+    /**
+     * Clear temporary (.tmp) translation files.
+     * Returns the number of bytes freed.
+     */
+    suspend fun clearTmpFiles(): Long
+
+    /**
+     * Insert or update a partial (.tmp) translation (for resume support).
+     */
+    suspend fun upsertTmpTranslation(translatedChapter: TranslatedChapter)
+
+    /**
+     * Get a partial (.tmp) translation if one exists.
+     */
+    suspend fun getTmpTranslation(chapterId: Long, targetLanguage: String): TranslatedChapter?
+
+    /**
+     * Check if a partial (.tmp) translation exists.
+     */
+    suspend fun hasTmpTranslation(chapterId: Long, targetLanguage: String): Boolean
 }

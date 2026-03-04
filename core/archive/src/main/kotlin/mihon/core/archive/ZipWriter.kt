@@ -10,7 +10,7 @@ import me.zhanghai.android.libarchive.ArchiveException
 import java.io.Closeable
 import java.nio.ByteBuffer
 
-class ZipWriter(val context: Context, file: UniFile) : Closeable {
+class ZipWriter(val context: Context, file: UniFile, compressionLevel: Int = 0) : Closeable {
     private val pfd = file.openFileDescriptor(context, "wt")
     private val archive = Archive.writeNew()
     private val entry = ArchiveEntry.new2(archive)
@@ -20,7 +20,12 @@ class ZipWriter(val context: Context, file: UniFile) : Closeable {
         try {
             Archive.setCharset(archive, Charsets.UTF_8.name().toByteArray())
             Archive.writeSetFormatZip(archive)
-            Archive.writeZipSetCompressionStore(archive)
+            if (compressionLevel > 0) {
+                Archive.writeZipSetCompressionDeflate(archive)
+                Archive.writeSetOptions(archive, "zip:compression-level=$compressionLevel".toByteArray())
+            } else {
+                Archive.writeZipSetCompressionStore(archive)
+            }
             Archive.writeOpenFd(archive, pfd.fd)
         } catch (e: ArchiveException) {
             close()

@@ -56,6 +56,7 @@
 
     <!-- Notification channels -->
     <string name="channel_mass_import">Mass Import</string>
+    <string name="channel_translation">Translation</string>
     <string name="mass_import_progress_title">Mass Import Progress</string>
     <string name="mass_import_complete_title">Mass Import Complete</string>
 
@@ -72,18 +73,8 @@
     <string name="novel_add_snippet">Add snippet</string>
     <string name="novel_edit_snippet">Edit snippet</string>
     <string name="novel_delete_snippet">Delete snippet</string>
-    <string name="novel_edit_css_snippet">Edit CSS snippet</string>
-    <string name="novel_add_css_snippet">Add CSS snippet</string>
-    <string name="novel_edit_js_snippet">Edit JS snippet</string>
-    <string name="novel_add_js_snippet">Add JS snippet</string>
-    <string name="pref_novel_js_snippets">JS Snippets</string>
 
-    <!-- Novel TTS Settings -->
-    <string name="pref_novel_tts_section">Text to Speech</string>
-    <string name="pref_novel_tts_voice">Voice</string>
-    <string name="pref_novel_tts_speed">Speech speed</string>
-    <string name="pref_novel_tts_pitch">Speech pitch</string>
-    <string name="pref_novel_tts_auto_next">Auto-play next chapter</string>
+    <!-- Novel TTS Settings (see also TTS Settings section below) -->
 
     <!-- Novel Reader Actions (In MR)
     add_to_library: Add to library
@@ -96,6 +87,30 @@
     <string name="action_scroll_to_bottom">Scroll to bottom</string>
     <string name="action_translate">Translate</string>
     <string name="action_translate_downloaded">Translate downloaded chapters</string>
+    <string name="action_retranslate">Retranslate</string>
+    <string name="translation_smart_auto">Smart Auto-Translate</string>
+    <string name="translation_smart_auto_summary">Only translate if language differs from target</string>
+    <string name="translation_select_target_language">Select target language for translation</string>
+    <string name="translation_job_translating">Translating chapters…</string>
+    <string name="translation_job_processing">Processing…</string>
+    <string name="translation_job_complete">Translation Complete</string>
+    <string name="translation_job_complete_count">%d chapters translated</string>
+    <string name="action_delete_translation">Delete translation</string>
+    <string name="translated_chapters">Translated chapters</string>
+    <!-- Translate manga details dialog -->
+    <string name="translate_details_title">Translate Details</string>
+    <string name="translate_details_no_engine">No translation engine configured. Please configure one in Settings &gt; Translation.</string>
+    <string name="translate_details_translating">Translating…</string>
+    <string name="translate_details_original_title">Original Title:</string>
+    <string name="translate_details_translated_title">Translated Title:</string>
+    <string name="translate_details_add_alt_titles">Add translated title to alternative titles</string>
+    <string name="translate_details_save_tags_notes">Save translated tags to notes</string>
+    <string name="translate_details_original_desc">Original Description:</string>
+    <string name="translate_details_translated_desc">Translated Description:</string>
+    <string name="translate_details_original_genres">Original Genres:</string>
+    <string name="translate_details_translated_genres">Translated Genres:</string>
+    <string name="translate_details_save_genres">Save translated genres</string>
+    <string name="translate_details_merge_genres">Add to existing genres (don\'t replace)</string>
     <string name="action_export_epub">Export as EPUB</string>
     <string name="action_export_epub_bulk">Export selected as EPUB</string>
     <string name="export_epub_progress">Exporting %1$d of %2$d chapters…</string>
@@ -110,13 +125,7 @@
     <string name="action_copy_links">Copy links</string>
     <string name="action_mass_import">Mass import</string>
 
-    <!-- Novel Translation Settings (reader panel) -->
-    <string name="pref_novel_translation_settings">Translation</string>
-    <string name="pref_novel_translation_enabled">Enable translation</string>
-    <string name="pref_novel_realtime_translation">Real-time translation</string>
-    <string name="pref_novel_translation_engine_label">Engine</string>
-    <string name="pref_novel_translation_target_label">Target language</string>
-    <string name="pref_novel_translation_hint">Configure translation engine and API keys in Settings → Translation</string>
+    <!-- Novel Translation Settings (see Translation Settings section below) -->
 
     <!-- Novel Download Settings -->
     <string name="pref_novel_reader_summary">Novel reading mode, fonts, colors</string>
@@ -124,8 +133,10 @@
     <string name="pref_novel_download_throttling_summary">Add delays between downloads to avoid rate limiting</string>
     <string name="pref_novel_download_delay">Download delay</string>
     <string name="pref_novel_download_delay_summary">Base delay between chapter downloads (ms)</string>
-    <string name="pref_novel_random_delay">Random delay range</string>
-    <string name="pref_novel_random_delay_summary">Additional random delay (0 to this value in ms)</string>
+    <string name="pref_novel_random_delay">Random delay max</string>
+    <string name="pref_novel_random_delay_summary">Maximum random delay added to base delay (ms)</string>
+    <string name="pref_novel_random_delay_min">Random delay min</string>
+    <string name="pref_novel_random_delay_min_summary">Minimum random delay added to base delay (ms)</string>
     <string name="pref_novel_update_throttling">Update throttling</string>
     <string name="pref_novel_update_throttling_summary">Add delays during library updates for novels</string>
     <string name="pref_novel_update_delay">Update delay</string>
@@ -134,7 +145,21 @@
     <string name="pref_novel_mass_import_throttling_summary">Add delays during mass import operations</string>
     <string name="pref_novel_mass_import_delay">Mass import delay</string>
     <string name="pref_novel_mass_import_delay_summary">Delay between imports (ms)</string>
+    <string name="pref_novel_low_delay_warning">\n⚠ Low delay values may cause sources to rate-limit or block your IP. A minimum of 3 seconds is recommended.</string>
+    <string name="pref_novel_update_delay_subtitle">Delay between novels for the same extension</string>
+    <string name="pref_novel_parallel_updates">Parallel novel updates</string>
+    <string name="pref_novel_parallel_updates_summary">Number of different extensions updating simultaneously (not within same extension)</string>
+    <string name="pref_novel_mass_import_category">Mass Import</string>
+    <string name="pref_novel_mass_import_throttling_subtitle">Apply delays between novels from the same source only</string>
+    <string name="pref_novel_mass_import_delay_subtitle">Delay between imports from the same source (different sources run concurrently)</string>
+    <string name="pref_novel_concurrent_imports">Concurrent Mass Imports</string>
+    <string name="pref_novel_concurrent_imports_summary">Number of different sources importing simultaneously (throttle between same source is in delay setting)</string>
+    <string name="pref_novel_deflate_level">Deflate level %d</string>
     <string name="pref_novel_parallel_downloads">Parallel novel downloads</string>
+    <string name="pref_novel_resume_queue_on_new">Resume queue on new chapters</string>
+    <string name="pref_novel_resume_queue_on_new_summary">Automatically resume paused download queue when new chapters are added</string>
+    <string name="pref_novel_compression_level">ZIP compression level</string>
+    <string name="pref_novel_compression_level_summary">0 = store (no compression, fastest), 1-9 = deflate (smaller files, slower)</string>
 
     <!-- Novel Image Embedding -->
     <string name="pref_novel_download_images">Download chapter images</string>
@@ -184,6 +209,12 @@
     <string name="epub_content_options">Content Options</string>
     <string name="epub_downloaded_only">Downloaded chapters only</string>
     <string name="epub_prefer_translated">Prefer translated chapters</string>
+    <string name="epub_translation_mode">Translation</string>
+    <string name="epub_translation_original">Original only</string>
+    <string name="epub_translation_translated">Translated only</string>
+    <string name="epub_translation_both">Both (two separate files)</string>
+    <string name="epub_translation_translated_info">Only chapters with translations will be included.</string>
+    <string name="epub_translation_both_info">Two EPUB files will be created — one original, one translated.</string>
     <string name="epub_filename_options">Filename Options</string>
     <string name="epub_include_chapter_count">Include chapter count (e.g. [50ch])</string>
     <string name="epub_include_chapter_range">Include chapter range (e.g. [ch1-50])</string>

@@ -34,5 +34,7 @@ dependencies {
     implementation(projects.domain)
     implementation(projects.core.common)
 
+    implementation(libs.unifile)
+
     api(libs.bundles.sqldelight)
 }

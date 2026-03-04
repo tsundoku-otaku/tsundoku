@@ -66,6 +66,15 @@ class TranslationPreferences(
     )
 
     /**
+     * Smart auto-translate: skip translation if detected language matches target.
+     * Consolidated from ReaderPreferences.autoTranslate() (pref_auto_translate).
+     */
+    fun smartAutoTranslate() = preferenceStore.getBoolean(
+        "pref_auto_translate",
+        false,
+    )
+
+    /**
      * Chapter count threshold to show rate limit warning.
      */
     fun rateLimitWarningThreshold() = preferenceStore.getInt(
@@ -289,16 +298,7 @@ class TranslationPreferences(
     )
 
     /**
-     * Translation chunk mode: "paragraphs", "characters", or "words"
-     */
-    fun translationChunkMode() = preferenceStore.getString(
-        "translation_chunk_mode",
-        "paragraphs",
-    )
-
-    /**
-     * Maximum chunk size per translation batch.
-     * Meaning depends on chunkMode: paragraphs count, character count, or word count.
+     * Maximum chunk size per translation batch (in paragraphs).
      */
     fun translationChunkSize() = preferenceStore.getInt(
         "translation_chunk_size",

@@ -76,7 +76,6 @@ import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.model.sort
 import tachiyomi.domain.library.service.LibraryPreferences
-import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -360,11 +359,6 @@ class LibraryScreenModel(
             applyFilter(preferences.filterNovel) { isNovel }
         }
 
-        val filterFnCustomExtension: (LibraryItem) -> Boolean = { item ->
-            val isCustom = sourceManager.get(item.libraryManga.manga.source) is CustomNovelSource
-            applyFilter(preferences.filterCustomExtension) { isCustom }
-        }
-
         val tagIncluded = preferences.includedTags
         val tagExcluded = preferences.excludedTags
         val tagCaseSensitive = preferences.tagCaseSensitive
@@ -431,7 +425,6 @@ class LibraryScreenModel(
                 filterFnTracking(it) &&
                 filterFnExtensions(it) &&
                 filterFnNovel(it) &&
-                filterFnCustomExtension(it) &&
                 filterFnTags(it) &&
                 filterFnChapterCount(it)
         }
@@ -569,7 +562,6 @@ class LibraryScreenModel(
                 libraryPreferences.tagCaseSensitive().changes(),
                 libraryPreferences.filterChapterCount().changes(),
                 libraryPreferences.filterChapterCountThreshold().changes(),
-                libraryPreferences.filterCustomExtension().changes(),
             ) { arr -> arr },
         ) { first, second, third ->
             ItemPreferences(
@@ -595,7 +587,6 @@ class LibraryScreenModel(
                 tagCaseSensitive = third[5] as Boolean,
                 filterChapterCount = third[6] as TriState,
                 filterChapterCountThreshold = third[7] as Int,
-                filterCustomExtension = third[8] as TriState,
             )
         }
     }
@@ -1760,7 +1751,6 @@ class LibraryScreenModel(
         val tagCaseSensitive: Boolean,
         val filterChapterCount: TriState = TriState.DISABLED,
         val filterChapterCountThreshold: Int = 10,
-        val filterCustomExtension: TriState = TriState.DISABLED,
     )
 
     /**
