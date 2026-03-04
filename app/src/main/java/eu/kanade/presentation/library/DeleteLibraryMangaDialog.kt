@@ -10,7 +10,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.icerock.moko.resources.StringResource
-import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.LabeledCheckbox
@@ -22,18 +21,28 @@ fun DeleteLibraryMangaDialog(
     onDismissRequest: () -> Unit,
     onConfirm: (Boolean, Boolean, Boolean, Boolean) -> Unit,
 ) {
-    var list by remember {
-        mutableStateOf(
-            buildList<CheckboxState.State<StringResource>> {
-                add(CheckboxState.State.None(MR.strings.manga_from_library))
-                if (!containsLocalManga) {
-                    add(CheckboxState.State.None(MR.strings.downloaded_chapters))
-                }
-                add(CheckboxState.State.None(TDMR.strings.chapters_from_database))
-                add(CheckboxState.State.None(TDMR.strings.translated_chapters))
-            },
-        )
+    var removeFromLibrary by remember { mutableStateOf(false) }
+    var deleteDownloads by remember { mutableStateOf(false) }
+    var clearChaptersFromDb by remember { mutableStateOf(false) }
+    var deleteTranslations by remember { mutableStateOf(false) }
+
+    data class CheckboxItem(
+        val label: StringResource,
+        val checked: Boolean,
+        val onCheckedChange: (Boolean) -> Unit,
+    )
+
+    val checkboxItems = remember(containsLocalManga, removeFromLibrary, deleteDownloads, clearChaptersFromDb, deleteTranslations) {
+        buildList {
+            add(CheckboxItem(MR.strings.manga_from_library, removeFromLibrary) { removeFromLibrary = it })
+            if (!containsLocalManga) {
+                add(CheckboxItem(MR.strings.downloaded_chapters, deleteDownloads) { deleteDownloads = it })
+            }
+            add(CheckboxItem(TDMR.strings.chapters_from_database, clearChaptersFromDb) { clearChaptersFromDb = it })
+            add(CheckboxItem(TDMR.strings.translated_chapters, deleteTranslations) { deleteTranslations = it })
+        }
     }
+
     AlertDialog(
         onDismissRequest = onDismissRequest,
         dismissButton = {
@@ -43,14 +52,14 @@ fun DeleteLibraryMangaDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = list.any { it.isChecked },
+                enabled = removeFromLibrary || deleteDownloads || clearChaptersFromDb || deleteTranslations,
                 onClick = {
                     onDismissRequest()
                     onConfirm(
-                        list[0].isChecked,
-                        list.getOrElse(1) { CheckboxState.State.None(0) }.isChecked && !containsLocalManga,
-                        list[if (containsLocalManga) 1 else 2].isChecked,
-                        list.last().isChecked,
+                        removeFromLibrary,
+                        deleteDownloads && !containsLocalManga,
+                        clearChaptersFromDb,
+                        deleteTranslations,
                     )
                 },
             ) {
@@ -62,18 +71,11 @@ fun DeleteLibraryMangaDialog(
         },
         text = {
             Column {
-                list.forEach { state ->
+                checkboxItems.forEach { item ->
                     LabeledCheckbox(
-                        label = stringResource(state.value),
-                        checked = state.isChecked,
-                        onCheckedChange = {
-                            val index = list.indexOf(state)
-                            if (index != -1) {
-                                val mutableList = list.toMutableList()
-                                mutableList[index] = state.next() as CheckboxState.State<StringResource>
-                                list = mutableList.toList()
-                            }
-                        },
+                        label = stringResource(item.label),
+                        checked = item.checked,
+                        onCheckedChange = item.onCheckedChange,
                     )
                 }
             }

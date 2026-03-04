@@ -88,7 +88,7 @@ object SettingsDownloadScreen : SearchableSettings {
                     in 1..3 -> stringResource(MR.strings.pref_epub_compression_low)
                     in 4..6 -> stringResource(MR.strings.pref_epub_compression_medium)
                     in 7..9 -> stringResource(MR.strings.pref_epub_compression_high)
-                    else -> "Level $epubCompressionLevel"
+                    else -> stringResource(MR.strings.pref_epub_compression_level_label, epubCompressionLevel)
                 },
                 valueString = if (epubCompressionLevel == -1) stringResource(MR.strings.pref_epub_compression_default_label) else "$epubCompressionLevel",
                 onValueChanged = { downloadPreferences.epubCompressionLevel().set(it - 1) },

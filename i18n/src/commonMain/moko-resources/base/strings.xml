@@ -1049,4 +1049,19 @@
     <string name="migrationListScreen.migrateDialog.cancelLabel">Cancel</string>
     <string name="migrationListScreen.progressDialog.cancelLabel">Cancel</string>
     <string name="migrationListScreen.matchWithoutChapterToast">No chapters found, this entry cannot be used for migration</string>
+
+    <!-- Batch update -->
+    <string name="batch_updating_entries">Updating %d entries…</string>
+    <string name="batch_update_complete">Updated %d entries</string>
+    <string name="batch_update_complete_with_failures">Updated %1$d/%2$d entries (%3$d failed)</string>
+
+    <!-- EPUB compression -->
+    <string name="pref_epub_compression_level">EPUB compression level</string>
+    <string name="pref_epub_compression_default">Default (library decides)</string>
+    <string name="pref_epub_compression_none">No compression (fastest)</string>
+    <string name="pref_epub_compression_low">Low compression</string>
+    <string name="pref_epub_compression_medium">Medium compression</string>
+    <string name="pref_epub_compression_high">High compression (smallest)</string>
+    <string name="pref_epub_compression_default_label">Default</string>
+    <string name="pref_epub_compression_level_label">Level %d</string>
 </resources>

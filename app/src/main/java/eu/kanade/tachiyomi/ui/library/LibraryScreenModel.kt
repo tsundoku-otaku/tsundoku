@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import logcat.LogPriority
 import mihon.core.common.utils.mutate
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.util.lang.compareToWithCollator
@@ -84,6 +85,7 @@ import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
+import tachiyomi.i18n.MR
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -1110,9 +1112,10 @@ class LibraryScreenModel(
         val currentTime = System.currentTimeMillis()
 
         // Use launchNonCancellable so the job survives navigation away
+        val context = Injekt.get<android.app.Application>()
         screenModelScope.launchNonCancellable {
             snackbarHostState.showSnackbar(
-                message = "Updating ${mangaList.size} entries…",
+                message = context.stringResource(MR.strings.batch_updating_entries, mangaList.size),
                 duration = SnackbarDuration.Short,
             )
 
@@ -1157,9 +1160,9 @@ class LibraryScreenModel(
             logcat(LogPriority.INFO) { "Batch update complete: $successCount/${mangaList.size} succeeded" }
 
             val message = if (failCount > 0) {
-                "Updated $successCount/${mangaList.size} entries ($failCount failed)"
+                context.stringResource(MR.strings.batch_update_complete_with_failures, successCount, mangaList.size, failCount)
             } else {
-                "Updated $successCount entries"
+                context.stringResource(MR.strings.batch_update_complete, successCount)
             }
             snackbarHostState.showSnackbar(
                 message = message,
