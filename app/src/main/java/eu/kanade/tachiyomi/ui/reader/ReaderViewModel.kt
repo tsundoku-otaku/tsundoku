@@ -539,7 +539,8 @@ class ReaderViewModel @JvmOverloads constructor(
         val currentManga = manga ?: return
         if (
             sourceManager.get(currentManga.source)?.isNovelSource() == true &&
-            translationPreferences.translationEnabled().get()
+            translationPreferences.translationEnabled().get() &&
+            translationPreferences.smartAutoTranslate().get()
         ) {
             translationService.enqueue(
                 manga = currentManga,

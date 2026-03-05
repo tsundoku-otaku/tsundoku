@@ -57,6 +57,12 @@ fun Manga.copyFrom(other: SManga): Manga {
         genre
     }
     val thumbnailUrl = other.thumbnail_url ?: thumbnailUrl
+    // Merge alt titles: keep existing ones and add new ones from source
+    val newAltTitles = if (other.altTitles.isNotEmpty()) {
+        (alternativeTitles + other.altTitles).distinct()
+    } else {
+        alternativeTitles
+    }
     return this.copy(
         author = author,
         artist = artist,
@@ -66,6 +72,7 @@ fun Manga.copyFrom(other: SManga): Manga {
         status = other.status.toLong(),
         updateStrategy = other.update_strategy,
         initialized = other.initialized && initialized,
+        alternativeTitles = newAltTitles,
     )
 }
 

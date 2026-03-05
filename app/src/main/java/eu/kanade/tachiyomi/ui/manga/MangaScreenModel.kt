@@ -1292,7 +1292,7 @@ class MangaScreenModel(
                     updateSuccessState { it.copy(dialog = Dialog.DuplicateManga(manga, duplicates)) }
                 } else {
                     // Show a snackbar or toast instead of dialog if no duplicates found
-                    snackbarHostState.showSnackbar("No duplicates found for this novel")
+                    snackbarHostState.showSnackbar(context.stringResource(MR.strings.duplicate_no_duplicates))
                 }
             }
         }
@@ -1565,7 +1565,7 @@ class MangaScreenModel(
         screenModelScope.launchIO {
             withUIContext {
                 snackbarHostState.showSnackbar(
-                    "EPUB export started",
+                    context.stringResource(TDMR.strings.export_epub_started),
                     duration = SnackbarDuration.Short,
                 )
             }

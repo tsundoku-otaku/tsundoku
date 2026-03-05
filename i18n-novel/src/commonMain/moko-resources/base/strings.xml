@@ -115,6 +115,7 @@
     <string name="action_export_epub_bulk">Export selected as EPUB</string>
     <string name="export_epub_progress">Exporting %1$d of %2$d chaptersâ€¦</string>
     <string name="export_epub_success">EPUB exported successfully</string>
+    <string name="export_epub_started">EPUB export started</string>
     <string name="export_epub_error">Failed to export EPUB: %s</string>
     <string name="action_remove_chapters">Remove chapters</string>
     <string name="action_clear_covers">Clear covers</string>

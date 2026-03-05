@@ -7,6 +7,7 @@ fun SManga.toDomainManga(sourceId: Long, isNovel: Boolean = false): Manga {
     return Manga.create().copy(
         url = url,
         title = title,
+        alternativeTitles = altTitles,
         artist = artist,
         author = author,
         description = description,

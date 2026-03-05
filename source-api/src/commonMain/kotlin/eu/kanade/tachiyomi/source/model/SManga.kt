@@ -26,6 +26,15 @@ interface SManga : Serializable {
 
     var initialized: Boolean
 
+    /**
+     * Alternative titles for this manga/novel.
+     * Extensions should set this when alt titles are available from the source.
+     * Default implementation returns empty list for backward compatibility.
+     */
+    var altTitles: List<String>
+        get() = emptyList()
+        set(_) {}
+
     fun getGenres(): List<String>? {
         if (genre.isNullOrBlank()) return null
         // Split on comma (with or without space), semicolon, or pipe - common genre separators
@@ -43,6 +52,7 @@ interface SManga : Serializable {
         it.thumbnail_url = thumbnail_url
         it.update_strategy = update_strategy
         it.initialized = initialized
+        it.altTitles = altTitles
     }
 
     companion object {

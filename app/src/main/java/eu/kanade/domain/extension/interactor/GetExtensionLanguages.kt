@@ -17,7 +17,8 @@ class GetExtensionLanguages(
             preferences.enabledLanguages().changes(),
             extensionManager.availableExtensionsFlow,
             jsPluginManager.installedPlugins,
-        ) { enabledLanguage, availableExtensions, installedJsPlugins ->
+            jsPluginManager.availablePlugins,
+        ) { enabledLanguage, availableExtensions, installedJsPlugins, availableJsPlugins ->
             val extensionLangs = availableExtensions
                 .flatMap { ext ->
                     if (ext.sources.isEmpty()) {
@@ -27,7 +28,10 @@ class GetExtensionLanguages(
                     }
                 }
 
-            val jsPluginLangs = installedJsPlugins.map { it.plugin.langCode() }
+            val jsPluginLangs = (
+                installedJsPlugins.map { it.plugin.langCode() } +
+                    availableJsPlugins.map { it.langCode() }
+                )
 
             (extensionLangs + jsPluginLangs)
                 .distinct()

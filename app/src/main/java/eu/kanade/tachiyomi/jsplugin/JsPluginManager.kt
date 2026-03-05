@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -72,6 +73,8 @@ class JsPluginManager(
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val refreshMutex = Mutex()
 
     private val _jsSources = MutableStateFlow<List<CatalogueSource>>(emptyList())
     val jsSources: StateFlow<List<CatalogueSource>> = _jsSources.asStateFlow()
@@ -126,36 +129,42 @@ class JsPluginManager(
      * Refresh available plugins from all repositories
      */
     suspend fun refreshAvailablePlugins(forceRefresh: Boolean = false) {
-        _isLoading.value = true
+        // Skip if another refresh is already in progress — result flows through _availablePlugins StateFlow
+        if (!refreshMutex.tryLock()) return
         try {
-            // Load from cache first if not forcing refresh
-            if (!forceRefresh && _availablePlugins.value.isNotEmpty()) {
-                logcat(LogPriority.DEBUG) { "Using cached plugin list (${_availablePlugins.value.size} plugins)" }
-                return
-            }
-
-            val allPlugins = mutableListOf<JsPlugin>()
-
-            for (repo in _repositories.value.filter { it.enabled }) {
-                try {
-                    val plugins = fetchPluginList(repo.url)
-                    plugins.forEach { it.repositoryUrl = repo.url }
-                    allPlugins.addAll(plugins)
-                    logcat(LogPriority.DEBUG) { "Loaded ${plugins.size} plugins from ${repo.name}" }
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e) { "Failed to fetch plugins from ${repo.name}" }
+            _isLoading.value = true
+            try {
+                // Load from cache first if not forcing refresh
+                if (!forceRefresh && _availablePlugins.value.isNotEmpty()) {
+                    logcat(LogPriority.DEBUG) { "Using cached plugin list (${_availablePlugins.value.size} plugins)" }
+                    return
                 }
+
+                val allPlugins = mutableListOf<JsPlugin>()
+
+                for (repo in _repositories.value.filter { it.enabled }) {
+                    try {
+                        val plugins = fetchPluginList(repo.url)
+                        plugins.forEach { it.repositoryUrl = repo.url }
+                        allPlugins.addAll(plugins)
+                        logcat(LogPriority.DEBUG) { "Loaded ${plugins.size} plugins from ${repo.name}" }
+                    } catch (e: Exception) {
+                        logcat(LogPriority.ERROR, e) { "Failed to fetch plugins from ${repo.name}" }
+                    }
+                }
+
+                _availablePlugins.value = allPlugins
+
+                // Save to cache file
+                saveCachedPluginList(allPlugins)
+
+                // Cache icons to avoid re-fetching each time
+                cacheIcons(allPlugins)
+            } finally {
+                _isLoading.value = false
             }
-
-            _availablePlugins.value = allPlugins
-
-            // Save to cache file
-            saveCachedPluginList(allPlugins)
-
-            // Cache icons to avoid re-fetching each time
-            cacheIcons(allPlugins)
         } finally {
-            _isLoading.value = false
+            refreshMutex.unlock()
         }
     }
 

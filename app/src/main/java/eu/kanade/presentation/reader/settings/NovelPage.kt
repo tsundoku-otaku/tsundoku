@@ -67,7 +67,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.domain.translation.service.TranslationPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.CheckboxItem
@@ -76,8 +75,6 @@ import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 @Serializable
 data class CodeSnippet(
@@ -620,82 +617,6 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
 
     // TTS Settings Section
     TtsSettingsSection(screenModel)
-
-    // Translation Settings Section
-    TranslationSettingsSection()
-}
-
-@Composable
-private fun ColumnScope.TranslationSettingsSection() {
-    val translationPreferences: TranslationPreferences = Injekt.get()
-
-    val translationEnabled by translationPreferences.translationEnabled().collectAsState()
-    val realtimeEnabled by translationPreferences.realTimeTranslation().collectAsState()
-    val selectedEngineId by translationPreferences.selectedEngineId().collectAsState()
-    val targetLanguage by translationPreferences.targetLanguage().collectAsState()
-
-    HeadingItem(TDMR.strings.pref_novel_translation_settings)
-
-    // Enable Translation Feature
-    CheckboxItem(
-        label = stringResource(TDMR.strings.pref_novel_translation_enabled),
-        checked = translationEnabled,
-        onClick = { translationPreferences.translationEnabled().set(!translationEnabled) },
-    )
-
-    if (translationEnabled) {
-        // Real-time Translation Toggle
-        CheckboxItem(
-            label = stringResource(TDMR.strings.pref_novel_realtime_translation),
-            checked = realtimeEnabled,
-            onClick = { translationPreferences.realTimeTranslation().set(!realtimeEnabled) },
-        )
-
-        // Show current engine and language
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text(
-                    text = stringResource(TDMR.strings.pref_novel_translation_engine_label),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = if (selectedEngineId >
-                        0L
-                    ) {
-                        stringResource(TDMR.strings.novel_engine_format, selectedEngineId)
-                    } else {
-                        stringResource(TDMR.strings.not_configured)
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = stringResource(TDMR.strings.pref_novel_translation_target_label),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = targetLanguage.ifEmpty { stringResource(TDMR.strings.not_configured) },
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-        }
-
-        // Hint to configure in settings
-        Text(
-            text = stringResource(TDMR.strings.pref_novel_translation_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-    }
 }
 
 @Composable

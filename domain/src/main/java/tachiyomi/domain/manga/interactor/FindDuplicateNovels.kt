@@ -36,19 +36,20 @@ class FindDuplicateNovels(
 
         val normalized = favorites.map { (id, title) ->
             Triple(id, title, title.lowercase().trim())
-        }
+        }.filter { it.third.isNotEmpty() }
+            .sortedBy { it.third.length } // Sort by length so shorter titles are checked first
 
         val pairs = mutableListOf<DuplicatePair>()
         for (i in normalized.indices) {
             val (idA, titleA, normA) = normalized[i]
-            if (normA.isEmpty()) continue
             for (j in i + 1 until normalized.size) {
                 val (idB, titleB, normB) = normalized[j]
-                if (normB.isEmpty()) continue
-                val lenA = normA.length
-                val lenB = normB.length
-                if (lenA >= lenB * 0.8 && lenB >= lenA * 0.8) continue
-                if (normB.contains(normA) || normA.contains(normB)) {
+                // Since sorted by length, normB.length >= normA.length
+                // "Contains" only makes sense when lengths differ significantly
+                if (normA.length >= normB.length * 0.8) continue
+                // Short title must be at least 3 chars to avoid false positives
+                if (normA.length < 3) continue
+                if (normB.contains(normA)) {
                     pairs.add(DuplicatePair(idA, titleA, idB, titleB))
                 }
             }

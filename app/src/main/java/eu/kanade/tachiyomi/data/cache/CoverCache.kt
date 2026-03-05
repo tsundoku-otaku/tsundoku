@@ -99,7 +99,10 @@ class CoverCache(private val context: Context) {
     }
 
     private fun getCacheDir(dir: String): File {
-        return context.getExternalFilesDir(dir)
-            ?: File(context.filesDir, dir).also { it.mkdirs() }
+        return try {
+            context.getExternalFilesDir(dir)
+        } catch (e: Exception) {
+            null
+        } ?: File(context.filesDir, dir).also { it.mkdirs() }
     }
 }

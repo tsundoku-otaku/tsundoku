@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
@@ -62,6 +63,8 @@ class ExtensionManager(
     private val installer by lazy { ExtensionInstaller(context) }
 
     private val iconMap = mutableMapOf<String, Drawable>()
+
+    private val findExtensionsMutex = Mutex()
 
     private val installedExtensionMapFlow = MutableStateFlow(emptyMap<String, Extension.Installed>())
     val installedExtensionsFlow = installedExtensionMapFlow.mapExtensions(scope)
@@ -138,19 +141,27 @@ class ExtensionManager(
      * Finds the available extensions in the [api] and updates [availableExtensionMapFlow].
      */
     suspend fun findAvailableExtensions() {
-        val extensions: List<Extension.Available> = try {
-            api.findExtensions()
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e)
-            withUIContext { context.toast(MR.strings.extension_api_error) }
-            return
+        // Skip if another fetch is already in progress — both ExtensionsScreenModel
+        // and NovelExtensionsScreenModel call this from init, but the result flows
+        // through availableExtensionMapFlow so both observe the same data.
+        if (!findExtensionsMutex.tryLock()) return
+        try {
+            val extensions: List<Extension.Available> = try {
+                api.findExtensions()
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e)
+                withUIContext { context.toast(MR.strings.extension_api_error) }
+                return
+            }
+
+            enableAdditionalSubLanguages(extensions)
+
+            availableExtensionMapFlow.value = extensions.associateBy { it.pkgName }
+            updatedInstalledExtensionsStatuses(extensions)
+            setupAvailableExtensionsSourcesDataMap(extensions)
+        } finally {
+            findExtensionsMutex.unlock()
         }
-
-        enableAdditionalSubLanguages(extensions)
-
-        availableExtensionMapFlow.value = extensions.associateBy { it.pkgName }
-        updatedInstalledExtensionsStatuses(extensions)
-        setupAvailableExtensionsSourcesDataMap(extensions)
     }
 
     /**

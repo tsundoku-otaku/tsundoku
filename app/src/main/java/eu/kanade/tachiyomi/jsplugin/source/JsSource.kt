@@ -706,6 +706,14 @@ class JsSource(
                 artist = obj["artist"]?.jsonPrimitive?.content
                 description = obj["summary"]?.jsonPrimitive?.content
                 genre = obj["genres"]?.jsonPrimitive?.content
+                // Parse alternative names if available
+                val altNames = obj["alternativeNames"]?.jsonPrimitive?.content
+                    ?: obj["altNames"]?.jsonPrimitive?.content
+                if (!altNames.isNullOrBlank()) {
+                    altTitles = altNames.split(",", ";", "/", "|")
+                        .map { it.trim() }
+                        .filter { it.isNotBlank() && it != title }
+                }
                 // Validate cover URL
                 val coverUrl = obj["cover"]?.jsonPrimitive?.content
                 thumbnail_url = when {
@@ -739,8 +747,6 @@ class JsSource(
             val obj = json.parseToJsonElement(jsonResult).jsonObject
             val chaptersArray = obj["chapters"]?.jsonArray ?: return emptyList()
 
-            val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-
             // Return chapters in source order (newest-first from LNReader);
             // reversal and chapter_number assignment happen in getChapterList() after all pages are collected.
             return chaptersArray.mapIndexedNotNull { index, item ->
@@ -756,12 +762,7 @@ class JsSource(
                         }
                         date_upload = try {
                             chapterObj["releaseTime"]?.jsonPrimitive?.content?.let { dateStr ->
-                                if (dateStr.contains("T")) {
-                                    // ISO format
-                                    java.time.Instant.parse(dateStr).toEpochMilli()
-                                } else {
-                                    dateFormat.parse(dateStr)?.time ?: 0L
-                                }
+                                parseReleaseTime(dateStr)
                             } ?: 0L
                         } catch (e: Exception) {
                             0L
@@ -800,18 +801,12 @@ class JsSource(
                     SChapter.create().apply {
                         name = chapterObj["name"]?.jsonPrimitive?.content ?: "Chapter ${index + 1}"
                         url = chapterObj["path"]?.jsonPrimitive?.content ?: return@mapIndexedNotNull null
-                        // Keep plugin-provided chapterNumber if available; otherwise leave as -1
-                        // (global numbering is assigned later in getChapterList)
                         chapterObj["chapterNumber"]?.jsonPrimitive?.content?.toFloatOrNull()?.let {
                             chapter_number = it
                         }
                         date_upload = try {
                             chapterObj["releaseTime"]?.jsonPrimitive?.content?.let { dateStr ->
-                                if (dateStr.contains("T")) {
-                                    java.time.Instant.parse(dateStr).toEpochMilli()
-                                } else {
-                                    dateFormat.parse(dateStr)?.time ?: 0L
-                                }
+                                parseReleaseTime(dateStr)
                             } ?: 0L
                         } catch (_: Exception) {
                             0L
@@ -826,6 +821,66 @@ class JsSource(
             logcat(LogPriority.ERROR, e) { "Failed to parse page chapters: $jsonResult" }
             return emptyList()
         }
+    }
+
+    /**
+     * Parse release time string from JS plugins.
+     * Handles ISO format, "YYYY-MM-DD", locale-specific formats like "January 5, 2025",
+     * and relative dates like "3 days ago".
+     */
+    private fun parseReleaseTime(dateStr: String): Long {
+        val trimmed = dateStr.trim()
+        if (trimmed.isEmpty()) return 0L
+
+        // ISO format (contains "T")
+        if (trimmed.contains("T")) {
+            return try {
+                java.time.Instant.parse(trimmed).toEpochMilli()
+            } catch (_: Exception) {
+                0L
+            }
+        }
+
+        // Relative dates: "X hours/days/weeks/months/years ago"
+        val relativeMatch = Regex("""(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago""", RegexOption.IGNORE_CASE)
+            .find(trimmed)
+        if (relativeMatch != null) {
+            val amount = relativeMatch.groupValues[1].toLongOrNull() ?: return 0L
+            val unit = relativeMatch.groupValues[2].lowercase()
+            val millis = when (unit) {
+                "second" -> amount * 1000L
+                "minute" -> amount * 60_000L
+                "hour" -> amount * 3_600_000L
+                "day" -> amount * 86_400_000L
+                "week" -> amount * 604_800_000L
+                "month" -> amount * 2_592_000_000L // ~30 days
+                "year" -> amount * 31_536_000_000L // ~365 days
+                else -> return 0L
+            }
+            return System.currentTimeMillis() - millis
+        }
+
+        // Try common date formats
+        val formats = listOf(
+            "yyyy-MM-dd",
+            "MMMM dd, yyyy",
+            "MMMM d, yyyy",
+            "MMM dd, yyyy",
+            "MMM d, yyyy",
+            "dd MMMM yyyy",
+            "dd MMM yyyy",
+            "dd/MM/yyyy",
+            "MM/dd/yyyy",
+        )
+        for (format in formats) {
+            try {
+                return SimpleDateFormat(format, Locale.US).parse(trimmed)?.time ?: continue
+            } catch (_: Exception) {
+                // Try next format
+            }
+        }
+
+        return 0L
     }
 
     private fun parseFiltersFromJson(jsonResult: String): FilterList {
