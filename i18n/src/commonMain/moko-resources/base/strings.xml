@@ -95,6 +95,7 @@
     <string name="action_add_category">Add category</string>
     <string name="action_edit_categories">Edit categories</string>
     <string name="action_rename_category">Rename category</string>
+    <string name="action_move">Move</string>
     <string name="action_move_category">Set categories</string>
     <string name="delete_category_confirmation">Do you wish to delete the category \"%s\"?</string>
     <string name="delete_category">Delete category</string>
@@ -882,10 +883,85 @@
     <string name="migration_dialog_what_to_include">Select data to include</string>
     <string name="migration_selection_prompt">Select a source to migrate from</string>
     <string name="migrate">Migrate</string>
+    <string name="action_quick_migrate">Quick</string>
+    <string name="quick_migrate_select_source">Select target source</string>
+    <string name="quick_migrate_confirm_message">Update source to \"%1$s\" for %2$d entries?</string>
+    <string name="quick_migrate_skip_message">%1$d entries will be skipped (already exist in target)</string>
+    <string name="quick_migrate_complete">Quick migrated %1$d entries</string>
     <!-- Make a copy (noun) when migrating. Don't use for copying to clipboard. -->
     <string name="copy">Copy</string>
     <string name="empty_screen">Well, this is awkward</string>
     <string name="not_installed">Not installed</string>
+
+    <!-- Duplicate detection screen -->
+    <string name="duplicate_find_duplicates">Find Duplicates</string>
+    <string name="duplicate_n_selected">%d selected</string>
+    <string name="duplicate_copy_links">Copy Links</string>
+    <string name="duplicate_delete_selected">Delete Selected</string>
+    <string name="duplicate_move_to_category">Move to Category</string>
+    <string name="duplicate_selection_options">Selection Options</string>
+    <string name="duplicate_select_all">Select ALL Duplicates</string>
+    <string name="duplicate_select_all_except_first">Select All Except First</string>
+    <string name="duplicate_select_lowest_ch">Select With Lowest Ch Count</string>
+    <string name="duplicate_select_highest_ch">Select With Highest Ch Count</string>
+    <string name="duplicate_select_highest_dl">Select With Highest Downloads</string>
+    <string name="duplicate_select_lowest_dl">Select With Lowest Downloads</string>
+    <string name="duplicate_select_highest_read">Select With Highest Read Count</string>
+    <string name="duplicate_select_lowest_read">Select With Lowest Read Count</string>
+    <string name="duplicate_select_pinned">Select Pinned Sources</string>
+    <string name="duplicate_select_non_pinned">Select Non-Pinned Sources</string>
+    <string name="duplicate_select_lowest_priority">Select Lowest Priority</string>
+    <string name="duplicate_select_highest_priority">Select Highest Priority</string>
+    <string name="duplicate_clear_selection">Clear Selection</string>
+    <string name="duplicate_invert_selection">Invert Selection</string>
+    <string name="duplicate_match_exact">Exact</string>
+    <string name="duplicate_match_contains">Contains</string>
+    <string name="duplicate_match_url">Same URL</string>
+    <string name="duplicate_filters_sort">Filters &amp; Sort</string>
+    <string name="duplicate_type_label">Type:</string>
+    <string name="duplicate_type_all">All</string>
+    <string name="duplicate_type_manga">Manga</string>
+    <string name="duplicate_type_novel">Novel</string>
+    <string name="duplicate_show_full_urls">Show full URLs</string>
+    <string name="duplicate_sort_label">Sort:</string>
+    <string name="duplicate_sort_name">Name</string>
+    <string name="duplicate_sort_latest">Latest</string>
+    <string name="duplicate_sort_ch_desc">Ch↓</string>
+    <string name="duplicate_sort_dl_desc">DL↓</string>
+    <string name="duplicate_sort_read_desc">Read↓</string>
+    <string name="duplicate_category_label">Category:</string>
+    <string name="duplicate_category_clear">Clear</string>
+    <string name="duplicate_source_priority">Source Priority</string>
+    <string name="duplicate_source_priority_desc">Set priority per source type. Higher = preferred when resolving duplicates.</string>
+    <string name="duplicate_specific_source_priority">Individual Source Priority</string>
+    <string name="duplicate_specific_source_priority_desc">Override priority for specific sources. Takes precedence over type-level priority.</string>
+    <string name="duplicate_source_type_js">JS Plugin</string>
+    <string name="duplicate_source_type_kt">KT Ext</string>
+    <string name="duplicate_source_type_custom">Custom</string>
+    <string name="duplicate_source_type_local">Local</string>
+    <string name="duplicate_sort_priority">Priority</string>
+    <string name="duplicate_initial_title">Find Duplicate Entries</string>
+    <string name="duplicate_initial_description">Analyze your library to find duplicate entries.\nSelect a match mode above and click Start.</string>
+    <string name="duplicate_start_analysis">Start Analysis</string>
+    <string name="duplicate_no_duplicates">No duplicates found in your library.</string>
+    <string name="duplicate_no_matches_filter">No duplicates match the selected filters.</string>
+    <string name="duplicate_reanalyze">Re-analyze</string>
+    <string name="duplicate_results_summary">Found %1$d groups with %2$d potential duplicates</string>
+    <string name="duplicate_results_filtered"> (filtered)</string>
+    <string name="duplicate_urls_copied">%d URLs copied</string>
+    <string name="duplicate_deleted_count">Deleted %d entries</string>
+    <string name="duplicate_moved_count">Moved %d entries</string>
+    <string name="duplicate_n_in_group">%d entries in this group</string>
+    <string name="duplicate_select_group">Select Group</string>
+    <string name="duplicate_original">ORIGINAL</string>
+    <string name="duplicate_n_chapters">%d ch</string>
+    <string name="duplicate_n_downloads">%d dl</string>
+    <string name="duplicate_n_read">%d read</string>
+    <string name="duplicate_categories_label">Categories: %s</string>
+    <string name="duplicate_delete_title">Delete %d entries?</string>
+    <string name="duplicate_delete_message">This will remove the selected entries from your library.</string>
+    <string name="duplicate_delete_downloaded_chapters">Delete downloaded chapters</string>
+    <string name="duplicate_delete_from_database">Delete from database</string>
 
     <!-- Crash screen -->
     <string name="crash_screen_title">Whoops!</string>
@@ -1049,4 +1125,110 @@
     <string name="migrationListScreen.migrateDialog.cancelLabel">Cancel</string>
     <string name="migrationListScreen.progressDialog.cancelLabel">Cancel</string>
     <string name="migrationListScreen.matchWithoutChapterToast">No chapters found, this entry cannot be used for migration</string>
+
+    <!-- Translation settings -->
+    <string name="pref_translation_replace_title">Replace title with translation</string>
+    <string name="pref_translation_replace_title_desc">When translating, replace the manga/novel title with the translated version. Original title is saved to alternative titles.</string>
+    <string name="pref_translation_save_alt_titles">Save translated titles as alternative</string>
+    <string name="pref_translation_save_alt_titles_desc">Store translated titles in alternative_titles for reference</string>
+    <string name="pref_translation_translate_tags">Translate tags</string>
+    <string name="pref_translation_translate_tags_desc">Translate genre tags and merge with original tags</string>
+    <string name="pref_translation_smart_auto">Smart auto-translate</string>
+    <string name="pref_translation_smart_auto_desc">Detect source language and skip translation if it matches target language</string>
+    <string name="pref_translation_chunk_mode">Translation chunk mode</string>
+    <string name="pref_translation_chunk_mode_paragraphs">Group by paragraphs (%d per chunk)</string>
+    <string name="pref_translation_chunk_mode_characters">Group by characters (%d per chunk)</string>
+    <string name="pref_translation_chunk_mode_words">Group by words (%d per chunk)</string>
+    <string name="pref_translation_chunk_paragraphs">Paragraphs</string>
+    <string name="pref_translation_chunk_characters">Characters</string>
+    <string name="pref_translation_chunk_words">Words</string>
+    <string name="pref_translation_chunk_size">Translation chunk size</string>
+    <string name="pref_translation_chunk_paragraphs_rec">Paragraphs per chunk (recommended: 20–100)</string>
+    <string name="pref_translation_chunk_characters_rec">Characters per chunk (recommended: 1000–5000)</string>
+    <string name="pref_translation_chunk_words_rec">Words per chunk (recommended: 200–2000)</string>
+    <string name="pref_translation_chunk_units">Units per chunk</string>
+    <string name="pref_translation_offline_suffix"> (Offline)</string>
+    <string name="pref_translation_queue">Translation Queue</string>
+    <string name="pref_translation_status">Status</string>
+    <string name="pref_translation_status_cancelling">Cancelling…</string>
+    <string name="pref_translation_status_paused">Paused — %1$d/%2$d completed</string>
+    <string name="pref_translation_status_chunk_info"> (chunk %1$d/%2$d)</string>
+    <string name="pref_translation_status_translating">Translating: %1$s%2$s (%3$d/%4$d)</string>
+    <string name="pref_translation_status_done">Done — %d chapters translated</string>
+    <string name="pref_translation_status_idle">Idle — no tasks in queue</string>
+    <string name="pref_translation_resume">Resume</string>
+    <string name="pref_translation_pause">Pause</string>
+    <string name="pref_translation_resume_desc">Resume processing queued translations</string>
+    <string name="pref_translation_pause_desc">Pause translation processing</string>
+    <string name="pref_translation_cancel">Cancel</string>
+    <string name="pref_translation_cancel_desc">Cancel current translation (saves partial progress)</string>
+    <string name="pref_translation_clear_queue">Clear Queue</string>
+    <string name="pref_translation_clear_queue_desc">Remove all pending translations from the queue</string>
+    <string name="pref_translation_test_engine">Test %s</string>
+    <string name="pref_translation_testing">Testing…</string>
+    <string name="pref_translation_test_send">Send a test translation</string>
+    <string name="pref_translation_test_text">Hello, this is a test.</string>
+    <string name="pref_translation_system_prompt">System Prompt</string>
+    <string name="pref_translation_system_prompt_desc">Custom system prompt for GPT models. Leave empty for default.</string>
+    <string name="pref_translation_user_prompt">User Prompt Template</string>
+    <string name="pref_translation_user_prompt_desc">Use {SOURCE_LANG}, {TARGET_LANG}, {TEXT} as placeholders.</string>
+    <string name="pref_translation_api_key">API Key</string>
+    <string name="pref_translation_api_url">API URL</string>
+    <string name="pref_translation_custom_prompt">Custom Prompt</string>
+    <string name="pref_translation_request_template">Request Template</string>
+    <string name="pref_translation_request_template_desc">Use {texts}, {text}, {source}, {target}</string>
+    <string name="pref_translation_response_path">Response Path</string>
+
+    <!-- EPUB compression settings -->
+    <string name="pref_epub_compression_level">EPUB compression level</string>
+    <string name="pref_epub_compression_default">Default (library decides)</string>
+    <string name="pref_epub_compression_none">No compression (fastest)</string>
+    <string name="pref_epub_compression_low">Low compression</string>
+    <string name="pref_epub_compression_medium">Medium compression</string>
+    <string name="pref_epub_compression_high">High compression (smallest)</string>
+    <string name="pref_epub_compression_default_label">Default</string>
+    <string name="pref_epub_compression_level_label">Level %d</string>
+
+    <!-- Advanced settings - data section -->
+    <string name="pref_delete_all_translations">Delete all translations</string>
+    <string name="pref_delete_all_translations_subtitle">Deletes all downloaded translations</string>
+    <string name="pref_delete_all_translations_confirm">Are you sure you want to delete all downloaded translations? This cannot be undone.</string>
+    <string name="pref_all_translations_deleted">All translations deleted</string>
+    <string name="pref_clear_temp_files">Clear temp files</string>
+    <string name="pref_clear_temp_files_subtitle">Clears temporary files from app cache (epub exports, network cache, etc.)</string>
+    <string name="pref_temp_files_cleared">Cleared %s of temp files</string>
+    <string name="pref_temp_files_error">Error clearing temp files</string>
+    <string name="pref_reset_settings">Reset settings to default</string>
+    <string name="pref_reset_settings_confirm">Are you sure you want to reset all app settings to their default values? This will not delete your library data, downloads, or backups. The app will restart afterwards.</string>
+    <string name="pref_reset_settings_action">Reset</string>
+    <string name="pref_normalize_urls">Normalize manga URLs</string>
+    <string name="pref_normalize_urls_subtitle">Removes trailing slashes from all manga URLs in database</string>
+    <string name="pref_remove_duplicate_urls">Remove duplicate URL entries</string>
+    <string name="pref_remove_duplicate_urls_subtitle">Unfavorite manga that would conflict after URL normalization</string>
+    <string name="pref_db_statistics">Database statistics</string>
+    <string name="pref_db_statistics_subtitle">Show detailed database size breakdown</string>
+    <string name="pref_db_maintenance">Database maintenance</string>
+    <string name="pref_db_maintenance_subtitle">VACUUM, REINDEX, and ANALYZE database</string>
+    <string name="pref_bulk_remove_url">Bulk remove by URL</string>
+    <string name="pref_bulk_remove_url_subtitle">Remove multiple entries from library by URL list</string>
+
+    <!-- Translation queue / batch -->
+    <string name="translation_all_downloaded_already_translated">All downloaded chapters are already translated</string>
+    <string name="translation_selected_already_translated">Selected chapters are already translated</string>
+
+    <!-- Batch update -->
+    <string name="batch_updating_entries">Updating %d entries…</string>
+    <string name="batch_update_complete">Updated %d entries</string>
+    <string name="batch_update_complete_with_failures">Updated %1$d/%2$d entries (%3$d failed)</string>
+
+    <!-- Duplicate detection -->
+    <string name="duplicate_source_type_js_extensions">JS Extensions</string>
+    <string name="duplicate_source_type_kt_extensions">Kotlin Extensions</string>
+    <string name="duplicate_source_type_custom_extensions">Custom Extensions</string>
+    <string name="duplicate_source_type_local_source">Local Source</string>
+    <string name="duplicate_no_sources_found">No sources with library entries found</string>
+
+    <!-- Misc UI -->
+    <string name="action_collapse">Collapse</string>
+    <string name="action_expand">Expand</string>
 </resources>

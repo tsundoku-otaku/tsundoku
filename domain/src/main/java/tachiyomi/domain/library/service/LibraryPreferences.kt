@@ -141,6 +141,15 @@ class LibraryPreferences(
     fun searchByUrl() = preferenceStore.getBoolean("pref_search_by_url", false)
     fun useRegexSearch() = preferenceStore.getBoolean("pref_use_regex_search", false)
 
+    fun filterChapterCount() = preferenceStore.getEnum(
+        "pref_filter_library_chapter_count",
+        TriState.DISABLED,
+    )
+    fun filterChapterCountThreshold() = preferenceStore.getInt(
+        "pref_filter_library_chapter_count_threshold",
+        10,
+    )
+
     // endregion
 
     // region Badges
@@ -263,6 +272,18 @@ class LibraryPreferences(
 
     fun mangaReadProgress100() = preferenceStore.getBoolean("pref_manga_read_progress_100", true)
     fun novelReadProgress100() = preferenceStore.getBoolean("pref_novel_read_progress_100", true)
+
+    /**
+     * Source type priorities for duplicate detection.
+     * Stored as semicolon-delimited "TYPE:PRIORITY" pairs, e.g. "JS:3;KT:1;CUSTOM:0;LOCAL:-2;STUB:-5"
+     */
+    fun sourceTypePriorities() = preferenceStore.getString("source_type_priorities", "")
+
+    /**
+     * Specific source priorities for duplicate detection.
+     * Stored as semicolon-delimited "SOURCE_ID:PRIORITY" pairs, e.g. "123456:3;789012:-2"
+     */
+    fun specificSourcePriorities() = preferenceStore.getString("specific_source_priorities", "")
 
     // endregion
 

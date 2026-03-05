@@ -21,6 +21,7 @@ import androidx.compose.ui.util.fastForEach
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.core.screen.Screen
+import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.cache.CoverCache
@@ -32,6 +33,7 @@ import mihon.feature.common.utils.getLabel
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.LabeledCheckbox
 import tachiyomi.presentation.core.components.material.padding
@@ -47,6 +49,7 @@ internal fun Screen.MigrateMangaDialog(
     onClickTitle: () -> Unit,
     onDismissRequest: () -> Unit,
     onComplete: () -> Unit = onDismissRequest,
+    showQuickOption: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
 
@@ -98,6 +101,18 @@ internal fun Screen.MigrateMangaDialog(
 
                 Spacer(modifier = Modifier.weight(1f))
 
+                if (showQuickOption) {
+                    TextButton(
+                        onClick = {
+                            scope.launchIO {
+                                screenModel.quickMigrate()
+                                withUIContext { onComplete() }
+                            }
+                        },
+                    ) {
+                        Text(text = stringResource(MR.strings.action_quick_migrate))
+                    }
+                }
                 TextButton(
                     onClick = {
                         scope.launchIO {
@@ -128,6 +143,7 @@ private class MigrateDialogScreenModel(
     private val coverCache: CoverCache = Injekt.get(),
     private val downloadManager: DownloadManager = Injekt.get(),
     private val migrateManga: MigrateMangaUseCase = Injekt.get(),
+    private val updateManga: UpdateManga = Injekt.get(),
 ) : StateScreenModel<MigrateDialogScreenModel.State>(State()) {
 
     fun init(current: Manga, target: Manga) {
@@ -172,6 +188,26 @@ private class MigrateDialogScreenModel(
         sourcePreference.migrationFlags().set(state.selectedFlags)
         mutableState.update { it.copy(isMigrating = true) }
         migrateManga(current, target, replace)
+        mutableState.update { it.copy(isMigrating = false, isMigrated = true) }
+    }
+
+    /**
+     * Quick migrate: just update the source ID and URL in the database.
+     * Useful when an extension changed name/URL but content stayed the same.
+     */
+    suspend fun quickMigrate() {
+        val state = state.value
+        val current = state.current ?: return
+        val target = state.target ?: return
+        mutableState.update { it.copy(isMigrating = true) }
+        updateManga.await(
+            MangaUpdate(
+                id = current.id,
+                source = target.source,
+                url = target.url,
+                thumbnailUrl = target.thumbnailUrl,
+            ),
+        )
         mutableState.update { it.copy(isMigrating = false, isMigrated = true) }
     }
 

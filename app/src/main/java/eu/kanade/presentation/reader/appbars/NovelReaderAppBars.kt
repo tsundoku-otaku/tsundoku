@@ -111,6 +111,7 @@ fun NovelReaderAppBars(
     isTranslating: Boolean,
     onToggleTranslation: () -> Unit,
     onLongPressTranslation: () -> Unit,
+    onRetranslate: (() -> Unit)? = null,
     isTtsActive: Boolean,
     isTtsPaused: Boolean,
     onToggleTts: () -> Unit,
@@ -142,6 +143,7 @@ fun NovelReaderAppBars(
                 onShare = onShare,
                 onReloadLocal = onReloadLocal,
                 onReloadSource = onReloadSource,
+                onRetranslate = onRetranslate,
             )
         }
 
@@ -211,6 +213,7 @@ private fun NovelReaderTopBar(
     onShare: (() -> Unit)?,
     onReloadLocal: () -> Unit,
     onReloadSource: () -> Unit,
+    onRetranslate: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     AppBar(
@@ -272,6 +275,14 @@ private fun NovelReaderTopBar(
                             add(
                                 AppBar.OverflowAction(
                                     title = stringResource(MR.strings.action_share),
+                                    onClick = it,
+                                ),
+                            )
+                        }
+                        onRetranslate?.let {
+                            add(
+                                AppBar.OverflowAction(
+                                    title = stringResource(TDMR.strings.action_retranslate),
                                     onClick = it,
                                 ),
                             )
