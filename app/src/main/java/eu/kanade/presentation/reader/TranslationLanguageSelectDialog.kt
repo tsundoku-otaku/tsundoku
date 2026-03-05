@@ -26,10 +26,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.AdaptiveSheet
+import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * Data class representing a translation language option.
@@ -40,9 +43,9 @@ data class TranslationLanguage(
 )
 
 /**
- * List of available translation target languages.
+ * Fallback language list used only when the engine provides no languages.
  */
-val translationLanguages = listOf(
+private val fallbackLanguages = listOf(
     TranslationLanguage("en", "English"),
     TranslationLanguage("es", "Spanish"),
     TranslationLanguage("fr", "French"),
@@ -53,26 +56,7 @@ val translationLanguages = listOf(
     TranslationLanguage("ja", "Japanese"),
     TranslationLanguage("ko", "Korean"),
     TranslationLanguage("zh", "Chinese (Simplified)"),
-    TranslationLanguage("zh-TW", "Chinese (Traditional)"),
     TranslationLanguage("ar", "Arabic"),
-    TranslationLanguage("hi", "Hindi"),
-    TranslationLanguage("th", "Thai"),
-    TranslationLanguage("vi", "Vietnamese"),
-    TranslationLanguage("id", "Indonesian"),
-    TranslationLanguage("ms", "Malay"),
-    TranslationLanguage("nl", "Dutch"),
-    TranslationLanguage("pl", "Polish"),
-    TranslationLanguage("tr", "Turkish"),
-    TranslationLanguage("uk", "Ukrainian"),
-    TranslationLanguage("cs", "Czech"),
-    TranslationLanguage("sv", "Swedish"),
-    TranslationLanguage("da", "Danish"),
-    TranslationLanguage("fi", "Finnish"),
-    TranslationLanguage("no", "Norwegian"),
-    TranslationLanguage("el", "Greek"),
-    TranslationLanguage("he", "Hebrew"),
-    TranslationLanguage("hu", "Hungarian"),
-    TranslationLanguage("ro", "Romanian"),
 )
 
 @Composable
@@ -105,6 +89,19 @@ private fun DialogContent(
 ) {
     var selected by remember { mutableStateOf(currentLanguage) }
 
+    // Use the selected engine's supported languages, falling back to a basic list
+    val engineManager = remember { Injekt.get<TranslationEngineManager>() }
+    val languages = remember {
+        val engineLangs = engineManager.getSupportedLanguages()
+        if (engineLangs.isNotEmpty()) {
+            engineLangs
+                .filter { it.first != "auto" }
+                .map { TranslationLanguage(it.first, it.second) }
+        } else {
+            fallbackLanguages
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -127,11 +124,11 @@ private fun DialogContent(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Smart Auto-Translate",
+                    text = stringResource(TDMR.strings.translation_smart_auto),
                     style = MaterialTheme.typography.bodyLarge,
                 )
                 Text(
-                    text = "Only translate if language differs from target",
+                    text = stringResource(TDMR.strings.translation_smart_auto_summary),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -145,7 +142,7 @@ private fun DialogContent(
         }
 
         Text(
-            text = "Select target language for translation",
+            text = stringResource(TDMR.strings.translation_select_target_language),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = MaterialTheme.padding.small),
@@ -158,7 +155,7 @@ private fun DialogContent(
                 .fillMaxWidth()
                 .weight(1f, fill = false),
         ) {
-            items(translationLanguages) { language ->
+            items(languages) { language ->
                 LanguageItem(
                     language = language,
                     isSelected = selected == language.code,

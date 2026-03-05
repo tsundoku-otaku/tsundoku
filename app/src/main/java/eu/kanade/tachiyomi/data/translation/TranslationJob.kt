@@ -8,15 +8,16 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
-import androidx.work.workDataOf
-import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import logcat.LogPriority
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -29,13 +30,13 @@ class TranslationJob(context: Context, workerParams: WorkerParameters) : Corouti
     private val translationService: TranslationService = Injekt.get()
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
-        val notification = applicationContext.notificationBuilder(Notifications.CHANNEL_MASS_IMPORT) {
-            setContentTitle("Translating chapters...")
+        val notification = applicationContext.notificationBuilder(Notifications.CHANNEL_TRANSLATION) {
+            setContentTitle(applicationContext.stringResource(TDMR.strings.translation_job_translating))
             setSmallIcon(android.R.drawable.stat_sys_download)
             setOngoing(true)
         }.build()
         return ForegroundInfo(
-            Notifications.ID_MASS_IMPORT_PROGRESS,
+            Notifications.ID_TRANSLATION_PROGRESS,
             notification,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
@@ -47,33 +48,35 @@ class TranslationJob(context: Context, workerParams: WorkerParameters) : Corouti
 
     override suspend fun doWork(): Result {
         return try {
-            val chapterId = inputData.getLong(KEY_CHAPTER_ID, -1L)
-            val mangaId = inputData.getLong(KEY_MANGA_ID, -1L)
-
-            if (chapterId == -1L || mangaId == -1L) {
-                return Result.success()
-            }
-
             setForegroundSafely()
 
-            // The TranslationService will start processing the queue
+            // Start queue processing if not already running
             translationService.start()
 
-            // Collect progress updates and update notifications
-            translationService.progressState.collectLatest { progress ->
+            // Wait for completion by collecting until no longer running
+            translationService.progressState.first { progress ->
                 if (progress.isRunning) {
-                    val notification = applicationContext.notificationBuilder(Notifications.CHANNEL_MASS_IMPORT) {
-                        setContentTitle("Translating chapters...")
-                        setContentText(progress.currentChapterName ?: "Processing...")
+                    // Update notification with progress
+                    val notification = applicationContext.notificationBuilder(Notifications.CHANNEL_TRANSLATION) {
+                        setContentTitle(applicationContext.stringResource(TDMR.strings.translation_job_translating))
+                        setContentText(progress.currentChapterName ?: applicationContext.stringResource(TDMR.strings.translation_job_processing))
                         setProgress(progress.totalChapters, progress.completedChapters, false)
                         setSmallIcon(android.R.drawable.stat_sys_download)
                         setOngoing(true)
                         setOnlyAlertOnce(true)
                     }.build()
+                    applicationContext.notify(Notifications.ID_TRANSLATION_PROGRESS, notification)
+                    false // keep collecting
+                } else {
+                    // Done (either finished or was never running)
+                    true // stop collecting
                 }
             }
 
-            showCompletionNotification()
+            val completed = translationService.progressState.value.completedChapters
+            if (completed > 0) {
+                showCompletionNotification(completed)
+            }
             Result.success()
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Translation job failed" }
@@ -81,27 +84,27 @@ class TranslationJob(context: Context, workerParams: WorkerParameters) : Corouti
         }
     }
 
-    private fun showCompletionNotification() {
-        val notification = applicationContext.notificationBuilder(Notifications.CHANNEL_MASS_IMPORT) {
-            setContentTitle("Translation Complete")
-            setSmallIcon(android.R.drawable.stat_sys_download_done)
-            setAutoCancel(true)
-        }.build()
+    private fun showCompletionNotification(completedCount: Int) {
+        // Cancel progress notification
+        applicationContext.notify(
+            Notifications.ID_TRANSLATION_PROGRESS,
+            applicationContext.notificationBuilder(Notifications.CHANNEL_TRANSLATION) {
+                setContentTitle(applicationContext.stringResource(TDMR.strings.translation_job_complete))
+                setContentText(
+                    applicationContext.stringResource(TDMR.strings.translation_job_complete_count, completedCount),
+                )
+                setSmallIcon(android.R.drawable.stat_sys_download_done)
+                setAutoCancel(true)
+                setOngoing(false)
+            }.build(),
+        )
     }
 
     companion object {
         private const val TAG = "TranslationJob"
-        private const val KEY_CHAPTER_ID = "chapter_id"
-        private const val KEY_MANGA_ID = "manga_id"
 
-        fun start(context: Context, chapterId: Long = -1L, mangaId: Long = -1L) {
-            val data = workDataOf(
-                KEY_CHAPTER_ID to chapterId,
-                KEY_MANGA_ID to mangaId,
-            )
-
+        fun start(context: Context) {
             val request = OneTimeWorkRequestBuilder<TranslationJob>()
-                .setInputData(data)
                 .build()
 
             context.workManager.enqueueUniqueWork(TAG, ExistingWorkPolicy.KEEP, request)

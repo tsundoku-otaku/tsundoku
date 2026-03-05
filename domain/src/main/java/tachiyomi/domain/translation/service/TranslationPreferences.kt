@@ -304,4 +304,23 @@ class TranslationPreferences(
         "translation_chunk_size",
         50,
     )
+
+    /**
+     * Whether to send previous translated paragraphs as context to LLM engines.
+     * This improves translation consistency across chunks by giving the LLM
+     * context from the end of the previous chunk.
+     */
+    fun contextualAnchoringEnabled() = preferenceStore.getBoolean(
+        "translation_contextual_anchoring_enabled",
+        true,
+    )
+
+    /**
+     * Number of paragraphs from the end of the previous chunk to send as context.
+     * Only applies when contextual anchoring is enabled and the engine is an LLM.
+     */
+    fun contextualAnchoringParagraphs() = preferenceStore.getInt(
+        "translation_contextual_anchoring_paragraphs",
+        2,
+    )
 }
