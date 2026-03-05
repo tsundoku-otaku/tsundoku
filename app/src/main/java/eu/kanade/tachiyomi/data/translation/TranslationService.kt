@@ -4,7 +4,10 @@ import android.content.Context
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
+import eu.kanade.tachiyomi.data.translation.engine.DeepSeekTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.LibreTranslateEngine
+import eu.kanade.tachiyomi.data.translation.engine.OllamaTranslateEngine
+import eu.kanade.tachiyomi.data.translation.engine.OpenAITranslateEngine
 import eu.kanade.tachiyomi.source.fetchNovelPageText
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
@@ -407,10 +410,31 @@ class TranslationService(
         }
 
         var failedChunkIndex = -1
+        // Contextual anchoring: send previous raw + translated paragraphs as context for LLM engines
+        val isLlmEngine = engine.id in LLM_ENGINE_IDS
+        val anchoringEnabled = translationPreferences.contextualAnchoringEnabled().get()
+        val anchoringParagraphs = translationPreferences.contextualAnchoringParagraphs().get()
+        val useAnchoring = isLlmEngine && anchoringEnabled && anchoringParagraphs > 0
+
+        // Build per-chunk paragraph lists for context tracking
+        val chunkParagraphsList = chunks.map { c -> c.split("\n\n").filter { it.isNotBlank() } }
+        // Track the raw paragraphs of the previously translated chunk
+        var previousRawParagraphs = emptyList<String>()
+        // Track the translated paragraphs of the previous chunk
+        var previousTranslatedParagraphs = emptyList<String>()
+
         for ((chunkIndex, chunk) in chunks.withIndex()) {
             // Skip already-translated chunks
             if (chunkIndex < resumeFromChunk) {
                 logcat(LogPriority.DEBUG) { "Skipping chunk ${chunkIndex + 1}/${chunks.size} (already translated)" }
+                // Track the last skipped chunk's paragraphs for contextual anchoring
+                if (useAnchoring) {
+                    previousRawParagraphs = chunkParagraphsList[chunkIndex]
+                    // Estimate translated paragraphs from existing tmp data
+                    val startIdx = chunkParagraphsList.take(chunkIndex).sumOf { it.size }
+                    val endIdx = startIdx + chunkParagraphsList[chunkIndex].size
+                    previousTranslatedParagraphs = existingTmpParagraphs.drop(startIdx).take(endIdx - startIdx)
+                }
                 _progressState.update { current ->
                     current.copy(
                         currentChapterProgress = 0.5f + 0.5f * (chunkIndex + 1f) / chunks.size,
@@ -428,15 +452,47 @@ class TranslationService(
 
             logcat(LogPriority.DEBUG) { "Sending chunk ${chunkIndex + 1}/${chunks.size} for translation (${chunk.length} chars)" }
 
+            // Build the text to send, optionally wrapping with context for LLM engines
+            val textToSend = if (useAnchoring && chunkIndex > 0 && previousRawParagraphs.isNotEmpty()) {
+                val rawContext = previousRawParagraphs.takeLast(anchoringParagraphs).joinToString("\n\n")
+                val translatedContext = previousTranslatedParagraphs.takeLast(anchoringParagraphs).joinToString("\n\n")
+                val currentParagraphCount = chunkParagraphsList[chunkIndex].size
+                buildString {
+                    appendLine("You are translating a novel.")
+                    appendLine("Below is previous context. Do NOT translate it.")
+                    appendLine("=== PREVIOUS RAW ===")
+                    appendLine(rawContext)
+                    appendLine("=== PREVIOUS TRANSLATION ===")
+                    appendLine(translatedContext)
+                    appendLine("=== TEXT TO TRANSLATE (RETURN ONLY THIS SECTION) ===")
+                    appendLine(chunk)
+                    appendLine("Translate ONLY the section under \"TEXT TO TRANSLATE\".")
+                    appendLine("Preserve paragraph breaks exactly.")
+                    appendLine("Do not merge or split paragraphs.")
+                    append("Return exactly $currentParagraphCount paragraphs.")
+                }
+            } else {
+                chunk
+            }
+
             var chunkSuccess = false
             for (attempt in 1..2) {
                 try {
-                    val result = engine.translate(listOf(chunk), task.sourceLanguage, task.targetLanguage)
+                    val result = engine.translate(listOf(textToSend), task.sourceLanguage, task.targetLanguage)
                     when (result) {
                         is TranslationResult.Success -> {
                             val translated = result.translatedTexts.firstOrNull() ?: ""
-                            val translatedParagraphs = translated.split("\n\n").filter { it.isNotBlank() }
-                            allTranslated.addAll(translatedParagraphs.ifEmpty { listOf(translated) })
+                            // Strip any contextual anchoring markers that the LLM might echo back
+                            val cleanedTranslation = if (useAnchoring && chunkIndex > 0) {
+                                stripContextLeakage(translated)
+                            } else {
+                                translated
+                            }
+                            val translatedParagraphs = cleanedTranslation.split("\n\n").filter { it.isNotBlank() }
+                            // Update previous chunk tracking for next iteration
+                            previousRawParagraphs = chunkParagraphsList[chunkIndex]
+                            previousTranslatedParagraphs = translatedParagraphs.ifEmpty { listOf(cleanedTranslation) }
+                            allTranslated.addAll(previousTranslatedParagraphs)
                             chunkSuccess = true
                         }
                         is TranslationResult.Error -> {
@@ -959,6 +1015,20 @@ class TranslationService(
         }
     }
 
+    /**
+     * Strip contextual anchoring markers that the LLM might echo back in its response.
+     * Only keeps text after the "TEXT TO TRANSLATE" marker if present.
+     */
+    private fun stripContextLeakage(translated: String): String {
+        val marker = "=== TEXT TO TRANSLATE"
+        val markerIndex = translated.indexOf(marker)
+        if (markerIndex < 0) return translated
+        // Find the end of the marker line
+        val afterMarker = translated.indexOf("\n", markerIndex)
+        if (afterMarker < 0) return translated
+        return translated.substring(afterMarker + 1).trim()
+    }
+
     companion object {
         /**
          * Priority values for translation queue.
@@ -967,5 +1037,14 @@ class TranslationService(
         const val PRIORITY_NORMAL = 50
         const val PRIORITY_HIGH = 100
         const val PRIORITY_MANUAL_READ = 200 // User manually opened chapter
+
+        /**
+         * Engine IDs for LLM-based translation engines that support contextual anchoring.
+         */
+        val LLM_ENGINE_IDS = setOf(
+            OpenAITranslateEngine.ENGINE_ID,
+            DeepSeekTranslateEngine.ENGINE_ID,
+            OllamaTranslateEngine.ENGINE_ID,
+        )
     }
 }

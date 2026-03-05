@@ -116,6 +116,12 @@ class OllamaTranslateEngine(
         val sourceLangName = LanguageCodes.getDisplayName(sourceLanguage)
         val targetLangName = LanguageCodes.getDisplayName(targetLanguage)
 
+        val fromClause = if (sourceLanguage == "auto") {
+            "Detect the source language and translate the following text to $targetLangName."
+        } else {
+            "Translate the following text from $sourceLangName to $targetLangName."
+        }
+
         // Use custom prompt if configured
         val customPrompt = preferences.ollamaPrompt().get()
         val prompt = if (customPrompt.isNotBlank()) {
@@ -125,7 +131,7 @@ class OllamaTranslateEngine(
                 .replace("{TEXT}", text)
         } else {
             """You are a professional translator specializing in novel/fiction translation.
-Translate the following text from $sourceLangName to $targetLangName.
+$fromClause
 Rules:
 - Only output the translation, nothing else
 - Preserve paragraph structure (keep empty lines between paragraphs)

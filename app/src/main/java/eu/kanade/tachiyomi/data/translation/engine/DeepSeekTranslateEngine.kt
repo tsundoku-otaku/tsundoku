@@ -116,7 +116,13 @@ class DeepSeekTranslateEngine(
         val sourceLangName = LanguageCodes.getDisplayName(sourceLanguage)
         val targetLangName = LanguageCodes.getDisplayName(targetLanguage)
 
-        val systemPrompt = """You are a professional translator specializing in novel/fiction translation. Translate the following text from $sourceLangName to $targetLangName.
+        val fromClause = if (sourceLanguage == "auto") {
+            "Detect the source language and translate the following text to $targetLangName."
+        } else {
+            "Translate the following text from $sourceLangName to $targetLangName."
+        }
+
+        val systemPrompt = """You are a professional translator specializing in novel/fiction translation. $fromClause
 Rules:
 - Only output the translation, nothing else
 - Preserve paragraph structure (keep empty lines between paragraphs)

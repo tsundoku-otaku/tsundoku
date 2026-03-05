@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Common actions (In MR)
     ext_update: Update
@@ -113,7 +113,7 @@
     <string name="translate_details_merge_genres">Add to existing genres (don\'t replace)</string>
     <string name="action_export_epub">Export as EPUB</string>
     <string name="action_export_epub_bulk">Export selected as EPUB</string>
-    <string name="export_epub_progress">Exporting %1$d of %2$d chapters…</string>
+    <string name="export_epub_progress">Exporting %1$d of %2$d chaptersâ€¦</string>
     <string name="export_epub_success">EPUB exported successfully</string>
     <string name="export_epub_error">Failed to export EPUB: %s</string>
     <string name="action_remove_chapters">Remove chapters</string>
@@ -125,7 +125,13 @@
     <string name="action_copy_links">Copy links</string>
     <string name="action_mass_import">Mass import</string>
 
-    <!-- Novel Translation Settings (see Translation Settings section below) -->
+    <!-- Novel Translation Settings (reader panel) -->
+    <string name="pref_novel_translation_settings">Translation</string>
+    <string name="pref_novel_translation_enabled">Enable translation</string>
+    <string name="pref_novel_realtime_translation">Real-time translation</string>
+    <string name="pref_novel_translation_engine_label">Engine</string>
+    <string name="pref_novel_translation_target_label">Target language</string>
+    <string name="pref_novel_translation_hint">Configure translation engine and API keys in Settings &#x2192; Translation</string>
 
     <!-- Novel Download Settings -->
     <string name="pref_novel_reader_summary">Novel reading mode, fonts, colors</string>
@@ -205,7 +211,7 @@
     <string name="epub_import_error_count">%d failed</string>
     <string name="epub_create_dir_failed">Failed to create directory for: %s</string>
     <string name="epub_novels_export_count">%d novel(s) will be exported.</string>
-    <string name="epub_and_more">… and %d more</string>
+    <string name="epub_and_more">â€¦ and %d more</string>
     <string name="epub_content_options">Content Options</string>
     <string name="epub_downloaded_only">Downloaded chapters only</string>
     <string name="epub_prefer_translated">Prefer translated chapters</string>
@@ -261,7 +267,7 @@
     <string name="novel_sort_source">Source order</string>
     <string name="novel_sort_chapter">Chapter number</string>
     <string name="novel_auto_split">Auto-split long chapters</string>
-    <string name="novel_split_word_count">Split word count (×50)</string>
+    <string name="novel_split_word_count">Split word count (Ã—50)</string>
     <string name="novel_force_lowercase">Force text to lowercase</string>
     <string name="novel_engine_format">Engine #%d</string>
     <string name="novel_enabled">Enabled</string>
@@ -271,7 +277,7 @@
     <string name="novel_add_rule">Add rule</string>
     <string name="novel_tag_regex">regex</string>
     <string name="novel_tag_text">text</string>
-    <string name="novel_rule_format">/%1$s/ → %2$s</string>
+    <string name="novel_rule_format">/%1$s/ â†’ %2$s</string>
     <string name="novel_rule_remove">(remove)</string>
     <string name="novel_no_rules">No rules added. Rules apply to chapter content before rendering.</string>
     <string name="novel_edit_rule">Edit Rule</string>
@@ -337,7 +343,7 @@
     <string name="pref_novel_realtime_translation">Real-time translation while reading</string>
     <string name="pref_novel_translation_engine_label">Engine</string>
     <string name="pref_novel_translation_target_label">Target language</string>
-    <string name="pref_novel_translation_hint">Configure translation engines in Settings → Novel → Translation</string>
+    <string name="pref_novel_translation_hint">Configure translation engines in Settings â†’ Novel â†’ Translation</string>
     <string name="action_disable_translation">Disable translation</string>
     <string name="not_configured">Not configured</string>
 
@@ -481,11 +487,11 @@
 
     <!-- Custom Source - Test screen -->
     <string name="custom_source_test_title">Test Source</string>
-    <string name="custom_source_testing">Testing source…</string>
+    <string name="custom_source_testing">Testing sourceâ€¦</string>
     <string name="custom_source_run_test">Run Test</string>
     <string name="custom_source_test_again">Test Again</string>
-    <string name="custom_source_all_tests_passed">✓ All tests passed</string>
-    <string name="custom_source_some_tests_failed">✗ Some tests failed</string>
+    <string name="custom_source_all_tests_passed">âœ“ All tests passed</string>
+    <string name="custom_source_some_tests_failed">âœ— Some tests failed</string>
     <string name="custom_source_export_subject">Custom Source: %s</string>
 
     <!-- Custom Source - WebView Element Selector Wizard -->
@@ -589,4 +595,38 @@
     <string name="custom_selector_test">Test</string>
     <string name="custom_selector_use">Use</string>
     <string name="custom_selector_select_parent_format">Select Parent &lt;%1$s&gt;</string>
+    <!-- Translation UI strings -->
+    <string name="action_retranslate">Retranslate</string>
+    <string name="action_delete_translation">Delete translation</string>
+    <string name="translation_smart_auto">Smart Auto-Translate</string>
+    <string name="translation_smart_auto_summary">Only translate if language differs from target</string>
+    <string name="translation_select_target_language">Select target language for translation</string>
+    <string name="translate_details_title">Translate Details</string>
+    <string name="translate_details_no_engine">No translation engine configured. Please configure one in Settings &gt; Translation.</string>
+    <string name="translate_details_translating">Translating&#8230;</string>
+    <string name="translate_details_original_title">Original Title:</string>
+    <string name="translate_details_translated_title">Translated Title:</string>
+    <string name="translate_details_add_alt_titles">Add translated title to alternative titles</string>
+    <string name="translate_details_save_tags_notes">Save translated tags to notes</string>
+    <string name="translate_details_original_desc">Original Description:</string>
+    <string name="translate_details_translated_desc">Translated Description:</string>
+    <string name="translate_details_original_genres">Original Genres:</string>
+    <string name="translate_details_translated_genres">Translated Genres:</string>
+    <string name="translate_details_save_genres">Save translated genres</string>
+    <string name="translate_details_merge_genres">Add to existing genres (don\'t replace)</string>
+    <!-- EPUB translation mode strings -->
+    <string name="epub_translation_mode">Translation</string>
+    <string name="epub_translation_original">Original only</string>
+    <string name="epub_translation_translated">Translated only</string>
+    <string name="epub_translation_both">Both (two separate files)</string>
+    <string name="epub_translation_translated_info">Only chapters with translations will be included.</string>
+    <string name="epub_translation_both_info">Two EPUB files will be created &#8212; one original, one translated.</string>
+    <!-- Translation notifications -->
+    <string name="channel_translation">Translation</string>
+    <string name="translation_job_translating">Translating chapters&#8230;</string>
+    <string name="translation_job_processing">Processing&#8230;</string>
+    <string name="translation_job_complete">Translation Complete</string>
+    <string name="translation_job_complete_count">%d chapters translated</string>
 </resources>
+
+

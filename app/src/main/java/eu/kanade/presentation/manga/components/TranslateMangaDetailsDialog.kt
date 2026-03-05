@@ -28,6 +28,9 @@ import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.translation.model.TranslationResult
+import tachiyomi.domain.translation.service.TranslationPreferences
+import tachiyomi.i18n.novel.TDMR
+import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -50,6 +53,7 @@ fun TranslateMangaDetailsDialog(
     onConfirm: (details: TranslatedMangaDetails) -> Unit,
 ) {
     val translationEngineManager: TranslationEngineManager = remember { Injekt.get() }
+    val translationPreferences: TranslationPreferences = remember { Injekt.get() }
 
     var isTranslating by remember { mutableStateOf(false) }
     var translatedTitle by remember { mutableStateOf<String?>(null) }
@@ -74,8 +78,11 @@ fun TranslateMangaDetailsDialog(
                 return@LaunchedEffect
             }
 
+            val sourceLang = translationPreferences.sourceLanguage().get()
+            val targetLang = translationPreferences.targetLanguage().get()
+
             // Translate title
-            val titleResult = engine.translateSingle(manga.title, sourceLanguage = "auto", targetLanguage = "en")
+            val titleResult = engine.translateSingle(manga.title, sourceLanguage = sourceLang, targetLanguage = targetLang)
             when (titleResult) {
                 is TranslationResult.Success -> {
                     translatedTitle = titleResult.translatedTexts.firstOrNull()
@@ -89,7 +96,7 @@ fun TranslateMangaDetailsDialog(
             // Translate description if present
             manga.description?.let { desc ->
                 if (desc.isNotBlank()) {
-                    val descResult = engine.translateSingle(desc, sourceLanguage = "auto", targetLanguage = "en")
+                    val descResult = engine.translateSingle(desc, sourceLanguage = sourceLang, targetLanguage = targetLang)
                     when (descResult) {
                         is TranslationResult.Success -> {
                             translatedDescription = descResult.translatedTexts.firstOrNull()
@@ -105,7 +112,7 @@ fun TranslateMangaDetailsDialog(
             // Translate genres if present
             val genres = manga.genre
             if (!genres.isNullOrEmpty()) {
-                val genresResult = engine.translate(genres, sourceLanguage = "auto", targetLanguage = "en")
+                val genresResult = engine.translate(genres, sourceLanguage = sourceLang, targetLanguage = targetLang)
                 when (genresResult) {
                     is TranslationResult.Success -> {
                         translatedGenres = genresResult.translatedTexts
@@ -125,7 +132,7 @@ fun TranslateMangaDetailsDialog(
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text("Translate Novel Details") },
+        title = { Text(stringResource(TDMR.strings.translate_details_title)) },
         text = {
             Column(
                 modifier = Modifier
@@ -141,7 +148,7 @@ fun TranslateMangaDetailsDialog(
                     ) {
                         CircularProgressIndicator()
                         Spacer(modifier = Modifier.padding(horizontal = 8.dp))
-                        Text("Translating...")
+                        Text(stringResource(TDMR.strings.translate_details_translating))
                     }
                 } else if (error != null) {
                     Text(
@@ -152,7 +159,7 @@ fun TranslateMangaDetailsDialog(
                 } else {
                     // Original title
                     Text(
-                        text = "Original Title:",
+                        text = stringResource(TDMR.strings.translate_details_original_title),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -165,7 +172,7 @@ fun TranslateMangaDetailsDialog(
                     if (translatedTitle != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "Translated Title:",
+                            text = stringResource(TDMR.strings.translate_details_translated_title),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -186,7 +193,7 @@ fun TranslateMangaDetailsDialog(
                                 onCheckedChange = { addToAltTitles = it },
                             )
                             Text(
-                                text = "Add translated title to alternative titles",
+                                text = stringResource(TDMR.strings.translate_details_add_alt_titles),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -203,7 +210,7 @@ fun TranslateMangaDetailsDialog(
                                 onCheckedChange = { saveTagsToNotes = it },
                             )
                             Text(
-                                text = "Save translated tags to notes",
+                                text = stringResource(TDMR.strings.translate_details_save_tags_notes),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
@@ -213,7 +220,7 @@ fun TranslateMangaDetailsDialog(
                     if (!manga.description.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Original Description:",
+                            text = stringResource(TDMR.strings.translate_details_original_desc),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -226,7 +233,7 @@ fun TranslateMangaDetailsDialog(
                         if (translatedDescription != null) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Translated Description:",
+                                text = stringResource(TDMR.strings.translate_details_translated_desc),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -243,7 +250,7 @@ fun TranslateMangaDetailsDialog(
                     if (!manga.genre.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "Original Genres:",
+                            text = stringResource(TDMR.strings.translate_details_original_genres),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary,
                         )
@@ -257,7 +264,7 @@ fun TranslateMangaDetailsDialog(
                         if (translatedGenres != null) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Translated Genres:",
+                                text = stringResource(TDMR.strings.translate_details_translated_genres),
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary,
                             )
@@ -280,7 +287,7 @@ fun TranslateMangaDetailsDialog(
                                     onCheckedChange = { translateGenres = it },
                                 )
                                 Text(
-                                    text = "Save translated genres",
+                                    text = stringResource(TDMR.strings.translate_details_save_genres),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -298,7 +305,7 @@ fun TranslateMangaDetailsDialog(
                                         onCheckedChange = { mergeGenres = it },
                                     )
                                     Text(
-                                        text = "Add to existing genres (don't replace)",
+                                        text = stringResource(TDMR.strings.translate_details_merge_genres),
                                         style = MaterialTheme.typography.bodySmall,
                                     )
                                 }
@@ -322,7 +329,7 @@ fun TranslateMangaDetailsDialog(
                         ),
                     )
                 },
-                enabled = !isTranslating && translatedTitle != null,
+                enabled = !isTranslating && (translatedTitle != null || translatedDescription != null || translatedGenres != null),
             ) {
                 Text("Save")
             }

@@ -85,6 +85,13 @@ object Notifications {
     const val ID_MASS_IMPORT_COMPLETE = -602
 
     /**
+     * Notification channel and ids used by translation.
+     */
+    const val CHANNEL_TRANSLATION = "translation_channel"
+    const val ID_TRANSLATION_PROGRESS = -610
+    const val ID_TRANSLATION_COMPLETE = -611
+
+    /**
      * Notification channel and ids used by EPUB export.
      */
     const val CHANNEL_EPUB_EXPORT = "epub_export_channel"
@@ -191,6 +198,10 @@ object Notifications {
                 },
                 buildNotificationChannel(CHANNEL_MASS_IMPORT, IMPORTANCE_LOW) {
                     setName(context.stringResource(TDMR.strings.channel_mass_import))
+                    setShowBadge(false)
+                },
+                buildNotificationChannel(CHANNEL_TRANSLATION, IMPORTANCE_LOW) {
+                    setName(context.stringResource(TDMR.strings.channel_translation))
                     setShowBadge(false)
                 },
                 buildNotificationChannel(CHANNEL_EPUB_EXPORT, IMPORTANCE_LOW) {
