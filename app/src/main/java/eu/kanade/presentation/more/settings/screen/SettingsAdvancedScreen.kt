@@ -101,6 +101,7 @@ import tachiyomi.domain.manga.interactor.ResetViewerFlags
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
+import tachiyomi.core.common.i18n.stringResource as contextStringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
@@ -235,16 +236,16 @@ object SettingsAdvancedScreen : SearchableSettings {
         if (showDeleteTranslationsDialog) {
             AlertDialog(
                 onDismissRequest = { showDeleteTranslationsDialog = false },
-                title = { Text(text = "Delete all translations") },
+                title = { Text(text = stringResource(MR.strings.pref_delete_all_translations)) },
                 text = {
-                    Text(text = "Are you sure you want to delete all downloaded translations? This cannot be undone.")
+                    Text(text = stringResource(MR.strings.pref_delete_all_translations_confirm))
                 },
                 confirmButton = {
                     TextButton(
                         onClick = {
                             scope.launch {
                                 Injekt.get<TranslatedChapterRepository>().deleteAll()
-                                context.toast("All translations deleted")
+                                context.toast(MR.strings.pref_all_translations_deleted)
                                 showDeleteTranslationsDialog = false
                             }
                         },
@@ -263,9 +264,9 @@ object SettingsAdvancedScreen : SearchableSettings {
         if (showResetSettingsDialog) {
             AlertDialog(
                 onDismissRequest = { showResetSettingsDialog = false },
-                title = { Text(text = "Reset settings to default") },
+                title = { Text(text = stringResource(MR.strings.pref_reset_settings)) },
                 text = {
-                    Text(text = "Are you sure you want to reset all app settings to their default values? This will not delete your library data, downloads, or backups. The app will restart afterwards.")
+                    Text(text = stringResource(MR.strings.pref_reset_settings_confirm))
                 },
                 confirmButton = {
                     TextButton(
@@ -291,7 +292,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                             }
                         },
                     ) {
-                        Text(text = "Reset")
+                        Text(text = stringResource(MR.strings.pref_reset_settings_action))
                     }
                 },
                 dismissButton = {
@@ -818,8 +819,8 @@ object SettingsAdvancedScreen : SearchableSettings {
                     onClick = { navigator.push(ClearDatabaseScreen()) },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = "Database statistics",
-                    subtitle = "Show detailed database size breakdown",
+                    title = stringResource(MR.strings.pref_db_statistics),
+                    subtitle = stringResource(MR.strings.pref_db_statistics_subtitle),
                     onClick = {
                         scope.launch {
                             try {
@@ -915,8 +916,8 @@ object SettingsAdvancedScreen : SearchableSettings {
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = "Database maintenance",
-                    subtitle = "VACUUM, REINDEX, and ANALYZE database",
+                    title = stringResource(MR.strings.pref_db_maintenance),
+                    subtitle = stringResource(MR.strings.pref_db_maintenance_subtitle),
                     onClick = {
                         scope.launch {
                             try {
@@ -963,23 +964,23 @@ object SettingsAdvancedScreen : SearchableSettings {
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = "Normalize manga URLs",
-                    subtitle = "Removes trailing slashes from all manga URLs in database",
+                    title = stringResource(MR.strings.pref_normalize_urls),
+                    subtitle = stringResource(MR.strings.pref_normalize_urls_subtitle),
                     onClick = { showNormalizeUrlsDialog = true },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = "Remove duplicate URL entries",
-                    subtitle = "Unfavorite manga that would conflict after URL normalization",
+                    title = stringResource(MR.strings.pref_remove_duplicate_urls),
+                    subtitle = stringResource(MR.strings.pref_remove_duplicate_urls_subtitle),
                     onClick = { showRemoveDuplicatesDialog = true },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = "Delete all translations",
-                    subtitle = "Deletes all downloaded translations",
+                    title = stringResource(MR.strings.pref_delete_all_translations),
+                    subtitle = stringResource(MR.strings.pref_delete_all_translations_subtitle),
                     onClick = { showDeleteTranslationsDialog = true },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = "Clear temp files",
-                    subtitle = "Clears temporary files from app cache (epub exports, network cache, etc.)",
+                    title = stringResource(MR.strings.pref_clear_temp_files),
+                    subtitle = stringResource(MR.strings.pref_clear_temp_files_subtitle),
                     onClick = {
                         scope.launch {
                             var clearedSize = 0L
@@ -1015,26 +1016,32 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     it.delete()
                                 }
 
+                                // Clear translation temp (.tmp) files
+                                try {
+                                    val translationRepo = Injekt.get<TranslatedChapterRepository>()
+                                    clearedSize += translationRepo.clearTmpFiles()
+                                } catch (_: Exception) { }
+
                                 val sizeString = when {
                                     clearedSize >= 1024 * 1024 -> "%.2f MB".format(clearedSize / (1024.0 * 1024.0))
                                     clearedSize >= 1024 -> "%.2f KB".format(clearedSize / 1024.0)
                                     else -> "$clearedSize bytes"
                                 }
                                 withUIContext {
-                                    context.toast("Cleared $sizeString of temp files")
+                                    context.toast(context.contextStringResource(MR.strings.pref_temp_files_cleared, sizeString))
                                 }
                             } catch (e: Exception) {
                                 logcat(LogPriority.ERROR, e)
                                 withUIContext {
-                                    context.toast("Error clearing temp files")
+                                    context.toast(MR.strings.pref_temp_files_error)
                                 }
                             }
                         }
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(
-                    title = "Bulk remove by URL",
-                    subtitle = "Remove multiple entries from library by URL list",
+                    title = stringResource(MR.strings.pref_bulk_remove_url),
+                    subtitle = stringResource(MR.strings.pref_bulk_remove_url_subtitle),
                     onClick = { showBulkRemovalDialog = true },
                 ),
                 Preference.PreferenceItem.TextPreference(

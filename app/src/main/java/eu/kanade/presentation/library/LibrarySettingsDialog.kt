@@ -39,7 +39,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -169,6 +171,37 @@ private fun ColumnScope.FilterPage(
         state = filterNovel,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterNovel) },
     )
+
+    val filterChapterCount by screenModel.libraryPreferences.filterChapterCount().collectAsState()
+    val chapterCountThreshold by screenModel.libraryPreferences.filterChapterCountThreshold().collectAsState()
+    var thresholdText by remember { mutableStateOf(chapterCountThreshold.toString()) }
+    TriStateItem(
+        label = when (filterChapterCount) {
+            TriState.ENABLED_IS -> "Chapters ≥ $chapterCountThreshold"
+            TriState.ENABLED_NOT -> "Chapters < $chapterCountThreshold"
+            else -> "Chapter count"
+        },
+        state = filterChapterCount,
+        onClick = { screenModel.toggleFilter(LibraryPreferences::filterChapterCount) },
+    )
+    if (filterChapterCount != TriState.DISABLED) {
+        OutlinedTextField(
+            value = thresholdText,
+            onValueChange = { value ->
+                thresholdText = value
+                value.toIntOrNull()?.takeIf { it > 0 }?.let {
+                    screenModel.libraryPreferences.filterChapterCountThreshold().set(it)
+                }
+            },
+            label = { Text("Threshold") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+        )
+    }
+
     // TODO: re-enable when custom intervals are ready for stable
     if ((!isReleaseBuildType) && LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD in autoUpdateMangaRestrictions) {
         val filterIntervalCustom by screenModel.libraryPreferences.filterIntervalCustom().collectAsState()

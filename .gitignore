@@ -14,3 +14,11 @@ local.properties
 
 # macOS specific files
 .DS_Store
+
+# Documentation/description files (auto-generated)
+PR_DESCRIPTIONS.md
+MANGA_IMAGE_TRANSLATION_ANALYSIS.md
+
+# Misc
+extensions-source/
+todo.txt

@@ -4,6 +4,8 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelChildren
@@ -20,6 +22,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -30,6 +33,7 @@ class DuplicateDetectionScreenModel(
     private val downloadManager: DownloadManager = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
+    private val libraryPreferences: tachiyomi.domain.library.service.LibraryPreferences = Injekt.get(),
 ) : StateScreenModel<DuplicateDetectionScreenModel.State>(State()) {
 
     private val pinnedSourceIds: Set<Long> by lazy {
@@ -48,6 +52,14 @@ class DuplicateDetectionScreenModel(
         NOVEL,
     }
 
+    enum class SourceType {
+        JS,
+        KT,
+        CUSTOM,
+        LOCAL,
+        STUB,
+    }
+
     data class State(
         val isLoading: Boolean = false,
         val hasStartedAnalysis: Boolean = false,
@@ -59,7 +71,7 @@ class DuplicateDetectionScreenModel(
         val showMoveToCategoryDialog: Boolean = false,
         val categories: List<Category> = emptyList(),
         val selectedCategoryFilters: Set<Long> = emptySet(),
-
+        val searchQuery: String = "",
         val excludedCategoryFilters: Set<Long> = emptySet(),
         val sortMode: SortMode = SortMode.NAME,
         val mangaCategories: Map<Long, List<Category>> = emptyMap(),
@@ -68,17 +80,29 @@ class DuplicateDetectionScreenModel(
         val mangaReadCounts: Map<Long, Int> = emptyMap(),
         val pinnedSourceIds: Set<Long> = emptySet(),
         val novelSourceIds: Set<Long> = emptySet(),
+        val sourcePriorities: Map<SourceType, Int> = SourceType.entries.associateWith { 0 },
+        val specificSourcePriorities: Map<Long, Int> = emptyMap(),
+        val sourceTypeMap: Map<Long, SourceType> = emptyMap(),
     ) {
 
         val filteredDuplicateGroups: Map<String, List<MangaWithChapterCount>>
             get() {
-                // First filter by content type (manga/novel/all)
+                val searchFiltered = if (searchQuery.isBlank()) {
+                    duplicateGroups
+                } else {
+                    val query = searchQuery.lowercase()
+                    duplicateGroups.filter { (key, items) ->
+                        key.lowercase().contains(query) ||
+                            items.any { it.manga.title.lowercase().contains(query) }
+                    }
+                }
+
                 val contentFiltered = when (contentType) {
-                    ContentType.ALL -> duplicateGroups
-                    ContentType.MANGA -> duplicateGroups.mapValues { (_, items) ->
+                    ContentType.ALL -> searchFiltered
+                    ContentType.MANGA -> searchFiltered.mapValues { (_, items) ->
                         items.filter { it.manga.source !in novelSourceIds }
                     }.filter { it.value.size > 1 }
-                    ContentType.NOVEL -> duplicateGroups.mapValues { (_, items) ->
+                    ContentType.NOVEL -> searchFiltered.mapValues { (_, items) ->
                         items.filter { it.manga.source in novelSourceIds }
                     }.filter { it.value.size > 1 }
                 }
@@ -90,7 +114,9 @@ class DuplicateDetectionScreenModel(
                     contentFiltered.mapValues { (_, novels) ->
                         novels.filter { novel ->
                             val novelCategories = mangaCategories[novel.manga.id] ?: emptyList()
+                            // Treat uncategorized manga as being in the default category (id=0)
                             val categoryIds = novelCategories.map { it.id }.toSet()
+                                .ifEmpty { setOf(0L) }
                             val passesInclude = selectedCategoryFilters.isEmpty() ||
                                 categoryIds.any { it in selectedCategoryFilters }
                             val passesExclude = excludedCategoryFilters.isEmpty() ||
@@ -151,8 +177,22 @@ class DuplicateDetectionScreenModel(
                                 novels.count { it.manga.source in pinnedSourceIds }
                             }
                             .associate { it.key to it.value }
+                    SortMode.SOURCE_PRIORITY ->
+                        filtered.entries
+                            .sortedByDescending { (_, novels) ->
+                                novels.maxOfOrNull { getSourcePriority(it.manga.source) } ?: 0
+                            }
+                            .associate { it.key to it.value }
                 }
             }
+
+        fun getSourcePriority(sourceId: Long): Int {
+
+            val specificPriority = specificSourcePriorities[sourceId]
+            if (specificPriority != null && specificPriority != 0) return specificPriority
+            val type = sourceTypeMap[sourceId] ?: SourceType.STUB
+            return sourcePriorities[type] ?: 0
+        }
 
         // Helper to check if a manga is from a pinned source
         // Maybe prioritize pinned sources in the future
@@ -169,10 +209,56 @@ class DuplicateDetectionScreenModel(
         READ_COUNT_DESC,
         READ_COUNT_ASC,
         PINNED_SOURCE,
+        SOURCE_PRIORITY,
     }
 
     init {
         loadCategories()
+        loadPrioritiesFromPreferences()
+    }
+
+    private fun loadPrioritiesFromPreferences() {
+        // Load source type priorities
+        val typeRaw = libraryPreferences.sourceTypePriorities().get()
+        if (typeRaw.isNotBlank()) {
+            val typeMap = typeRaw.split(";").filter { it.isNotBlank() }.mapNotNull { entry ->
+                val parts = entry.split(":")
+                if (parts.size == 2) {
+                    try {
+                        SourceType.valueOf(parts[0]) to parts[1].toInt()
+                    } catch (_: Exception) {
+                        null
+                    }
+                } else {
+                    null
+                }
+            }.toMap()
+            mutableState.update { state ->
+                state.copy(
+                    sourcePriorities = SourceType.entries.associateWith { typeMap[it] ?: 0 },
+                )
+            }
+        }
+
+        // Load specific source priorities
+        val specificRaw = libraryPreferences.specificSourcePriorities().get()
+        if (specificRaw.isNotBlank()) {
+            val specificMap = specificRaw.split(";").filter { it.isNotBlank() }.mapNotNull { entry ->
+                val parts = entry.split(":")
+                if (parts.size == 2) {
+                    try {
+                        parts[0].toLong() to parts[1].toInt()
+                    } catch (_: Exception) {
+                        null
+                    }
+                } else {
+                    null
+                }
+            }.toMap()
+            mutableState.update { state ->
+                state.copy(specificSourcePriorities = specificMap)
+            }
+        }
     }
 
     private fun loadCategories() {
@@ -180,6 +266,10 @@ class DuplicateDetectionScreenModel(
             val categories = getCategories.await()
             mutableState.update { it.copy(categories = categories) }
         }
+    }
+
+    fun setSearchQuery(query: String) {
+        mutableState.update { it.copy(searchQuery = query) }
     }
 
     fun loadDuplicates() {
@@ -203,6 +293,11 @@ class DuplicateDetectionScreenModel(
                     sourceManager.getOrStub(sourceId).isNovelSource()
                 }.toSet()
 
+                // Build source type map for priority-based selection
+                val sourceTypeMap = allSourceIds.associateWith { sourceId ->
+                    classifySourceType(sourceId)
+                }
+
                 // Use readCount from getMangaWithCounts (already fetched), only compute download counts
                 val downloadCounts = mutableMapOf<Long, Int>()
                 val readCounts = mutableMapOf<Long, Int>()
@@ -219,6 +314,7 @@ class DuplicateDetectionScreenModel(
                         duplicateGroups = groups,
                         mangaCategories = mangaCategoriesMap,
                         novelSourceIds = novelSourceIds,
+                        sourceTypeMap = sourceTypeMap,
                         mangaDownloadCounts = downloadCounts,
                         mangaReadCounts = readCounts,
                         pinnedSourceIds = pinnedSourceIds,
@@ -411,6 +507,61 @@ class DuplicateDetectionScreenModel(
         }
     }
 
+    /**
+     * Classify a source by type: JS, KT, CUSTOM, LOCAL, or STUB.
+     */
+    private fun classifySourceType(sourceId: Long): SourceType {
+        val source = sourceManager.get(sourceId) ?: return SourceType.STUB
+        return when {
+            source.isLocal() -> SourceType.LOCAL
+            source is CustomNovelSource -> SourceType.CUSTOM
+            source is JsSource -> SourceType.JS
+            else -> SourceType.KT
+        }
+    }
+
+    fun setSourcePriority(type: SourceType, priority: Int) {
+        val newMap = state.value.sourcePriorities + (type to priority)
+        mutableState.update { state ->
+            state.copy(sourcePriorities = newMap)
+        }
+        // Persist to preferences
+        val serialized = newMap.entries
+            .filter { it.value != 0 }
+            .joinToString(";") { "${it.key.name}:${it.value}" }
+        libraryPreferences.sourceTypePriorities().set(serialized)
+    }
+
+    /**
+     * Select the lowest-priority source entry in each duplicate group.
+     * This keeps the highest-priority entry and marks the rest for deletion.
+     */
+    fun selectLowestSourcePriority() {
+        val currentState = state.value
+        val ids = currentState.filteredDuplicateGroups.values
+            .flatMap { group ->
+                if (group.size < 2) return@flatMap emptyList()
+                // Sort by priority descending; keep the first (highest), select the rest
+                val sorted = group.sortedByDescending { currentState.getSourcePriority(it.manga.source) }
+                sorted.drop(1).map { it.manga.id }
+            }
+            .toSet()
+        mutableState.update { it.copy(selection = ids) }
+    }
+
+    /**
+     * Select the highest-priority source entry in each duplicate group.
+     */
+    fun selectHighestSourcePriority() {
+        val currentState = state.value
+        val ids = currentState.filteredDuplicateGroups.values
+            .mapNotNull { group ->
+                group.maxByOrNull { currentState.getSourcePriority(it.manga.source) }?.manga?.id
+            }
+            .toSet()
+        mutableState.update { it.copy(selection = ids) }
+    }
+
     fun getSelectedUrls(): List<String> {
         val selectedIds = state.value.selection
         return state.value.duplicateGroups.values
@@ -448,6 +599,18 @@ class DuplicateDetectionScreenModel(
     suspend fun deleteSelected(deleteManga: Boolean, deleteChapters: Boolean) {
         val selectedIds = state.value.selection.toList()
         screenModelScope.launch(Dispatchers.IO) {
+            if (deleteChapters) {
+                selectedIds.forEach { mangaId ->
+                    try {
+                        val manga = mangaRepository.getMangaById(mangaId)
+                        val source = sourceManager.get(manga.source) ?: return@forEach
+                        downloadManager.deleteManga(manga, source)
+                    } catch (e: Exception) {
+                        logcat(LogPriority.ERROR) { "Error deleting downloads for manga $mangaId: ${e.message}" }
+                    }
+                }
+            }
+
             selectedIds.chunked(100).forEach { batch ->
                 try {
                     val updates = batch.map { mangaId ->
@@ -456,11 +619,9 @@ class DuplicateDetectionScreenModel(
                             favorite = false,
                         )
                     }
-                    // Use batch update if available, otherwise fallback to individual updates
                     mangaRepository.updateAll(updates)
                 } catch (e: Exception) {
                     logcat(LogPriority.ERROR) { "Error batch updating manga favorites: ${e.message}" }
-                    // Fallback to individual updates on batch failure
                     batch.forEach { mangaId ->
                         try {
                             mangaRepository.update(
@@ -475,10 +636,29 @@ class DuplicateDetectionScreenModel(
                     }
                 }
             }
+
+            if (deleteManga) {
+                // Downloads are already deleted above if deleteChapters was true;
+                // only delete here if deleteChapters was false
+                if (!deleteChapters) {
+                    selectedIds.forEach { mangaId ->
+                        try {
+                            val manga = mangaRepository.getMangaById(mangaId)
+                            val source = sourceManager.get(manga.source)
+                            if (source != null) {
+                                downloadManager.deleteManga(manga, source)
+                            }
+                        } catch (e: Exception) {
+                            logcat(LogPriority.ERROR) { "Error cleaning up manga $mangaId: ${e.message}" }
+                        }
+                    }
+                }
+            }
+
             // Clear selection and reload to refresh the list
             mutableState.update { it.copy(selection = emptySet()) }
             loadDuplicates()
-        }.join() // Wait for completion before returning
+        }.join()
     }
 
     suspend fun moveSelectedToCategories(categoryIds: List<Long>) {

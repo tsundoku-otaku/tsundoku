@@ -44,7 +44,7 @@ class AppUpdateChecker {
 val GITHUB_REPO: String by lazy {
     if (isNightlyBuildType) {
         "tsundoku-otaku/tsundoku-nightly"
-    } else if (isNightlyBuildType) {
+    } else if (isPreviewBuildType) {
         "tsundoku-otaku/tsundoku-preview"
     } else {
         "tsundoku-otaku/tsundoku"

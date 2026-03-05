@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -51,6 +52,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -88,6 +90,7 @@ import kotlinx.coroutines.launch
 import tachiyomi.domain.manga.interactor.DuplicateMatchMode
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.core.common.i18n.stringResource as ctxStringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
@@ -118,10 +121,10 @@ class DuplicateDetectionScreen : Screen {
                 TopAppBar(
                     title = {
                         Column {
-                            Text("Find Duplicates")
+                            Text(stringResource(MR.strings.duplicate_find_duplicates))
                             if (state.selection.isNotEmpty()) {
                                 Text(
-                                    "${state.selection.size} selected",
+                                    stringResource(MR.strings.duplicate_n_selected, state.selection.size),
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                             }
@@ -129,7 +132,7 @@ class DuplicateDetectionScreen : Screen {
                     },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(MR.strings.action_webview_back))
                         }
                     },
                     actions = {
@@ -139,22 +142,22 @@ class DuplicateDetectionScreen : Screen {
                                 val urls = screenModel.getSelectedUrls()
                                 clipboardManager.setText(AnnotatedString(urls.joinToString("\n")))
                                 scope.launch {
-                                    snackbarHostState.showSnackbar("${urls.size} URLs copied")
+                                    snackbarHostState.showSnackbar(context.ctxStringResource(MR.strings.duplicate_urls_copied, urls.size))
                                 }
                             }) {
-                                Icon(Icons.Filled.ContentCopy, contentDescription = "Copy Links")
+                                Icon(Icons.Filled.ContentCopy, contentDescription = stringResource(MR.strings.duplicate_copy_links))
                             }
                             // Delete selected
                             IconButton(onClick = {
                                 screenModel.openDeleteDialog()
                             }) {
-                                Icon(Icons.Filled.Delete, contentDescription = "Delete Selected")
+                                Icon(Icons.Filled.Delete, contentDescription = stringResource(MR.strings.duplicate_delete_selected))
                             }
                             // Move to category
                             IconButton(onClick = {
                                 screenModel.openMoveToCategoryDialog()
                             }) {
-                                Icon(Icons.Filled.DriveFileMove, contentDescription = "Move to Category")
+                                Icon(Icons.Filled.DriveFileMove, contentDescription = stringResource(MR.strings.duplicate_move_to_category))
                             }
                         }
                     },
@@ -169,70 +172,84 @@ class DuplicateDetectionScreen : Screen {
                         FloatingActionButton(
                             onClick = { showMenu = true },
                         ) {
-                            Icon(Icons.Filled.SelectAll, contentDescription = "Selection Options")
+                            Icon(Icons.Filled.SelectAll, contentDescription = stringResource(MR.strings.duplicate_selection_options))
                         }
                         DropdownMenu(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Select ALL Duplicates") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_all)) },
                                 onClick = {
                                     screenModel.selectAllDuplicates()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select All Except First") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_all_except_first)) },
                                 onClick = {
                                     screenModel.selectAllExceptFirst()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select With Lowest Ch Count") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_lowest_ch)) },
                                 onClick = {
                                     screenModel.selectLowestChapterCount()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select With Highest Ch Count") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_highest_ch)) },
                                 onClick = {
                                     screenModel.selectHighestChapterCount()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select With Highest Downloads") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_highest_dl)) },
                                 onClick = {
                                     screenModel.selectHighestDownloadCount()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select With Lowest Downloads") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_lowest_dl)) },
                                 onClick = {
                                     screenModel.selectLowestDownloadCount()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select With Highest Read Count") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_highest_read)) },
                                 onClick = {
                                     screenModel.selectHighestReadCount()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select With Lowest Read Count") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_lowest_read)) },
                                 onClick = {
                                     screenModel.selectLowestReadCount()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select Pinned Sources") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_lowest_priority)) },
+                                onClick = {
+                                    screenModel.selectLowestSourcePriority()
+                                    showMenu = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.strings.duplicate_select_highest_priority)) },
+                                onClick = {
+                                    screenModel.selectHighestSourcePriority()
+                                    showMenu = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(MR.strings.duplicate_select_pinned)) },
                                 leadingIcon = { Icon(Icons.Filled.PushPin, contentDescription = null) },
                                 onClick = {
                                     screenModel.selectPinnedInGroups()
@@ -240,7 +257,7 @@ class DuplicateDetectionScreen : Screen {
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Select Non-Pinned Sources") },
+                                text = { Text(stringResource(MR.strings.duplicate_select_non_pinned)) },
                                 leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
                                 onClick = {
                                     screenModel.selectNonPinnedInGroups()
@@ -249,14 +266,14 @@ class DuplicateDetectionScreen : Screen {
                             )
                             HorizontalDivider()
                             DropdownMenuItem(
-                                text = { Text("Clear Selection") },
+                                text = { Text(stringResource(MR.strings.duplicate_clear_selection)) },
                                 onClick = {
                                     screenModel.clearSelection()
                                     showMenu = false
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Invert Selection") },
+                                text = { Text(stringResource(MR.strings.duplicate_invert_selection)) },
                                 onClick = {
                                     screenModel.invertSelection()
                                     showMenu = false
@@ -282,7 +299,7 @@ class DuplicateDetectionScreen : Screen {
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.EXACT,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.EXACT) },
-                        label = { Text("Exact") },
+                        label = { Text(stringResource(MR.strings.duplicate_match_exact)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.EXACT) {
                             { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                         } else {
@@ -292,7 +309,7 @@ class DuplicateDetectionScreen : Screen {
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.CONTAINS,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.CONTAINS) },
-                        label = { Text("Contains") },
+                        label = { Text(stringResource(MR.strings.duplicate_match_contains)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.CONTAINS) {
                             { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                         } else {
@@ -302,12 +319,32 @@ class DuplicateDetectionScreen : Screen {
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.URL,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.URL) },
-                        label = { Text("Same URL") },
+                        label = { Text(stringResource(MR.strings.duplicate_match_url)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.URL) {
                             { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                         } else {
                             null
                         },
+                    )
+                }
+
+                if (state.hasStartedAnalysis && state.duplicateGroups.isNotEmpty()) {
+                    OutlinedTextField(
+                        value = state.searchQuery,
+                        onValueChange = { screenModel.setSearchQuery(it) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        placeholder = { Text(stringResource(MR.strings.action_search)) },
+                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                        trailingIcon = {
+                            if (state.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { screenModel.setSearchQuery("") }) {
+                                    Icon(Icons.Filled.Close, contentDescription = null)
+                                }
+                            }
+                        },
+                        singleLine = true,
                     )
                 }
 
@@ -327,13 +364,13 @@ class DuplicateDetectionScreen : Screen {
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        "Filters & Sort",
+                        stringResource(MR.strings.duplicate_filters_sort),
                         style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f),
                     )
                     Icon(
                         imageVector = if (filtersExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                        contentDescription = if (filtersExpanded) "Collapse" else "Expand",
+                        contentDescription = if (filtersExpanded) stringResource(MR.strings.action_collapse) else stringResource(MR.strings.action_expand),
                     )
                 }
 
@@ -348,14 +385,14 @@ class DuplicateDetectionScreen : Screen {
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                "Type:",
+                                stringResource(MR.strings.duplicate_type_label),
                                 style = MaterialTheme.typography.labelMedium,
                                 modifier = Modifier.align(Alignment.CenterVertically),
                             )
                             FilterChip(
                                 selected = state.contentType == DuplicateDetectionScreenModel.ContentType.ALL,
                                 onClick = { screenModel.setContentType(DuplicateDetectionScreenModel.ContentType.ALL) },
-                                label = { Text("All") },
+                                label = { Text(stringResource(MR.strings.duplicate_type_all)) },
                                 leadingIcon = if (state.contentType == DuplicateDetectionScreenModel.ContentType.ALL) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
@@ -365,7 +402,7 @@ class DuplicateDetectionScreen : Screen {
                             FilterChip(
                                 selected = state.contentType == DuplicateDetectionScreenModel.ContentType.MANGA,
                                 onClick = { screenModel.setContentType(DuplicateDetectionScreenModel.ContentType.MANGA) },
-                                label = { Text("Manga") },
+                                label = { Text(stringResource(MR.strings.duplicate_type_manga)) },
                                 leadingIcon = if (state.contentType == DuplicateDetectionScreenModel.ContentType.MANGA) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
@@ -375,7 +412,7 @@ class DuplicateDetectionScreen : Screen {
                             FilterChip(
                                 selected = state.contentType == DuplicateDetectionScreenModel.ContentType.NOVEL,
                                 onClick = { screenModel.setContentType(DuplicateDetectionScreenModel.ContentType.NOVEL) },
-                                label = { Text("Novel") },
+                                label = { Text(stringResource(MR.strings.duplicate_type_novel)) },
                                 leadingIcon = if (state.contentType == DuplicateDetectionScreenModel.ContentType.NOVEL) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
@@ -397,27 +434,26 @@ class DuplicateDetectionScreen : Screen {
                                 onCheckedChange = { screenModel.toggleShowFullUrls() },
                             )
                             Text(
-                                "Show full URLs",
+                                stringResource(MR.strings.duplicate_show_full_urls),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(start = 8.dp),
                             )
                         }
                         // Sort mode selector
-                        Row(
+                        FlowRow(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 4.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Text(
-                                "Sort:",
+                                stringResource(MR.strings.duplicate_sort_label),
                                 style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.align(Alignment.CenterVertically),
                             )
                             FilterChip(
                                 selected = state.sortMode == DuplicateDetectionScreenModel.SortMode.NAME,
                                 onClick = { screenModel.setSortMode(DuplicateDetectionScreenModel.SortMode.NAME) },
-                                label = { Text("Name") },
+                                label = { Text(stringResource(MR.strings.duplicate_sort_name)) },
                                 leadingIcon = if (state.sortMode == DuplicateDetectionScreenModel.SortMode.NAME) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
@@ -427,7 +463,7 @@ class DuplicateDetectionScreen : Screen {
                             FilterChip(
                                 selected = state.sortMode == DuplicateDetectionScreenModel.SortMode.LATEST_ADDED,
                                 onClick = { screenModel.setSortMode(DuplicateDetectionScreenModel.SortMode.LATEST_ADDED) },
-                                label = { Text("Latest") },
+                                label = { Text(stringResource(MR.strings.duplicate_sort_latest)) },
                                 leadingIcon = if (state.sortMode == DuplicateDetectionScreenModel.SortMode.LATEST_ADDED) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
@@ -437,7 +473,7 @@ class DuplicateDetectionScreen : Screen {
                             FilterChip(
                                 selected = state.sortMode == DuplicateDetectionScreenModel.SortMode.CHAPTER_COUNT_DESC,
                                 onClick = { screenModel.setSortMode(DuplicateDetectionScreenModel.SortMode.CHAPTER_COUNT_DESC) },
-                                label = { Text("Ch↓") },
+                                label = { Text(stringResource(MR.strings.duplicate_sort_ch_desc)) },
                                 leadingIcon = if (state.sortMode == DuplicateDetectionScreenModel.SortMode.CHAPTER_COUNT_DESC) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
@@ -447,7 +483,7 @@ class DuplicateDetectionScreen : Screen {
                             FilterChip(
                                 selected = state.sortMode == DuplicateDetectionScreenModel.SortMode.DOWNLOAD_COUNT_DESC,
                                 onClick = { screenModel.setSortMode(DuplicateDetectionScreenModel.SortMode.DOWNLOAD_COUNT_DESC) },
-                                label = { Text("DL↓") },
+                                label = { Text(stringResource(MR.strings.duplicate_sort_dl_desc)) },
                                 leadingIcon = if (state.sortMode == DuplicateDetectionScreenModel.SortMode.DOWNLOAD_COUNT_DESC) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
@@ -457,7 +493,7 @@ class DuplicateDetectionScreen : Screen {
                             FilterChip(
                                 selected = state.sortMode == DuplicateDetectionScreenModel.SortMode.READ_COUNT_DESC,
                                 onClick = { screenModel.setSortMode(DuplicateDetectionScreenModel.SortMode.READ_COUNT_DESC) },
-                                label = { Text("Read↓") },
+                                label = { Text(stringResource(MR.strings.duplicate_sort_read_desc)) },
                                 leadingIcon = if (state.sortMode == DuplicateDetectionScreenModel.SortMode.READ_COUNT_DESC) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
@@ -470,11 +506,21 @@ class DuplicateDetectionScreen : Screen {
                                 label = {
                                     Icon(
                                         imageVector = Icons.Filled.PushPin,
-                                        contentDescription = "Pinned",
+                                        contentDescription = stringResource(MR.strings.duplicate_select_pinned),
                                         modifier = Modifier.size(18.dp),
                                     )
                                 },
                                 leadingIcon = if (state.sortMode == DuplicateDetectionScreenModel.SortMode.PINNED_SOURCE) {
+                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                } else {
+                                    null
+                                },
+                            )
+                            FilterChip(
+                                selected = state.sortMode == DuplicateDetectionScreenModel.SortMode.SOURCE_PRIORITY,
+                                onClick = { screenModel.setSortMode(DuplicateDetectionScreenModel.SortMode.SOURCE_PRIORITY) },
+                                label = { Text(stringResource(MR.strings.duplicate_sort_priority)) },
+                                leadingIcon = if (state.sortMode == DuplicateDetectionScreenModel.SortMode.SOURCE_PRIORITY) {
                                     { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                 } else {
                                     null
@@ -505,7 +551,7 @@ class DuplicateDetectionScreen : Screen {
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Text(
-                                        "Category:",
+                                        stringResource(MR.strings.duplicate_category_label),
                                         style = MaterialTheme.typography.labelMedium,
                                     )
                                     if (state.selectedCategoryFilters.isNotEmpty() || state.excludedCategoryFilters.isNotEmpty()) {
@@ -513,7 +559,7 @@ class DuplicateDetectionScreen : Screen {
                                         FilterChip(
                                             selected = true,
                                             onClick = { screenModel.clearCategoryFilters() },
-                                            label = { Text("Clear") },
+                                            label = { Text(stringResource(MR.strings.duplicate_category_clear)) },
                                         )
                                     }
                                 }
@@ -525,14 +571,15 @@ class DuplicateDetectionScreen : Screen {
                                     relevantCategories.forEach { category ->
                                         val isIncluded = category.id in state.selectedCategoryFilters
                                         val isExcluded = category.id in state.excludedCategoryFilters
+                                        val displayName = category.name.ifBlank { stringResource(MR.strings.label_default) }
                                         FilterChip(
                                             selected = isIncluded || isExcluded,
                                             onClick = { screenModel.toggleCategoryFilter(category.id) },
-                                            label = { Text(category.name) },
+                                            label = { Text(displayName) },
                                             leadingIcon = if (isIncluded) {
-                                                { Icon(Icons.Filled.Check, contentDescription = "Included", Modifier.size(18.dp)) }
+                                                { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                             } else if (isExcluded) {
-                                                { Icon(Icons.Filled.Close, contentDescription = "Excluded", Modifier.size(18.dp)) }
+                                                { Icon(Icons.Filled.Close, contentDescription = null, Modifier.size(18.dp)) }
                                             } else {
                                                 null
                                             },
@@ -548,6 +595,31 @@ class DuplicateDetectionScreen : Screen {
                                     }
                                 }
                             }
+                        }
+
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { navigator.push(SourcePriorityScreen) }
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.FilterList,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                stringResource(MR.strings.duplicate_source_priority),
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                                contentDescription = null,
+                            )
                         }
                     }
                 }
@@ -570,11 +642,11 @@ class DuplicateDetectionScreen : Screen {
                                     tint = MaterialTheme.colorScheme.primary,
                                 )
                                 Text(
-                                    text = "Find Duplicate Novels",
+                                    text = stringResource(MR.strings.duplicate_initial_title),
                                     style = MaterialTheme.typography.headlineSmall,
                                 )
                                 Text(
-                                    text = "Analyze your library to find duplicate entries.\nSelect a match mode above and click Start.",
+                                    text = stringResource(MR.strings.duplicate_initial_description),
                                     style = MaterialTheme.typography.bodyMedium,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -588,7 +660,7 @@ class DuplicateDetectionScreen : Screen {
                                         modifier = Modifier.size(20.dp),
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Start Analysis")
+                                    Text(stringResource(MR.strings.duplicate_start_analysis))
                                 }
                             }
                         }
@@ -606,7 +678,7 @@ class DuplicateDetectionScreen : Screen {
                                 verticalArrangement = Arrangement.spacedBy(16.dp),
                             ) {
                                 Text(
-                                    if (state.duplicateGroups.isEmpty()) "No duplicates found in your library." else "No duplicates match the selected filters.",
+                                    if (state.duplicateGroups.isEmpty()) stringResource(MR.strings.duplicate_no_duplicates) else stringResource(MR.strings.duplicate_no_matches_filter),
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -619,7 +691,7 @@ class DuplicateDetectionScreen : Screen {
                                         modifier = Modifier.size(20.dp),
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Re-analyze")
+                                    Text(stringResource(MR.strings.duplicate_reanalyze))
                                 }
                             }
                         }
@@ -627,8 +699,8 @@ class DuplicateDetectionScreen : Screen {
                     else -> {
                         // Results summary
                         Text(
-                            text = "Found ${state.filteredDuplicateGroups.size} groups with ${state.filteredDuplicateGroups.values.sumOf { it.size }} potential duplicates" +
-                                if (state.selectedCategoryFilters.isNotEmpty() || state.excludedCategoryFilters.isNotEmpty()) " (filtered)" else "",
+                            text = stringResource(MR.strings.duplicate_results_summary, state.filteredDuplicateGroups.size, state.filteredDuplicateGroups.values.sumOf { it.size }) +
+                                if (state.selectedCategoryFilters.isNotEmpty() || state.excludedCategoryFilters.isNotEmpty()) stringResource(MR.strings.duplicate_results_filtered) else "",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                         )
@@ -665,7 +737,7 @@ class DuplicateDetectionScreen : Screen {
                 onConfirm = { deleteManga, deleteChapters ->
                     scope.launch {
                         screenModel.deleteSelected(deleteManga, deleteChapters)
-                        snackbarHostState.showSnackbar("Deleted ${state.selection.size} novels")
+                        snackbarHostState.showSnackbar(context.ctxStringResource(MR.strings.duplicate_deleted_count, state.selection.size))
                     }
                 },
             )
@@ -679,7 +751,7 @@ class DuplicateDetectionScreen : Screen {
                 onConfirm = { categoryIds ->
                     scope.launch {
                         screenModel.moveSelectedToCategories(categoryIds)
-                        snackbarHostState.showSnackbar("Moved ${state.selection.size} novels")
+                        snackbarHostState.showSnackbar(context.ctxStringResource(MR.strings.duplicate_moved_count, state.selection.size))
                     }
                 },
             )
@@ -722,7 +794,7 @@ private fun DuplicateGroupCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "${mangaList.size} novels in this group",
+                        text = stringResource(MR.strings.duplicate_n_in_group, mangaList.size),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -731,14 +803,14 @@ private fun DuplicateGroupCard(
                 IconButton(onClick = onSelectGroup) {
                     Icon(
                         imageVector = Icons.Filled.SelectAll,
-                        contentDescription = "Select Group",
+                        contentDescription = stringResource(MR.strings.duplicate_select_group),
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
                         imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        contentDescription = if (expanded) stringResource(MR.strings.action_collapse) else stringResource(MR.strings.action_expand),
                     )
                 }
             }
@@ -811,7 +883,7 @@ private fun DuplicateItem(
                 if (isFirst) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "ORIGINAL",
+                        text = stringResource(MR.strings.duplicate_original),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -823,20 +895,20 @@ private fun DuplicateItem(
             // First row: chapters and source
             Row {
                 Text(
-                    text = "${manga.chapterCount} ch",
+                    text = stringResource(MR.strings.duplicate_n_chapters, manga.chapterCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (downloadedCount > 0) {
                     Text(
-                        text = " • $downloadedCount dl",
+                        text = " • ${stringResource(MR.strings.duplicate_n_downloads, downloadedCount)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.tertiary,
                     )
                 }
                 if (manga.readCount > 0) {
                     Text(
-                        text = " • ${manga.readCount} read",
+                        text = " • ${stringResource(MR.strings.duplicate_n_read, manga.readCount.toInt())}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
@@ -864,9 +936,10 @@ private fun DuplicateItem(
             // Second row: categories
             if (categories.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(2.dp))
+                val defaultLabel = stringResource(MR.strings.label_default)
                 Row {
                     Text(
-                        text = "Categories: ${categories.joinToString(", ") { it.name }}",
+                        text = stringResource(MR.strings.duplicate_categories_label, categories.joinToString(", ") { it.name.ifBlank { defaultLabel } }),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -915,24 +988,24 @@ private fun DeleteSelectedDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Delete $count novels?") },
+        title = { Text(stringResource(MR.strings.duplicate_delete_title, count)) },
         text = {
             Column {
-                Text("This will remove the selected novels from your library.")
+                Text(stringResource(MR.strings.duplicate_delete_message))
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable { deleteChapters = !deleteChapters },
                 ) {
                     Checkbox(checked = deleteChapters, onCheckedChange = { deleteChapters = it })
-                    Text("Delete downloaded chapters")
+                    Text(stringResource(MR.strings.duplicate_delete_downloaded_chapters))
                 }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable { deleteManga = !deleteManga },
                 ) {
                     Checkbox(checked = deleteManga, onCheckedChange = { deleteManga = it })
-                    Text("Delete manga from database")
+                    Text(stringResource(MR.strings.duplicate_delete_from_database))
                 }
             }
         },
@@ -941,12 +1014,12 @@ private fun DeleteSelectedDialog(
                 onConfirm(deleteManga, deleteChapters)
                 onDismiss()
             }) {
-                Text("Delete")
+                Text(stringResource(MR.strings.action_delete))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(MR.strings.action_cancel))
             }
         },
     )
@@ -962,7 +1035,7 @@ private fun MoveToCategoryDialog(
 
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Move to Category") },
+        title = { Text(stringResource(MR.strings.duplicate_move_to_category)) },
         text = {
             LazyColumn {
                 items(categories) { category ->
@@ -989,7 +1062,7 @@ private fun MoveToCategoryDialog(
                                 }
                             },
                         )
-                        Text(category.name)
+                        Text(category.name.ifBlank { stringResource(MR.strings.label_default) })
                     }
                 }
             }
@@ -1002,12 +1075,12 @@ private fun MoveToCategoryDialog(
                 },
                 enabled = selectedCategories.isNotEmpty(),
             ) {
-                Text("Move")
+                Text(stringResource(MR.strings.action_move))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(MR.strings.action_cancel))
             }
         },
     )

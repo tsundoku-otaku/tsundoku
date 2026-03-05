@@ -212,7 +212,6 @@ class AndroidDatabaseHandler(
                 "mangas_categories",
                 "manga_sync",
                 "excluded_scanlators",
-                "translated_chapters",
             ).forEach { table ->
                 try {
                     driver.executeQuery(null, "SELECT count(*) FROM $table", { cursor ->

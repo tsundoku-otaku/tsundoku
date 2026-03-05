@@ -58,6 +58,7 @@
     <string name="action_filter_tracked">Tracked</string>
     <string name="action_filter_unread">Unread</string>
     <string name="action_filter_interval_custom">Customized update frequency</string>
+    <string name="action_filter_custom_extension">Custom extension</string>
     <!-- reserved for #4048 -->
     <string name="action_filter_empty">Remove filter</string>
     <string name="action_sort_alpha">Alphabetically</string>
@@ -1147,6 +1148,10 @@
     <string name="pref_translation_chunk_characters_rec">Characters per chunk (recommended: 1000–5000)</string>
     <string name="pref_translation_chunk_words_rec">Words per chunk (recommended: 200–2000)</string>
     <string name="pref_translation_chunk_units">Units per chunk</string>
+    <string name="pref_translation_contextual_anchoring">Contextual anchoring</string>
+    <string name="pref_translation_contextual_anchoring_desc">Send previous translated paragraphs as context to LLM engines for better consistency</string>
+    <string name="pref_translation_contextual_anchoring_paragraphs">Context paragraphs</string>
+    <string name="pref_translation_contextual_anchoring_paragraphs_desc">Number of paragraphs from the previous chunk to include as context</string>
     <string name="pref_translation_offline_suffix"> (Offline)</string>
     <string name="pref_translation_queue">Translation Queue</string>
     <string name="pref_translation_status">Status</string>

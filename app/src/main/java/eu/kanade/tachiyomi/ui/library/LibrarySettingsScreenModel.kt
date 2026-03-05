@@ -5,6 +5,7 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.cache.LibrarySettingsCache
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,7 @@ data class ExtensionInfo(
     val sourceName: String,
     val isStub: Boolean = false,
     val isNovel: Boolean = false,
+    val isCustom: Boolean = false,
 )
 
 class LibrarySettingsScreenModel(
@@ -227,15 +229,20 @@ class LibrarySettingsScreenModel(
                     val source = sourceManager.getOrStub(sourceId)
                     val isNovel = source.isNovelSource()
                     val isStub = source is StubSource
+                    val isCustom = source is CustomNovelSource
                     val shouldInclude = when (type) {
                         LibraryScreenModel.LibraryType.All -> true
                         LibraryScreenModel.LibraryType.Manga -> !isNovel
                         LibraryScreenModel.LibraryType.Novel -> isNovel
                     }
                     if (shouldInclude) {
-                        // Add (JS) suffix for JS plugin sources
-                        val displayName = if (source is JsSource) "${source.name} (JS)" else source.name
-                        ExtensionInfo(sourceId, displayName, isStub, isNovel)
+                        // Add suffix for special source types
+                        val displayName = when {
+                            source is JsSource -> "${source.name} (JS)"
+                            isCustom -> "${source.name} (Custom)"
+                            else -> source.name
+                        }
+                        ExtensionInfo(sourceId, displayName, isStub, isNovel, isCustom)
                     } else {
                         null
                     }
@@ -303,7 +310,7 @@ class LibrarySettingsScreenModel(
                     if (shouldInclude) {
                         if (genres.isNullOrEmpty()) {
                             noTagsCount++
-                        } else {
+                    } else {
                             genres.forEach { tag ->
                                 val normalizedTag = tag.trim()
                                 if (normalizedTag.isNotBlank()) {
