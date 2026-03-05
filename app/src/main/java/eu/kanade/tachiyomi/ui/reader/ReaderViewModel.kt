@@ -115,7 +115,12 @@ class ReaderViewModel @JvmOverloads constructor(
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
 ) : ViewModel() {
 
-    private val mutableState = MutableStateFlow(State())
+    private val mutableState = MutableStateFlow(
+        State(
+            isTranslating = translationPreferences.translationEnabled().get() ||
+                translationPreferences.smartAutoTranslate().get(),
+        ),
+    )
     val state = mutableState.asStateFlow()
 
     private val eventChannel = Channel<Event>()
@@ -992,6 +997,31 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     /**
+     * Force retranslate the current chapter.
+     * Deletes existing translation and re-enqueues for translation.
+     */
+    fun retranslateCurrentChapter() {
+        val currentManga = manga ?: return
+        val chapter = getCurrentChapter()?.chapter?.toDomainChapter() ?: return
+
+        viewModelScope.launchIO {
+            translationService.enqueue(
+                manga = currentManga,
+                chapter = chapter,
+                priority = TranslationService.PRIORITY_MANUAL_READ,
+                forceRetranslate = true,
+            )
+            // Enable translation mode and reload
+            mutableState.update { it.copy(isTranslating = true) }
+            try {
+                eventChannel.send(Event.ReloadWithTranslation)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Error reloading chapter for retranslation" }
+            }
+        }
+    }
+
+    /**
      * Get the current target translation language.
      */
     fun getTargetTranslationLanguage(): String {
@@ -1013,8 +1043,8 @@ class ReaderViewModel @JvmOverloads constructor(
         val chapterId = chapter?.chapter?.id
         val mangaId = manga?.id
 
-        if (readerPreferences.autoTranslate().get()) {
-            val detected = translationService.detectLanguage(content)
+        if (translationPreferences.smartAutoTranslate().get()) {
+            val detected = translationService.detectLanguage(content, mangaId)
             val target = translationPreferences.targetLanguage().get()
 
             if (detected != null && detected.equals(target, ignoreCase = true)) {

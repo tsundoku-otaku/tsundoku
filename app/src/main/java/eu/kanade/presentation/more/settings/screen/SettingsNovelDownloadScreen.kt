@@ -52,6 +52,8 @@ import uy.kohesive.injekt.api.get
 
 object SettingsNovelDownloadScreen : SearchableSettings {
 
+    private const val LOW_DELAY_THRESHOLD_MS = 3000
+
     override val supportsReset: Boolean get() = true
 
     @Composable
@@ -130,8 +132,17 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     ): Preference.PreferenceGroup {
         val enabled = prefs.enableThrottling().collectAsState().value
         val downloadDelay = prefs.downloadDelay().collectAsState().value
+        val randomDelayMin = prefs.randomDelayMin().collectAsState().value
         val randomDelay = prefs.randomDelayRange().collectAsState().value
         val parallelDownloads = prefs.parallelNovelDownloads().collectAsState().value
+        val compressionLevel = prefs.zipCompressionLevel().collectAsState().value
+        val resumeOnNew = prefs.resumeQueueOnNewChapters().collectAsState().value
+
+        val lowDelayWarning = if (downloadDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
+            stringResource(TDMR.strings.pref_novel_low_delay_warning)
+        } else {
+            ""
+        }
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_downloads),
@@ -145,9 +156,23 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     value = downloadDelay,
                     valueRange = 0..30000,
                     title = stringResource(TDMR.strings.pref_novel_download_delay),
-                    subtitle = stringResource(TDMR.strings.pref_novel_download_delay_summary),
+                    subtitle = stringResource(TDMR.strings.pref_novel_download_delay_summary) + lowDelayWarning,
                     valueString = "${downloadDelay}ms",
                     onValueChanged = { prefs.downloadDelay().set(it) },
+                    enabled = enabled,
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = randomDelayMin,
+                    valueRange = 0..5000,
+                    title = stringResource(TDMR.strings.pref_novel_random_delay_min),
+                    subtitle = stringResource(TDMR.strings.pref_novel_random_delay_min_summary),
+                    valueString = "${randomDelayMin}ms",
+                    onValueChanged = {
+                        prefs.randomDelayMin().set(it)
+                        if (it > prefs.randomDelayRange().get()) {
+                            prefs.randomDelayRange().set(it)
+                        }
+                    },
                     enabled = enabled,
                 ),
                 Preference.PreferenceItem.SliderPreference(
@@ -155,8 +180,13 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     valueRange = 0..5000,
                     title = stringResource(TDMR.strings.pref_novel_random_delay),
                     subtitle = stringResource(TDMR.strings.pref_novel_random_delay_summary),
-                    valueString = "0-${randomDelay}ms",
-                    onValueChanged = { prefs.randomDelayRange().set(it) },
+                    valueString = "${randomDelayMin}-${randomDelay}ms",
+                    onValueChanged = {
+                        prefs.randomDelayRange().set(it)
+                        if (it < prefs.randomDelayMin().get()) {
+                            prefs.randomDelayMin().set(it)
+                        }
+                    },
                     enabled = enabled,
                 ),
                 Preference.PreferenceItem.SliderPreference(
@@ -164,6 +194,23 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     valueRange = 1..50,
                     title = stringResource(TDMR.strings.pref_novel_parallel_downloads),
                     onValueChanged = { prefs.parallelNovelDownloads().set(it) },
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = prefs.resumeQueueOnNewChapters(),
+                    title = stringResource(TDMR.strings.pref_novel_resume_queue_on_new),
+                    subtitle = stringResource(TDMR.strings.pref_novel_resume_queue_on_new_summary),
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = compressionLevel,
+                    valueRange = 0..9,
+                    title = stringResource(TDMR.strings.pref_novel_compression_level),
+                    subtitle = stringResource(TDMR.strings.pref_novel_compression_level_summary),
+                    valueString = if (compressionLevel == 0) {
+                        stringResource(MR.strings.action_save) + " (store)"
+                    } else {
+                        stringResource(TDMR.strings.pref_novel_deflate_level, compressionLevel)
+                    },
+                    onValueChanged = { prefs.zipCompressionLevel().set(it) },
                 ),
             ),
         )
@@ -215,6 +262,12 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         val updateDelay = prefs.updateDelay().collectAsState().value
         val parallelUpdates = prefs.parallelNovelUpdates().collectAsState().value
 
+        val lowDelayWarning = if (updateDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
+            stringResource(TDMR.strings.pref_novel_low_delay_warning)
+        } else {
+            ""
+        }
+
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_library_update),
             preferenceItems = persistentListOf(
@@ -227,7 +280,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     value = updateDelay,
                     valueRange = 0..15000,
                     title = stringResource(TDMR.strings.pref_novel_update_delay),
-                    subtitle = "Delay between novels for the same extension",
+                    subtitle = stringResource(TDMR.strings.pref_novel_update_delay_subtitle) + lowDelayWarning,
                     valueString = "${updateDelay}ms",
                     onValueChanged = { prefs.updateDelay().set(it) },
                     enabled = enabled,
@@ -235,8 +288,8 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                 Preference.PreferenceItem.SliderPreference(
                     value = parallelUpdates,
                     valueRange = 1..15,
-                    title = "Parallel novel updates",
-                    subtitle = "Number of different extensions updating simultaneously (not within same extension)",
+                    title = stringResource(TDMR.strings.pref_novel_parallel_updates),
+                    subtitle = stringResource(TDMR.strings.pref_novel_parallel_updates_summary),
                     valueString = "$parallelUpdates",
                     onValueChanged = { prefs.parallelNovelUpdates().set(it) },
                 ),
@@ -251,19 +304,25 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         val enabled = prefs.enableMassImportThrottling().collectAsState().value
         val massImportDelay = prefs.massImportDelay().collectAsState().value
 
+        val lowDelayWarning = if (massImportDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
+            stringResource(TDMR.strings.pref_novel_low_delay_warning)
+        } else {
+            ""
+        }
+
         return Preference.PreferenceGroup(
-            title = "Mass Import",
+            title = stringResource(TDMR.strings.pref_novel_mass_import_category),
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = prefs.enableMassImportThrottling(),
                     title = stringResource(TDMR.strings.pref_novel_mass_import_throttling),
-                    subtitle = "Apply delays between novels from the same source only",
+                    subtitle = stringResource(TDMR.strings.pref_novel_mass_import_throttling_subtitle),
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = massImportDelay,
                     valueRange = 0..15000,
                     title = stringResource(TDMR.strings.pref_novel_mass_import_delay),
-                    subtitle = "Delay between imports from the same source (different sources run concurrently)",
+                    subtitle = stringResource(TDMR.strings.pref_novel_mass_import_delay_subtitle) + lowDelayWarning,
                     valueString = "${massImportDelay}ms",
                     onValueChanged = { prefs.massImportDelay().set(it) },
                     enabled = enabled,
@@ -271,8 +330,8 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                 Preference.PreferenceItem.SliderPreference(
                     value = prefs.parallelMassImport().collectAsState().value,
                     valueRange = 1..15,
-                    title = "Concurrent Mass Imports",
-                    subtitle = "Number of different sources importing simultaneously (throttle between same source is in delay setting)",
+                    title = stringResource(TDMR.strings.pref_novel_concurrent_imports),
+                    subtitle = stringResource(TDMR.strings.pref_novel_concurrent_imports_summary),
                     valueString = "${prefs.parallelMassImport().collectAsState().value}",
                     onValueChanged = { prefs.parallelMassImport().set(it) },
                 ),
@@ -416,7 +475,6 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         val sourceManager = remember { Injekt.get<SourceManager>() }
         val novelSources = remember {
             sourceManager.getCatalogueSources()
-                .filterIsInstance<HttpSource>()
                 .filter { it.isNovelSource() }
         }
 

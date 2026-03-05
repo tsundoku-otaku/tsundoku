@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.library.LibraryUpdateNotifier
 import eu.kanade.tachiyomi.data.notification.NotificationHandler
+import eu.kanade.tachiyomi.data.translation.TranslationJob
 import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.CatalogueSource
@@ -310,14 +311,16 @@ class Downloader(
         if (override != null && override.enabled) {
             val baseDelay = override.downloadDelay?.toLong() ?: novelDownloadPreferences.downloadDelay().get().toLong()
             val randomRange = override.randomDelayRange ?: novelDownloadPreferences.randomDelayRange().get()
-            val randomDelay = if (randomRange > 0) Random.nextLong(0, randomRange.toLong()) else 0L
+            val randomMin = novelDownloadPreferences.randomDelayMin().get().toLong()
+            val randomDelay = if (randomRange > 0) Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1)) else 0L
             return baseDelay + randomDelay
         }
 
         // Use default settings
         val baseDelay = novelDownloadPreferences.downloadDelay().get().toLong()
         val randomRange = novelDownloadPreferences.randomDelayRange().get()
-        val randomDelay = if (randomRange > 0) Random.nextLong(0, randomRange.toLong()) else 0L
+        val randomMin = novelDownloadPreferences.randomDelayMin().get().toLong()
+        val randomDelay = if (randomRange > 0) Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1)) else 0L
 
         return baseDelay + randomDelay
     }
@@ -457,6 +460,10 @@ class Downloader(
                         }
                     }
                     DownloadJob.start(context)
+                } else if (!autoStart && !isRunning && novelDownloadPreferences.resumeQueueOnNewChapters().get()) {
+                    // Resume paused queue when new chapters are added, if preference enabled
+                    logcat(LogPriority.INFO) { "Resuming download queue: new chapters added while paused" }
+                    DownloadJob.start(context)
                 }
             }
         }
@@ -571,7 +578,7 @@ class Downloader(
 
             // Only rename the directory if it's downloaded
             if (downloadPreferences.saveChaptersAsCBZ().get()) {
-                archiveChapter(mangaDir, chapterDirname, tmpDir)
+                archiveChapter(mangaDir, chapterDirname, tmpDir, isNovel = download.source.isNovelSource())
             } else {
                 tmpDir.renameTo(chapterDirname)
             }
@@ -598,6 +605,7 @@ class Downloader(
                         chapter = chapter,
                         priority = TranslationService.PRIORITY_LOW,
                     )
+                    TranslationJob.start(context)
                 }
             }
         } catch (error: Throwable) {
@@ -870,9 +878,11 @@ class Downloader(
         mangaDir: UniFile,
         dirname: String,
         tmpDir: UniFile,
+        isNovel: Boolean = false,
     ) {
         val zip = mangaDir.createFile("$dirname.cbz$TMP_DIR_SUFFIX")!!
-        ZipWriter(context, zip).use { writer ->
+        val compressionLevel = if (isNovel) novelDownloadPreferences.zipCompressionLevel().get() else 0
+        ZipWriter(context, zip, compressionLevel).use { writer ->
             tmpDir.listFiles()?.forEach { file ->
                 writer.write(file)
             }

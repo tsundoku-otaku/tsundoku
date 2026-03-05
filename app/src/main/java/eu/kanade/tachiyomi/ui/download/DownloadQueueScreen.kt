@@ -156,8 +156,8 @@ object DownloadQueueScreen : Screen() {
         }
 
         val tabs = listOf(
-            "${stringResource(TDMR.strings.label_manga)} ($mangaCount)",
             "${stringResource(TDMR.strings.label_novels)} ($novelCount)",
+            "${stringResource(TDMR.strings.label_manga)} ($mangaCount)",
         )
 
         val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
@@ -203,8 +203,8 @@ object DownloadQueueScreen : Screen() {
                     },
                     navigateUp = navigator::pop,
                     actions = {
-                        if ((selectedTab == 0 && filteredMangaList.isNotEmpty()) ||
-                            (selectedTab == 1 && filteredNovelList.isNotEmpty())
+                        if ((selectedTab == 1 && filteredMangaList.isNotEmpty()) ||
+                            (selectedTab == 0 && filteredNovelList.isNotEmpty())
                         ) {
                             var sortExpanded by remember { mutableStateOf(false) }
                             var filterExpanded by remember { mutableStateOf(false) }
@@ -241,7 +241,7 @@ object DownloadQueueScreen : Screen() {
                                 expanded = sortExpanded && canReorder,
                                 onDismissRequest = onDismissRequest,
                             ) {
-                                if (selectedTab == 1) {
+                                if (selectedTab == 0) {
                                     // Novel queue sorts (series-level)
                                     DropdownMenuItem(
                                         text = {
@@ -449,8 +449,8 @@ object DownloadQueueScreen : Screen() {
                     },
                     expanded = fabExpanded,
                     modifier = Modifier.animateFloatingActionButton(
-                        visible = (selectedTab == 0 && mangaList.isNotEmpty()) ||
-                            (selectedTab == 1 && novelList.isNotEmpty()),
+                        visible = (selectedTab == 1 && mangaList.isNotEmpty()) ||
+                            (selectedTab == 0 && novelList.isNotEmpty()),
                         alignment = Alignment.BottomEnd,
                     ),
                 )
@@ -467,8 +467,8 @@ object DownloadQueueScreen : Screen() {
                     }
                 }
 
-                if ((selectedTab == 0 && filteredMangaList.isEmpty()) ||
-                    (selectedTab == 1 && filteredNovelList.isEmpty())
+                if ((selectedTab == 1 && filteredMangaList.isEmpty()) ||
+                    (selectedTab == 0 && filteredNovelList.isEmpty())
                 ) {
                     EmptyScreen(
                         stringRes = MR.strings.information_no_downloads,
@@ -485,7 +485,7 @@ object DownloadQueueScreen : Screen() {
                     val bottom = with(density) { contentPadding.calculateBottomPadding().toPx().roundToInt() }
 
                     Box(modifier = Modifier.nestedScroll(nestedScrollConnection)) {
-                        if (selectedTab == 0) {
+                        if (selectedTab == 1) {
                             AndroidView(
                                 modifier = Modifier.fillMaxWidth(),
                                 factory = { context ->

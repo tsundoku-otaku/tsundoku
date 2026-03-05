@@ -691,40 +691,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         page: ReaderPage,
         loader: eu.kanade.tachiyomi.ui.reader.loader.PageLoader,
         timeoutMs: Long,
-    ): Boolean {
-        // If already loaded and has content, don't trigger a second request.
-        if (!page.text.isNullOrBlank() && page.status is Page.State.Ready) {
-            logcat(LogPriority.DEBUG) { "NovelViewer: page already ready, text.length=${page.text?.length ?: 0}" }
-            return true
-        }
-
-        // Trigger loading if still queued.
-        // IMPORTANT: loadPage() never returns (suspends forever), so fire-and-forget with launch.
-        if (page.status is Page.State.Queue) {
-            scope.launch(Dispatchers.IO) {
-                loader.loadPage(page)
-            }
-        }
-
-        // Wait for statusFlow to emit Ready or Error
-        val finalState = withTimeout(timeoutMs) {
-            page.statusFlow.first { state ->
-                state is Page.State.Ready || state is Page.State.Error
-            }
-        }
-
-        return when (finalState) {
-            is Page.State.Ready -> {
-                logcat(LogPriority.DEBUG) { "NovelViewer: page ready, text.length=${page.text?.length ?: 0}" }
-                !page.text.isNullOrBlank()
-            }
-            is Page.State.Error -> {
-                logcat(LogPriority.ERROR) { "NovelViewer: page error: ${finalState.error.message}" }
-                false
-            }
-            else -> false
-        }
-    }
+    ): Boolean = NovelViewerTextUtils.awaitPageText("NovelViewer", page, loader, timeoutMs, scope)
 
     private var inlineLoadingView: TextView? = null
 
@@ -766,6 +733,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
             setTextColor(0xFFFF5252.toInt())
             setBackgroundColor(0x1AFF5252.toInt())
             gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                topMargin = 48
+                bottomMargin = 48
+            }
             setPadding(16, 24, 16, 24)
             setOnClickListener {
                 contentContainer.removeView(this)
@@ -1074,37 +1048,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         speakChunksFrom(0)
     }
 
-    private fun splitTextForTts(text: String, maxLength: Int): List<String> {
-        val chunks = mutableListOf<String>()
-        var remaining = text
-
-        while (remaining.isNotEmpty()) {
-            if (remaining.length <= maxLength) {
-                chunks.add(remaining)
-                break
-            }
-
-            // Find a good break point (sentence end, paragraph, or space)
-            var breakPoint = maxLength
-
-            // Try to find sentence end (. ! ?) before maxLength
-            val sentenceEnd = remaining.substring(0, maxLength).lastIndexOfAny(charArrayOf('.', '!', '?', '\n'))
-            if (sentenceEnd > maxLength / 2) {
-                breakPoint = sentenceEnd + 1
-            } else {
-                // Fall back to last space
-                val lastSpace = remaining.substring(0, maxLength).lastIndexOf(' ')
-                if (lastSpace > maxLength / 2) {
-                    breakPoint = lastSpace + 1
-                }
-            }
-
-            chunks.add(remaining.substring(0, breakPoint).trim())
-            remaining = remaining.substring(breakPoint).trim()
-        }
-
-        return chunks
-    }
+    private fun splitTextForTts(text: String, maxLength: Int): List<String> =
+        NovelViewerTextUtils.splitTextForTts(text, maxLength)
 
     private fun ensureTtsInitialized() {
         if (tts == null) {
@@ -1682,45 +1627,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         scrollView.setBackgroundColor(finalBgColor)
     }
 
-    private fun getThemeColors(theme: String): Pair<Int, Int> {
-        val backgroundColor = preferences.novelBackgroundColor().get()
-        val fontColor = preferences.novelFontColor().get()
-
-        return when (theme) {
-            "app" -> {
-                // Follow app theme - use actual Material theme colors
-                val typedValue = android.util.TypedValue()
-                val theme = activity.theme
-                val bgColor = if (theme.resolveAttribute(com.google.android.material.R.attr.colorSurface, typedValue, true)) {
-                    typedValue.data
-                } else {
-                    // Fallback: detect dark/light mode
-                    val nightMode = activity.resources.configuration.uiMode and
-                        android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                    if (nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES) 0xFF121212.toInt() else 0xFFFFFFFF.toInt()
-                }
-                val textColor = if (theme.resolveAttribute(com.google.android.material.R.attr.colorOnSurface, typedValue, true)) {
-                    typedValue.data
-                } else {
-                    val nightMode = activity.resources.configuration.uiMode and
-                        android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                    if (nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES) 0xFFE0E0E0.toInt() else 0xFF000000.toInt()
-                }
-                bgColor to textColor
-            }
-            "dark" -> 0xFF121212.toInt() to 0xFFE0E0E0.toInt()
-            "sepia" -> 0xFFF4ECD8.toInt() to 0xFF5B4636.toInt()
-            "black" -> 0xFF000000.toInt() to 0xFFCCCCCC.toInt()
-            "grey" -> 0xFF292832.toInt() to 0xFFCCCCCC.toInt()
-            "custom" -> {
-                // 0 = default, use fallback colors
-                val bg = if (backgroundColor != 0) backgroundColor else 0xFFFFFFFF.toInt()
-                val text = if (fontColor != 0) fontColor else 0xFF000000.toInt()
-                bg to text
-            }
-            else -> 0xFFFFFFFF.toInt() to 0xFF000000.toInt()
-        }
-    }
+    private fun getThemeColors(theme: String): Pair<Int, Int> =
+        NovelViewerTextUtils.getThemeColors(activity, preferences, theme)
 
     private fun setTextViewContent(textView: TextView, content: String) {
         // Check if raw HTML mode is enabled (for debugging)
@@ -1857,33 +1765,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
      * Rules are stored as JSON in the novelRegexReplacements preference.
      * Each enabled rule is applied in order — supports both plain text and regex patterns.
      */
-    private fun applyRegexReplacements(content: String): String {
-        val rulesJson = preferences.novelRegexReplacements().get()
-        if (rulesJson.isBlank() || rulesJson == "[]") return content
-
-        val rules: List<RegexReplacement> = try {
-            kotlinx.serialization.json.Json.decodeFromString(rulesJson)
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN) { "Failed to parse regex replacements: ${e.message}" }
-            return content
-        }
-
-        var result = content
-        for (rule in rules) {
-            if (!rule.enabled || rule.pattern.isBlank()) continue
-            try {
-                result = if (rule.isRegex) {
-                    val regex = Regex(rule.pattern)
-                    regex.replace(result, rule.replacement)
-                } else {
-                    result.replace(rule.pattern, rule.replacement)
-                }
-            } catch (e: Exception) {
-                logcat(LogPriority.WARN) { "Regex replacement '${rule.title}' failed: ${e.message}" }
-            }
-        }
-        return result
-    }
+    private fun applyRegexReplacements(content: String): String =
+        NovelViewerTextUtils.applyRegexReplacements(content, preferences)
 
     /**
      * Dismiss any active text selection (action mode / handles) without toggling
@@ -1908,88 +1791,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
      * Strips the chapter title from the beginning of the content.
      * Searches within the first ~500 characters for chapter title or name matches.
      */
-    private fun stripChapterTitle(content: String, chapterName: String): String {
-        val normalizedChapterName = chapterName.trim().lowercase()
-        // Search within first 500 chars for title (to handle leading whitespace/tags)
-        val searchArea = content.take(500)
+    private fun stripChapterTitle(content: String, chapterName: String): String =
+        NovelViewerTextUtils.stripChapterTitle(content, chapterName)
 
-        // Try to remove first heading (H1-H6) anywhere in search area
-        val headingRegex = """<h[1-6][^>]*>(.*?)</h[1-6]>""".toRegex(RegexOption.IGNORE_CASE)
-        val headingMatch = headingRegex.find(searchArea)
-        if (headingMatch != null) {
-            val headingText = headingMatch.groupValues[1].replace(Regex("<[^>]+>"), "").trim().lowercase()
-            if (isTitleMatch(headingText, normalizedChapterName)) {
-                return content.substring(0, headingMatch.range.first) +
-                    content.substring(headingMatch.range.last + 1)
-            }
-        }
-
-        // Try to remove first strong/b/em tag if it looks like a title
-        val strongRegex = """<(strong|b|em)[^>]*>(.*?)</\1>""".toRegex(RegexOption.IGNORE_CASE)
-        val strongMatch = strongRegex.find(searchArea)
-        if (strongMatch != null) {
-            val strongText = strongMatch.groupValues[2].replace(Regex("<[^>]+>"), "").trim().lowercase()
-            if (isTitleMatch(strongText, normalizedChapterName)) {
-                return content.substring(0, strongMatch.range.first) +
-                    content.substring(strongMatch.range.last + 1)
-            }
-        }
-
-        // Try to remove first paragraph if it matches chapter name
-        val paragraphRegex = """<p[^>]*>(.*?)</p>""".toRegex(RegexOption.IGNORE_CASE)
-        val pMatch = paragraphRegex.find(searchArea)
-        if (pMatch != null) {
-            val pText = pMatch.groupValues[1].replace(Regex("<[^>]+>"), "").trim().lowercase()
-            if (isTitleMatch(pText, normalizedChapterName)) {
-                return content.substring(0, pMatch.range.first) +
-                    content.substring(pMatch.range.last + 1)
-            }
-        }
-
-        // Try to remove first div or span if it matches chapter name
-        val divSpanRegex = """<(div|span)[^>]*>(.*?)</\1>""".toRegex(RegexOption.IGNORE_CASE)
-        val divMatch = divSpanRegex.find(searchArea)
-        if (divMatch != null) {
-            val divText = divMatch.groupValues[2].replace(Regex("<[^>]+>"), "").trim().lowercase()
-            if (isTitleMatch(divText, normalizedChapterName)) {
-                return content.substring(0, divMatch.range.first) +
-                    content.substring(divMatch.range.last + 1)
-            }
-        }
-
-        // Try to find and remove plain text that matches chapter name at the very start
-        val plainTextContent = content.replace(Regex("<[^>]+>"), " ").trim()
-        val firstLine = plainTextContent.lines().firstOrNull()?.trim()?.lowercase() ?: ""
-        if (firstLine.isNotEmpty() && isTitleMatch(firstLine, normalizedChapterName)) {
-            // Find where this text ends in the original HTML and remove it
-            val escapedFirstLine = Regex.escape(content.lines().firstOrNull()?.trim() ?: "")
-            if (escapedFirstLine.isNotEmpty()) {
-                val lineRegex = """^\s*$escapedFirstLine\s*""".toRegex(RegexOption.IGNORE_CASE)
-                return content.replace(lineRegex, "").trimStart()
-            }
-        }
-
-        // No title found to strip
-        return content
-    }
-
-    private fun isTitleMatch(text: String, chapterName: String): Boolean {
-        if (text.isEmpty() || chapterName.isEmpty()) return false
-        // Exact match
-        if (text == chapterName) return true
-        // Chapter name contains the text (e.g., "Chapter 1" contains "1")
-        if (chapterName.contains(text) && text.length > 2) return true
-        // Text contains chapter name
-        if (text.contains(chapterName)) return true
-        // Check for common chapter patterns
-        val chapterPatterns = listOf(
-            """chapter\s*\d+""".toRegex(RegexOption.IGNORE_CASE),
-            """ch\.?\s*\d+""".toRegex(RegexOption.IGNORE_CASE),
-            """episode\s*\d+""".toRegex(RegexOption.IGNORE_CASE),
-            """part\s*\d+""".toRegex(RegexOption.IGNORE_CASE),
-        )
-        return chapterPatterns.any { it.matches(text) && it.containsMatchIn(chapterName) }
-    }
+    private fun isTitleMatch(text: String, chapterName: String): Boolean =
+        NovelViewerTextUtils.isTitleMatch(text, chapterName)
 
     /**
      * Reloads the current chapter content.
@@ -2033,6 +1839,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
             text = "Error loading chapter: ${error.message}"
             setTextColor(0xFFFF5555.toInt())
             gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                1f,
+            )
             setPadding(32, 32, 32, 32)
         }
         contentContainer.removeAllViews()

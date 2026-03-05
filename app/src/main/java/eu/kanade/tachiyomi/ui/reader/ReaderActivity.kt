@@ -663,6 +663,7 @@ class ReaderActivity : BaseActivity() {
                 isTranslating = state.isTranslating,
                 onToggleTranslation = viewModel::toggleTranslation,
                 onLongPressTranslation = viewModel::openTranslationLanguageDialog,
+                onRetranslate = if (state.isTranslating) viewModel::retranslateCurrentChapter else null,
                 isTtsActive = isTtsActive,
                 isTtsPaused = isTtsPaused,
                 onToggleTts = {

@@ -22,12 +22,20 @@ class NovelDownloadPreferences(
      */
     fun downloadDelay() = preferenceStore.getInt(
         "novel_download_delay_ms",
-        2000, // Default 2 seconds
+        3000, // Default 3 seconds
     )
 
     /**
-     * Random delay range to add to base delay (in milliseconds)
-     * Actual delay = baseDelay + random(0, randomDelayRange)
+     * Minimum random delay to add to base delay (in milliseconds)
+     */
+    fun randomDelayMin() = preferenceStore.getInt(
+        "novel_download_random_delay_min_ms",
+        0,
+    )
+
+    /**
+     * Maximum random delay range to add to base delay (in milliseconds)
+     * Actual delay = baseDelay + random(randomDelayMin, randomDelayRange)
      */
     fun randomDelayRange() = preferenceStore.getInt(
         "novel_download_random_delay_ms",
@@ -47,7 +55,7 @@ class NovelDownloadPreferences(
      */
     fun updateDelay() = preferenceStore.getInt(
         "novel_update_delay_ms",
-        1500, // Default 1.5 seconds
+        3000, // Default 3 seconds
     )
 
     /**
@@ -71,7 +79,7 @@ class NovelDownloadPreferences(
      */
     fun massImportDelay() = preferenceStore.getInt(
         "novel_mass_import_delay_ms",
-        1000, // Default 1 second
+        3000, // Default 3 seconds
     )
 
     /**
@@ -121,6 +129,23 @@ class NovelDownloadPreferences(
     fun imageCompressionQuality() = preferenceStore.getInt(
         "novel_image_compression_quality",
         80,
+    )
+
+    /**
+     * Resume download queue when new chapters are added while paused
+     */
+    fun resumeQueueOnNewChapters() = preferenceStore.getBoolean(
+        "novel_resume_queue_on_new_chapters",
+        false,
+    )
+
+    /**
+     * ZIP compression level for novel chapter archives.
+     * 0 = store (no compression), 1-9 = deflate levels.
+     */
+    fun zipCompressionLevel() = preferenceStore.getInt(
+        "novel_zip_compression_level",
+        0, // Default to store for backwards compatibility
     )
 
     /**
