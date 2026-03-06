@@ -49,6 +49,7 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.random.Random
 
 object SettingsNovelDownloadScreen : SearchableSettings {
 
@@ -278,11 +279,11 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = updateDelay,
-                    valueRange = 0..15000,
+                    valueRange = 0..60000 step 10,
                     title = stringResource(TDMR.strings.pref_novel_update_delay),
                     subtitle = stringResource(TDMR.strings.pref_novel_update_delay_subtitle) + lowDelayWarning,
                     valueString = "${updateDelay}ms",
-                    onValueChanged = { prefs.updateDelay().set(it) },
+                    onValueChanged = { prefs.updateDelay().set(it + Random.nextInt(0, 9)) },
                     enabled = enabled,
                 ),
                 Preference.PreferenceItem.SliderPreference(
