@@ -339,7 +339,8 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                         val semaphore = if (source is NovelSource) novelSemaphore else defaultSemaphore
 
                         // Determine update throttling based on source type and overrides
-                        val updateThrottlingMs = if (source is NovelSource && novelThrottleEnabled) {
+                        Log.d("LibraryUpdate", "Source ${source?.name} novel: ${(source?.isNovelSource)}")
+                        val updateThrottlingMs = if ((source?.isNovelSource ?: false || source is NovelSource) && novelThrottleEnabled) {
                             val sourceId = source.id
                             val override = novelDownloadPreferences.getSourceOverride(sourceId)
                             if (override != null && override.enabled) {
@@ -365,8 +366,9 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                     delay(stagger)
                                 }
 
+                                Log.v("LibraryUpdate", "Index $index throttle $updateThrottlingMs")
                                 // Apply per-source throttling: delay only between updates from SAME source
-                                if (index > 0 && updateThrottlingMs > 0) {
+                                if (index > 0 && updateThrottlingMs != 0L) {
                                     Log.d("LibraryUpdate", "Throttling for ${updateThrottlingMs}ms")
                                     delay(updateThrottlingMs)
                                 }
