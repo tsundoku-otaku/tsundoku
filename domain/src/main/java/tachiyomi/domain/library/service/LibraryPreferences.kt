@@ -58,7 +58,7 @@ class LibraryPreferences(
 
     fun autoUpdateMetadata() = preferenceStore.getBoolean("auto_update_metadata", false)
 
-    fun autoUpdateThrottle() = preferenceStore.getInt("pref_library_update_throttle_ms", 0)
+    fun autoUpdateThrottle() = preferenceStore.getInt("pref_library_update_throttle_ms", 3000)
 
     fun joinedLibrary() = preferenceStore.getBoolean("pref_joined_library", false)
 
