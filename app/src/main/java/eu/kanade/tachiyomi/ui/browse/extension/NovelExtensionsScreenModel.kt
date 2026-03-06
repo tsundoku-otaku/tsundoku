@@ -22,13 +22,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import logcat.LogPriority
@@ -40,7 +37,7 @@ import uy.kohesive.injekt.api.get
 import kotlin.time.Duration.Companion.seconds
 
 class NovelExtensionsScreenModel(
-    preferences: SourcePreferences = Injekt.get(),
+    private val preferences: SourcePreferences = Injekt.get(),
     basePreferences: BasePreferences = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val jsPluginManager: JsPluginManager = Injekt.get(),
@@ -102,6 +99,8 @@ class NovelExtensionsScreenModel(
                 jsPluginManager.installedPlugins,
             ) { query, downloads, (_updates, _installed, _available, _untrusted), jsAvailable, jsInstalled ->
                 val searchQuery = query ?: ""
+                // Respect language filter for JS plugins (same as KT extensions)
+                val enabledLanguages = preferences.enabledLanguages().get()
 
                 buildMap {
 
@@ -170,7 +169,7 @@ class NovelExtensionsScreenModel(
                     val allJsExtensions = jsExtensions + installedOnlyExtensions
                     val jsUpdates = allJsExtensions.filter { it.hasUpdate }
                     val jsInstalledExt = allJsExtensions.filter { it.isInstalled && !it.hasUpdate }
-                    val jsAvailableExt = allJsExtensions.filter { !it.isInstalled }
+                    val jsAvailableExt = allJsExtensions.filter { !it.isInstalled && it.lang in enabledLanguages }
 
                     val updates = (_updates.filter { it.isNovel } + jsUpdates)
                         .filter(queryFilter(searchQuery)).map(extensionMapper(downloads))
