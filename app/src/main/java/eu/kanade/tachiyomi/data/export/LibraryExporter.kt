@@ -64,7 +64,11 @@ object LibraryExporter {
 
         // Lightweight lookups — avoids loading the full LibraryManga list which OOMs for large libraries
         val categoryIdToName: Map<Long, String> = if (options.includeCategory) {
-            try { getCategories.await().associate { it.id to it.name } } catch (_: Exception) { emptyMap() }
+            try {
+                getCategories.await().associate { it.id to it.name }
+            } catch (_: Exception) {
+                emptyMap()
+            }
         } else {
             emptyMap()
         }
@@ -74,7 +78,9 @@ object LibraryExporter {
                 val categoryRepo = Injekt.get<CategoryRepository>()
                 categoryRepo.getAllMangaCategoryPairs()
                     .groupBy({ it.first }, { it.second })
-            } catch (_: Exception) { emptyMap() }
+            } catch (_: Exception) {
+                emptyMap()
+            }
         } else {
             emptyMap()
         }
@@ -83,7 +89,9 @@ object LibraryExporter {
             try {
                 val mangaRepo = Injekt.get<MangaRepository>()
                 mangaRepo.getFavoriteIdAndTotalCount().toMap()
-            } catch (_: Exception) { emptyMap() }
+            } catch (_: Exception) {
+                emptyMap()
+            }
         } else {
             emptyMap()
         }
