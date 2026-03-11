@@ -16,6 +16,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.repository.SourcePagingSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.concurrent.atomic.AtomicInteger
 
 class SourceSearchPagingSource(
     source: CatalogueSource,
@@ -50,6 +51,11 @@ abstract class BaseSourcePagingSource(
     // Track highest page loaded for UI display
     private var highestPageLoaded = 0
 
+    // Capture the generation at creation time — only update the shared counter
+    // if this instance's generation still matches (prevents stale paging sources
+    // from corrupting the counter after a listing switch).
+    private val myGeneration = _generation.get()
+
     abstract suspend fun requestNextPage(currentPage: Int): MangasPage
 
     override suspend fun load(params: LoadParams<Long>): LoadResult<Long, Manga> {
@@ -73,8 +79,8 @@ abstract class BaseSourcePagingSource(
             }
             lastLoadTime = System.currentTimeMillis()
 
-            // Update global page tracker when a new highest page is loaded
-            if (page.toInt() > highestPageLoaded) {
+            // Update global page tracker only if this paging source is still current
+            if (myGeneration == _generation.get() && page.toInt() > highestPageLoaded) {
                 highestPageLoaded = page.toInt()
                 _currentPage.value = highestPageLoaded
             }
@@ -105,6 +111,10 @@ abstract class BaseSourcePagingSource(
         // Page load delay in milliseconds (can be updated from UI preferences)
         var pageLoadDelayMs = 0L
 
+        // Generation counter — incremented on every pager reset so stale paging
+        // sources (from a previous listing/filter) don't update the shared counter.
+        private val _generation = AtomicInteger(0)
+
         // Global current page state for UI display
         private val _currentPage = MutableStateFlow(1)
         val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
@@ -116,12 +126,14 @@ abstract class BaseSourcePagingSource(
         // Reset page counter (call when creating new pager)
         // Also resets the initial page override so future searches start from page 1
         fun resetPageCounter() {
+            _generation.incrementAndGet()
             _initialPageOverride = 1
             _currentPage.value = 1
         }
 
         // Set initial page for next pager creation
         fun setInitialPage(page: Int) {
+            _generation.incrementAndGet()
             _initialPageOverride = page
             _currentPage.value = page
         }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.browse.components.BaseSourceItem
+import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.ui.browse.source.SourcesScreenModel
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreenModel.Listing
 import eu.kanade.tachiyomi.util.system.LocaleHelper
@@ -81,6 +83,7 @@ fun SourcesScreen(
                         is SourceUiModel.Item -> SourceItem(
                             modifier = Modifier.animateItem(),
                             source = model.source,
+                            hasDefaultPreset = model.hasDefaultPreset,
                             onClickItem = onClickItem,
                             onLongClickItem = onLongClickItem,
                             onClickPin = onClickPin,
@@ -109,6 +112,7 @@ private fun SourceHeader(
 @Composable
 private fun SourceItem(
     source: Source,
+    hasDefaultPreset: Boolean,
     onClickItem: (Source, Listing) -> Unit,
     onLongClickItem: (Source) -> Unit,
     onClickPin: (Source) -> Unit,
@@ -120,6 +124,15 @@ private fun SourceItem(
         onClickItem = { onClickItem(source, Listing.Popular) },
         onLongClickItem = { onLongClickItem(source) },
         action = {
+            if (hasDefaultPreset) {
+                IconButton(onClick = { onClickItem(source, Listing.Search(query = null, filters = FilterList())) }) {
+                    Icon(
+                        imageVector = Icons.Outlined.FilterList,
+                        tint = MaterialTheme.colorScheme.primary,
+                        contentDescription = stringResource(MR.strings.action_filter),
+                    )
+                }
+            }
             if (source.supportsLatest) {
                 TextButton(onClick = { onClickItem(source, Listing.Latest) }) {
                     Text(
@@ -199,6 +212,6 @@ fun SourceOptionsDialog(
 }
 
 sealed interface SourceUiModel {
-    data class Item(val source: Source) : SourceUiModel
+    data class Item(val source: Source, val hasDefaultPreset: Boolean = false) : SourceUiModel
     data class Header(val language: String) : SourceUiModel
 }

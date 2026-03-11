@@ -298,6 +298,7 @@ class BrowseSourceScreenModel(
     fun setListing(listing: Listing) {
         // Reset initial page to 1 when listing changes (e.g., switching between Popular, Latest, Search)
         _initialPage.value = 1L
+        _targetEndPage.value = null
         mutableState.update { it.copy(listing = listing, toolbarQuery = null) }
     }
 
@@ -386,6 +387,7 @@ class BrowseSourceScreenModel(
 
         // Reset initial page to 1 when search/filters change
         _initialPage.value = 1L
+        _targetEndPage.value = null
 
         mutableState.update {
             it.copy(
@@ -432,6 +434,7 @@ class BrowseSourceScreenModel(
 
         // Reset initial page to 1 when genre search changes
         _initialPage.value = 1L
+        _targetEndPage.value = null
 
         mutableState.update {
             val listing = if (genreExists) {

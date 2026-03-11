@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.source.interactor.GetEnabledNovelSources
+import eu.kanade.domain.source.interactor.ManageFilterPresets
 import eu.kanade.domain.source.interactor.ToggleSource
 import eu.kanade.domain.source.interactor.ToggleSourcePin
 import eu.kanade.presentation.browse.SourceUiModel
@@ -28,6 +29,7 @@ class NovelSourcesScreenModel(
     private val getEnabledNovelSources: GetEnabledNovelSources = Injekt.get(),
     private val toggleSource: ToggleSource = Injekt.get(),
     private val toggleSourcePin: ToggleSourcePin = Injekt.get(),
+    private val manageFilterPresets: ManageFilterPresets = Injekt.get(),
 ) : StateScreenModel<NovelSourcesScreenModel.State>(State()) {
 
     private val _events = Channel<Event>(Int.MAX_VALUE)
@@ -79,7 +81,10 @@ class NovelSourcesScreenModel(
                         listOf(
                             SourceUiModel.Header(it.key),
                             *it.value.map { source ->
-                                SourceUiModel.Item(source)
+                                SourceUiModel.Item(
+                                    source = source,
+                                    hasDefaultPreset = manageFilterPresets.getDefaultPresetState(source.id) != null,
+                                )
                             }.toTypedArray(),
                         )
                     }
