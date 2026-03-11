@@ -429,6 +429,14 @@ class MangaRepositoryImpl(
         }
     }
 
+    override suspend fun getFavoriteIdAndTotalCount(): List<Pair<Long, Long>> {
+        return handler.awaitList {
+            mangasQueries.getFavoriteIdAndTotalCount { id, totalCount ->
+                id to totalCount
+            }
+        }
+    }
+
     override suspend fun getReadMangaNotInLibrary(): List<Manga> {
         return handler.awaitList {
             mangasQueries.getReadMangaNotInLibrary {

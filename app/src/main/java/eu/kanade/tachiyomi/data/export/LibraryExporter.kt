@@ -6,7 +6,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
@@ -60,19 +60,31 @@ object LibraryExporter {
         onProgress: (ExportProgress) -> Unit = {},
     ) {
         val sourceManager = Injekt.get<SourceManager>()
-        val mangaRepo = Injekt.get<MangaRepository>()
         val getCategories = Injekt.get<tachiyomi.domain.category.interactor.GetCategories>()
 
-        // Pre-fetch library entries and category names
-        val libraryMap: Map<Long, tachiyomi.domain.library.model.LibraryManga> = try {
-            mangaRepo.getLibraryManga().associateBy { it.manga.id }
-        } catch (_: Exception) {
+        // Lightweight lookups — avoids loading the full LibraryManga list which OOMs for large libraries
+        val categoryIdToName: Map<Long, String> = if (options.includeCategory) {
+            try { getCategories.await().associate { it.id to it.name } } catch (_: Exception) { emptyMap() }
+        } else {
             emptyMap()
         }
 
-        val categoryIdToName: Map<Long, String> = try {
-            getCategories.await().associate { it.id to it.name }
-        } catch (_: Exception) {
+        val mangaCategoryMap: Map<Long, List<Long>> = if (options.includeCategory) {
+            try {
+                val categoryRepo = Injekt.get<CategoryRepository>()
+                categoryRepo.getAllMangaCategoryPairs()
+                    .groupBy({ it.first }, { it.second })
+            } catch (_: Exception) { emptyMap() }
+        } else {
+            emptyMap()
+        }
+
+        val chapterCountMap: Map<Long, Long> = if (options.includeChapterCount) {
+            try {
+                val mangaRepo = Injekt.get<MangaRepository>()
+                mangaRepo.getFavoriteIdAndTotalCount().toMap()
+            } catch (_: Exception) { emptyMap() }
+        } else {
             emptyMap()
         }
 
@@ -100,8 +112,8 @@ object LibraryExporter {
             if (options.includeArtist) row.add(manga.artist)
 
             if (options.includeCategory) {
-                val lib = libraryMap[manga.id]
-                val catNames = lib?.categories?.mapNotNull { categoryIdToName[it] }?.joinToString("|") ?: ""
+                val catIds = mangaCategoryMap[manga.id] ?: emptyList()
+                val catNames = catIds.mapNotNull { categoryIdToName[it] }.joinToString("|")
                 row.add(catNames)
             }
 
@@ -135,7 +147,7 @@ object LibraryExporter {
             }
 
             if (options.includeChapterCount) {
-                val count = libraryMap[manga.id]?.totalChapters?.toString() ?: ""
+                val count = chapterCountMap[manga.id]?.toString() ?: ""
                 row.add(count)
             }
 

@@ -40,3 +40,6 @@ WHERE manga_id = :mangaId AND category_id = :categoryId;
 deleteBulkMangaCategories:
 DELETE FROM mangas_categories
 WHERE manga_id IN :mangaIds AND category_id IN :categoryIds;
+
+getAllMangaCategoryPairs:
+SELECT manga_id, category_id FROM mangas_categories;

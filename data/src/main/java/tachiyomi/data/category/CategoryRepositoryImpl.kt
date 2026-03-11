@@ -35,6 +35,14 @@ class CategoryRepositoryImpl(
         }
     }
 
+    override suspend fun getAllMangaCategoryPairs(): List<Pair<Long, Long>> {
+        return handler.awaitList {
+            mangas_categoriesQueries.getAllMangaCategoryPairs { mangaId, categoryId ->
+                mangaId to categoryId
+            }
+        }
+    }
+
     override suspend fun getCategoriesByContentType(contentType: Int): List<Category> {
         return handler.awaitList {
             categoriesQueries.getCategoriesByContentType(contentType.toLong(), ::mapCategory)

@@ -16,6 +16,11 @@ interface CategoryRepository {
 
     fun getCategoriesByMangaIdAsFlow(mangaId: Long): Flow<List<Category>>
 
+    /**
+     * Lightweight bulk query: returns all (manga_id, category_id) pairs.
+     */
+    suspend fun getAllMangaCategoryPairs(): List<Pair<Long, Long>>
+
     suspend fun getCategoriesByContentType(contentType: Int): List<Category>
 
     fun getCategoriesByContentTypeAsFlow(contentType: Int): Flow<List<Category>>
