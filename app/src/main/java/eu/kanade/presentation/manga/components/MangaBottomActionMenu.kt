@@ -315,9 +315,6 @@ fun LibraryBottomActionMenu(
     onTranslateClicked: (() -> Unit)? = null,
     onRemoveChaptersClicked: (() -> Unit)? = null,
     onExportEpubClicked: (() -> Unit)? = null,
-    onClearCoversClicked: (() -> Unit)? = null,
-    onClearDescriptionsClicked: (() -> Unit)? = null,
-    onClearTagsClicked: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
         visible = visible,
@@ -468,33 +465,6 @@ fun LibraryBottomActionMenu(
                                     onClick = {
                                         overflowMenuOpen = false
                                         onExportEpubClicked()
-                                    },
-                                )
-                            }
-                            if (onClearCoversClicked != null) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(TDMR.strings.action_clear_covers)) },
-                                    onClick = {
-                                        overflowMenuOpen = false
-                                        onClearCoversClicked()
-                                    },
-                                )
-                            }
-                            if (onClearDescriptionsClicked != null) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(TDMR.strings.action_clear_descriptions)) },
-                                    onClick = {
-                                        overflowMenuOpen = false
-                                        onClearDescriptionsClicked()
-                                    },
-                                )
-                            }
-                            if (onClearTagsClicked != null) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(TDMR.strings.action_clear_tags)) },
-                                    onClick = {
-                                        overflowMenuOpen = false
-                                        onClearTagsClicked()
                                     },
                                 )
                             }

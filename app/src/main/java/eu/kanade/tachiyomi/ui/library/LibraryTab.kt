@@ -181,9 +181,6 @@ data object LibraryTab : Tab {
                         screenModel.clearSelection()
                     },
                     onTranslateClicked = screenModel::translateSelectedNovels,
-                    onClearCoversClicked = screenModel::clearCoversForSelection,
-                    onClearDescriptionsClicked = screenModel::clearDescriptionsForSelection,
-                    onClearTagsClicked = screenModel::clearTagsForSelection,
                 )
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -290,8 +287,11 @@ data object LibraryTab : Tab {
                 DeleteLibraryMangaDialog(
                     containsLocalManga = dialog.manga.any(Manga::isLocal),
                     onDismissRequest = onDismissRequest,
-                    onConfirm = { deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations ->
-                        screenModel.removeMangas(dialog.manga, deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations)
+                    onConfirm = { deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations, clearCovers, clearDescriptions, clearTags ->
+                        screenModel.removeMangas(
+                            dialog.manga, deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations,
+                            clearCovers, clearDescriptions, clearTags,
+                        )
                         screenModel.clearSelection()
                     },
                 )

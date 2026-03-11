@@ -203,9 +203,6 @@ data object NovelsTab : Tab {
                     },
                     onRemoveChaptersClicked = screenModel::openRemoveChaptersDialog,
                     onExportEpubClicked = screenModel::openExportEpubDialog,
-                    onClearCoversClicked = screenModel::clearCoversForSelection,
-                    onClearDescriptionsClicked = screenModel::clearDescriptionsForSelection,
-                    onClearTagsClicked = screenModel::clearTagsForSelection,
                 )
             },
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -312,8 +309,11 @@ data object NovelsTab : Tab {
                 DeleteLibraryMangaDialog(
                     containsLocalManga = dialog.manga.any(Manga::isLocal),
                     onDismissRequest = onDismissRequest,
-                    onConfirm = { deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations ->
-                        screenModel.removeMangas(dialog.manga, deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations)
+                    onConfirm = { deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations, clearCovers, clearDescriptions, clearTags ->
+                        screenModel.removeMangas(
+                            dialog.manga, deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations,
+                            clearCovers, clearDescriptions, clearTags,
+                        )
                         screenModel.clearSelection()
                     },
                 )

@@ -642,4 +642,17 @@
     <string name="skip_update_days">Skip if updated in last %d day(s)</string>
     <string name="novel_ext_repos_js_header">JS Plugin Repos</string>
     <string name="novel_ext_repos_kt_header">Kotlin Extension Repos</string>
+
+    <!-- Library clear notifications -->
+    <string name="channel_library_clear">Library Clear</string>
+    <string name="library_clear_clearing_covers">Clearing covers</string>
+    <string name="library_clear_clearing_descriptions">Clearing descriptions</string>
+    <string name="library_clear_clearing_tags">Clearing tags</string>
+    <string name="library_clear_clearing_chapters">Clearing chapters</string>
+    <string name="library_clear_clearing">Clearing</string>
+    <string name="library_clear_complete_title">Clear Complete</string>
+    <string name="library_clear_cleared_covers">Cleared covers for %d entries</string>
+    <string name="library_clear_cleared_descriptions">Cleared descriptions for %d entries</string>
+    <string name="library_clear_cleared_tags">Cleared tags for %d entries</string>
+    <string name="library_clear_cleared_chapters">Cleared chapters for %d entries</string>
 </resources>

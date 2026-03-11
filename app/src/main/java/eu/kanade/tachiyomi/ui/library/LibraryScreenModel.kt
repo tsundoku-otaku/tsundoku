@@ -25,6 +25,7 @@ import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.epub.EpubExportJob
+import eu.kanade.tachiyomi.data.library.LibraryClearJob
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.translation.TranslationJob
@@ -840,6 +841,9 @@ class LibraryScreenModel(
         deleteChapters: Boolean,
         clearChaptersFromDb: Boolean = false,
         deleteTranslations: Boolean = false,
+        clearCovers: Boolean = false,
+        clearDescriptions: Boolean = false,
+        clearTags: Boolean = false,
     ) {
         screenModelScope.launchNonCancellable {
             if (deleteFromLibrary) {
@@ -874,9 +878,22 @@ class LibraryScreenModel(
                 }
             }
 
+            // Delegate clear operations to LibraryClearJob (runs as background WorkManager job)
+            val mangaIds = mangas.map { it.id }
+            val context = Injekt.get<android.app.Application>()
+            if (clearCovers) {
+                LibraryClearJob.start(context, mangaIds, LibraryClearJob.OP_CLEAR_COVERS)
+            }
+            if (clearDescriptions) {
+                LibraryClearJob.start(context, mangaIds, LibraryClearJob.OP_CLEAR_DESCRIPTIONS)
+            }
+            if (clearTags) {
+                LibraryClearJob.start(context, mangaIds, LibraryClearJob.OP_CLEAR_TAGS)
+            }
+
             // Refresh library UI after modifications
             if (deleteFromLibrary) {
-            } else if (deleteChapters || clearChaptersFromDb || deleteTranslations) {
+            } else if (deleteChapters || clearChaptersFromDb || deleteTranslations || clearCovers || clearDescriptions || clearTags) {
                 getLibraryManga.notifyChanged()
             }
         }
@@ -889,26 +906,8 @@ class LibraryScreenModel(
         val mangas = state.value.selectedManga
         if (mangas.isEmpty()) return
 
-        screenModelScope.launchNonCancellable {
-            mangas.forEach { manga ->
-                if (!manga.isLocal()) {
-                    coverCache.deleteFromCache(manga, true)
-                }
-            }
-            val updates = mangas.map {
-                MangaUpdate(
-                    id = it.id,
-                    thumbnailUrl = "",
-                    coverLastModified = System.currentTimeMillis(),
-                )
-            }
-            updateManga.awaitAll(updates)
-
-            snackbarHostState.showSnackbar(
-                message = "Cleared covers for ${mangas.size} entries",
-                duration = SnackbarDuration.Short,
-            )
-        }
+        val context = Injekt.get<android.app.Application>()
+        LibraryClearJob.start(context, mangas.map { it.id }, LibraryClearJob.OP_CLEAR_COVERS)
         clearSelection()
     }
 
@@ -919,17 +918,8 @@ class LibraryScreenModel(
         val mangas = state.value.selectedManga
         if (mangas.isEmpty()) return
 
-        screenModelScope.launchNonCancellable {
-            val updates = mangas.map {
-                MangaUpdate(id = it.id, description = "")
-            }
-            updateManga.awaitAll(updates)
-
-            snackbarHostState.showSnackbar(
-                message = "Cleared descriptions for ${mangas.size} entries",
-                duration = SnackbarDuration.Short,
-            )
-        }
+        val context = Injekt.get<android.app.Application>()
+        LibraryClearJob.start(context, mangas.map { it.id }, LibraryClearJob.OP_CLEAR_DESCRIPTIONS)
         clearSelection()
     }
 
@@ -940,17 +930,8 @@ class LibraryScreenModel(
         val mangas = state.value.selectedManga
         if (mangas.isEmpty()) return
 
-        screenModelScope.launchNonCancellable {
-            val updates = mangas.map {
-                MangaUpdate(id = it.id, genre = emptyList())
-            }
-            updateManga.awaitAll(updates)
-
-            snackbarHostState.showSnackbar(
-                message = "Cleared tags for ${mangas.size} entries",
-                duration = SnackbarDuration.Short,
-            )
-        }
+        val context = Injekt.get<android.app.Application>()
+        LibraryClearJob.start(context, mangas.map { it.id }, LibraryClearJob.OP_CLEAR_TAGS)
         clearSelection()
     }
 
@@ -1189,12 +1170,8 @@ class LibraryScreenModel(
     }
 
     fun removeChaptersFromSelectedManga(mangaList: List<Manga>) {
-        screenModelScope.launchNonCancellable {
-            mangaList.forEach { manga ->
-                val chapters = getChaptersByMangaId.await(manga.id)
-                removeChapters.await(chapters)
-            }
-        }
+        val context = Injekt.get<android.app.Application>()
+        LibraryClearJob.start(context, mangaList.map { it.id }, LibraryClearJob.OP_CLEAR_CHAPTERS)
         clearSelection()
     }
 

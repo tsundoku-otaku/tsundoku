@@ -19,29 +19,61 @@ import tachiyomi.presentation.core.i18n.stringResource
 fun DeleteLibraryMangaDialog(
     containsLocalManga: Boolean,
     onDismissRequest: () -> Unit,
-    onConfirm: (Boolean, Boolean, Boolean, Boolean) -> Unit,
+    onConfirm: (
+        removeFromLibrary: Boolean,
+        deleteDownloads: Boolean,
+        clearChaptersFromDb: Boolean,
+        deleteTranslations: Boolean,
+        clearCovers: Boolean,
+        clearDescriptions: Boolean,
+        clearTags: Boolean,
+    ) -> Unit,
 ) {
     var removeFromLibrary by remember { mutableStateOf(false) }
     var deleteDownloads by remember { mutableStateOf(false) }
     var clearChaptersFromDb by remember { mutableStateOf(false) }
     var deleteTranslations by remember { mutableStateOf(false) }
+    var clearCovers by remember { mutableStateOf(false) }
+    var clearDescriptions by remember { mutableStateOf(false) }
+    var clearTags by remember { mutableStateOf(false) }
+
+    // Cascading: "remove from library" auto-checks clear operations (but not downloads/translations)
+    fun onRemoveFromLibraryChanged(checked: Boolean) {
+        removeFromLibrary = checked
+        if (checked) {
+            clearChaptersFromDb = true
+            clearCovers = true
+            clearDescriptions = true
+            clearTags = true
+        }
+    }
 
     data class CheckboxItem(
         val label: StringResource,
         val checked: Boolean,
         val onCheckedChange: (Boolean) -> Unit,
+        val enabled: Boolean = true,
     )
 
-    val checkboxItems = remember(containsLocalManga, removeFromLibrary, deleteDownloads, clearChaptersFromDb, deleteTranslations) {
+    val checkboxItems = remember(
+        containsLocalManga, removeFromLibrary, deleteDownloads, clearChaptersFromDb,
+        deleteTranslations, clearCovers, clearDescriptions, clearTags,
+    ) {
         buildList {
-            add(CheckboxItem(MR.strings.manga_from_library, removeFromLibrary) { removeFromLibrary = it })
+            add(CheckboxItem(MR.strings.manga_from_library, removeFromLibrary, { onRemoveFromLibraryChanged(it) }))
             if (!containsLocalManga) {
-                add(CheckboxItem(MR.strings.downloaded_chapters, deleteDownloads) { deleteDownloads = it })
+                add(CheckboxItem(MR.strings.downloaded_chapters, deleteDownloads, { deleteDownloads = it }))
             }
-            add(CheckboxItem(TDMR.strings.chapters_from_database, clearChaptersFromDb) { clearChaptersFromDb = it })
-            add(CheckboxItem(TDMR.strings.translated_chapters, deleteTranslations) { deleteTranslations = it })
+            add(CheckboxItem(TDMR.strings.chapters_from_database, clearChaptersFromDb, { clearChaptersFromDb = it }, enabled = !removeFromLibrary))
+            add(CheckboxItem(TDMR.strings.translated_chapters, deleteTranslations, { deleteTranslations = it }))
+            add(CheckboxItem(TDMR.strings.action_clear_covers, clearCovers, { clearCovers = it }, enabled = !removeFromLibrary))
+            add(CheckboxItem(TDMR.strings.action_clear_descriptions, clearDescriptions, { clearDescriptions = it }, enabled = !removeFromLibrary))
+            add(CheckboxItem(TDMR.strings.action_clear_tags, clearTags, { clearTags = it }, enabled = !removeFromLibrary))
         }
     }
+
+    val anyChecked = removeFromLibrary || deleteDownloads || clearChaptersFromDb ||
+        deleteTranslations || clearCovers || clearDescriptions || clearTags
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -52,7 +84,7 @@ fun DeleteLibraryMangaDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = removeFromLibrary || deleteDownloads || clearChaptersFromDb || deleteTranslations,
+                enabled = anyChecked,
                 onClick = {
                     onDismissRequest()
                     onConfirm(
@@ -60,6 +92,9 @@ fun DeleteLibraryMangaDialog(
                         deleteDownloads && !containsLocalManga,
                         clearChaptersFromDb,
                         deleteTranslations,
+                        clearCovers,
+                        clearDescriptions,
+                        clearTags,
                     )
                 },
             ) {
@@ -76,6 +111,7 @@ fun DeleteLibraryMangaDialog(
                         label = stringResource(item.label),
                         checked = item.checked,
                         onCheckedChange = item.onCheckedChange,
+                        enabled = item.enabled,
                     )
                 }
             }
