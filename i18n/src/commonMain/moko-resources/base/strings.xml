@@ -1213,7 +1213,7 @@
     <string name="pref_db_statistics">Database statistics</string>
     <string name="pref_db_statistics_subtitle">Show detailed database size breakdown</string>
     <string name="pref_db_maintenance">Database maintenance</string>
-    <string name="pref_db_maintenance_subtitle">VACUUM, REINDEX, and ANALYZE database</string>
+    <string name="pref_db_maintenance_subtitle">ANALYZE, REINDEX, and VACUUM. VACUUM temporarily needs free space equal to the database size.</string>
     <string name="pref_bulk_remove_url">Bulk remove by URL</string>
     <string name="pref_bulk_remove_url_subtitle">Remove multiple entries from library by URL list</string>
 

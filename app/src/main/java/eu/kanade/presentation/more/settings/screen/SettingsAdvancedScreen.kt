@@ -56,6 +56,7 @@ import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.advanced.ClearDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.debug.DebugInfoScreen
+import eu.kanade.tachiyomi.data.database.DatabaseMaintenanceJob
 import eu.kanade.tachiyomi.data.download.DownloadCache
 import eu.kanade.tachiyomi.data.library.MetadataUpdateJob
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -102,6 +103,7 @@ import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
@@ -890,8 +892,8 @@ object SettingsAdvancedScreen : SearchableSettings {
                                         val estChapterTableSize = (chapterCount * estChapterRowSize).toLong()
                                         appendLine("Chapters data: ~${formatSize(estChapterTableSize)}")
 
-                                        // 4 indexes on chapters table, each ~16-40 bytes per row
-                                        val estChapterIndexSize = chapterCount * 100 // ~100 bytes per row for all indexes
+                                        // 6 indexes on chapters table, each ~16-40 bytes per row
+                                        val estChapterIndexSize = chapterCount * 150 // ~150 bytes per row for all indexes
                                         appendLine("Chapter indexes: ~${formatSize(estChapterIndexSize)}")
 
                                         if (avgDescBytes > 0 && mangaCount > 0) {
@@ -919,47 +921,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_db_maintenance),
                     subtitle = stringResource(MR.strings.pref_db_maintenance_subtitle),
                     onClick = {
-                        scope.launch {
-                            try {
-                                val handler = Injekt.get<tachiyomi.data.DatabaseHandler>()
-
-                                // Get stats before
-                                val statsBefore = handler.getDatabaseStats()
-                                val sizeBefore = statsBefore["total_size_bytes"] ?: 0L
-
-                                withUIContext { context.toast("Running ANALYZE...") }
-                                handler.analyze()
-
-                                withUIContext { context.toast("Running REINDEX...") }
-                                handler.reindex()
-
-                                withUIContext { context.toast("Running VACUUM (this may take a while)...") }
-                                handler.vacuum()
-
-                                // Get stats after
-                                val statsAfter = handler.getDatabaseStats()
-                                val sizeAfter = statsAfter["total_size_bytes"] ?: 0L
-                                val saved = sizeBefore - sizeAfter
-
-                                val savedStr = when {
-                                    saved >= 1024 * 1024 -> "%.2f MB".format(saved / (1024.0 * 1024.0))
-                                    saved >= 1024 -> "%.2f KB".format(saved / 1024.0)
-                                    else -> "$saved bytes"
-                                }
-
-                                withUIContext {
-                                    if (saved > 0) {
-                                        context.toast("Database optimized! Saved $savedStr")
-                                    } else {
-                                        context.toast("Database optimized!")
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                logcat(LogPriority.ERROR, e) { "Database maintenance failed" }
-                                withUIContext {
-                                    context.toast("Database maintenance failed: ${e.message}")
-                                }
-                            }
+                        if (DatabaseMaintenanceJob.isRunning(context)) {
+                            context.toast(context.contextStringResource(TDMR.strings.db_maintenance_already_running))
+                        } else {
+                            DatabaseMaintenanceJob.start(context)
+                            context.toast(context.contextStringResource(TDMR.strings.db_maintenance_started))
                         }
                     },
                 ),

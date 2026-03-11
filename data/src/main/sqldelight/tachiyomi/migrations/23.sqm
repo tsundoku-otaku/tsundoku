@@ -1,0 +1,5 @@
+-- Drop redundant chapter indexes:
+-- chapters_manga_id_index(manga_id) is covered by chapters_library_aggregate_index(manga_id, read, bookmark, date_upload, date_fetch)
+-- chapters_unread_by_manga_index(manga_id, read) WHERE read=0 is covered by chapters_library_aggregate_index leading columns
+DROP INDEX IF EXISTS chapters_manga_id_index;
+DROP INDEX IF EXISTS chapters_unread_by_manga_index;

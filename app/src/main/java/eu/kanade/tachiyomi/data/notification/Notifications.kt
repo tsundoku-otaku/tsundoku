@@ -111,6 +111,11 @@ object Notifications {
     const val CHANNEL_LIBRARY_CLEAR = "library_clear_channel"
     const val ID_LIBRARY_CLEAR_PROGRESS = -801
     const val ID_LIBRARY_CLEAR_COMPLETE = -802
+     * Notification channel and ids used by database maintenance.
+     */
+    const val CHANNEL_DB_MAINTENANCE = "db_maintenance_channel"
+    const val ID_DB_MAINTENANCE_PROGRESS = -901
+    const val ID_DB_MAINTENANCE_COMPLETE = -902
 
     private val deprecatedChannels = listOf(
         "downloader_channel",
@@ -221,6 +226,8 @@ object Notifications {
                 },
                 buildNotificationChannel(CHANNEL_LIBRARY_CLEAR, IMPORTANCE_LOW) {
                     setName(context.stringResource(TDMR.strings.channel_library_clear))
+                buildNotificationChannel(CHANNEL_DB_MAINTENANCE, IMPORTANCE_LOW) {
+                    setName(context.stringResource(TDMR.strings.channel_db_maintenance))
                     setShowBadge(false)
                 },
             ),
