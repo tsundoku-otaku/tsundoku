@@ -50,6 +50,11 @@ interface MangaRepository {
      */
     suspend fun getFavoriteIdAndGenre(): List<Pair<Long, List<String>?>>
 
+    /**
+     * Lightweight query: returns (manga_id, total_count) for favorites.
+     */
+    suspend fun getFavoriteIdAndTotalCount(): List<Pair<Long, Long>>
+
     suspend fun getReadMangaNotInLibrary(): List<Manga>
 
     suspend fun getLibraryManga(): List<LibraryManga>

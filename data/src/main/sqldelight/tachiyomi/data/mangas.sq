@@ -208,6 +208,12 @@ SELECT _id, genre
 FROM mangas
 WHERE favorite = 1 AND genre IS NOT NULL AND genre != '';
 
+-- Lightweight query for export (only _id + total_count, avoids loading full Manga/LibraryManga)
+getFavoriteIdAndTotalCount:
+SELECT _id, total_count
+FROM mangas
+WHERE favorite = 1;
+
 getFavoriteBySourceId:
 SELECT *
 FROM mangas
