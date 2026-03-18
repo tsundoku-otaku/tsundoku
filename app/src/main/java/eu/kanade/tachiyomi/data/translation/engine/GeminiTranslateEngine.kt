@@ -120,7 +120,7 @@ Text:
 $text
 
 Translation:
-""".trimIndent()
+        """.trimIndent()
 
         val request = GenerateRequest(
             contents = listOf(Content(parts = listOf(Part(prompt)))),

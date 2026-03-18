@@ -261,7 +261,6 @@ object SettingsTranslationScreen : SearchableSettings {
         val geminiKey by prefs.geminiApiKey().collectAsState()
         val geminiModel by prefs.geminiModel().collectAsState()
 
-
         // Pre-resolve strings for non-composable testButton function
         val testEngineFormat = stringResource(MR.strings.pref_translation_test_engine)
         val testingStr = stringResource(MR.strings.pref_translation_testing)

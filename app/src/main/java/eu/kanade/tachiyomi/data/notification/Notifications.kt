@@ -111,6 +111,7 @@ object Notifications {
     const val CHANNEL_LIBRARY_CLEAR = "library_clear_channel"
     const val ID_LIBRARY_CLEAR_PROGRESS = -801
     const val ID_LIBRARY_CLEAR_COMPLETE = -802
+
     /**
      * Notification channel and ids used by database maintenance.
      */
