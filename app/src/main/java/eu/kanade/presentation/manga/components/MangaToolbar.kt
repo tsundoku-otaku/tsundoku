@@ -52,8 +52,6 @@ fun MangaToolbar(
     onClickTranslate: (() -> Unit)? = null,
     onClickTranslateDownloaded: (() -> Unit)? = null,
     onClickExportEpub: (() -> Unit)? = null,
-    showSourceName: Boolean = true,
-    onToggleSourceNameVisibility: (() -> Unit)? = null,
     onClickScrollToTop: (() -> Unit)? = null,
     onClickScrollToLastRead: (() -> Unit)? = null,
     onClickScrollToBottom: (() -> Unit)? = null,
@@ -201,20 +199,6 @@ fun MangaToolbar(
                             AppBar.OverflowAction(
                                 title = stringResource(MR.strings.action_share),
                                 onClick = onClickShare,
-                            ),
-                        )
-                    }
-                    if (onToggleSourceNameVisibility != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = stringResource(
-                                    if (showSourceName) {
-                                        TDMR.strings.action_hide_source_name
-                                    } else {
-                                        TDMR.strings.action_show_source_name
-                                    },
-                                ),
-                                onClick = onToggleSourceNameVisibility,
                             ),
                         )
                     }

@@ -383,8 +383,6 @@ private fun MangaScreenSmallImpl(
                 onClickTranslate = onTranslateClicked,
                 onClickTranslateDownloaded = onTranslateDownloadedClicked,
                 onClickExportEpub = onExportEpubClicked,
-                showSourceName = showSourceName,
-                onToggleSourceNameVisibility = onToggleSourceNameVisibility,
                 onClickScrollToTop = {
                     scrollScope.launch { chapterListState.animateScrollToItem(0) }
                 },
@@ -695,8 +693,6 @@ fun MangaScreenLargeImpl(
                 onClickTranslate = onTranslateClicked,
                 onClickTranslateDownloaded = onTranslateDownloadedClicked,
                 onClickExportEpub = onExportEpubClicked,
-                showSourceName = showSourceName,
-                onToggleSourceNameVisibility = onToggleSourceNameVisibility,
                 onClickScrollToTop = {
                     scrollScope.launch { chapterListState.animateScrollToItem(0) }
                 },
