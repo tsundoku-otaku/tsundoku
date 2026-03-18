@@ -146,6 +146,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                     true
                 },
             ),
+            Preference.PreferenceItem.SwitchPreference(
+                preference = libraryPreferences.showMangaSourceName(),
+                title = stringResource(TDMR.strings.pref_show_manga_source_name),
+                subtitle = stringResource(TDMR.strings.pref_show_manga_source_name_summary),
+            ),
             Preference.PreferenceItem.TextPreference(
                 title = stringResource(MR.strings.pref_debug_info),
                 onClick = { navigator.push(DebugInfoScreen()) },
@@ -1161,11 +1166,6 @@ object SettingsAdvancedScreen : SearchableSettings {
                     preference = libraryPreferences.disallowNonAsciiFilenames(),
                     title = stringResource(MR.strings.pref_disallow_non_ascii_filenames),
                     subtitle = stringResource(MR.strings.pref_disallow_non_ascii_filenames_details),
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = libraryPreferences.showMangaSourceName(),
-                    title = stringResource(TDMR.strings.pref_show_manga_source_name),
-                    subtitle = stringResource(TDMR.strings.pref_show_manga_source_name_summary),
                 ),
 
             ),
