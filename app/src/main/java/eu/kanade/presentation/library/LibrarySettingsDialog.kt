@@ -1,6 +1,7 @@
 package eu.kanade.presentation.library
 
 import android.content.res.Configuration
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -20,7 +21,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
@@ -53,6 +56,7 @@ import eu.kanade.presentation.components.TabbedDialogPaddings
 import eu.kanade.tachiyomi.ui.library.LibrarySettingsScreenModel
 import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.coroutines.delay
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.library.model.LibraryDisplayMode
@@ -739,21 +743,71 @@ private fun ColumnScope.ExtensionsPage(
     val excludedExtensions by screenModel.libraryPreferences.excludedExtensions().collectAsState()
     val availableExtensions by screenModel.extensionsFlow.collectAsState()
     val isLoading by screenModel.isLoading.collectAsState()
+    var showRefreshCompleted by remember { mutableStateOf(false) }
+    var refreshTriggered by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isLoading) {
+        if (isLoading) {
+            showRefreshCompleted = false
+        } else if (refreshTriggered) {
+            refreshTriggered = false
+            showRefreshCompleted = true
+            delay(900)
+            showRefreshCompleted = false
+        }
+    }
 
     // Extensions are now auto-loaded in the ScreenModel's init block
     // No need for LaunchedEffect here
 
     HeadingItem(MR.strings.label_extensions)
 
-    // Refresh button
+    // Compact action row: refresh/check/uncheck
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.End,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        TextButton(onClick = { screenModel.refreshExtensions(forceRefresh = true) }) {
-            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+        TextButton(
+            onClick = {
+                refreshTriggered = true
+                screenModel.refreshExtensions(forceRefresh = true)
+            },
+            enabled = !isLoading,
+            modifier = Modifier.weight(1f),
+        ) {
+            Crossfade(targetState = when {
+                isLoading -> "loading"
+                showRefreshCompleted -> "done"
+                else -> "idle"
+            }) { state ->
+                when (state) {
+                    "loading" -> CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    "done" -> Icon(Icons.Default.Done, contentDescription = "Refreshed")
+                    else -> Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                }
+            }
             Spacer(Modifier.width(4.dp))
-            Text("Refresh List")
+            Text(if (showRefreshCompleted) "Refreshed" else "Refresh")
+        }
+
+        TextButton(
+            onClick = { screenModel.checkAllExtensions() },
+            modifier = Modifier.weight(1f),
+        ) {
+            Icon(Icons.Default.Check, contentDescription = "Check all")
+            Spacer(Modifier.width(4.dp))
+            Text("Check All")
+        }
+
+        TextButton(
+            onClick = { screenModel.uncheckAllExtensions() },
+            modifier = Modifier.weight(1f),
+        ) {
+            Icon(Icons.Default.Clear, contentDescription = "Uncheck all")
+            Spacer(Modifier.width(4.dp))
+            Text("Uncheck All")
         }
     }
 
@@ -773,27 +827,6 @@ private fun ColumnScope.ExtensionsPage(
             Text("Loading extensions...")
         }
     } else {
-        // Check All / Uncheck All buttons
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TextButton(
-                onClick = { screenModel.checkAllExtensions() },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Check All")
-            }
-            TextButton(
-                onClick = { screenModel.uncheckAllExtensions() },
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("Uncheck All")
-            }
-        }
-
         // Show count of missing sources
         val stubCount = availableExtensions.count { it.isStub }
         if (stubCount > 0) {
