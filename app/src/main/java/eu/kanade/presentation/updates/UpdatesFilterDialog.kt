@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
+import eu.kanade.presentation.components.toTabTitles
 import eu.kanade.tachiyomi.ui.updates.UpdatesSettingsScreenModel
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.core.common.preference.getAndSet
@@ -39,7 +40,7 @@ fun UpdatesFilterDialog(
         onDismissRequest = onDismissRequest,
         tabTitles = persistentListOf(
             stringResource(MR.strings.action_filter),
-        ),
+        ).toTabTitles(),
     ) {
         Column(
             modifier = Modifier

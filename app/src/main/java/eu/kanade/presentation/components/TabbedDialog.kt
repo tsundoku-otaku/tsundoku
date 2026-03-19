@@ -25,9 +25,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
 import kotlinx.collections.immutable.ImmutableList
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.TabText
@@ -38,10 +40,18 @@ object TabbedDialogPaddings {
     val Vertical = 8.dp
 }
 
+sealed class TabTitle {
+    data class Text(val value: String) : TabTitle()
+    data class Icon(val imageVector: ImageVector) : TabTitle()
+}
+
+fun String.toTabTitle() = TabTitle.Text(this)
+fun ImmutableList<String>.toTabTitles() = map { it.toTabTitle() }.toImmutableList()
+
 @Composable
 fun TabbedDialog(
     onDismissRequest: () -> Unit,
-    tabTitles: ImmutableList<String>,
+    tabTitles: ImmutableList<TabTitle>,
     modifier: Modifier = Modifier,
     tabOverflowMenuContent: (@Composable ColumnScope.(() -> Unit) -> Unit)? = null,
     pagerState: PagerState = rememberPagerState { tabTitles.size },
@@ -65,7 +75,8 @@ fun TabbedDialog(
                         Tab(
                             selected = pagerState.currentPage == index,
                             onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
-                            text = { TabText(text = tab) },
+                            text = if (tab is TabTitle.Text) ({ TabText(text = tab.value) }) else null,
+                            icon = if (tab is TabTitle.Icon) ({ Icon(imageVector = tab.imageVector, contentDescription = null) }) else null,
                             unselectedContentColor = MaterialTheme.colorScheme.onSurface,
                         )
                     }

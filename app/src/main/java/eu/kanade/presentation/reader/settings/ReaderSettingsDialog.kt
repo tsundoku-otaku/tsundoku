@@ -7,14 +7,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Swipe
+import androidx.compose.material.icons.outlined.TextFields
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.window.DialogWindowProvider
+import eu.kanade.presentation.components.TabTitle
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
+import eu.kanade.presentation.components.toTabTitles
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
@@ -57,7 +64,7 @@ private fun MangaReaderSettingsDialog(
         stringResource(MR.strings.pref_category_reading_mode),
         stringResource(MR.strings.pref_category_general),
         stringResource(MR.strings.custom_filter),
-    )
+    ).toTabTitles()
     val pagerState = rememberPagerState { tabTitles.size }
 
     BoxWithConstraints {
@@ -105,10 +112,10 @@ private fun NovelReaderSettingsDialog(
 ) {
     val renderingMode by screenModel.preferences.novelRenderingMode().collectAsState()
     val tabTitles = persistentListOf(
-        stringResource(MR.strings.pref_category_reading),
-        stringResource(MR.strings.pref_category_appearance),
-        stringResource(TDMR.strings.novel_tab_controls),
-        stringResource(MR.strings.pref_category_advanced),
+        TabTitle.Icon(imageVector = Icons.Outlined.TextFields), // Reading
+        TabTitle.Icon(imageVector = Icons.Outlined.Palette), // Appearance
+        TabTitle.Icon(imageVector = Icons.Outlined.Swipe), // Controls
+        TabTitle.Icon(imageVector = Icons.Outlined.Code), // Advanced
     )
     val pagerState = rememberPagerState { tabTitles.size }
 
