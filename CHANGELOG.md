@@ -18,6 +18,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Added
 - Toggle under settings > Advanced that hides source name under manga details (For screenshots/bug reporting) [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
+- Customizable novel reader bottom toolbar [@Rojikku](https://github.com/Rojikku) [#45](https://github.com/tsundoku-otaku/tsundoku/pull/45)
 
 ### Fixed
 - Telemetry [@Rojikku](https://github.com/Rojikku) [d4ec8df](https://github.com/tsundoku-otaku/tsundoku/commit/d4ec8dff90707ddabfb39a49be678e3ccc7e7ba2)
