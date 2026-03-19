@@ -52,11 +52,16 @@ internal class HttpPageLoader(
         scope.launchIO {
             flow {
                 while (true) {
-                    emit(runInterruptible { queue.take() }.page)
+                    emit(runInterruptible { queue.take() })
                 }
             }
-                .filter { it.status == Page.State.Queue }
-                .collect(::internalLoadPage)
+                .filter { it.page.status == Page.State.Queue }
+                .collect {
+                    internalLoadPage(
+                        page = it.page,
+                        force = it.priority == PriorityPage.RETRY,
+                    )
+                }
         }
     }
 
@@ -106,7 +111,7 @@ internal class HttpPageLoader(
 
         val queuedPages = mutableListOf<PriorityPage>()
         if (page.status == Page.State.Queue) {
-            queuedPages += PriorityPage(page, 1).also { queue.offer(it) }
+            queuedPages += PriorityPage(page, PriorityPage.DEFAULT).also { queue.offer(it) }
         }
         queuedPages += preloadNextPages(page, preloadSize)
 
@@ -128,7 +133,7 @@ internal class HttpPageLoader(
         if (page.status is Page.State.Error) {
             page.status = Page.State.Queue
         }
-        queue.offer(PriorityPage(page, 2))
+        queue.offer(PriorityPage(page, PriorityPage.RETRY))
     }
 
     override fun recycle() {
@@ -166,7 +171,7 @@ internal class HttpPageLoader(
             .subList(pageIndex + 1, min(pageIndex + 1 + amount, pages.size))
             .mapNotNull {
                 if (it.status == Page.State.Queue) {
-                    PriorityPage(it, 0).apply { queue.offer(this) }
+                    PriorityPage(it, PriorityPage.ADJACENT).apply { queue.offer(this) }
                 } else {
                     null
                 }
@@ -180,7 +185,7 @@ internal class HttpPageLoader(
      *
      * @param page the page whose source image has to be downloaded.
      */
-    private suspend fun internalLoadPage(page: ReaderPage) {
+    private suspend fun internalLoadPage(page: ReaderPage, force: Boolean) {
         try {
             // Determine if this page should be treated as novel content
             val isNovel = source.isNovelSource()
@@ -220,7 +225,7 @@ internal class HttpPageLoader(
             }
             val imageUrl = page.imageUrl!!
 
-            if (!chapterCache.isImageInCache(imageUrl)) {
+            if (force || !chapterCache.isImageInCache(imageUrl)) {
                 page.status = Page.State.DownloadImage
                 val imageResponse = source.getImage(page)
                 chapterCache.putImageToCache(imageUrl, imageResponse)
@@ -247,6 +252,10 @@ private class PriorityPage(
 ) : Comparable<PriorityPage> {
     companion object {
         private val idGenerator = AtomicInt(0)
+
+        const val RETRY = 2
+        const val DEFAULT = 1
+        const val ADJACENT = 0
     }
 
     private val identifier = idGenerator.incrementAndFetch()

@@ -11,6 +11,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+### Changed
+- Retry in reader now redownloads image ([@AntsyLich](https://github.com/AntsyLich)) ([#3089](https://github.com/mihonapp/mihon/pull/3089))
+
 ### Improved
 - New sorting option based on source name [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
 - Duplicate finder now has category filter [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
@@ -23,6 +26,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Fixed
 - Telemetry [@Rojikku](https://github.com/Rojikku) [d4ec8df](https://github.com/tsundoku-otaku/tsundoku/commit/d4ec8dff90707ddabfb39a49be678e3ccc7e7ba2)
 - Updates tab didn't show all items properly when showing one entry per novel [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
+
+### Other
+- Merged Mihon [2f9edb5](https://github.com/mihonapp/mihon/commit/2f9edb551fb2255c11ccd8452a080e87b9c963eb) [@Rojikku](https://github.com/Rojikku)
 
 ## [v0.1.1] - 2026-03-17
 ### Improved
@@ -76,7 +82,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 This project was originally forked from Mihon, and, while we keep separate version numbers, we would like to note in our changelog when we merge from upstream, and link to their changelog to try to give appropriate credit.
 This project is greatly advantaged by building off all of their work, and their continued contributions!
 
-Merged from v0.19.4 [f6b2684](https://github.com/mihonapp/mihon/commit/f6b2684323569ef0eb23e143cc5d65d7cc1aae3c)
+Merged from v0.19.4 [2f9edb5](https://github.com/mihonapp/mihon/commit/f6b2684323569ef0eb23e143cc5d65d7cc1aae3c)
 Merged from v0.19.4 [81871a3](https://github.com/mihonapp/mihon/commit/81871a34694c8e408d907731292b7266c5b993cc)  
 Forked from Mihon v0.19.3 [7161bc2](https://github.com/mihonapp/mihon/commit/7161bc2e825bdfd66a1829f7dce42bd0570b1008)
 
