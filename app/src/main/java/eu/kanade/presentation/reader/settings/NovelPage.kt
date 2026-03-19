@@ -67,12 +67,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
+import tachiyomi.presentation.core.components.StepperItem
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 
@@ -153,14 +155,6 @@ private val backgroundColors = listOf(
 @Composable
 internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel, renderingMode: String) {
     val context = LocalContext.current
-    val fontSize by screenModel.preferences.novelFontSize().collectAsState()
-    val lineHeight by screenModel.preferences.novelLineHeight().collectAsState()
-    val paragraphIndent by screenModel.preferences.novelParagraphIndent().collectAsState()
-    val paragraphSpacing by screenModel.preferences.novelParagraphSpacing().collectAsState()
-    val marginLeft by screenModel.preferences.novelMarginLeft().collectAsState()
-    val marginRight by screenModel.preferences.novelMarginRight().collectAsState()
-    val marginTop by screenModel.preferences.novelMarginTop().collectAsState()
-    val marginBottom by screenModel.preferences.novelMarginBottom().collectAsState()
     val fontFamily by screenModel.preferences.novelFontFamily().collectAsState()
     val textAlign by screenModel.preferences.novelTextAlign().collectAsState()
     val autoSplitEnabled by screenModel.preferences.novelAutoSplitText().collectAsState()
@@ -188,61 +182,56 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     }
 
     // Font Size
-    SliderItem(
+    StepperItem(
         label = stringResource(TDMR.strings.pref_font_size),
-        value = fontSize,
+        pref = screenModel.preferences.novelFontSize(),
         valueRange = 10..40,
-        onChange = { screenModel.preferences.novelFontSize().set(it) },
     )
 
     // Line Height
-    SliderItem(
+    StepperItem(
         label = stringResource(TDMR.strings.pref_novel_line_height),
-        value = (lineHeight * 10).toInt(),
+        pref = screenModel.preferences.novelLineHeight(),
         valueRange = 10..30,
-        onChange = { screenModel.preferences.novelLineHeight().set(it / 10f) },
+        multiplier = 10,
     )
 
     // Paragraph Indentation
-    SliderItem(
+    StepperItem(
         label = stringResource(TDMR.strings.pref_novel_paragraph_indent),
-        value = (paragraphIndent * 10).toInt(),
+        pref = screenModel.preferences.novelParagraphIndent(),
         valueRange = 0..100,
-        onChange = { screenModel.preferences.novelParagraphIndent().set(it / 10f) },
+        multiplier = 10,
     )
 
     // Paragraph Spacing
-    SliderItem(
+    StepperItem(
         label = stringResource(TDMR.strings.pref_novel_paragraph_spacing),
-        value = (paragraphSpacing * 10).toInt(),
+        pref = screenModel.preferences.novelParagraphSpacing(),
         valueRange = 0..30,
-        onChange = { screenModel.preferences.novelParagraphSpacing().set(it / 10f) },
+        multiplier = 10,
     )
 
     // Margins
-    SliderItem(
+    StepperItem(
         label = stringResource(TDMR.strings.pref_novel_margin_left),
-        value = marginLeft,
+        pref = screenModel.preferences.novelMarginLeft(),
         valueRange = 0..100,
-        onChange = { screenModel.preferences.novelMarginLeft().set(it) },
     )
-    SliderItem(
+    StepperItem(
         label = stringResource(TDMR.strings.pref_novel_margin_right),
-        value = marginRight,
+        pref = screenModel.preferences.novelMarginRight(),
         valueRange = 0..100,
-        onChange = { screenModel.preferences.novelMarginRight().set(it) },
     )
-    SliderItem(
+    StepperItem(
         label = stringResource(TDMR.strings.pref_novel_margin_top),
-        value = marginTop,
+        pref = screenModel.preferences.novelMarginTop(),
         valueRange = 0..300,
-        onChange = { screenModel.preferences.novelMarginTop().set(it) },
     )
-    SliderItem(
+    StepperItem(
         label = stringResource(TDMR.strings.pref_novel_margin_bottom),
-        value = marginBottom,
+        pref = screenModel.preferences.novelMarginBottom(),
         valueRange = 0..300,
-        onChange = { screenModel.preferences.novelMarginBottom().set(it) },
     )
 
     // Font Family

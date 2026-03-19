@@ -12,26 +12,33 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.rounded.CheckBox
 import androidx.compose.material.icons.rounded.CheckBoxOutlineBlank
 import androidx.compose.material.icons.rounded.DisabledByDefault
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -47,6 +54,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import dev.icerock.moko.resources.StringResource
@@ -169,6 +178,159 @@ fun RadioItem(label: String, selected: Boolean, onClick: () -> Unit) {
             )
         },
         onClick = onClick,
+    )
+}
+
+@Composable
+fun StepperItem(
+    label: String,
+    value: Int,
+    onChange: (Int) -> Unit,
+    valueRange: IntRange,
+    step: Int = 1,
+    defaultValue: Int? = null,
+) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    if (showDialog) {
+        StepperInputDialog(
+            value = value,
+            valueRange = valueRange,
+            defaultValue = defaultValue,
+            onDismiss = { showDialog = false },
+            onConfirm = {
+                onChange(it)
+                showDialog = false
+            },
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = SettingsItemsPaddings.Horizontal,
+                vertical = SettingsItemsPaddings.Vertical,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = { if (value - step >= valueRange.first) onChange(value - step) },
+                enabled = value > valueRange.first,
+            ) {
+                Icon(Icons.Outlined.Remove, contentDescription = "Decrease")
+            }
+            Text(
+                text = value.toString(),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .widthIn(min = 32.dp)
+                    .clickable { showDialog = true },
+                textAlign = TextAlign.Center,
+            )
+            IconButton(
+                onClick = { if (value + step <= valueRange.last) onChange(value + step) },
+                enabled = value < valueRange.last,
+            ) {
+                Icon(Icons.Outlined.Add, contentDescription = "Increase")
+            }
+        }
+    }
+}
+
+@Composable
+fun StepperItem(
+    label: String,
+    pref: Preference<Int>,
+    valueRange: IntRange,
+    step: Int = 1,
+) {
+    val value by pref.collectAsState()
+    StepperItem(
+        label = label,
+        value = value,
+        onChange = { pref.set(it) },
+        valueRange = valueRange,
+        step = step,
+        defaultValue = pref.defaultValue(),
+    )
+}
+
+@Composable
+fun StepperItem(
+    label: String,
+    pref: Preference<Float>,
+    valueRange: IntRange,
+    step: Int = 1,
+    multiplier: Int,
+) {
+    val value by pref.collectAsState()
+    StepperItem(
+        label = label,
+        value = (value * multiplier).toInt(),
+        onChange = { pref.set(it / multiplier.toFloat()) },
+        valueRange = valueRange,
+        step = step,
+        defaultValue = (pref.defaultValue() * multiplier).toInt(),
+    )
+}
+
+@Composable
+private fun StepperInputDialog(
+    value: Int,
+    valueRange: IntRange,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+    defaultValue: Int? = null,
+) {
+    var input by remember { mutableStateOf(value.toString()) }
+    val parsed = input.toIntOrNull()
+    val isValid = parsed != null && parsed in valueRange
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Enter value (${valueRange.first}–${valueRange.last})") },
+        text = {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it.filter { c -> c.isDigit() } },
+                singleLine = true,
+                isError = !isValid,
+                supportingText = if (!isValid) {
+                    { Text("Must be between ${valueRange.first} and ${valueRange.last}") }
+                } else {
+                    null
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (isValid) onConfirm(parsed!!) },
+                enabled = isValid,
+            ) {
+                Text("OK")
+            }
+        },
+        dismissButton = {
+            Row {
+                if (defaultValue != null) {
+                    TextButton(onClick = { onConfirm(defaultValue) }) {
+                        Text("Default")
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel")
+                }
+            }
+        },
     )
 }
 
