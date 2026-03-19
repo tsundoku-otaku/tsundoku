@@ -73,6 +73,7 @@ import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.InlineSettingsChipRow
+import tachiyomi.presentation.core.components.RadioSelectItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.components.StepperItem
@@ -236,15 +237,13 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     )
 
     // Font Family
-    SettingsChipRow(TDMR.strings.pref_font_family) {
-        allFonts.map { (label, value) ->
-            FilterChip(
-                selected = fontFamily == value,
-                onClick = { screenModel.preferences.novelFontFamily().set(value) },
-                label = { Text(label) },
-            )
-        }
-    }
+    RadioSelectItem(
+        label = stringResource(TDMR.strings.pref_font_family),
+        options = allFonts,
+        selected = fontFamily,
+        onSelect = { screenModel.preferences.novelFontFamily().set(it) },
+        defaultValue = screenModel.preferences.novelFontFamily().defaultValue(),
+    )
 
     // Use Original Fonts (WebView mode only)
     if (renderingMode == "webview") {
