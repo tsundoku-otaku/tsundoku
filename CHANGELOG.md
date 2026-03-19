@@ -19,6 +19,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Duplicate finder now has category filter [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
 - Hid Quick migration, removed from unnecessary places, added category option (For migrating between KT and JS of same source) [@mrissaoussamau](https://github.com/mrissaoussama) [#43](https://github.com/tsundoku-otaku/tsundoku/pull/43)
 - Add Enable/Disable for Extension Repos [@mrissaoussamau](https://github.com/mrissaoussama) [#50](https://github.com/tsundoku-otaku/tsundoku/pull/50)
+- Improved novel reader settings UI [@Rojikku](https://github.com/Rojikku) [#49](https://github.com/tsundoku-otaku/tsundoku/pull/49)
 
 ### Added
 - Toggle under settings > Advanced that hides source name under manga details (For screenshots/bug reporting) [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
@@ -87,6 +88,7 @@ This project was originally forked from Mihon, and, while we keep separate versi
 This project is greatly advantaged by building off all of their work, and their continued contributions!
 
 Merged from v0.19.4 [2f9edb5](https://github.com/mihonapp/mihon/commit/f6b2684323569ef0eb23e143cc5d65d7cc1aae3c)
+Merged from v0.19.4 [81871a3](https://github.com/mihonapp/mihon/commit/81871a34694c8e408d907731292b7266c5b993cc)  
 Merged from v0.19.4 [81871a3](https://github.com/mihonapp/mihon/commit/81871a34694c8e408d907731292b7266c5b993cc)  
 Forked from Mihon v0.19.3 [7161bc2](https://github.com/mihonapp/mihon/commit/7161bc2e825bdfd66a1829f7dce42bd0570b1008)
 
