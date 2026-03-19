@@ -450,6 +450,35 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
         }
     }
 
+    // Hide Chapter Title in Content
+    CheckboxItem(
+        label = stringResource(TDMR.strings.pref_novel_hide_chapter_title),
+        pref = screenModel.preferences.novelHideChapterTitle(),
+    )
+
+    // Force Lowercase Text
+    CheckboxItem(
+        label = stringResource(TDMR.strings.novel_force_lowercase),
+        pref = screenModel.preferences.novelForceTextLowercase(),
+    )
+
+    // Chapter Title Display Format
+    val chapterTitleDisplay by screenModel.preferences.novelChapterTitleDisplay().collectAsState()
+    val titleDisplayOptions = listOf(
+        stringResource(MR.strings.name) to 0,
+        stringResource(TDMR.strings.novel_chapter_display_number) to 1,
+        stringResource(TDMR.strings.novel_chapter_display_both) to 2,
+    )
+    InlineSettingsChipRow(TDMR.strings.pref_novel_chapter_title_display) {
+        titleDisplayOptions.map { (label, value) ->
+            FilterChip(
+                selected = chapterTitleDisplay == value,
+                onClick = { screenModel.preferences.novelChapterTitleDisplay().set(value) },
+                label = { Text(label) },
+            )
+        }
+    }
+
     // Custom Brightness
     val novelCustomBrightness by screenModel.preferences.novelCustomBrightness().collectAsState()
     CheckboxItem(
@@ -473,6 +502,20 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
         label = stringResource(TDMR.strings.pref_novel_keep_screen_on),
         pref = screenModel.preferences.novelKeepScreenOn(),
     )
+
+    // Block Media (images, videos, audio)
+    CheckboxItem(
+        label = stringResource(TDMR.strings.pref_novel_block_media),
+        pref = screenModel.preferences.novelBlockMedia(),
+    )
+
+    // Show Raw HTML (TextView only) - for debugging
+    if (renderingMode == "default") {
+        CheckboxItem(
+            label = stringResource(TDMR.strings.pref_novel_show_raw_html),
+            pref = screenModel.preferences.novelShowRawHtml(),
+        )
+    }
 }
 
 @Composable
@@ -514,34 +557,6 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         )
     }
 
-    // Hide Chapter Title in Content
-    CheckboxItem(
-        label = stringResource(TDMR.strings.pref_novel_hide_chapter_title),
-        pref = screenModel.preferences.novelHideChapterTitle(),
-    )
-
-    // Force Lowercase Text
-    CheckboxItem(
-        label = stringResource(TDMR.strings.novel_force_lowercase),
-        pref = screenModel.preferences.novelForceTextLowercase(),
-    )
-
-    // Chapter Title Display Format
-    val chapterTitleDisplay by screenModel.preferences.novelChapterTitleDisplay().collectAsState()
-    val titleDisplayOptions = listOf(
-        stringResource(TDMR.strings.novel_chapter_display_name) to 0,
-        stringResource(TDMR.strings.novel_chapter_display_number) to 1,
-        stringResource(TDMR.strings.novel_chapter_display_both) to 2,
-    )
-    SettingsChipRow(TDMR.strings.pref_novel_chapter_title_display) {
-        titleDisplayOptions.map { (label, value) ->
-            FilterChip(
-                selected = chapterTitleDisplay == value,
-                onClick = { screenModel.preferences.novelChapterTitleDisplay().set(value) },
-                label = { Text(label) },
-            )
-        }
-    }
 
     // Progress Slider
     CheckboxItem(
@@ -576,26 +591,12 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         )
     }
 
-    // Block Media (images, videos, audio)
-    CheckboxItem(
-        label = stringResource(TDMR.strings.pref_novel_block_media),
-        pref = screenModel.preferences.novelBlockMedia(),
-    )
-
-    // Show Raw HTML (TextView only) - for debugging
-    if (renderingMode == "default") {
-        CheckboxItem(
-            label = stringResource(TDMR.strings.pref_novel_show_raw_html),
-            pref = screenModel.preferences.novelShowRawHtml(),
-        )
-    }
-
     // Chapter Sort Order
     val sortOrderOptions = listOf(
         stringResource(TDMR.strings.novel_sort_source) to "source",
         stringResource(TDMR.strings.novel_sort_chapter) to "chapter_number",
     )
-    SettingsChipRow(TDMR.strings.pref_novel_chapter_sort_order) {
+    InlineSettingsChipRow(TDMR.strings.pref_novel_chapter_sort_order) {
         sortOrderOptions.map { (label, value) ->
             FilterChip(
                 selected = chapterSortOrder == value,
