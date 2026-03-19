@@ -457,7 +457,7 @@ class JsSource(
                 return@withContext cached.first
             }
 
-            val path = manga.url.replace("'", "\\'").replace("\"", "\\\"")
+            val path = normalizeDoubleSlashes(manga.url).replace("'", "\\'").replace("\"", "\\\"")
             val result = executePluginMethod("plugin.parseNovel('$path')")
             val details = parseNovelDetails(result, manga)
 
@@ -479,7 +479,7 @@ class JsSource(
                 return@withContext cached.first
             }
 
-            val path = manga.url.replace("'", "\\'").replace("\"", "\\\"")
+            val path = normalizeDoubleSlashes(manga.url).replace("'", "\\'").replace("\"", "\\\"")
             val result = executePluginMethod("plugin.parseNovel('$path')")
             val chapters = parseChapterList(result).toMutableList()
 
@@ -514,7 +514,7 @@ class JsSource(
                 // Only override chapter_number if the plugin didn't provide one
                 // (default SChapter chapter_number is -1)
                 if (chapter.chapter_number < 0) {
-                    // Assign sequential numbers matching position: index 0 → 1, index 1 → 2, etc.
+                    // Assign sequential numbers matching position: index 0 â†’ 1, index 1 â†’ 2, etc.
                     chapter.chapter_number = (index + 1).toFloat()
                 }
             }
@@ -541,7 +541,7 @@ class JsSource(
                 logcat(LogPriority.ERROR) { "[$id] getPageList: chapter.url is blank, cannot parse chapter" }
                 return@withContext emptyList()
             }
-            val path = chapter.url.replace("'", "\\'").replace("\"", "\\\"")
+            val path = normalizeDoubleSlashes(chapter.url).replace("'", "\\'").replace("\"", "\\\"")
             val result = executePluginMethod("plugin.parseChapter('$path')")
             // For novels, the result is HTML content - return as a single text page
             // Store the chapter URL in the page so fetchPageText can re-fetch if needed
@@ -652,6 +652,17 @@ class JsSource(
             if (el is JsonPrimitive && el.isString) el.content else jsonValue
         } catch (_: Exception) {
             jsonValue
+        }
+    }
+
+    private fun normalizeDoubleSlashes(value: String): String {
+        if (value.isBlank()) return value
+        val parts = value.split("://", limit = 2)
+        return if (parts.size == 2) {
+            val normalizedPath = parts[1].replace(Regex("/{2,}"), "/")
+            "${parts[0]}://$normalizedPath"
+        } else {
+            value.replace(Regex("/{2,}"), "/")
         }
     }
 
@@ -1101,7 +1112,7 @@ class JsSource(
             }
 
             // Validate URL before calling plugin - avoid fetching base URL with empty path
-            val chapterUrl = page.url.replace("'", "\\'").replace("\"", "\\\"")
+            val chapterUrl = normalizeDoubleSlashes(page.url).replace("'", "\\'").replace("\"", "\\\"")
             if (chapterUrl.isBlank()) {
                 logcat(LogPriority.WARN) { "[$id] fetchPageText: page.url is blank, cannot parse chapter" }
                 return@withContext "Chapter content unavailable (empty URL)"
