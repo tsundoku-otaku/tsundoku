@@ -583,6 +583,34 @@ fun SettingsChipRow(label: String, content: @Composable FlowRowScope.() -> Unit)
 }
 
 @Composable
+fun InlineSettingsChipRow(labelRes: StringResource, content: @Composable FlowRowScope.() -> Unit) {
+    InlineSettingsChipRow(stringResource(labelRes), content)
+}
+
+@Composable
+fun InlineSettingsChipRow(label: String, content: @Composable FlowRowScope.() -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                horizontal = SettingsItemsPaddings.Horizontal,
+                vertical = SettingsItemsPaddings.Vertical,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+            content = content,
+        )
+    }
+}
+
+@Composable
 fun SettingsIconGrid(labelRes: StringResource, content: LazyGridScope.() -> Unit) {
     Column {
         HeadingItem(labelRes)

@@ -72,6 +72,7 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
+import tachiyomi.presentation.core.components.InlineSettingsChipRow
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.components.StepperItem
@@ -171,7 +172,7 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     }
 
     // Rendering Mode
-    SettingsChipRow(TDMR.strings.pref_novel_rendering_mode) {
+    InlineSettingsChipRow(TDMR.strings.pref_novel_rendering_mode) {
         renderingModes.map { (labelRes, value) ->
             FilterChip(
                 selected = renderingMode == value,
