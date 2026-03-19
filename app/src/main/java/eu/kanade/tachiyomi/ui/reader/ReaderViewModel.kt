@@ -15,6 +15,9 @@ import eu.kanade.domain.manga.model.readingMode
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
+import eu.kanade.presentation.reader.appbars.BottomBarItemState
+import eu.kanade.presentation.reader.appbars.deserializeBottomBarItems
+import eu.kanade.presentation.reader.appbars.serialize
 import eu.kanade.tachiyomi.data.database.models.Chapter
 import eu.kanade.tachiyomi.data.database.models.toDomainChapter
 import eu.kanade.tachiyomi.data.download.DownloadManager
@@ -49,6 +52,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -57,6 +62,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -1400,6 +1406,20 @@ class ReaderViewModel @JvmOverloads constructor(
 
         val totalPages: Int
             get() = currentChapter?.pages?.size ?: -1
+    }
+
+    val bottomBarItems: StateFlow<List<BottomBarItemState>> = readerPreferences
+        .novelBottomBarItems()
+        .changes()
+        .map { it.deserializeBottomBarItems() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = readerPreferences.novelBottomBarItems().get().deserializeBottomBarItems(),
+        )
+
+    fun saveBottomBarItems(items: List<BottomBarItemState>) {
+        readerPreferences.novelBottomBarItems().set(items.serialize())
     }
 
     sealed interface Dialog {

@@ -59,8 +59,11 @@ import eu.kanade.presentation.reader.ReaderPageActionsDialog
 import eu.kanade.presentation.reader.ReaderPageIndicator
 import eu.kanade.presentation.reader.ReadingModeSelectDialog
 import eu.kanade.presentation.reader.TranslationLanguageSelectDialog
+import eu.kanade.presentation.reader.appbars.BottomBarEditorSheet
+import eu.kanade.presentation.reader.appbars.DefaultBottomBarItems
 import eu.kanade.presentation.reader.appbars.NovelReaderAppBars
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
+import eu.kanade.presentation.reader.appbars.bottomBarItemInfo
 import eu.kanade.presentation.reader.settings.ReaderSettingsDialog
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
@@ -594,6 +597,9 @@ class ReaderActivity : BaseActivity() {
                 }
             }
 
+            val bottomBarItems by viewModel.bottomBarItems.collectAsState()
+            var showBottomBarEditor by remember { mutableStateOf(false) }
+
             NovelReaderAppBars(
                 visible = state.menuVisible,
 
@@ -608,6 +614,7 @@ class ReaderActivity : BaseActivity() {
                 onShare = ::shareChapter.takeIf { isHttpSource },
                 onReloadLocal = { viewModel.reloadChapter(fromSource = false) },
                 onReloadSource = { viewModel.reloadChapter(fromSource = true) },
+                onEditBottomBar = { showBottomBarEditor = true },
 
                 showProgressSlider = showProgressSlider,
                 currentProgress = novelProgressFromState,
@@ -708,7 +715,28 @@ class ReaderActivity : BaseActivity() {
                         else -> {}
                     }
                 },
+                bottomBarItems = bottomBarItems,
+                onItemsChange = { viewModel.saveBottomBarItems(it) },
             )
+
+            if (showBottomBarEditor) {
+                BottomBarEditorSheet(
+                    items = bottomBarItems,
+                    onItemsChange = { viewModel.saveBottomBarItems(it) },
+                    onDismiss = { showBottomBarEditor = false },
+                    itemInfo = { item ->
+                        bottomBarItemInfo(
+                            item = item,
+                            orientation = ReaderOrientation.fromPreference(
+                                viewModel.getMangaOrientation(resolveDefault = false),
+                            ),
+                            isAutoScrolling = isAutoScrolling,
+                            isTtsActive = isTtsActive,
+                            isTtsPaused = isTtsPaused,
+                        )
+                    },
+                )
+            }
         } else {
             val cropBorderPaged by readerPreferences.cropBorders().collectAsState()
             val cropBorderWebtoon by readerPreferences.cropBordersWebtoon().collectAsState()

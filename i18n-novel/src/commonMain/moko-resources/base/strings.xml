@@ -83,6 +83,7 @@
     <string name="action_reload_chapter">Reload chapter</string>
     <string name="action_reload_local">Reload from local</string>
     <string name="action_reload_source">Reload from source</string>
+    <string name="action_edit_appbar">Edit Bottom Bar</string>
     <string name="action_scroll_to_top">Scroll to top</string>
     <string name="action_scroll_to_bottom">Scroll to bottom</string>
     <string name="action_translate">Translate</string>

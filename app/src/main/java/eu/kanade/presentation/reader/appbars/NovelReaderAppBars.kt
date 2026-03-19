@@ -48,11 +48,14 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -89,6 +92,7 @@ fun NovelReaderAppBars(
     onShare: (() -> Unit)?,
     onReloadLocal: () -> Unit,
     onReloadSource: () -> Unit,
+    onEditBottomBar: () -> Unit,
 
     // Progress slider
     showProgressSlider: Boolean,
@@ -116,6 +120,10 @@ fun NovelReaderAppBars(
     isTtsPaused: Boolean,
     onToggleTts: () -> Unit,
     onLongPressTts: () -> Unit,
+
+    // Toolbar customization
+    bottomBarItems: List<BottomBarItemState>,
+    onItemsChange: (List<BottomBarItemState>) -> Unit,
 ) {
     val backgroundColor = MaterialTheme.colorScheme
         .surfaceColorAtElevation(3.dp)
@@ -143,6 +151,7 @@ fun NovelReaderAppBars(
                 onShare = onShare,
                 onReloadLocal = onReloadLocal,
                 onReloadSource = onReloadSource,
+                onEditBottomBar = onEditBottomBar,
                 onRetranslate = onRetranslate,
             )
         }
@@ -178,6 +187,8 @@ fun NovelReaderAppBars(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = MaterialTheme.padding.small),
+                    items = bottomBarItems,
+                    onItemsChange = onItemsChange,
                     onNextChapter = onNextChapter,
                     enabledNext = enabledNext,
                     onPreviousChapter = onPreviousChapter,
@@ -213,6 +224,7 @@ private fun NovelReaderTopBar(
     onShare: (() -> Unit)?,
     onReloadLocal: () -> Unit,
     onReloadSource: () -> Unit,
+    onEditBottomBar: () -> Unit,
     onRetranslate: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -253,6 +265,12 @@ private fun NovelReaderTopBar(
                             AppBar.OverflowAction(
                                 title = stringResource(TDMR.strings.action_reload_source),
                                 onClick = onReloadSource,
+                            ),
+                        )
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(TDMR.strings.action_edit_appbar),
+                                onClick = onEditBottomBar,
                             ),
                         )
                         onOpenInWebView?.let {
@@ -297,6 +315,8 @@ private fun NovelReaderTopBar(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NovelReaderBottomBar(
+    items: List<BottomBarItemState>,
+    onItemsChange: (List<BottomBarItemState>) -> Unit,
     onNextChapter: () -> Unit,
     enabledNext: Boolean,
     onPreviousChapter: () -> Unit,
@@ -316,106 +336,148 @@ private fun NovelReaderBottomBar(
     onLongPressTts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var showEditor by remember { mutableStateOf(false) }
+
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Previous chapter - left position, left arrow icon
-        IconButton(
-            onClick = onPreviousChapter,
-            enabled = enabledPrevious,
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.NavigateBefore,
-                contentDescription = stringResource(MR.strings.action_previous_chapter),
-            )
-        }
+        items
+            .filter { it.enabled }
+            .forEach { itemState ->
+                when (itemState.item) {
+                    BottomBarItem.PREV_CHAPTER -> IconButton(
+                        onClick = onPreviousChapter,
+                        enabled = enabledPrevious,
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.NavigateBefore,
+                            contentDescription = stringResource(MR.strings.action_previous_chapter),
+                        )
+                    }
 
-        // Scroll to top
-        IconButton(onClick = onScrollToTop) {
-            Icon(
-                imageVector = Icons.Outlined.VerticalAlignTop,
-                contentDescription = stringResource(TDMR.strings.action_scroll_to_top),
-            )
-        }
+                    BottomBarItem.NEXT_CHAPTER -> IconButton(
+                        onClick = onNextChapter,
+                        enabled = enabledNext,
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.NavigateNext,
+                            contentDescription = stringResource(MR.strings.action_next_chapter),
+                        )
+                    }
 
-        // Translation toggle - tap for quick translate, long-press for language picker
-        Box(
-            modifier = Modifier
-                .combinedClickable(
-                    onClick = onToggleTranslation,
-                    onLongClick = onLongPressTranslation,
-                ),
-            contentAlignment = androidx.compose.ui.Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Translate,
-                contentDescription = stringResource(TDMR.strings.action_translate),
-                tint = if (isTranslating) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier
-                    .size(48.dp)
-                    .padding(12.dp),
-            )
-        }
-        // Auto-scroll toggle
-        IconButton(onClick = onToggleAutoScroll) {
-            Icon(
-                imageVector = if (isAutoScrolling) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
-                contentDescription = stringResource(
-                    if (isAutoScrolling) TDMR.strings.action_stop_auto_scroll else TDMR.strings.action_start_auto_scroll,
-                ),
-            )
-        }
+                    // Scroll to top
+                    BottomBarItem.SCROLL_TO_TOP -> IconButton(onClick = onScrollToTop) {
+                        Icon(
+                            Icons.Outlined.VerticalAlignTop,
+                            contentDescription = stringResource(TDMR.strings.action_scroll_to_top),
+                        )
+                    }
 
-        // TTS toggle - tap to play/pause, long press to stop
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .combinedClickable(
-                    onClick = onToggleTts,
-                    onLongClick = onLongPressTts,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = when {
-                    isTtsActive && !isTtsPaused -> Icons.Outlined.Pause
-                    isTtsActive && isTtsPaused -> Icons.Outlined.PlayArrow
-                    else -> Icons.Outlined.RecordVoiceOver
-                },
-                contentDescription = stringResource(TDMR.strings.pref_novel_tts),
-                tint = if (isTtsActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            )
-        }
+                    // Translation toggle - tap for quick translate, long-press for language picker
+                    BottomBarItem.TRANSLATE -> Box(
+                        modifier = Modifier.combinedClickable(
+                            onClick = onToggleTranslation,
+                            onLongClick = onLongPressTranslation,
+                        ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Translate,
+                            contentDescription = stringResource(TDMR.strings.action_translate),
+                            tint = if (isTranslating) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            modifier = Modifier.size(48.dp).padding(12.dp),
+                        )
+                    }
+                    // Auto-scroll toggle
+                    BottomBarItem.AUTO_SCROLL -> IconButton(onClick = onToggleAutoScroll) {
+                        Icon(
+                            imageVector = if (isAutoScrolling) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
+                            contentDescription = stringResource(
+                                if (isAutoScrolling) {
+                                    TDMR.strings.action_stop_auto_scroll
+                                } else {
+                                    TDMR.strings.action_start_auto_scroll
+                                },
+                            ),
+                        )
+                    }
 
-        // Orientation
-        IconButton(onClick = onClickOrientation) {
-            Icon(
-                imageVector = orientation.icon,
-                contentDescription = stringResource(MR.strings.rotation_type),
-            )
-        }
+                    // TTS toggle - tap to play/pause, long press to stop
+                    BottomBarItem.TTS -> Box(
+                        modifier = Modifier.size(48.dp).combinedClickable(
+                            onClick = onToggleTts,
+                            onLongClick = onLongPressTts,
+                        ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = when {
+                                isTtsActive && !isTtsPaused -> Icons.Outlined.Pause
+                                isTtsActive && isTtsPaused -> Icons.Outlined.PlayArrow
+                                else -> Icons.Outlined.RecordVoiceOver
+                            },
+                            contentDescription = stringResource(TDMR.strings.pref_novel_tts),
+                            tint = if (isTtsActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                    }
 
-        // Settings
-        IconButton(onClick = onClickSettings) {
-            Icon(
-                imageVector = Icons.Outlined.Settings,
-                contentDescription = stringResource(MR.strings.action_settings),
-            )
-        }
+                    // Orientation
+                    BottomBarItem.ORIENTATION -> IconButton(onClick = onClickOrientation) {
+                        Icon(
+                            orientation.icon,
+                            contentDescription = stringResource(MR.strings.rotation_type),
+                        )
+                    }
 
-        // Next chapter - right position, right arrow icon
-        IconButton(
-            onClick = onNextChapter,
-            enabled = enabledNext,
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.NavigateNext,
-                contentDescription = stringResource(MR.strings.action_next_chapter),
-            )
-        }
+                    // Settings
+                    BottomBarItem.SETTINGS -> IconButton(onClick = onClickSettings) {
+                        Icon(
+                            Icons.Outlined.Settings,
+                            contentDescription = stringResource(MR.strings.action_settings),
+                        )
+                    }
+                }
+            }
     }
+
+    if (showEditor) {
+        BottomBarEditorSheet(
+            items = items,
+            onItemsChange = onItemsChange,
+            onDismiss = { showEditor = false },
+            itemInfo = { item -> bottomBarItemInfo(item, orientation, isAutoScrolling, isTtsActive, isTtsPaused) },
+        )
+    }
+}
+
+// Resolves display icon + label per item — keeps the when() out of the sheet
+@Composable
+internal fun bottomBarItemInfo(
+    item: BottomBarItem,
+    orientation: ReaderOrientation,
+    isAutoScrolling: Boolean,
+    isTtsActive: Boolean,
+    isTtsPaused: Boolean,
+): Pair<ImageVector, String> = when (item) {
+    BottomBarItem.PREV_CHAPTER -> Icons.AutoMirrored.Outlined.NavigateBefore to stringResource(MR.strings.action_previous_chapter)
+    BottomBarItem.NEXT_CHAPTER -> Icons.AutoMirrored.Outlined.NavigateNext to stringResource(MR.strings.action_next_chapter)
+    BottomBarItem.SCROLL_TO_TOP -> Icons.Outlined.VerticalAlignTop to stringResource(TDMR.strings.action_scroll_to_top)
+    BottomBarItem.TRANSLATE -> Icons.Outlined.Translate to stringResource(TDMR.strings.action_translate)
+    BottomBarItem.AUTO_SCROLL -> Icons.Outlined.PlayArrow to stringResource(TDMR.strings.action_start_auto_scroll)
+    BottomBarItem.TTS -> Icons.Outlined.RecordVoiceOver to stringResource(TDMR.strings.pref_novel_tts)
+    BottomBarItem.ORIENTATION -> orientation.icon to stringResource(MR.strings.rotation_type)
+    BottomBarItem.SETTINGS -> Icons.Outlined.Settings to stringResource(MR.strings.action_settings)
 }
 
 @Composable
