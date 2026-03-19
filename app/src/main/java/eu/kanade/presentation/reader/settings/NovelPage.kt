@@ -26,6 +26,10 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FindReplace
+import androidx.compose.material.icons.outlined.FormatAlignCenter
+import androidx.compose.material.icons.outlined.FormatAlignJustify
+import androidx.compose.material.icons.outlined.FormatAlignLeft
+import androidx.compose.material.icons.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -38,6 +42,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -117,10 +123,10 @@ private val systemFonts = listOf(
 )
 
 private val textAlignments = listOf(
-    TDMR.strings.novel_align_left to "left",
-    TDMR.strings.novel_align_center to "center",
-    TDMR.strings.novel_align_right to "right",
-    TDMR.strings.novel_align_justify to "justify",
+    Icons.Outlined.FormatAlignLeft to "left",
+    Icons.Outlined.FormatAlignCenter to "center",
+    Icons.Outlined.FormatAlignRight to "right",
+    Icons.Outlined.FormatAlignJustify to "justify",
 )
 
 private val renderingModes = listOf(
@@ -201,13 +207,18 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     }
 
     // Text Alignment
-    SettingsChipRow(TDMR.strings.pref_novel_text_align) {
-        textAlignments.map { (labelRes, value) ->
-            FilterChip(
-                selected = textAlign == value,
-                onClick = { screenModel.preferences.novelTextAlign().set(value) },
-                label = { Text(stringResource(labelRes)) },
-            )
+    InlineSettingsChipRow(TDMR.strings.pref_novel_text_align) {
+        textAlignments.forEach { (icon, value) ->
+            IconToggleButton(
+                checked = textAlign == value,
+                onCheckedChange = { screenModel.preferences.novelTextAlign().set(value) },
+                colors = IconButtonDefaults.iconToggleButtonColors(
+                    checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                Icon(imageVector = icon, contentDescription = value)
+            }
         }
     }
 
@@ -263,7 +274,6 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
         pref = screenModel.preferences.novelMarginBottom(),
         valueRange = 0..300,
     )
-
 
     HorizontalDivider()
 
@@ -556,7 +566,6 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
             pref = screenModel.preferences.novelTextSelectable(),
         )
     }
-
 
     // Progress Slider
     CheckboxItem(
