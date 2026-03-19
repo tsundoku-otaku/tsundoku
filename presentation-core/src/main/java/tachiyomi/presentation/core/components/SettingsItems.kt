@@ -189,6 +189,7 @@ fun StepperItem(
     valueRange: IntRange,
     step: Int = 1,
     defaultValue: Int? = null,
+    verticalPadOverride: Int = 8,
 ) {
     var showDialog by remember { mutableStateOf(false) }
 
@@ -210,7 +211,7 @@ fun StepperItem(
             .fillMaxWidth()
             .padding(
                 horizontal = SettingsItemsPaddings.Horizontal,
-                vertical = SettingsItemsPaddings.Vertical,
+                vertical = SettingsItemsPaddings.Vertical / verticalPadOverride,
             ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -251,6 +252,7 @@ fun StepperItem(
     pref: Preference<Int>,
     valueRange: IntRange,
     step: Int = 1,
+    verticalPadOverride: Int = 8,
 ) {
     val value by pref.collectAsState()
     StepperItem(
@@ -260,6 +262,7 @@ fun StepperItem(
         valueRange = valueRange,
         step = step,
         defaultValue = pref.defaultValue(),
+        verticalPadOverride = verticalPadOverride,
     )
 }
 
@@ -270,6 +273,7 @@ fun StepperItem(
     valueRange: IntRange,
     step: Int = 1,
     multiplier: Int,
+    verticalPadOverride: Int = 8,
 ) {
     val value by pref.collectAsState()
     StepperItem(
@@ -279,6 +283,7 @@ fun StepperItem(
         valueRange = valueRange,
         step = step,
         defaultValue = (pref.defaultValue() * multiplier).toInt(),
+        verticalPadOverride = verticalPadOverride,
     )
 }
 
@@ -594,7 +599,7 @@ fun InlineSettingsChipRow(label: String, content: @Composable FlowRowScope.() ->
             .fillMaxWidth()
             .padding(
                 horizontal = SettingsItemsPaddings.Horizontal,
-                vertical = SettingsItemsPaddings.Vertical,
+                vertical = SettingsItemsPaddings.Vertical / 4,
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
