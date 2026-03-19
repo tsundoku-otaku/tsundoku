@@ -183,6 +183,34 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
         }
     }
 
+    // Font Family
+    RadioSelectItem(
+        label = stringResource(TDMR.strings.pref_font_family),
+        options = allFonts,
+        selected = fontFamily,
+        onSelect = { screenModel.preferences.novelFontFamily().set(it) },
+        defaultValue = screenModel.preferences.novelFontFamily().defaultValue(),
+    )
+
+    // Use Original Fonts (WebView mode only)
+    if (renderingMode == "webview") {
+        CheckboxItem(
+            label = stringResource(TDMR.strings.pref_novel_use_original_fonts),
+            pref = screenModel.preferences.novelUseOriginalFonts(),
+        )
+    }
+
+    // Text Alignment
+    SettingsChipRow(TDMR.strings.pref_novel_text_align) {
+        textAlignments.map { (labelRes, value) ->
+            FilterChip(
+                selected = textAlign == value,
+                onClick = { screenModel.preferences.novelTextAlign().set(value) },
+                label = { Text(stringResource(labelRes)) },
+            )
+        }
+    }
+
     // Font Size
     StepperItem(
         label = stringResource(TDMR.strings.pref_font_size),
@@ -236,33 +264,6 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
         valueRange = 0..300,
     )
 
-    // Font Family
-    RadioSelectItem(
-        label = stringResource(TDMR.strings.pref_font_family),
-        options = allFonts,
-        selected = fontFamily,
-        onSelect = { screenModel.preferences.novelFontFamily().set(it) },
-        defaultValue = screenModel.preferences.novelFontFamily().defaultValue(),
-    )
-
-    // Use Original Fonts (WebView mode only)
-    if (renderingMode == "webview") {
-        CheckboxItem(
-            label = stringResource(TDMR.strings.pref_novel_use_original_fonts),
-            pref = screenModel.preferences.novelUseOriginalFonts(),
-        )
-    }
-
-    // Text Alignment
-    SettingsChipRow(TDMR.strings.pref_novel_text_align) {
-        textAlignments.map { (labelRes, value) ->
-            FilterChip(
-                selected = textAlign == value,
-                onClick = { screenModel.preferences.novelTextAlign().set(value) },
-                label = { Text(stringResource(labelRes)) },
-            )
-        }
-    }
 
     HorizontalDivider()
 
