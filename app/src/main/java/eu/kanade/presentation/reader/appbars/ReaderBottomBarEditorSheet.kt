@@ -18,6 +18,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,6 +30,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import tachiyomi.i18n.MR
+import tachiyomi.presentation.core.i18n.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,6 +99,18 @@ fun BottomBarEditorSheet(
                     }
                 }
             }
+        }
+
+        TextButton(
+            onClick = {
+                mutableItems.clear()
+                mutableItems.addAll(DefaultBottomBarItems)
+            },
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(bottom = 8.dp),
+        ) {
+            Text(stringResource(MR.strings.label_default))
         }
 
         Spacer(Modifier.height(24.dp))
