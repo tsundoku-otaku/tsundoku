@@ -30,6 +30,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Other
 - Merged Mihon [2f9edb5](https://github.com/mihonapp/mihon/commit/2f9edb551fb2255c11ccd8452a080e87b9c963eb) [@Rojikku](https://github.com/Rojikku)
+- Removed `(JS)` from extension add screen, keeping yellow badge [@mrissaoussamau](https://github.com/mrissaoussama) [#46](https://github.com/tsundoku-otaku/tsundoku/pull/46)
 
 ## [v0.1.1] - 2026-03-17
 ### Improved
