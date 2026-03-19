@@ -75,7 +75,7 @@ class JsoupParsingTest {
     private val testConfigs = mapOf(
         "novelbuddy" to SelectorConfig(
             name = "NovelBuddy",
-            baseUrl = "https://novelbuddy.com",
+            baseUrl = "https://example.test/novelbuddy",
             popularSelectors = PopularSelectors(
                 list = ".book-item",
                 title = ".title a",
@@ -105,7 +105,7 @@ class JsoupParsingTest {
 
         "webnovel" to SelectorConfig(
             name = "WebNovel",
-            baseUrl = "https://www.webnovel.com",
+            baseUrl = "https://example.test/webnovel",
             popularSelectors = PopularSelectors(
                 list = "li.g_col_6, .j_list_item",
                 title = "a.g_txt_over, .g_info h3 a",
@@ -132,7 +132,7 @@ class JsoupParsingTest {
 
         "foxaholic" to SelectorConfig(
             name = "Foxaholic",
-            baseUrl = "https://foxaholic.com",
+            baseUrl = "https://example.test/foxaholic",
             popularSelectors = PopularSelectors(
                 list = ".page-item-detail",
                 title = ".h5 a",
@@ -160,7 +160,7 @@ class JsoupParsingTest {
 
         "novelshub" to SelectorConfig(
             name = "NovelsHub",
-            baseUrl = "https://novelshub.org",
+            baseUrl = "https://example.test/novelshub",
             popularSelectors = PopularSelectors(
                 list = "figure.relative, div.wrapper",
                 title = "a.text-sm, a.font-bold, h1",
@@ -186,7 +186,7 @@ class JsoupParsingTest {
 
         "mtlreader" to SelectorConfig(
             name = "MTLReader",
-            baseUrl = "https://mtlreader.com",
+            baseUrl = "https://example.test/mtlreader",
             popularSelectors = PopularSelectors(
                 list = ".novel-item, .book-item",
                 title = ".novel-title a, .title a",
@@ -220,15 +220,15 @@ class JsoupParsingTest {
             <body>
                 <div class="book-item">
                     <div class="thumb"><img src="https://example.com/cover1.jpg" /></div>
-                    <div class="title"><a href="/novel/the-beginning-after-the-end">The Beginning After The End</a></div>
+                    <div class="title"><a href="/novel/sample-story-one">Sample Story One</a></div>
                 </div>
                 <div class="book-item">
                     <div class="thumb"><img src="https://example.com/cover2.jpg" /></div>
-                    <div class="title"><a href="/novel/shadow-slave">Shadow Slave</a></div>
+                    <div class="title"><a href="/novel/sample-story-two">Sample Story Two</a></div>
                 </div>
                 <div class="book-item">
                     <div class="thumb"><img src="https://example.com/cover3.jpg" /></div>
-                    <div class="title"><a href="/novel/solo-leveling">Solo Leveling</a></div>
+                    <div class="title"><a href="/novel/sample-story-three">Sample Story Three</a></div>
                 </div>
             </body>
             </html>
@@ -237,11 +237,11 @@ class JsoupParsingTest {
         "novelbuddy_details" to """
             <html>
             <body>
-                <div class="post-title"><h1>The Beginning After The End</h1></div>
+                <div class="post-title"><h1>Sample Story One</h1></div>
                 <div class="summary_image"><img src="https://example.com/cover1.jpg" /></div>
-                <div class="author-content"><a href="/author/turtleme">TurtleMe</a></div>
+                <div class="author-content"><a href="/author/test-author">Test Author</a></div>
                 <div class="summary__content">
-                    <p>King Grey has unrivaled strength, wealth, and prestige in a world governed by martial ability.</p>
+                    <p>This fixture contains placeholder text for deterministic selector validation.</p>
                 </div>
                 <div class="genres-content">
                     <a href="/genre/action">Action</a>
