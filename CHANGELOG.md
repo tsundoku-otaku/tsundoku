@@ -18,6 +18,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - New sorting option based on source name [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
 - Duplicate finder now has category filter [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
 - Hid Quick migration, removed from unnecessary places, added category option (For migrating between KT and JS of same source) [@mrissaoussamau](https://github.com/mrissaoussama) [#43](https://github.com/tsundoku-otaku/tsundoku/pull/43)
+- Add Enable/Disable for Extension Repos [@mrissaoussamau](https://github.com/mrissaoussama) [#50](https://github.com/tsundoku-otaku/tsundoku/pull/50)
 
 ### Added
 - Toggle under settings > Advanced that hides source name under manga details (For screenshots/bug reporting) [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
