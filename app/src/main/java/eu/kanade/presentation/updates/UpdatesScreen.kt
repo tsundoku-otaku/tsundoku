@@ -75,6 +75,7 @@ fun UpdateScreen(
     onFilterSelected: (UpdatesFilter) -> Unit = {},
     onFilterClicked: () -> Unit,
     hasActiveFilters: Boolean,
+    showMangaFilter: Boolean = true,
     onToggleGroupByNovel: () -> Unit = {},
     onClickNovelGroup: (Long) -> Unit = {},
     onLoadMore: () -> Unit = {},
@@ -164,11 +165,13 @@ fun UpdateScreen(
                                     onClick = { onFilterSelected(UpdatesFilter.ALL) },
                                     label = { Text(stringResource(MR.strings.all)) },
                                 )
-                                FilterChip(
-                                    selected = state.filter == UpdatesFilter.MANGA,
-                                    onClick = { onFilterSelected(UpdatesFilter.MANGA) },
-                                    label = { Text(stringResource(TDMR.strings.label_manga)) },
-                                )
+                                if (showMangaFilter) {
+                                    FilterChip(
+                                        selected = state.filter == UpdatesFilter.MANGA,
+                                        onClick = { onFilterSelected(UpdatesFilter.MANGA) },
+                                        label = { Text(stringResource(TDMR.strings.label_manga)) },
+                                    )
+                                }
                                 FilterChip(
                                     selected = state.filter == UpdatesFilter.NOVELS,
                                     onClick = { onFilterSelected(UpdatesFilter.NOVELS) },

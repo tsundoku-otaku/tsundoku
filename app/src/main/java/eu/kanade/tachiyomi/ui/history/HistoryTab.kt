@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -34,8 +35,11 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 data object HistoryTab : Tab {
 
@@ -64,7 +68,9 @@ data object HistoryTab : Tab {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val screenModel = rememberScreenModel { HistoryScreenModel() }
+        val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
         val state by screenModel.state.collectAsState()
+        val isJoined by libraryPreferences.joinedLibrary().changes().collectAsState(initial = libraryPreferences.joinedLibrary().get())
 
         HistoryScreen(
             state = state,
@@ -77,6 +83,7 @@ data object HistoryTab : Tab {
             onFilterSelected = screenModel::setFilter,
             onGroupByNovelChanged = screenModel::setGroupByNovel,
             onLoadNextPage = screenModel::loadNextPage,
+            showMangaFilter = !isJoined,
         )
 
         val onDismissRequest = { screenModel.setDialog(null) }

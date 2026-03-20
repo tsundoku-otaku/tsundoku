@@ -22,6 +22,7 @@ import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.toImmutableList
 import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.launch
 import tachiyomi.domain.category.interactor.GetCategories
@@ -58,11 +59,12 @@ object SettingsLibraryScreen : SearchableSettings {
         val getCategories = remember { Injekt.get<GetCategories>() }
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
         val allCategories by getCategories.subscribe().collectAsState(initial = emptyList())
+        val isJoined by libraryPreferences.joinedLibrary().changes().collectAsState(initial = libraryPreferences.joinedLibrary().get())
 
         return listOf(
             getCategoriesGroup(LocalNavigator.currentOrThrow, allCategories, libraryPreferences),
             getGlobalUpdateGroup(allCategories, libraryPreferences),
-            getBehaviorGroup(libraryPreferences),
+            getBehaviorGroup(libraryPreferences, isJoined),
         )
     }
 
@@ -232,10 +234,10 @@ object SettingsLibraryScreen : SearchableSettings {
     @Composable
     private fun getBehaviorGroup(
         libraryPreferences: LibraryPreferences,
+        isJoined: Boolean,
     ): Preference.PreferenceGroup {
-        return Preference.PreferenceGroup(
-            title = stringResource(MR.strings.pref_behavior),
-            preferenceItems = persistentListOf(
+        val preferenceItems = buildList {
+            add(
                 Preference.PreferenceItem.ListPreference(
                     preference = libraryPreferences.swipeToStartAction(),
                     entries = persistentMapOf(
@@ -250,6 +252,8 @@ object SettingsLibraryScreen : SearchableSettings {
                     ),
                     title = stringResource(MR.strings.pref_chapter_swipe_start),
                 ),
+            )
+            add(
                 Preference.PreferenceItem.ListPreference(
                     preference = libraryPreferences.swipeToEndAction(),
                     entries = persistentMapOf(
@@ -264,6 +268,8 @@ object SettingsLibraryScreen : SearchableSettings {
                     ),
                     title = stringResource(MR.strings.pref_chapter_swipe_end),
                 ),
+            )
+            add(
                 Preference.PreferenceItem.MultiSelectListPreference(
                     preference = libraryPreferences.markDuplicateReadChapterAsRead(),
                     entries = persistentMapOf(
@@ -274,26 +280,41 @@ object SettingsLibraryScreen : SearchableSettings {
                     ),
                     title = stringResource(MR.strings.pref_mark_duplicate_read_chapter_read),
                 ),
+            )
+            add(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = libraryPreferences.hideMissingChapters(),
                     title = stringResource(MR.strings.pref_hide_missing_chapter_indicators),
                 ),
+            )
+            add(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = libraryPreferences.sortMangaTags(),
                     title = "Sort novel tags alphabetically",
                     subtitle = "Sort tags on novel detail page by name instead of source order",
                 ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = libraryPreferences.mangaReadProgress100(),
-                    title = "Restore position in completed manga chapters",
-                    subtitle = "Resume manga chapters from where you left off even when already marked as read",
-                ),
+            )
+            if (!isJoined) {
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = libraryPreferences.mangaReadProgress100(),
+                        title = "Restore position in completed manga chapters",
+                        subtitle = "Resume manga chapters from where you left off even when already marked as read",
+                    ),
+                )
+            }
+            add(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = libraryPreferences.novelReadProgress100(),
                     title = "Restore position in completed novel chapters",
                     subtitle = "Resume novel chapters from where you left off even when already marked as read",
                 ),
-            ),
+            )
+        }
+
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_behavior),
+            preferenceItems = preferenceItems.toImmutableList(),
         )
     }
 }

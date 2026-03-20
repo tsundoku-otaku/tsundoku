@@ -54,6 +54,7 @@ fun HistoryScreen(
     onFilterSelected: (HistoryFilter) -> Unit,
     onGroupByNovelChanged: (Boolean) -> Unit,
     onLoadNextPage: () -> Unit,
+    showMangaFilter: Boolean = true,
 ) {
     Scaffold(
         topBar = { scrollBehavior ->
@@ -99,11 +100,13 @@ fun HistoryScreen(
                     onClick = { onFilterSelected(HistoryFilter.ALL) },
                     label = { Text(stringResource(MR.strings.all)) },
                 )
-                FilterChip(
-                    selected = state.filter == HistoryFilter.MANGA,
-                    onClick = { onFilterSelected(HistoryFilter.MANGA) },
-                    label = { Text(stringResource(TDMR.strings.label_manga)) },
-                )
+                if (showMangaFilter) {
+                    FilterChip(
+                        selected = state.filter == HistoryFilter.MANGA,
+                        onClick = { onFilterSelected(HistoryFilter.MANGA) },
+                        label = { Text(stringResource(TDMR.strings.label_manga)) },
+                    )
+                }
                 FilterChip(
                     selected = state.filter == HistoryFilter.NOVELS,
                     onClick = { onFilterSelected(HistoryFilter.NOVELS) },
@@ -209,6 +212,7 @@ internal fun HistoryScreenPreviews(
             onFilterSelected = {},
             onGroupByNovelChanged = {},
             onLoadNextPage = {},
+            showMangaFilter = true,
         )
     }
 }
