@@ -287,6 +287,15 @@ object SettingsLibraryScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_hide_missing_chapter_indicators),
                 ),
             )
+            if (!isJoined) {
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = libraryPreferences.showMangaSourceName(),
+                        title = stringResource(TDMR.strings.pref_show_manga_source_name),
+                        subtitle = stringResource(TDMR.strings.pref_show_manga_source_name_summary),
+                    ),
+                )
+            }
             add(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = libraryPreferences.sortMangaTags(),

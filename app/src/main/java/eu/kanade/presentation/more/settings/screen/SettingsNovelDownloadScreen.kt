@@ -40,6 +40,7 @@ import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.collections.immutable.persistentListOf
+import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences.Companion.SourceOverride
 import tachiyomi.domain.source.service.SourceManager
@@ -80,6 +81,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     @Composable
     override fun getPreferences(): List<Preference> {
         val novelDownloadPreferences = remember { Injekt.get<NovelDownloadPreferences>() }
+        val downloadPreferences = remember { Injekt.get<DownloadPreferences>() }
 
         // Dialog state for per-extension overrides
         var showOverridesDialog by remember { mutableStateOf(false) }
@@ -119,7 +121,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         }
 
         return listOf(
-            getDownloadThrottlingGroup(novelDownloadPreferences),
+            getDownloadThrottlingGroup(novelDownloadPreferences, downloadPreferences),
             getImageEmbeddingGroup(novelDownloadPreferences),
             getUpdateThrottlingGroup(novelDownloadPreferences),
             getMassImportThrottlingGroup(novelDownloadPreferences),
@@ -130,6 +132,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     @Composable
     private fun getDownloadThrottlingGroup(
         prefs: NovelDownloadPreferences,
+        downloadPreferences: DownloadPreferences,
     ): Preference.PreferenceGroup {
         val enabled = prefs.enableThrottling().collectAsState().value
         val downloadDelay = prefs.downloadDelay().collectAsState().value
@@ -137,6 +140,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         val randomDelay = prefs.randomDelayRange().collectAsState().value
         val parallelDownloads = prefs.parallelNovelDownloads().collectAsState().value
         val compressionLevel = prefs.zipCompressionLevel().collectAsState().value
+        val epubCompressionLevel = downloadPreferences.epubCompressionLevel().collectAsState().value
         val resumeOnNew = prefs.resumeQueueOnNewChapters().collectAsState().value
 
         val lowDelayWarning = if (downloadDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
@@ -215,6 +219,25 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                         stringResource(TDMR.strings.pref_novel_deflate_level, compressionLevel)
                     },
                     onValueChanged = { prefs.zipCompressionLevel().set(it) },
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = epubCompressionLevel + 1,
+                    valueRange = 0..10,
+                    title = stringResource(MR.strings.pref_epub_compression_level),
+                    subtitle = when (epubCompressionLevel) {
+                        -1 -> stringResource(MR.strings.pref_epub_compression_default)
+                        0 -> stringResource(MR.strings.pref_epub_compression_none)
+                        in 1..3 -> stringResource(MR.strings.pref_epub_compression_low)
+                        in 4..6 -> stringResource(MR.strings.pref_epub_compression_medium)
+                        in 7..9 -> stringResource(MR.strings.pref_epub_compression_high)
+                        else -> stringResource(MR.strings.pref_epub_compression_level_label, epubCompressionLevel)
+                    },
+                    valueString = if (epubCompressionLevel == -1) {
+                        stringResource(MR.strings.pref_epub_compression_default_label)
+                    } else {
+                        "$epubCompressionLevel"
+                    },
+                    onValueChanged = { downloadPreferences.epubCompressionLevel().set(it - 1) },
                 ),
             ),
         )

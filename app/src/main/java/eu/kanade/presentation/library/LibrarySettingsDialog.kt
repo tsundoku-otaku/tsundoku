@@ -285,7 +285,6 @@ private fun ColumnScope.SortPage(
             MR.strings.action_sort_latest_chapter to LibrarySort.Type.LatestChapter,
             MR.strings.action_sort_chapter_fetch_date to LibrarySort.Type.ChapterFetchDate,
             MR.strings.action_sort_date_added to LibrarySort.Type.DateAdded,
-            TDMR.strings.action_sort_source_name to LibrarySort.Type.SourceName,
             trackerMeanPair,
             MR.strings.action_sort_random to LibrarySort.Type.Random,
         )
@@ -746,18 +745,6 @@ private fun ColumnScope.ExtensionsPage(
 
     HeadingItem(MR.strings.label_extensions)
 
-    // Refresh button
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.End,
-    ) {
-        TextButton(onClick = { screenModel.refreshExtensions(forceRefresh = true) }) {
-            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-            Spacer(Modifier.width(4.dp))
-            Text("Refresh List")
-        }
-    }
-
     if (availableExtensions.isEmpty() && !isLoading) {
         Text(
             text = "No extensions with library entries",
@@ -774,13 +761,21 @@ private fun ColumnScope.ExtensionsPage(
             Text("Loading extensions...")
         }
     } else {
-        // Check All / Uncheck All buttons
+        // Refresh / Check All / Uncheck All buttons in one row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            TextButton(
+                onClick = { screenModel.refreshExtensions(forceRefresh = true) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                Spacer(Modifier.width(4.dp))
+                Text("Refresh")
+            }
             TextButton(
                 onClick = { screenModel.checkAllExtensions() },
                 modifier = Modifier.weight(1f),
