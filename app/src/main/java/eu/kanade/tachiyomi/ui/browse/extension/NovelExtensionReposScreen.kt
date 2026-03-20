@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -125,6 +126,7 @@ class NovelExtensionReposScreen(
                         ) { repo ->
                             NovelRepoListItem(
                                 repo = repo,
+                                onSetEnabled = { enabled -> screenModel.setJsRepoEnabled(repo.url, enabled) },
                                 onDelete = { screenModel.showDialog(NovelRepoDialog.DeleteJs(repo)) },
                             )
                         }
@@ -148,6 +150,8 @@ class NovelExtensionReposScreen(
                         ) { repo ->
                             KotlinRepoListItem(
                                 repo = repo,
+                                enabled = repo.baseUrl !in successState.disabledKotlinRepos,
+                                onSetEnabled = { enabled -> screenModel.setKotlinRepoEnabled(repo.baseUrl, enabled) },
                                 onDelete = { screenModel.showDialog(NovelRepoDialog.DeleteKotlin(repo.baseUrl)) },
                             )
                         }
@@ -212,6 +216,7 @@ class NovelExtensionReposScreen(
 @Composable
 private fun NovelRepoListItem(
     repo: JsPluginRepository,
+    onSetEnabled: (Boolean) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -231,17 +236,27 @@ private fun NovelRepoListItem(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(imageVector = Icons.AutoMirrored.Outlined.Label, contentDescription = null)
-            Text(
-                text = repo.name,
+            androidx.compose.foundation.layout.Column(
                 modifier = Modifier.padding(start = MaterialTheme.padding.medium),
-                style = MaterialTheme.typography.titleMedium,
-            )
+            ) {
+                Text(
+                    text = repo.name,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = repo.url,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+
             IconButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.url))
                 context.startActivity(intent)
@@ -267,6 +282,19 @@ private fun NovelRepoListItem(
                 Icon(
                     imageVector = Icons.Outlined.Delete,
                     contentDescription = stringResource(MR.strings.action_delete),
+                )
+            }
+
+            Row(
+                modifier = Modifier.padding(
+                top = MaterialTheme.padding.small,
+                end = MaterialTheme.padding.small,
+            ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Switch(
+                    checked = repo.enabled,
+                    onCheckedChange = onSetEnabled,
                 )
             }
         }
@@ -344,6 +372,8 @@ private fun NovelRepoDeleteDialog(
 @Composable
 private fun KotlinRepoListItem(
     repo: mihon.domain.extensionrepo.model.ExtensionRepo,
+    enabled: Boolean,
+    onSetEnabled: (Boolean) -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -380,8 +410,10 @@ private fun KotlinRepoListItem(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
+
             IconButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.baseUrl))
                 context.startActivity(intent)
@@ -407,6 +439,19 @@ private fun KotlinRepoListItem(
                 Icon(
                     imageVector = Icons.Outlined.Delete,
                     contentDescription = stringResource(MR.strings.action_delete),
+                )
+            }
+
+            Row(
+                modifier = Modifier.padding(
+                top = MaterialTheme.padding.small,
+                end = MaterialTheme.padding.small,
+            ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onSetEnabled,
                 )
             }
         }

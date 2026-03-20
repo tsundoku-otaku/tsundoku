@@ -30,6 +30,7 @@ fun ExtensionReposScreen(
     onClickCreate: () -> Unit,
     onOpenWebsite: (ExtensionRepo) -> Unit,
     onClickDelete: (String) -> Unit,
+    onSetEnabled: (String, Boolean) -> Unit,
     onClickRefresh: () -> Unit,
     navigateUp: () -> Unit,
 ) {
@@ -67,11 +68,13 @@ fun ExtensionReposScreen(
 
         ExtensionReposContent(
             repos = state.repos,
+            disabledRepos = state.disabledRepos,
             lazyListState = lazyListState,
             paddingValues = paddingValues + topSmallPaddingValues +
                 PaddingValues(horizontal = MaterialTheme.padding.medium),
             onOpenWebsite = onOpenWebsite,
             onClickDelete = onClickDelete,
+            onSetEnabled = onSetEnabled,
         )
     }
 }

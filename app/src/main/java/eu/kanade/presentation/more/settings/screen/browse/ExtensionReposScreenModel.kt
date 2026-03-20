@@ -4,8 +4,8 @@ import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
-import eu.kanade.tachiyomi.jsplugin.JsPluginManager
 import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.channels.Channel
@@ -31,6 +31,7 @@ class ExtensionReposScreenModel(
     private val replaceExtensionRepo: ReplaceExtensionRepo = Injekt.get(),
     private val updateExtensionRepo: UpdateExtensionRepo = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) : StateScreenModel<RepoScreenState>(RepoScreenState.Loading) {
 
     private val _events: Channel<RepoEvent> = Channel(Int.MAX_VALUE)
@@ -38,14 +39,19 @@ class ExtensionReposScreenModel(
 
     init {
         screenModelScope.launchIO {
-            getExtensionRepo.subscribeAll()
-                .collectLatest { repos ->
-                    mutableState.update {
-                        RepoScreenState.Success(
-                            repos = repos.toImmutableSet(),
-                        )
-                    }
+            combine(
+                getExtensionRepo.subscribeAll(),
+                sourcePreferences.disabledExtensionRepos().changes(),
+            ) { repos, disabledRepos ->
+                RepoScreenState.Success(
+                    repos = repos.toImmutableSet(),
+                    disabledRepos = disabledRepos.toImmutableSet(),
+                )
+            }.collectLatest { screenState ->
+                mutableState.update {
+                    screenState.copy(dialog = (it as? RepoScreenState.Success)?.dialog)
                 }
+            }
         }
     }
 
@@ -87,9 +93,18 @@ class ExtensionReposScreenModel(
 
         if (status is RepoScreenState.Success) {
             screenModelScope.launchIO {
-                updateExtensionRepo.awaitAll()
+                val enabledRepos = status.repos.filterNot { it.baseUrl in status.disabledRepos }
+                updateExtensionRepo.awaitAll(enabledRepos)
             }
         }
+    }
+
+    fun setRepoEnabled(baseUrl: String, enabled: Boolean) {
+        sourcePreferences.disabledExtensionRepos().set(
+            sourcePreferences.disabledExtensionRepos().get().let { disabledRepos ->
+                if (enabled) disabledRepos - baseUrl else disabledRepos + baseUrl
+            },
+        )
     }
 
     /**
@@ -98,6 +113,9 @@ class ExtensionReposScreenModel(
     fun deleteRepo(baseUrl: String) {
         screenModelScope.launchIO {
             deleteExtensionRepo.await(baseUrl)
+            sourcePreferences.disabledExtensionRepos().set(
+                sourcePreferences.disabledExtensionRepos().get() - baseUrl,
+            )
             extensionManager.findAvailableExtensions()
         }
     }
@@ -142,6 +160,7 @@ sealed class RepoScreenState {
     @Immutable
     data class Success(
         val repos: ImmutableSet<ExtensionRepo>,
+        val disabledRepos: ImmutableSet<String> = kotlinx.collections.immutable.persistentSetOf(),
         val oldRepos: ImmutableSet<String>? = null,
         val dialog: RepoDialog? = null,
     ) : RepoScreenState() {

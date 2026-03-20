@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.browse.extension
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
 import eu.kanade.tachiyomi.jsplugin.model.JsPluginRepository
@@ -34,6 +35,7 @@ class NovelExtensionReposScreenModel(
     private val replaceExtensionRepo: ReplaceExtensionRepo = Injekt.get(),
     private val updateExtensionRepo: UpdateExtensionRepo = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) : StateScreenModel<NovelRepoScreenState>(NovelRepoScreenState.Loading) {
 
     private val _events: Channel<NovelRepoEvent> = Channel(Int.MAX_VALUE)
@@ -44,13 +46,17 @@ class NovelExtensionReposScreenModel(
             combine(
                 jsPluginManager.repositories,
                 getExtensionRepo.subscribeAll(),
-            ) { jsRepos, kotlinRepos ->
+                sourcePreferences.disabledExtensionRepos().changes(),
+            ) { jsRepos, kotlinRepos, disabledKotlinRepos ->
                 NovelRepoScreenState.Success(
                     jsRepos = jsRepos.toImmutableList(),
                     kotlinRepos = kotlinRepos.toImmutableSet(),
+                    disabledKotlinRepos = disabledKotlinRepos.toImmutableSet(),
                 )
             }.collectLatest { state ->
-                mutableState.update { state }
+                mutableState.update {
+                    state.copy(dialog = (it as? NovelRepoScreenState.Success)?.dialog)
+                }
             }
         }
     }
@@ -102,15 +108,32 @@ class NovelExtensionReposScreenModel(
     fun deleteKotlinRepo(baseUrl: String) {
         screenModelScope.launchIO {
             deleteExtensionRepo.await(baseUrl)
+            sourcePreferences.disabledExtensionRepos().set(
+                sourcePreferences.disabledExtensionRepos().get() - baseUrl,
+            )
             extensionManager.findAvailableExtensions()
             dismissDialog()
         }
     }
 
+    fun setJsRepoEnabled(url: String, enabled: Boolean) {
+        jsPluginManager.setRepositoryEnabled(url, enabled)
+    }
+
+    fun setKotlinRepoEnabled(baseUrl: String, enabled: Boolean) {
+        sourcePreferences.disabledExtensionRepos().set(
+            sourcePreferences.disabledExtensionRepos().get().let { disabledRepos ->
+                if (enabled) disabledRepos - baseUrl else disabledRepos + baseUrl
+            },
+        )
+    }
+
     fun refreshRepos() {
         screenModelScope.launchIO {
             jsPluginManager.refreshAvailablePlugins(forceRefresh = true)
-            updateExtensionRepo.awaitAll()
+            val disabledRepos = sourcePreferences.disabledExtensionRepos().get()
+            val enabledRepos = getExtensionRepo.getAll().filterNot { it.baseUrl in disabledRepos }
+            updateExtensionRepo.awaitAll(enabledRepos)
         }
     }
 
@@ -156,6 +179,7 @@ sealed class NovelRepoScreenState {
     data class Success(
         val jsRepos: ImmutableList<JsPluginRepository> = kotlinx.collections.immutable.persistentListOf(),
         val kotlinRepos: ImmutableSet<ExtensionRepo> = kotlinx.collections.immutable.persistentSetOf(),
+        val disabledKotlinRepos: ImmutableSet<String> = kotlinx.collections.immutable.persistentSetOf(),
         val dialog: NovelRepoDialog? = null,
     ) : NovelRepoScreenState() {
         val isEmpty: Boolean

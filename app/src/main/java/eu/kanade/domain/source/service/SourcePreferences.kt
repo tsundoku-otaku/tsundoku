@@ -49,6 +49,8 @@ class SourcePreferences(
 
     fun extensionRepos() = preferenceStore.getStringSet("extension_repos", emptySet())
 
+    fun disabledExtensionRepos() = preferenceStore.getStringSet("disabled_extension_repos", emptySet())
+
     fun extensionUpdatesCount() = preferenceStore.getInt("ext_updates_count", 0)
 
     fun jsRepositoriesBackup() = preferenceStore.getString("js_plugin_repositories_backup", "")

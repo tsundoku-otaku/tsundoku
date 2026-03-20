@@ -18,6 +18,12 @@ class UpdateExtensionRepo(
             .awaitAll()
     }
 
+    suspend fun awaitAll(repos: List<ExtensionRepo>) = coroutineScope {
+        repos
+            .map { async { await(it) } }
+            .awaitAll()
+    }
+
     suspend fun await(repo: ExtensionRepo) {
         val newRepo = service.fetchRepoDetails(repo.baseUrl) ?: return
         if (
