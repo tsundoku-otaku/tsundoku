@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.util.fastMap
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.category.visualName
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.widget.TriStateListDialog
@@ -48,6 +49,8 @@ object SettingsDownloadScreen : SearchableSettings {
         val allCategories by getCategories.subscribe().collectAsState(initial = emptyList())
 
         val downloadPreferences = remember { Injekt.get<DownloadPreferences>() }
+        val basePreferences = remember { Injekt.get<BasePreferences>() }
+        val hideMangaUi by basePreferences.hideMangaUi().collectAsState()
         val parallelSourceLimit by downloadPreferences.parallelSourceLimit().collectAsState()
         val parallelPageLimit by downloadPreferences.parallelPageLimit().collectAsState()
         return listOf(
@@ -55,28 +58,30 @@ object SettingsDownloadScreen : SearchableSettings {
                 preference = downloadPreferences.downloadOnlyOverWifi(),
                 title = stringResource(MR.strings.connected_to_wifi),
             ),
-            Preference.PreferenceItem.SwitchPreference(
-                preference = downloadPreferences.saveChaptersAsCBZ(),
-                title = stringResource(MR.strings.save_chapter_as_cbz),
-            ),
-            Preference.PreferenceItem.SwitchPreference(
-                preference = downloadPreferences.splitTallImages(),
-                title = stringResource(MR.strings.split_tall_images),
-                subtitle = stringResource(MR.strings.split_tall_images_summary),
-            ),
-            Preference.PreferenceItem.SliderPreference(
-                value = parallelSourceLimit,
-                valueRange = 1..15,
-                title = stringResource(MR.strings.pref_download_concurrent_sources),
-                onValueChanged = { downloadPreferences.parallelSourceLimit().set(it) },
-            ),
-            Preference.PreferenceItem.SliderPreference(
-                value = parallelPageLimit,
-                valueRange = 1..15,
-                title = stringResource(MR.strings.pref_download_concurrent_pages),
-                subtitle = stringResource(MR.strings.pref_download_concurrent_pages_summary),
-                onValueChanged = { downloadPreferences.parallelPageLimit().set(it) },
-            ),
+            *listOfNotNull(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = downloadPreferences.saveChaptersAsCBZ(),
+                    title = stringResource(MR.strings.save_chapter_as_cbz),
+                ).takeUnless { hideMangaUi },
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = downloadPreferences.splitTallImages(),
+                    title = stringResource(MR.strings.split_tall_images),
+                    subtitle = stringResource(MR.strings.split_tall_images_summary),
+                ).takeUnless { hideMangaUi },
+                Preference.PreferenceItem.SliderPreference(
+                    value = parallelSourceLimit,
+                    valueRange = 1..15,
+                    title = stringResource(MR.strings.pref_download_concurrent_sources),
+                    onValueChanged = { downloadPreferences.parallelSourceLimit().set(it) },
+                ).takeUnless { hideMangaUi },
+                Preference.PreferenceItem.SliderPreference(
+                    value = parallelPageLimit,
+                    valueRange = 1..15,
+                    title = stringResource(MR.strings.pref_download_concurrent_pages),
+                    subtitle = stringResource(MR.strings.pref_download_concurrent_pages_summary),
+                    onValueChanged = { downloadPreferences.parallelPageLimit().set(it) },
+                ).takeUnless { hideMangaUi },
+            ).toTypedArray(),
             getDeleteChaptersGroup(
                 downloadPreferences = downloadPreferences,
                 categories = allCategories,

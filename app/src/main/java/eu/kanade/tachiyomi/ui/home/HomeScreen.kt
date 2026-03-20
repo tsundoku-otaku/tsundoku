@@ -34,6 +34,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import cafe.adriel.voyager.navigator.tab.LocalTabNavigator
 import cafe.adriel.voyager.navigator.tab.TabNavigator
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
@@ -95,8 +96,10 @@ object HomeScreen : Screen() {
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val libraryPreferences = remember { Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>() }
+        val basePreferences = remember { Injekt.get<BasePreferences>() }
         val isJoined by libraryPreferences.joinedLibrary().collectAsState()
-        val tabs = if (isJoined) JOINED_TABS else TABS
+        val hideMangaUi by basePreferences.hideMangaUi().collectAsState()
+        val tabs = if (isJoined || hideMangaUi) JOINED_TABS else TABS
         TabNavigator(
             tab = NovelsTab,
             key = TabNavigatorKey,
@@ -168,7 +171,7 @@ object HomeScreen : Screen() {
                 launch {
                     openTabEvent.receiveAsFlow().collectLatest {
                         tabNavigator.current = when (it) {
-                            is Tab.Library -> if (isJoined) NovelsTab else LibraryTab
+                            is Tab.Library -> if (isJoined || hideMangaUi) NovelsTab else LibraryTab
                             Tab.Updates -> UpdatesTab
                             Tab.History -> HistoryTab
                             is Tab.Browse -> {

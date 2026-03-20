@@ -327,6 +327,8 @@
     <string name="pref_font_size">Font size</string>
     <string name="pref_font_family">Font family</string>
     <string name="pref_novel_js_snippets">JavaScript Snippets</string>
+    <string name="pref_hide_manga_ui">Hide manga-related UI</string>
+    <string name="pref_hide_manga_ui_summary">Hide manga library tab, manga browse tabs, and manga settings.</string>
     <string name="novel_add_css_snippet">Add CSS snippet</string>
     <string name="novel_edit_css_snippet">Edit CSS snippet</string>
     <string name="novel_add_js_snippet">Add JavaScript snippet</string>

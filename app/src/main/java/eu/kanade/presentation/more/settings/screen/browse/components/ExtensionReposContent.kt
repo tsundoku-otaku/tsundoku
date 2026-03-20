@@ -99,7 +99,6 @@ private fun ExtensionRepoListItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-
             IconButton(onClick = onOpenWebsite) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
@@ -128,9 +127,9 @@ private fun ExtensionRepoListItem(
 
             Row(
                 modifier = Modifier.padding(
-                top = MaterialTheme.padding.small,
-                end = MaterialTheme.padding.small,
-            ),
+                    top = MaterialTheme.padding.small,
+                    end = MaterialTheme.padding.small,
+                ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Switch(

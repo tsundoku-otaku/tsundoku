@@ -27,6 +27,8 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +41,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.more.settings.screen.about.AboutScreen
@@ -50,6 +53,9 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.util.collectAsState
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import cafe.adriel.voyager.core.screen.Screen as VoyagerScreen
 
 object SettingsMainScreen : Screen() {
@@ -79,8 +85,13 @@ object SettingsMainScreen : Screen() {
     fun Content(twoPane: Boolean) {
         val navigator = LocalNavigator.currentOrThrow
         val backPress = LocalBackPress.currentOrThrow
+        val basePreferences = remember { Injekt.get<BasePreferences>() }
+        val hideMangaUi by basePreferences.hideMangaUi().collectAsState()
         val containerColor = if (twoPane) getPalerSurface() else MaterialTheme.colorScheme.surface
         val topBarState = rememberTopAppBarState()
+        val visibleItems = remember(hideMangaUi) {
+            items.filterNot { hideMangaUi && it.isMangaOnly }
+        }
 
         Scaffold(
             topBarScrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(topBarState),
@@ -106,10 +117,12 @@ object SettingsMainScreen : Screen() {
             content = { contentPadding ->
                 val state = rememberLazyListState()
                 val indexSelected = if (twoPane) {
-                    items.indexOfFirst { it.screen::class == navigator.items.first()::class }
+                    visibleItems.indexOfFirst { it.screen::class == navigator.items.first()::class }
                         .also {
                             LaunchedEffect(Unit) {
-                                state.animateScrollToItem(it)
+                                if (it >= 0) {
+                                    state.animateScrollToItem(it)
+                                }
                                 if (it > 0) {
                                     // Lift scroll
                                     topBarState.contentOffset = topBarState.heightOffsetLimit
@@ -125,7 +138,7 @@ object SettingsMainScreen : Screen() {
                     contentPadding = contentPadding,
                 ) {
                     itemsIndexed(
-                        items = items,
+                        items = visibleItems,
                         key = { _, item -> item.hashCode() },
                     ) { index, item ->
                         val selected = indexSelected == index
@@ -171,6 +184,7 @@ object SettingsMainScreen : Screen() {
         val formatSubtitle: @Composable () -> String? = { subtitleRes?.let { stringResource(it) } },
         val icon: ImageVector,
         val screen: VoyagerScreen,
+        val isMangaOnly: Boolean = false,
     )
 
     private val items = listOf(
@@ -191,6 +205,7 @@ object SettingsMainScreen : Screen() {
             subtitleRes = TDMR.strings.pref_manga_reader_summary,
             icon = Icons.AutoMirrored.Outlined.ChromeReaderMode,
             screen = SettingsReaderScreen,
+            isMangaOnly = true,
         ),
         Item(
             titleRes = TDMR.strings.pref_category_novel_reader,

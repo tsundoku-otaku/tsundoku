@@ -134,6 +134,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         prefs: NovelDownloadPreferences,
         downloadPreferences: DownloadPreferences,
     ): Preference.PreferenceGroup {
+        val downloadPreferences = Injekt.get<DownloadPreferences>()
         val enabled = prefs.enableThrottling().collectAsState().value
         val downloadDelay = prefs.downloadDelay().collectAsState().value
         val randomDelayMin = prefs.randomDelayMin().collectAsState().value

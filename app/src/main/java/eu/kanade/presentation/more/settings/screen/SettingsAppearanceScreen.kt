@@ -22,6 +22,7 @@ import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableMap
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
@@ -162,6 +163,7 @@ object SettingsAppearanceScreen : SearchableSettings {
         libraryPreferences: tachiyomi.domain.library.service.LibraryPreferences,
     ): Preference.PreferenceGroup {
         val context = LocalContext.current
+        val basePreferences = remember { Injekt.get<eu.kanade.domain.base.BasePreferences>() }
         return Preference.PreferenceGroup(
             title = "Library layout",
             preferenceItems = persistentListOf(
@@ -169,6 +171,15 @@ object SettingsAppearanceScreen : SearchableSettings {
                     preference = libraryPreferences.joinedLibrary(),
                     title = "Combined library",
                     subtitle = "Merge Novels and Manga into a single Library tab",
+                    onValueChanged = {
+                        context.toast(MR.strings.requires_app_restart)
+                        true
+                    },
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = basePreferences.hideMangaUi(),
+                    title = stringResource(TDMR.strings.pref_hide_manga_ui),
+                    subtitle = stringResource(TDMR.strings.pref_hide_manga_ui_summary),
                     onValueChanged = {
                         context.toast(MR.strings.requires_app_restart)
                         true

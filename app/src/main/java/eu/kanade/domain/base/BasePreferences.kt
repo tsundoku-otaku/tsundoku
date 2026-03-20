@@ -23,6 +23,8 @@ class BasePreferences(
 
     fun shownOnboardingFlow() = preferenceStore.getBoolean(Preference.appStateKey("onboarding_complete"), false)
 
+    fun hideMangaUi() = preferenceStore.getBoolean(Preference.appStateKey("pref_hide_manga_ui"), false)
+
     enum class ExtensionInstaller(val titleRes: StringResource, val requiresSystemPermission: Boolean) {
         LEGACY(MR.strings.ext_installer_legacy, true),
         PACKAGEINSTALLER(MR.strings.ext_installer_packageinstaller, true),

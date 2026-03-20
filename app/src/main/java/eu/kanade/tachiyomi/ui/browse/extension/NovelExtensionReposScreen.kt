@@ -256,7 +256,6 @@ private fun NovelRepoListItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-
             IconButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.url))
                 context.startActivity(intent)
@@ -287,9 +286,9 @@ private fun NovelRepoListItem(
 
             Row(
                 modifier = Modifier.padding(
-                top = MaterialTheme.padding.small,
-                end = MaterialTheme.padding.small,
-            ),
+                    top = MaterialTheme.padding.small,
+                    end = MaterialTheme.padding.small,
+                ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Switch(
@@ -413,7 +412,6 @@ private fun KotlinRepoListItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-
             IconButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.baseUrl))
                 context.startActivity(intent)
@@ -444,9 +442,9 @@ private fun KotlinRepoListItem(
 
             Row(
                 modifier = Modifier.padding(
-                top = MaterialTheme.padding.small,
-                end = MaterialTheme.padding.small,
-            ),
+                    top = MaterialTheme.padding.small,
+                    end = MaterialTheme.padding.small,
+                ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Switch(
