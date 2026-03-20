@@ -53,6 +53,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
+import eu.kanade.presentation.components.toTabTitles
 import eu.kanade.tachiyomi.ui.library.LibrarySettingsScreenModel
 import eu.kanade.tachiyomi.util.system.isReleaseBuildType
 import kotlinx.collections.immutable.persistentListOf
@@ -89,7 +90,7 @@ fun LibrarySettingsDialog(
             stringResource(MR.strings.action_display),
             "Tags",
             "Extensions",
-        ),
+        ).toTabTitles(),
     ) { page ->
         if (page == 3) {
             Column(
