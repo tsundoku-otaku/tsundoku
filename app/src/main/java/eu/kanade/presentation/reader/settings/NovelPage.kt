@@ -26,6 +26,10 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FindReplace
+import androidx.compose.material.icons.outlined.FormatAlignCenter
+import androidx.compose.material.icons.outlined.FormatAlignJustify
+import androidx.compose.material.icons.outlined.FormatAlignLeft
+import androidx.compose.material.icons.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -38,6 +42,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -67,12 +73,16 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
+import tachiyomi.presentation.core.components.InlineSettingsChipRow
+import tachiyomi.presentation.core.components.RadioSelectItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
+import tachiyomi.presentation.core.components.StepperItem
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 
@@ -113,10 +123,10 @@ private val systemFonts = listOf(
 )
 
 private val textAlignments = listOf(
-    TDMR.strings.novel_align_left to "left",
-    TDMR.strings.novel_align_center to "center",
-    TDMR.strings.novel_align_right to "right",
-    TDMR.strings.novel_align_justify to "justify",
+    Icons.Outlined.FormatAlignLeft to "left",
+    Icons.Outlined.FormatAlignCenter to "center",
+    Icons.Outlined.FormatAlignRight to "right",
+    Icons.Outlined.FormatAlignJustify to "justify",
 )
 
 private val renderingModes = listOf(
@@ -153,14 +163,6 @@ private val backgroundColors = listOf(
 @Composable
 internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel, renderingMode: String) {
     val context = LocalContext.current
-    val fontSize by screenModel.preferences.novelFontSize().collectAsState()
-    val lineHeight by screenModel.preferences.novelLineHeight().collectAsState()
-    val paragraphIndent by screenModel.preferences.novelParagraphIndent().collectAsState()
-    val paragraphSpacing by screenModel.preferences.novelParagraphSpacing().collectAsState()
-    val marginLeft by screenModel.preferences.novelMarginLeft().collectAsState()
-    val marginRight by screenModel.preferences.novelMarginRight().collectAsState()
-    val marginTop by screenModel.preferences.novelMarginTop().collectAsState()
-    val marginBottom by screenModel.preferences.novelMarginBottom().collectAsState()
     val fontFamily by screenModel.preferences.novelFontFamily().collectAsState()
     val textAlign by screenModel.preferences.novelTextAlign().collectAsState()
     val autoSplitEnabled by screenModel.preferences.novelAutoSplitText().collectAsState()
@@ -177,7 +179,7 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     }
 
     // Rendering Mode
-    SettingsChipRow(TDMR.strings.pref_novel_rendering_mode) {
+    InlineSettingsChipRow(TDMR.strings.pref_novel_rendering_mode) {
         renderingModes.map { (labelRes, value) ->
             FilterChip(
                 selected = renderingMode == value,
@@ -187,74 +189,14 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
         }
     }
 
-    // Font Size
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_font_size),
-        value = fontSize,
-        valueRange = 10..40,
-        onChange = { screenModel.preferences.novelFontSize().set(it) },
-    )
-
-    // Line Height
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_novel_line_height),
-        value = (lineHeight * 10).toInt(),
-        valueRange = 10..30,
-        onChange = { screenModel.preferences.novelLineHeight().set(it / 10f) },
-    )
-
-    // Paragraph Indentation
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_novel_paragraph_indent),
-        value = (paragraphIndent * 10).toInt(),
-        valueRange = 0..100,
-        onChange = { screenModel.preferences.novelParagraphIndent().set(it / 10f) },
-    )
-
-    // Paragraph Spacing
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_novel_paragraph_spacing),
-        value = (paragraphSpacing * 10).toInt(),
-        valueRange = 0..30,
-        onChange = { screenModel.preferences.novelParagraphSpacing().set(it / 10f) },
-    )
-
-    // Margins
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_novel_margin_left),
-        value = marginLeft,
-        valueRange = 0..100,
-        onChange = { screenModel.preferences.novelMarginLeft().set(it) },
-    )
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_novel_margin_right),
-        value = marginRight,
-        valueRange = 0..100,
-        onChange = { screenModel.preferences.novelMarginRight().set(it) },
-    )
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_novel_margin_top),
-        value = marginTop,
-        valueRange = 0..300,
-        onChange = { screenModel.preferences.novelMarginTop().set(it) },
-    )
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_novel_margin_bottom),
-        value = marginBottom,
-        valueRange = 0..300,
-        onChange = { screenModel.preferences.novelMarginBottom().set(it) },
-    )
-
     // Font Family
-    SettingsChipRow(TDMR.strings.pref_font_family) {
-        allFonts.map { (label, value) ->
-            FilterChip(
-                selected = fontFamily == value,
-                onClick = { screenModel.preferences.novelFontFamily().set(value) },
-                label = { Text(label) },
-            )
-        }
-    }
+    RadioSelectItem(
+        label = stringResource(TDMR.strings.pref_font_family),
+        options = allFonts,
+        selected = fontFamily,
+        onSelect = { screenModel.preferences.novelFontFamily().set(it) },
+        defaultValue = screenModel.preferences.novelFontFamily().defaultValue(),
+    )
 
     // Use Original Fonts (WebView mode only)
     if (renderingMode == "webview") {
@@ -265,15 +207,73 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     }
 
     // Text Alignment
-    SettingsChipRow(TDMR.strings.pref_novel_text_align) {
-        textAlignments.map { (labelRes, value) ->
-            FilterChip(
-                selected = textAlign == value,
-                onClick = { screenModel.preferences.novelTextAlign().set(value) },
-                label = { Text(stringResource(labelRes)) },
-            )
+    InlineSettingsChipRow(TDMR.strings.pref_novel_text_align) {
+        textAlignments.forEach { (icon, value) ->
+            IconToggleButton(
+                checked = textAlign == value,
+                onCheckedChange = { screenModel.preferences.novelTextAlign().set(value) },
+                colors = IconButtonDefaults.iconToggleButtonColors(
+                    checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                Icon(imageVector = icon, contentDescription = value)
+            }
         }
     }
+
+    // Font Size
+    StepperItem(
+        label = stringResource(TDMR.strings.pref_font_size),
+        pref = screenModel.preferences.novelFontSize(),
+        valueRange = 10..40,
+    )
+
+    // Line Height
+    StepperItem(
+        label = stringResource(TDMR.strings.pref_novel_line_height),
+        pref = screenModel.preferences.novelLineHeight(),
+        valueRange = 10..30,
+        multiplier = 10,
+    )
+
+    // Paragraph Indentation
+    StepperItem(
+        label = stringResource(TDMR.strings.pref_novel_paragraph_indent),
+        pref = screenModel.preferences.novelParagraphIndent(),
+        valueRange = 0..100,
+        multiplier = 10,
+    )
+
+    // Paragraph Spacing
+    StepperItem(
+        label = stringResource(TDMR.strings.pref_novel_paragraph_spacing),
+        pref = screenModel.preferences.novelParagraphSpacing(),
+        valueRange = 0..30,
+        multiplier = 10,
+    )
+
+    // Margins
+    StepperItem(
+        label = stringResource(TDMR.strings.pref_novel_margin_left),
+        pref = screenModel.preferences.novelMarginLeft(),
+        valueRange = 0..100,
+    )
+    StepperItem(
+        label = stringResource(TDMR.strings.pref_novel_margin_right),
+        pref = screenModel.preferences.novelMarginRight(),
+        valueRange = 0..100,
+    )
+    StepperItem(
+        label = stringResource(TDMR.strings.pref_novel_margin_top),
+        pref = screenModel.preferences.novelMarginTop(),
+        valueRange = 0..300,
+    )
+    StepperItem(
+        label = stringResource(TDMR.strings.pref_novel_margin_bottom),
+        pref = screenModel.preferences.novelMarginBottom(),
+        valueRange = 0..300,
+    )
 
     HorizontalDivider()
 
@@ -460,6 +460,35 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
         }
     }
 
+    // Hide Chapter Title in Content
+    CheckboxItem(
+        label = stringResource(TDMR.strings.pref_novel_hide_chapter_title),
+        pref = screenModel.preferences.novelHideChapterTitle(),
+    )
+
+    // Force Lowercase Text
+    CheckboxItem(
+        label = stringResource(TDMR.strings.novel_force_lowercase),
+        pref = screenModel.preferences.novelForceTextLowercase(),
+    )
+
+    // Chapter Title Display Format
+    val chapterTitleDisplay by screenModel.preferences.novelChapterTitleDisplay().collectAsState()
+    val titleDisplayOptions = listOf(
+        stringResource(MR.strings.name) to 0,
+        stringResource(TDMR.strings.novel_chapter_display_number) to 1,
+        stringResource(TDMR.strings.novel_chapter_display_both) to 2,
+    )
+    InlineSettingsChipRow(TDMR.strings.pref_novel_chapter_title_display) {
+        titleDisplayOptions.map { (label, value) ->
+            FilterChip(
+                selected = chapterTitleDisplay == value,
+                onClick = { screenModel.preferences.novelChapterTitleDisplay().set(value) },
+                label = { Text(label) },
+            )
+        }
+    }
+
     // Custom Brightness
     val novelCustomBrightness by screenModel.preferences.novelCustomBrightness().collectAsState()
     CheckboxItem(
@@ -483,6 +512,20 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
         label = stringResource(TDMR.strings.pref_novel_keep_screen_on),
         pref = screenModel.preferences.novelKeepScreenOn(),
     )
+
+    // Block Media (images, videos, audio)
+    CheckboxItem(
+        label = stringResource(TDMR.strings.pref_novel_block_media),
+        pref = screenModel.preferences.novelBlockMedia(),
+    )
+
+    // Show Raw HTML (TextView only) - for debugging
+    if (renderingMode == "default") {
+        CheckboxItem(
+            label = stringResource(TDMR.strings.pref_novel_show_raw_html),
+            pref = screenModel.preferences.novelShowRawHtml(),
+        )
+    }
 }
 
 @Composable
@@ -524,35 +567,6 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         )
     }
 
-    // Hide Chapter Title in Content
-    CheckboxItem(
-        label = stringResource(TDMR.strings.pref_novel_hide_chapter_title),
-        pref = screenModel.preferences.novelHideChapterTitle(),
-    )
-
-    // Force Lowercase Text
-    CheckboxItem(
-        label = stringResource(TDMR.strings.novel_force_lowercase),
-        pref = screenModel.preferences.novelForceTextLowercase(),
-    )
-
-    // Chapter Title Display Format
-    val chapterTitleDisplay by screenModel.preferences.novelChapterTitleDisplay().collectAsState()
-    val titleDisplayOptions = listOf(
-        stringResource(TDMR.strings.novel_chapter_display_name) to 0,
-        stringResource(TDMR.strings.novel_chapter_display_number) to 1,
-        stringResource(TDMR.strings.novel_chapter_display_both) to 2,
-    )
-    SettingsChipRow(TDMR.strings.pref_novel_chapter_title_display) {
-        titleDisplayOptions.map { (label, value) ->
-            FilterChip(
-                selected = chapterTitleDisplay == value,
-                onClick = { screenModel.preferences.novelChapterTitleDisplay().set(value) },
-                label = { Text(label) },
-            )
-        }
-    }
-
     // Progress Slider
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_progress_slider),
@@ -586,26 +600,12 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         )
     }
 
-    // Block Media (images, videos, audio)
-    CheckboxItem(
-        label = stringResource(TDMR.strings.pref_novel_block_media),
-        pref = screenModel.preferences.novelBlockMedia(),
-    )
-
-    // Show Raw HTML (TextView only) - for debugging
-    if (renderingMode == "default") {
-        CheckboxItem(
-            label = stringResource(TDMR.strings.pref_novel_show_raw_html),
-            pref = screenModel.preferences.novelShowRawHtml(),
-        )
-    }
-
     // Chapter Sort Order
     val sortOrderOptions = listOf(
         stringResource(TDMR.strings.novel_sort_source) to "source",
         stringResource(TDMR.strings.novel_sort_chapter) to "chapter_number",
     )
-    SettingsChipRow(TDMR.strings.pref_novel_chapter_sort_order) {
+    InlineSettingsChipRow(TDMR.strings.pref_novel_chapter_sort_order) {
         sortOrderOptions.map { (label, value) ->
             FilterChip(
                 selected = chapterSortOrder == value,

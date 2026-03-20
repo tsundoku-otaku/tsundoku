@@ -265,8 +265,7 @@
     <string name="novel_color_custom">Custom</string>
     <string name="novel_color_cream">Cream</string>
     <string name="novel_color_charcoal">Charcoal</string>
-    <string name="novel_chapter_display_name">Name only</string>
-    <string name="novel_chapter_display_number">Number only</string>
+    <string name="novel_chapter_display_number">Number</string>
     <string name="novel_chapter_display_both">Both</string>
     <string name="novel_sort_source">Source order</string>
     <string name="novel_sort_chapter">Chapter number</string>
