@@ -119,16 +119,7 @@ class LibraryScreenModel(
 
     private val itemCache = HashMap<Long, LibraryItem>()
     private val itemCacheMangaRef = HashMap<Long, LibraryManga>()
-    private var itemCachePrefs: ItemPreferences? = null
-
-    // Performance: Cache for filtered results to avoid recomputing on every change
-    private var lastLibraryData: LibraryData? = null
-    private var lastFilteredFavorites: List<LibraryItem>? = null
-    private var lastItemPreferences: ItemPreferences? = null
-    
-    // Performance: Cache for grouped results to avoid full regrouping
-    private var lastGroupingKey: Pair<List<Long>, Boolean>? = null
-    private var lastGroupedResult: Map<Category, List<Long>>? = null
+    private var itemCachePrefs: DisplayPreferences? = null
 
     enum class LibraryType {
         All,
@@ -141,6 +132,9 @@ class LibraryScreenModel(
             state.copy(activeCategoryIndex = libraryPreferences.lastUsedCategory().get())
         }
         screenModelScope.launchIO {
+            val itemPreferencesFlow = getLibraryItemPreferencesFlow()
+            val displayPreferencesFlow = getLibraryDisplayPreferencesFlow()
+
             // Subscribe to categories filtered by content type based on library type
             val categoriesFlow = when (type) {
                 LibraryType.All -> getCategories.subscribe()
@@ -187,40 +181,42 @@ class LibraryScreenModel(
                 SearchConfig(query, chapterMatchIds, searchByUrl, useRegex)
             }
 
-            combine(
-                searchWithChapterMatchesFlow,
+            val filteredLibraryDataFlow = combine(
                 categoriesFlow,
-                getFavoritesFlow(),
+                getFavoritesFlow(displayPreferencesFlow),
                 combine(getTracksPerManga.subscribe(), getTrackingFiltersFlow(), ::Pair),
-                getLibraryItemPreferencesFlow(),
+                itemPreferencesFlow,
                 getLibraryManga.isLoading(),
-            ) { flows: Array<*> ->
-                val searchConfig = flows[0] as SearchConfig
-
-                @Suppress("UNCHECKED_CAST")
-                val categories = flows[1] as List<Category>
-
-                @Suppress("UNCHECKED_CAST")
-                val favorites = flows[2] as List<LibraryItem>
-                val (tracksMap, trackingFilters) = flows[3] as Pair<*, *>
-                val itemPreferences = flows[4]
-                val isLoading = flows[5] as Boolean
+            ) { categories, favorites, tracksAndFilters, itemPreferences, isLoading ->
+                val (tracksMap, trackingFilters) = tracksAndFilters
+                val castTracksMap = tracksMap as Map<Long, List<Track>>
+                val castTrackingFilters = trackingFilters as Map<Long, TriState>
 
                 val showSystemCategory = favorites.any { it.libraryManga.categories.contains(0L) }
 
-                @Suppress("UNCHECKED_CAST")
                 val filteredFavorites = favorites
-                    .applyFilters(tracksMap as Map<Long, List<Track>>, trackingFilters as Map<Long, TriState>, itemPreferences as ItemPreferences)
-                    .let { if (searchConfig.query == null) it else it.filter { m -> m.matches(searchConfig.query, searchConfig.chapterMatchIds, searchConfig.searchByUrl, searchConfig.useRegex) } }
+                    .applyFilters(castTracksMap, castTrackingFilters, itemPreferences)
 
                 LibraryData(
                     isInitialized = !isLoading,
                     showSystemCategory = showSystemCategory,
                     categories = categories,
                     favorites = filteredFavorites,
-                    tracksMap = tracksMap as Map<Long, List<Track>>,
-                    loggedInTrackerIds = (trackingFilters as Map<Long, TriState>).keys,
+                    tracksMap = castTracksMap,
+                    loggedInTrackerIds = castTrackingFilters.keys,
                 )
+            }
+
+            combine(filteredLibraryDataFlow, searchWithChapterMatchesFlow) { filteredData, searchConfig ->
+                val searchedFavorites = if (searchConfig.query == null) {
+                    filteredData.favorites
+                } else {
+                    filteredData.favorites.fastFilter { manga ->
+                        manga.matches(searchConfig.query, searchConfig.chapterMatchIds, searchConfig.searchByUrl, searchConfig.useRegex)
+                    }
+                }
+
+                filteredData.copy(favorites = searchedFavorites)
             }
                 .collectLatest { libraryData ->
                     mutableState.update { state ->
@@ -604,10 +600,10 @@ class LibraryScreenModel(
 
     private var isNovelBackfillDone = false
 
-    private fun getFavoritesFlow(): Flow<List<LibraryItem>> {
+    private fun getFavoritesFlow(displayPreferencesFlow: Flow<DisplayPreferences>): Flow<List<LibraryItem>> {
         return combine(
             getLibraryManga.subscribe(),
-            getLibraryItemPreferencesFlow(),
+            displayPreferencesFlow,
             downloadCache.changes.onStart { emit(Unit) },
         ) { libraryManga, preferences, _ ->
             if (!isNovelBackfillDone) {
@@ -678,6 +674,20 @@ class LibraryScreenModel(
             }
 
             result
+        }
+    }
+
+    private fun getLibraryDisplayPreferencesFlow(): Flow<DisplayPreferences> {
+        return combine(
+            libraryPreferences.unreadBadge().changes(),
+            libraryPreferences.localBadge().changes(),
+            libraryPreferences.languageBadge().changes(),
+        ) { unreadBadge, localBadge, languageBadge ->
+            DisplayPreferences(
+                unreadBadge = unreadBadge,
+                localBadge = localBadge,
+                languageBadge = languageBadge,
+            )
         }
     }
 
@@ -1672,6 +1682,13 @@ class LibraryScreenModel(
         data class RemoveChapters(val manga: List<Manga>) : Dialog
         data class MarkReadConfirmation(val read: Boolean) : Dialog
     }
+
+    @Immutable
+    private data class DisplayPreferences(
+        val unreadBadge: Boolean,
+        val localBadge: Boolean,
+        val languageBadge: Boolean,
+    )
 
     @Immutable
     private data class ItemPreferences(
