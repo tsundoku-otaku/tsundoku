@@ -256,19 +256,6 @@ private fun NovelRepoListItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(start = MaterialTheme.padding.small),
-            ) {
-                Text(
-                    text = stringResource(if (repo.enabled) TDMR.strings.novel_enabled else TDMR.strings.novel_disabled),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Switch(
-                    checked = repo.enabled,
-                    onCheckedChange = onSetEnabled,
-                )
-            }
 
             IconButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.url))
@@ -295,6 +282,19 @@ private fun NovelRepoListItem(
                 Icon(
                     imageVector = Icons.Outlined.Delete,
                     contentDescription = stringResource(MR.strings.action_delete),
+                )
+            }
+
+            Row(
+                modifier = Modifier.padding(
+                top = MaterialTheme.padding.small,
+                end = MaterialTheme.padding.small,
+            ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Switch(
+                    checked = repo.enabled,
+                    onCheckedChange = onSetEnabled,
                 )
             }
         }
@@ -413,19 +413,6 @@ private fun KotlinRepoListItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(start = MaterialTheme.padding.small),
-            ) {
-                Text(
-                    text = stringResource(if (enabled) TDMR.strings.novel_enabled else TDMR.strings.novel_disabled),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = onSetEnabled,
-                )
-            }
 
             IconButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.baseUrl))
@@ -452,6 +439,19 @@ private fun KotlinRepoListItem(
                 Icon(
                     imageVector = Icons.Outlined.Delete,
                     contentDescription = stringResource(MR.strings.action_delete),
+                )
+            }
+
+            Row(
+                modifier = Modifier.padding(
+                top = MaterialTheme.padding.small,
+                end = MaterialTheme.padding.small,
+            ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onSetEnabled,
                 )
             }
         }

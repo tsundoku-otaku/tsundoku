@@ -99,19 +99,6 @@ private fun ExtensionRepoListItem(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(start = MaterialTheme.padding.small),
-            ) {
-                Text(
-                    text = stringResource(if (enabled) TDMR.strings.novel_enabled else TDMR.strings.novel_disabled),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Switch(
-                    checked = enabled,
-                    onCheckedChange = onSetEnabled,
-                )
-            }
 
             IconButton(onClick = onOpenWebsite) {
                 Icon(
@@ -136,6 +123,19 @@ private fun ExtensionRepoListItem(
                 Icon(
                     imageVector = Icons.Outlined.Delete,
                     contentDescription = stringResource(MR.strings.action_delete),
+                )
+            }
+
+            Row(
+                modifier = Modifier.padding(
+                top = MaterialTheme.padding.small,
+                end = MaterialTheme.padding.small,
+            ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onSetEnabled,
                 )
             }
         }
