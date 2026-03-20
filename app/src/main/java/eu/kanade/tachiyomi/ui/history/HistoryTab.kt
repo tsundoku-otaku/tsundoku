@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.chapter.model.Chapter
-import tachiyomi.domain.library.service.LibraryPreferences
+import eu.kanade.domain.base.BasePreferences
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
@@ -68,9 +68,9 @@ data object HistoryTab : Tab {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val screenModel = rememberScreenModel { HistoryScreenModel() }
-        val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
+        val basePreferences = remember { Injekt.get<BasePreferences>() }
         val state by screenModel.state.collectAsState()
-        val isJoined by libraryPreferences.joinedLibrary().changes().collectAsState(initial = libraryPreferences.joinedLibrary().get())
+        val hideMangaUi by basePreferences.hideMangaUi().changes().collectAsState(initial = basePreferences.hideMangaUi().get())
 
         HistoryScreen(
             state = state,
@@ -83,8 +83,13 @@ data object HistoryTab : Tab {
             onFilterSelected = screenModel::setFilter,
             onGroupByNovelChanged = screenModel::setGroupByNovel,
             onLoadNextPage = screenModel::loadNextPage,
-            showMangaFilter = !isJoined,
+            showAllFilter = !hideMangaUi,
+            showMangaFilter = !hideMangaUi,
         )
+
+        LaunchedEffect(hideMangaUi) {
+            screenModel.syncFilterWithHideManga(hideMangaUi)
+        }
 
         val onDismissRequest = { screenModel.setDialog(null) }
         when (val dialog = state.dialog) {

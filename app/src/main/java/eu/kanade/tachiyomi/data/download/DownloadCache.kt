@@ -437,7 +437,10 @@ class DownloadCache(
     }
 
     private fun getSources(): List<Source> {
-        return sourceManager.getOnlineSources() + sourceManager.getStubSources()
+        val catalogueSources = sourceManager.getCatalogueSources()
+        val catalogueSourceIds = catalogueSources.mapTo(mutableSetOf()) { it.id }
+        val offlineStubSources = sourceManager.getStubSources().filterNot { it.id in catalogueSourceIds }
+        return catalogueSources + offlineStubSources
     }
 
     private fun notifyChanges() {

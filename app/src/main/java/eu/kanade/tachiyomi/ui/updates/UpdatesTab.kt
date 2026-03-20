@@ -27,10 +27,10 @@ import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.updates.UpdatesScreenModel.Event
+import eu.kanade.domain.base.BasePreferences
 import kotlinx.coroutines.flow.collectLatest
 import mihon.feature.upcoming.UpcomingScreen
 import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
@@ -60,9 +60,9 @@ data object UpdatesTab : Tab {
         val navigator = LocalNavigator.currentOrThrow
         val screenModel = rememberScreenModel { UpdatesScreenModel() }
         val settingsScreenModel = rememberScreenModel { UpdatesSettingsScreenModel() }
-        val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
+        val basePreferences = remember { Injekt.get<BasePreferences>() }
         val state by screenModel.state.collectAsState()
-        val isJoined by libraryPreferences.joinedLibrary().changes().collectAsState(initial = libraryPreferences.joinedLibrary().get())
+        val hideMangaUi by basePreferences.hideMangaUi().changes().collectAsState(initial = basePreferences.hideMangaUi().get())
 
         UpdateScreen(
             state = state,
@@ -85,11 +85,16 @@ data object UpdatesTab : Tab {
             onFilterSelected = screenModel::setFilter,
             onFilterClicked = screenModel::showFilterDialog,
             hasActiveFilters = state.hasActiveFilters,
-            showMangaFilter = !isJoined,
+            showAllFilter = !hideMangaUi,
+            showMangaFilter = !hideMangaUi,
             onToggleGroupByNovel = screenModel::toggleGroupByNovel,
             onClickNovelGroup = { mangaId -> navigator.push(MangaScreen(mangaId)) },
             onLoadMore = screenModel::loadMore,
         )
+
+        LaunchedEffect(hideMangaUi) {
+            screenModel.syncFilterWithHideManga(hideMangaUi)
+        }
 
         val onDismissDialog = { screenModel.setDialog(null) }
         when (val dialog = state.dialog) {

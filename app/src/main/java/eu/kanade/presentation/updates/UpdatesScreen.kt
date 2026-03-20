@@ -75,6 +75,7 @@ fun UpdateScreen(
     onFilterSelected: (UpdatesFilter) -> Unit = {},
     onFilterClicked: () -> Unit,
     hasActiveFilters: Boolean,
+    showAllFilter: Boolean = true,
     showMangaFilter: Boolean = true,
     onToggleGroupByNovel: () -> Unit = {},
     onClickNovelGroup: (Long) -> Unit = {},
@@ -160,11 +161,13 @@ fun UpdateScreen(
                                     .padding(horizontal = 16.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                FilterChip(
-                                    selected = state.filter == UpdatesFilter.ALL,
-                                    onClick = { onFilterSelected(UpdatesFilter.ALL) },
-                                    label = { Text(stringResource(MR.strings.all)) },
-                                )
+                                if (showAllFilter) {
+                                    FilterChip(
+                                        selected = state.filter == UpdatesFilter.ALL,
+                                        onClick = { onFilterSelected(UpdatesFilter.ALL) },
+                                        label = { Text(stringResource(MR.strings.all)) },
+                                    )
+                                }
                                 if (showMangaFilter) {
                                     FilterChip(
                                         selected = state.filter == UpdatesFilter.MANGA,

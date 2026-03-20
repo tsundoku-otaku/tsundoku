@@ -54,6 +54,7 @@ fun HistoryScreen(
     onFilterSelected: (HistoryFilter) -> Unit,
     onGroupByNovelChanged: (Boolean) -> Unit,
     onLoadNextPage: () -> Unit,
+    showAllFilter: Boolean = true,
     showMangaFilter: Boolean = true,
 ) {
     Scaffold(
@@ -95,11 +96,13 @@ fun HistoryScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                FilterChip(
-                    selected = state.filter == HistoryFilter.ALL,
-                    onClick = { onFilterSelected(HistoryFilter.ALL) },
-                    label = { Text(stringResource(MR.strings.all)) },
-                )
+                if (showAllFilter) {
+                    FilterChip(
+                        selected = state.filter == HistoryFilter.ALL,
+                        onClick = { onFilterSelected(HistoryFilter.ALL) },
+                        label = { Text(stringResource(MR.strings.all)) },
+                    )
+                }
                 if (showMangaFilter) {
                     FilterChip(
                         selected = state.filter == HistoryFilter.MANGA,

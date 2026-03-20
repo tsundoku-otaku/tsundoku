@@ -620,6 +620,12 @@ class UpdatesScreenModel(
         currentLimit.value = GetUpdates.PAGE_SIZE
     }
 
+    fun syncFilterWithHideManga(hideMangaUi: Boolean) {
+        if (!hideMangaUi) return
+        if (state.value.filter == UpdatesFilter.NOVELS) return
+        setFilter(UpdatesFilter.NOVELS)
+    }
+
     sealed interface Dialog {
         data class DeleteConfirmation(val toDelete: List<UpdatesItem>) : Dialog
         data object FilterSheet : Dialog
