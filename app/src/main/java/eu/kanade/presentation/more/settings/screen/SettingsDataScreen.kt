@@ -131,16 +131,6 @@ object SettingsDataScreen : SearchableSettings {
             contract = ActivityResultContracts.OpenDocumentTree(),
         ) { uri ->
             if (uri != null) {
-                val normalizedUri = runCatching {
-                    val authority = uri.authority
-                    val treeId = DocumentsContract.getTreeDocumentId(uri)
-                    if (authority != null && treeId.isNotBlank()) {
-                        DocumentsContract.buildTreeDocumentUri(authority, treeId)
-                    } else {
-                        uri
-                    }
-                }.getOrDefault(uri)
-
                 val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION
 
@@ -150,14 +140,14 @@ object SettingsDataScreen : SearchableSettings {
                 // This also holds for some Samsung devices. Thus, we simply execute inside of a try-catch block and
                 // ignore the exception if it is thrown.
                 try {
-                    context.contentResolver.takePersistableUriPermission(normalizedUri, flags)
+                    context.contentResolver.takePersistableUriPermission(uri, flags)
                 } catch (e: SecurityException) {
                     logcat(LogPriority.ERROR, e)
                     context.toast(MR.strings.file_picker_uri_permission_unsupported)
                 }
 
-                UniFile.fromUri(context, normalizedUri)?.let {
-                    storageDirPref.set(normalizedUri.toString())
+                UniFile.fromUri(context, uri)?.let {
+                    storageDirPref.set(it.uri.toString())
                 }
             }
         }
