@@ -42,7 +42,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.hippo.unifile.UniFile
 import eu.kanade.presentation.category.visualName
-import eu.kanade.domain.manga.interactor.NetworkToLocalManga
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +56,8 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
+import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.storage.service.StorageManager
@@ -231,6 +232,9 @@ fun ImportEpubDialog(
                 selectedFiles.addAll(fileInfos)
                 if (fileInfos.size == 1) {
                     customTitle = fileInfos.first().title
+                } else if (fileInfos.size > 1) {
+                    // For combine mode, default title to first selected epub filename (without extension).
+                    customTitle = fileInfos.first().fileName.substringBeforeLast('.', fileInfos.first().fileName)
                 }
                 isLoadingFiles = false
             }
@@ -304,11 +308,25 @@ fun ImportEpubDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { combineAsOneNovel = !combineAsOneNovel },
+                                        .clickable {
+                                            combineAsOneNovel = !combineAsOneNovel
+                                            if (combineAsOneNovel && customTitle.isBlank()) {
+                                                customTitle = selectedFiles.firstOrNull()?.fileName
+                                                    ?.substringBeforeLast('.', selectedFiles.first().fileName)
+                                                    .orEmpty()
+                                            }
+                                        },
                                 ) {
                                     Checkbox(
                                         checked = combineAsOneNovel,
-                                        onCheckedChange = { combineAsOneNovel = it },
+                                        onCheckedChange = {
+                                            combineAsOneNovel = it
+                                            if (it && customTitle.isBlank()) {
+                                                customTitle = selectedFiles.firstOrNull()?.fileName
+                                                    ?.substringBeforeLast('.', selectedFiles.first().fileName)
+                                                    .orEmpty()
+                                            }
+                                        },
                                     )
                                     Text(stringResource(TDMR.strings.epub_combine_files))
                                 }
@@ -510,7 +528,8 @@ private suspend fun importEpubFiles(
         onProgress(1, 1, customTitle ?: files.first().title)
 
         try {
-            val novelTitle = customTitle ?: files.first().title
+            val firstFileBaseName = files.first().fileName.substringBeforeLast('.', files.first().fileName)
+            val novelTitle = customTitle ?: firstFileBaseName
             val sanitizedTitle = sanitizeFileName(novelTitle)
 
             // Create novel folder
@@ -634,6 +653,7 @@ private suspend fun registerImportedLocalNovels(
 
     val networkToLocalManga = Injekt.get<NetworkToLocalManga>()
     val getMangaByUrlAndSourceId = Injekt.get<GetMangaByUrlAndSourceId>()
+    val getLibraryManga = Injekt.get<GetLibraryManga>()
     val mangaRepository = Injekt.get<MangaRepository>()
     val setMangaCategories = Injekt.get<SetMangaCategories>()
 
@@ -658,6 +678,9 @@ private suspend fun registerImportedLocalNovels(
                     isNovel = true,
                 ),
             )
+
+            // UI updates immediately.
+            getLibraryManga.addToLibrary(manga.id)
 
             if (categoryId != null && categoryId != 0L) {
                 setMangaCategories.await(manga.id, listOf(categoryId))
