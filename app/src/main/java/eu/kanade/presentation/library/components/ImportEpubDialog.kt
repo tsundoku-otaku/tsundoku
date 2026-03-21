@@ -108,7 +108,7 @@ fun ImportEpubDialog(
     var selectedFiles = remember { mutableStateListOf<EpubFileInfo>() }
     var customTitle by remember { mutableStateOf("") }
     var combineAsOneNovel by remember { mutableStateOf(false) }
-    var autoAddToLibrary by remember { mutableStateOf(false) }
+    var autoAddToLibrary by remember { mutableStateOf(true) }
     var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
