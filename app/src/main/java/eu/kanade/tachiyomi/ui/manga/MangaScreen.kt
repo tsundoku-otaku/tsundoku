@@ -184,11 +184,7 @@ class MangaScreen(
                 successState.manga.favorite
             },
             onEditNotesClicked = { navigator.push(MangaNotesScreen(manga = successState.manga)) },
-            onEditAlternativeTitlesClicked = screenModel::showEditAlternativeTitlesDialog,
-            onEditTagsClicked = screenModel::showEditTagsDialog,
-            onEditTitleClicked = screenModel::showEditTitleDialog,
-            onEditDescriptionClicked = screenModel::showEditDescriptionDialog,
-            onEditUrlClicked = screenModel::showEditUrlDialog,
+            onEditClicked = screenModel::showEditDialog,
             onTranslateClicked = screenModel::translateMangaDetails,
             onTranslateDownloadedClicked = screenModel::translateDownloadedChapters,
             onExportEpubClicked = screenModel::showExportEpubDialog.takeIf { successState.isNovel },
@@ -344,41 +340,20 @@ class MangaScreen(
                         .takeIf { screenModel.isUpdateIntervalEnabled },
                 )
             }
-            is MangaScreenModel.Dialog.EditAlternativeTitles -> {
-                eu.kanade.presentation.manga.components.EditAlternativeTitlesDialog(
-                    mainTitle = dialog.manga.title,
-                    currentTitles = dialog.manga.alternativeTitles,
+            is MangaScreenModel.Dialog.Edit -> {
+                eu.kanade.presentation.manga.components.EditMangaDialog(
+                    manga = dialog.manga,
                     onDismissRequest = onDismissRequest,
-                    onConfirm = { titles -> screenModel.updateAlternativeTitles(titles) },
-                    onSwapMainTitle = { newMain, updatedAlts -> screenModel.swapMainTitle(newMain, updatedAlts) },
-                )
-            }
-            is MangaScreenModel.Dialog.EditTags -> {
-                eu.kanade.presentation.manga.components.EditTagsDialog(
-                    currentTags = dialog.manga.genre ?: emptyList(),
-                    onDismissRequest = onDismissRequest,
-                    onConfirm = { tags -> screenModel.updateTags(tags) },
-                )
-            }
-            is MangaScreenModel.Dialog.EditTitle -> {
-                eu.kanade.presentation.manga.components.EditTitleDialog(
-                    currentTitle = dialog.manga.title,
-                    onDismissRequest = onDismissRequest,
-                    onConfirm = { title -> screenModel.updateTitle(title) },
-                )
-            }
-            is MangaScreenModel.Dialog.EditDescription -> {
-                eu.kanade.presentation.manga.components.EditDescriptionDialog(
-                    currentDescription = dialog.manga.description,
-                    onDismissRequest = onDismissRequest,
-                    onConfirm = { description -> screenModel.updateDescription(description) },
-                )
-            }
-            is MangaScreenModel.Dialog.EditUrl -> {
-                eu.kanade.presentation.manga.components.EditUrlDialog(
-                    currentUrl = dialog.manga.url,
-                    onDismissRequest = onDismissRequest,
-                    onConfirm = { url -> screenModel.updateUrl(url) },
+                    onSaveTitle = { screenModel.updateTitle(it) },
+                    onSaveDescription = { screenModel.updateDescription(it) },
+                    onSaveUrl = { screenModel.updateUrl(it) },
+                    onSaveTags = { screenModel.updateTags(it) },
+                    onSaveAltTitles = { screenModel.updateAlternativeTitles(it) },
+                    onSaveAuthor = { screenModel.updateAuthor(it) },
+                    onSaveStatus = { screenModel.updateStatus(it) },
+                    onSwapMainTitle = { newMain, updatedAlts ->
+                        screenModel.swapMainTitle(newMain, updatedAlts)
+                    },
                 )
             }
             is MangaScreenModel.Dialog.TranslateMangaDetails -> {

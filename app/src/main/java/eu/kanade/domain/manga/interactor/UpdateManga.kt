@@ -182,6 +182,18 @@ class UpdateManga(
         return result
     }
 
+    suspend fun awaitUpdateAuthor(mangaId: Long, author: String): Boolean {
+        return mangaRepository.update(
+            MangaUpdate(id = mangaId, author = author),
+        )
+    }
+
+    suspend fun awaitUpdateStatus(mangaId: Long, status: Long): Boolean {
+        return mangaRepository.update(
+            MangaUpdate(id = mangaId, status = status),
+        )
+    }
+
     suspend fun awaitUpdateDescription(mangaId: Long, description: String): Boolean {
         return mangaRepository.update(
             MangaUpdate(id = mangaId, description = description),

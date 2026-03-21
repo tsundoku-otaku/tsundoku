@@ -1220,11 +1220,7 @@ class MangaScreenModel(
         ) : Dialog
         data class Migrate(val target: Manga, val current: Manga) : Dialog
         data class SetFetchInterval(val manga: Manga) : Dialog
-        data class EditAlternativeTitles(val manga: Manga) : Dialog
-        data class EditTags(val manga: Manga) : Dialog
-        data class EditTitle(val manga: Manga) : Dialog
-        data class EditDescription(val manga: Manga) : Dialog
-        data class EditUrl(val manga: Manga) : Dialog
+        data class Edit(val manga: Manga) : Dialog
         data class TranslateMangaDetails(val manga: Manga) : Dialog
         data class ExportEpub(val manga: Manga, val chapters: List<Chapter>) : Dialog
         data object SettingsSheet : Dialog
@@ -1326,29 +1322,9 @@ class MangaScreenModel(
         }
     }
 
-    fun showEditAlternativeTitlesDialog() {
+    fun showEditDialog() {
         val manga = successState?.manga ?: return
-        updateSuccessState { it.copy(dialog = Dialog.EditAlternativeTitles(manga)) }
-    }
-
-    fun showEditTagsDialog() {
-        val manga = successState?.manga ?: return
-        updateSuccessState { it.copy(dialog = Dialog.EditTags(manga)) }
-    }
-
-    fun showEditTitleDialog() {
-        val manga = successState?.manga ?: return
-        updateSuccessState { it.copy(dialog = Dialog.EditTitle(manga)) }
-    }
-
-    fun showEditDescriptionDialog() {
-        val manga = successState?.manga ?: return
-        updateSuccessState { it.copy(dialog = Dialog.EditDescription(manga)) }
-    }
-
-    fun showEditUrlDialog() {
-        val manga = successState?.manga ?: return
-        updateSuccessState { it.copy(dialog = Dialog.EditUrl(manga)) }
+        updateSuccessState { it.copy(dialog = Dialog.Edit(manga)) }
     }
 
     /**
@@ -1357,6 +1333,24 @@ class MangaScreenModel(
     fun updateTitle(title: String) {
         screenModelScope.launchIO {
             updateManga.awaitUpdateTitle(mangaId, title)
+        }
+    }
+
+    /**
+     * Update the Author of the manga.
+     */
+    fun updateAuthor(author: String) {
+        screenModelScope.launchIO {
+            updateManga.awaitUpdateAuthor(mangaId, author)
+        }
+    }
+
+    /**
+     * Update the Status of the manga.
+     */
+    fun updateStatus(status: Long) {
+        screenModelScope.launchIO {
+            updateManga.awaitUpdateStatus(mangaId, status)
         }
     }
 

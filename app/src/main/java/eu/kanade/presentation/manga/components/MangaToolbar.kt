@@ -44,11 +44,7 @@ fun MangaToolbar(
     onClickSimilarNovels: (() -> Unit)?,
     onClickFindDuplicates: (() -> Unit)?,
     onClickEditNotes: () -> Unit,
-    onClickEditAltTitles: (() -> Unit)?,
-    onClickEditTags: (() -> Unit)?,
-    onClickEditTitle: (() -> Unit)? = null,
-    onClickEditDescription: (() -> Unit)? = null,
-    onClickEditUrl: (() -> Unit)? = null,
+    onClickEdit: (() -> Unit)?,
     onClickTranslate: (() -> Unit)? = null,
     onClickTranslateDownloaded: (() -> Unit)? = null,
     onClickExportEpub: (() -> Unit)? = null,
@@ -202,43 +198,11 @@ fun MangaToolbar(
                             ),
                         )
                     }
-                    if (onClickEditAltTitles != null) {
+                    if (onClickEdit != null) {
                         add(
                             AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_edit_alt_titles),
-                                onClick = onClickEditAltTitles,
-                            ),
-                        )
-                    }
-                    if (onClickEditTags != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = "Edit Tags",
-                                onClick = onClickEditTags,
-                            ),
-                        )
-                    }
-                    if (onClickEditTitle != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = "Edit Title",
-                                onClick = onClickEditTitle,
-                            ),
-                        )
-                    }
-                    if (onClickEditDescription != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = "Edit Description",
-                                onClick = onClickEditDescription,
-                            ),
-                        )
-                    }
-                    if (onClickEditUrl != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = "Edit URL",
-                                onClick = onClickEditUrl,
+                                title = "Edit",
+                                onClick = onClickEdit,
                             ),
                         )
                     }
