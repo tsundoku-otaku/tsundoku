@@ -728,8 +728,8 @@ class ReaderActivity : BaseActivity() {
                     }
                 },
 
+                isWebView = state.viewer is NovelWebViewViewer,
                 bottomBarItems = bottomBarItems,
-                onItemsChange = { viewModel.saveBottomBarItems(it) },
             )
 
             if (showBottomBarEditor) {

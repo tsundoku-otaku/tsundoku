@@ -77,6 +77,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var currentChapterIndex = 0
     private var isLoadingNext = false
     private var isDestroyed = false
+    private var isEditingMode = false
 
     // Auto-scroll state
     private var isAutoScrolling = false
@@ -106,6 +107,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 velocityX: Float,
                 velocityY: Float,
             ): Boolean {
+                if (isEditingMode) return false
                 if (!preferences.novelSwipeNavigation().get()) return false
                 if (e1 == null) return false
 
@@ -132,6 +134,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             }
 
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (isEditingMode) return false
+
                 val viewWidth = container.width.toFloat()
                 val viewHeight = container.height.toFloat()
                 val x = e.x
@@ -301,6 +305,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     restoreScrollPosition()
                     if (!preferences.novelInfiniteScroll().get()) {
                         injectNextChapterButton()
+                    }
+                    if (isEditingMode) {
+                        toggleEditMode(true)
                     }
                 }
             }
@@ -1527,8 +1534,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     }
 
     fun toggleEditMode(isEditing: Boolean) {
+        this.isEditingMode = isEditing
         val editable = if (isEditing) "true" else "false"
-        webView.evaluateJavascript("document.body.contentEditable = '$editable';", null)
+        val designMode = if (isEditing) "on" else "off"
+        
+        val script = """
+            if (document.body) {
+                document.body.contentEditable = '$editable';
+            }
+            document.designMode = '$designMode';
+        """.trimIndent()
+        
+        webView.evaluateJavascript(script, null)
     }
 
     override fun handleGenericMotionEvent(event: MotionEvent): Boolean = false

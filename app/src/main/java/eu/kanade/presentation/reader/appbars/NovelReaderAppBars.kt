@@ -124,10 +124,10 @@ fun NovelReaderAppBars(
 
     isEditing: Boolean = false,
     onToggleEdit: () -> Unit = {},
+    isWebView: Boolean = true,
 
     // Toolbar customization
     bottomBarItems: List<BottomBarItemState>,
-    onItemsChange: (List<BottomBarItemState>) -> Unit,
 ) {
     val backgroundColor = MaterialTheme.colorScheme
         .surfaceColorAtElevation(3.dp)
@@ -192,7 +192,6 @@ fun NovelReaderAppBars(
                         .fillMaxWidth()
                         .padding(horizontal = MaterialTheme.padding.small),
                     items = bottomBarItems,
-                    onItemsChange = onItemsChange,
                     onNextChapter = onNextChapter,
                     enabledNext = enabledNext,
                     onPreviousChapter = onPreviousChapter,
@@ -211,6 +210,7 @@ fun NovelReaderAppBars(
                     onToggleTts = onToggleTts,
                     onLongPressTts = onLongPressTts,
                     isEditing = isEditing,
+                    isWebView = isWebView,
                     onToggleEdit = onToggleEdit,
                 )
             }
@@ -322,7 +322,6 @@ private fun NovelReaderTopBar(
 @Composable
 private fun NovelReaderBottomBar(
     items: List<BottomBarItemState>,
-    onItemsChange: (List<BottomBarItemState>) -> Unit,
     onNextChapter: () -> Unit,
     enabledNext: Boolean,
     onPreviousChapter: () -> Unit,
@@ -341,11 +340,10 @@ private fun NovelReaderBottomBar(
     onToggleTts: () -> Unit,
     onLongPressTts: () -> Unit,
     isEditing: Boolean,
+    isWebView: Boolean,
     onToggleEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var showEditor by remember { mutableStateOf(false) }
-
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -353,7 +351,7 @@ private fun NovelReaderBottomBar(
     ) {
         // Previous chapter - left position, left arrow icon
         items
-            .filter { it.enabled }
+            .filter { it.enabled && (isWebView || it.item != BottomBarItem.EDIT) }
             .forEach { itemState ->
                 when (itemState.item) {
                     BottomBarItem.PREV_CHAPTER -> IconButton(
@@ -470,15 +468,6 @@ private fun NovelReaderBottomBar(
                     }
                 }
             }
-    }
-
-    if (showEditor) {
-        BottomBarEditorSheet(
-            items = items,
-            onItemsChange = onItemsChange,
-            onDismiss = { showEditor = false },
-            itemInfo = { item -> bottomBarItemInfo(item, orientation, isAutoScrolling, isTtsActive, isTtsPaused) },
-        )
     }
 }
 
