@@ -24,6 +24,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Added
 - Toggle under settings > Appearance that hides most manga UI elements[@mrissaoussamau](https://github.com/mrissaoussama) [#48](https://github.com/tsundoku-otaku/tsundoku/pull/48)
+- Advanced Local Source EPUB volume ordering (Multiple EPUBs in one Novel) [Guide](https://tsundoku-otaku.github.io/docs/guides/local-source/novels) [@mrissaoussamau](https://github.com/mrissaoussama) [#71](https://github.com/tsundoku-otaku/tsundoku/pull/71)
 - Toggle under settings > Advanced that hides source name under manga details (For screenshots/bug reporting) [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
 - Customizable novel reader bottom toolbar [@Rojikku](https://github.com/Rojikku) [#45](https://github.com/tsundoku-otaku/tsundoku/pull/45)
 - Support lnreader repo add link [@mrissaoussamau](https://github.com/mrissaoussama) [#47](https://github.com/tsundoku-otaku/tsundoku/pull/47)
