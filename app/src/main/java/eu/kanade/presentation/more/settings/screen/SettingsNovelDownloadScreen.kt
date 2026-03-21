@@ -465,7 +465,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                                     IconButton(onClick = { onEdit(override) }) {
                                         Icon(
                                             Icons.Outlined.Edit,
-                                            contentDescription = "Edit",
+                                            contentDescription = stringResource(MR.strings.action_edit),
                                             tint = MaterialTheme.colorScheme.primary,
                                         )
                                     }
@@ -474,7 +474,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                                     }) {
                                         Icon(
                                             Icons.Outlined.Delete,
-                                            contentDescription = "Delete",
+                                            contentDescription = stringResource(MR.strings.action_delete),
                                             tint = MaterialTheme.colorScheme.error,
                                         )
                                     }

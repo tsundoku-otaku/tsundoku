@@ -1,5 +1,6 @@
 package eu.kanade.presentation.manga.components
 
+import android.R.attr.label
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
@@ -41,6 +42,9 @@ import eu.kanade.presentation.components.TabbedDialogPaddings
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
+import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
 fun EditMangaDialog(
@@ -64,7 +68,7 @@ fun EditMangaDialog(
     var status by remember { mutableStateOf(manga.status) }
 
     val tabTitles = persistentListOf(
-        TabTitle.Text("General"),
+        TabTitle.Text(stringResource(MR.strings.pref_category_general)),
         TabTitle.Text("Description"),
     )
 
@@ -92,12 +96,12 @@ fun EditMangaDialog(
             when (page) {
                 0 -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     EditTextField(
-                        label = "Title",
+                        label = stringResource(MR.strings.title),
                         value = title,
                         onValueChange = { title = it },
                     )
                     EditTextField(
-                        label = "URL",
+                        label = stringResource(TDMR.strings.js_plugin_repo_url),
                         value = url,
                         onValueChange = { url = it },
                         keyboardType = KeyboardType.Uri,
@@ -105,7 +109,7 @@ fun EditMangaDialog(
                         maxLines = 3,
                     )
                     EditTextField(
-                        label = "Author",
+                        label = stringResource(MR.strings.author),
                         value = author,
                         onValueChange = { author = it },
                     )
@@ -189,7 +193,7 @@ private fun EditStatusField(
             value = selectedLabel,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Status") },
+            label = { Text(stringResource(MR.strings.track_status)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier
                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
@@ -335,7 +339,7 @@ private fun EditAltTitlesTab(
                     ) {
                         Icon(
                             Icons.Outlined.Delete,
-                            contentDescription = "Delete",
+                            contentDescription = stringResource(MR.strings.action_delete),
                             tint = MaterialTheme.colorScheme.error,
                         )
                     }

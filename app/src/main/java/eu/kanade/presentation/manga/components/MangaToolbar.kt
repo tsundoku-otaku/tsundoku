@@ -182,6 +182,14 @@ fun MangaToolbar(
                             ),
                         )
                     }
+                    if (onClickEdit != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(MR.strings.action_edit),
+                                onClick = onClickEdit,
+                            ),
+                        )
+                    }
                     if (onClickFindDuplicates != null) {
                         add(
                             AppBar.OverflowAction(
@@ -195,14 +203,6 @@ fun MangaToolbar(
                             AppBar.OverflowAction(
                                 title = stringResource(MR.strings.action_share),
                                 onClick = onClickShare,
-                            ),
-                        )
-                    }
-                    if (onClickEdit != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = "Edit",
-                                onClick = onClickEdit,
                             ),
                         )
                     }
