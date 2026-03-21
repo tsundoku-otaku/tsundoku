@@ -668,6 +668,10 @@ class JsSource(
 
     // Parsing helpers
 
+    private fun String.decodeEntities(): String {
+        return org.jsoup.parser.Parser.unescapeEntities(this, true)
+    }
+
     private fun parseMangasPage(jsonResult: String, page: Int): MangasPage {
         if (jsonResult == "null" || jsonResult.isBlank()) {
             return MangasPage(emptyList(), false)
@@ -679,7 +683,7 @@ class JsSource(
                 try {
                     val obj = item.jsonObject
                     SManga.create().apply {
-                        title = obj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                        title = obj["name"]?.jsonPrimitive?.content?.decodeEntities() ?: return@mapNotNull null
                         url = obj["path"]?.jsonPrimitive?.content ?: return@mapNotNull null
                         // Ensure thumbnail_url is a valid URL or null
                         val coverUrl = obj["cover"]?.jsonPrimitive?.content
@@ -689,7 +693,7 @@ class JsSource(
                             coverUrl.startsWith("/") -> baseUrl + coverUrl // baseUrl has no trailing slash
                             else -> "$baseUrl/$coverUrl" // Add slash between baseUrl and relative path
                         }
-                        author = obj["author"]?.jsonPrimitive?.content
+                        author = obj["author"]?.jsonPrimitive?.content?.decodeEntities()
                     }
                 } catch (e: Exception) {
                     null
@@ -712,14 +716,14 @@ class JsSource(
             val obj = json.parseToJsonElement(jsonResult).jsonObject
             return SManga.create().apply {
                 url = existing.url
-                title = obj["name"]?.jsonPrimitive?.content ?: existing.title
-                author = obj["author"]?.jsonPrimitive?.content ?: existing.author
-                artist = obj["artist"]?.jsonPrimitive?.content
-                description = obj["summary"]?.jsonPrimitive?.content
-                genre = obj["genres"]?.jsonPrimitive?.content
+                title = obj["name"]?.jsonPrimitive?.content?.decodeEntities() ?: existing.title
+                author = obj["author"]?.jsonPrimitive?.content?.decodeEntities() ?: existing.author
+                artist = obj["artist"]?.jsonPrimitive?.content?.decodeEntities()
+                description = obj["summary"]?.jsonPrimitive?.content?.decodeEntities()
+                genre = obj["genres"]?.jsonPrimitive?.content?.decodeEntities()
                 // Parse alternative names if available
-                val altNames = obj["alternativeNames"]?.jsonPrimitive?.content
-                    ?: obj["altNames"]?.jsonPrimitive?.content
+                val altNames = obj["alternativeNames"]?.jsonPrimitive?.content?.decodeEntities()
+                    ?: obj["altNames"]?.jsonPrimitive?.content?.decodeEntities()
                 if (!altNames.isNullOrBlank()) {
                     altTitles = altNames.split(",", ";", "/", "|")
                         .map { it.trim() }
@@ -764,7 +768,7 @@ class JsSource(
                 try {
                     val chapterObj = item.jsonObject
                     SChapter.create().apply {
-                        name = chapterObj["name"]?.jsonPrimitive?.content ?: "Chapter ${index + 1}"
+                        name = chapterObj["name"]?.jsonPrimitive?.content?.decodeEntities() ?: "Chapter ${index + 1}"
                         url = chapterObj["path"]?.jsonPrimitive?.content ?: return@mapIndexedNotNull null
                         // Keep plugin-provided chapterNumber if available; otherwise leave as -1
                         // (global numbering is assigned later in getChapterList)
@@ -810,7 +814,7 @@ class JsSource(
                 try {
                     val chapterObj = item.jsonObject
                     SChapter.create().apply {
-                        name = chapterObj["name"]?.jsonPrimitive?.content ?: "Chapter ${index + 1}"
+                        name = chapterObj["name"]?.jsonPrimitive?.content?.decodeEntities() ?: "Chapter ${index + 1}"
                         url = chapterObj["path"]?.jsonPrimitive?.content ?: return@mapIndexedNotNull null
                         chapterObj["chapterNumber"]?.jsonPrimitive?.content?.toFloatOrNull()?.let {
                             chapter_number = it
