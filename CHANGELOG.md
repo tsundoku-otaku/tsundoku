@@ -23,6 +23,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Improved novel reader settings UI [@Rojikku](https://github.com/Rojikku) [#49](https://github.com/tsundoku-otaku/tsundoku/pull/49)
 - Fix Epub import to add to library (Not just inside source) and add specific category to import [@mrissaoussamau](https://github.com/mrissaoussama) [#70](https://github.com/tsundoku-otaku/tsundoku/pull/70)
 - Improved novel edit UI [@Rojikku](https://github.com/Rojikku) [#72](https://github.com/tsundoku-otaku/tsundoku/pull/72)
+- Add `.nomedia` file to `localnovels` and `lnreader_plugins` dirs [@mrissaoussamau](https://github.com/mrissaoussama) [#75](https://github.com/tsundoku-otaku/tsundoku/pull/75)
 
 ### Added
 - Toggle under settings > Appearance that hides most manga UI elements[@mrissaoussamau](https://github.com/mrissaoussama) [#48](https://github.com/tsundoku-otaku/tsundoku/pull/48)

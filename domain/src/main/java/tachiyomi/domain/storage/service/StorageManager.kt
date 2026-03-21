@@ -37,8 +37,12 @@ class StorageManager(
                 baseDir?.let { parent ->
                     getOrCreateDirectory(parent, AUTOMATIC_BACKUPS_PATH)
                     getOrCreateDirectory(parent, LOCAL_SOURCE_PATH)
-                    getOrCreateDirectory(parent, LOCAL_NOVEL_SOURCE_PATH)
-                    getOrCreateDirectory(parent, LNREADER_PLUGINS_PATH)
+                    getOrCreateDirectory(parent, LOCAL_NOVEL_SOURCE_PATH).also {
+                        DiskUtil.createNoMediaFile(it, context)
+                    }
+                    getOrCreateDirectory(parent, LNREADER_PLUGINS_PATH).also {
+                        DiskUtil.createNoMediaFile(it, context)
+                    }
                     getOrCreateDirectory(parent, FONTS_PATH)
                     getOrCreateDirectory(parent, TRANSLATIONS_PATH)
                     getOrCreateDirectory(parent, DOWNLOADS_PATH).also {
