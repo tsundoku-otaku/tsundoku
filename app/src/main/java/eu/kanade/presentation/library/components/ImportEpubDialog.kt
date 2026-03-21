@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.hippo.unifile.UniFile
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.presentation.category.visualName
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
@@ -715,8 +716,14 @@ private suspend fun registerImportedLocalNovels(
     val getLibraryManga = Injekt.get<GetLibraryManga>()
     val mangaRepository = Injekt.get<MangaRepository>()
     val setMangaCategories = Injekt.get<SetMangaCategories>()
+    val sourceManager = Injekt.get<tachiyomi.domain.source.service.SourceManager>()
+    val updateManga = Injekt.get<eu.kanade.domain.manga.interactor.UpdateManga>()
+    val syncChaptersWithSource = Injekt.get<eu.kanade.domain.chapter.interactor.SyncChaptersWithSource>()
 
     val errors = mutableListOf<String>()
+    val source = sourceManager.get(LocalNovelSource.ID) ?: run {
+        return listOf("Local novel source not found")
+    }
 
     importedNovelUrls.forEach { localUrl ->
         try {
@@ -729,6 +736,7 @@ private suspend fun registerImportedLocalNovels(
                 networkToLocalManga(placeholder.toDomainManga(LocalNovelSource.ID, isNovel = true))
             }
 
+            // Mark as favorite before fetching so the library shows it
             mangaRepository.update(
                 MangaUpdate(
                     id = manga.id,
@@ -738,8 +746,19 @@ private suspend fun registerImportedLocalNovels(
                 ),
             )
 
-            // UI updates immediately.
-            getLibraryManga.addToLibrary(manga.id)
+            // Fetch details — this reads details.json and cover from disk
+            val networkManga = source.getMangaDetails(manga.toSManga())
+            updateManga.awaitUpdateFromSource(manga, networkManga, manualFetch = true)
+
+            // Sync chapters from disk
+            val chapters = source.getChapterList(manga.toSManga())
+            syncChaptersWithSource.await(chapters, manga, source, manualFetch = true)
+
+
+            // Re-fetch the updated manga from DB so the library cache has fresh data including cover
+            val updatedManga = mangaRepository.getMangaById(manga.id)
+            getLibraryManga.addToLibrary(updatedManga.id)
+            getLibraryManga.applyMangaDetailUpdate(updatedManga.id) { updatedManga }
 
             if (categoryId != null && categoryId != 0L) {
                 setMangaCategories.await(manga.id, listOf(categoryId))
