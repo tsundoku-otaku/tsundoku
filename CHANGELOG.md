@@ -40,6 +40,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Updates tab didn't show all items properly when showing one entry per novel [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
 - Improve storagemanager and directory creation to hopefully prevent issues with android 8 [@mrissaoussamau](https://github.com/mrissaoussama) [#44](https://github.com/tsundoku-otaku/tsundoku/pull/44) [#56](https://github.com/tsundoku-otaku/tsundoku/pull/56)
 - Automatically refresh covers when auto-adding an EPUB to library [@Rojikku](https://github.com/Rojikku) [#80](https://github.com/tsundoku-otaku/tsundoku/pull/80)
+- Prevent keyboard overlap with new Edit UI Desc screen [@Rojikku](https://github.com/Rojikku) [#81](https://github.com/tsundoku-otaku/tsundoku/pull/81)
 
 ### Other
 - Merged Mihon [2f9edb5](https://github.com/mihonapp/mihon/commit/2f9edb551fb2255c11ccd8452a080e87b9c963eb) [@Rojikku](https://github.com/Rojikku)
