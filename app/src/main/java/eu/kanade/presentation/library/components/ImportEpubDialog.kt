@@ -754,7 +754,6 @@ private suspend fun registerImportedLocalNovels(
             val chapters = source.getChapterList(manga.toSManga())
             syncChaptersWithSource.await(chapters, manga, source, manualFetch = true)
 
-
             // Re-fetch the updated manga from DB so the library cache has fresh data including cover
             val updatedManga = mangaRepository.getMangaById(manga.id)
             getLibraryManga.addToLibrary(updatedManga.id)
