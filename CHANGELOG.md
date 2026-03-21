@@ -21,6 +21,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Improve library performacne when using filters and sorters [@mrissaoussamau](https://github.com/mrissaoussama) [#55](https://github.com/tsundoku-otaku/tsundoku/pull/55)
 - Add Enable/Disable for Extension Repos [@mrissaoussamau](https://github.com/mrissaoussama) [#50](https://github.com/tsundoku-otaku/tsundoku/pull/50)
 - Improved novel reader settings UI [@Rojikku](https://github.com/Rojikku) [#49](https://github.com/tsundoku-otaku/tsundoku/pull/49)
+- Fix Epub import to add to library (Not just inside source) and add specific category to import [@mrissaoussamau](https://github.com/mrissaoussama) [#70](https://github.com/tsundoku-otaku/tsundoku/pull/70)
 
 ### Added
 - Toggle under settings > Appearance that hides most manga UI elements[@mrissaoussamau](https://github.com/mrissaoussama) [#48](https://github.com/tsundoku-otaku/tsundoku/pull/48)

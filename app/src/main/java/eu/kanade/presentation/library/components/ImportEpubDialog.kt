@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,7 +28,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,13 +48,21 @@ import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.archive.EpubReader
 import mihon.core.archive.archiveReader
+import mihon.domain.manga.model.toDomainManga
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
+import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
+import tachiyomi.domain.manga.interactor.NetworkToLocalManga
+import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.source.local.LocalNovelSource
 import tachiyomi.source.local.metadata.fillMetadata
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -98,12 +104,28 @@ fun ImportEpubDialog(
     var selectedFiles = remember { mutableStateListOf<EpubFileInfo>() }
     var customTitle by remember { mutableStateOf("") }
     var combineAsOneNovel by remember { mutableStateOf(false) }
+    var autoAddToLibrary by remember { mutableStateOf(false) }
+    var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
+    var categories by remember { mutableStateOf<List<Category>>(emptyList()) }
 
     var importProgress by remember { mutableStateOf<ImportProgress?>(null) }
     var importResult by remember { mutableStateOf<ImportResult?>(null) }
     var isLoadingFiles by remember { mutableStateOf(false) }
 
     val storageManager = remember { Injekt.get<StorageManager>() }
+    val getCategories = remember { Injekt.get<GetCategories>() }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        categories = withContext(Dispatchers.IO) {
+            getCategories.await().filter {
+                it.contentType == Category.CONTENT_TYPE_ALL || it.contentType == Category.CONTENT_TYPE_NOVEL
+            }
+        }
+        if (selectedCategoryId == null) {
+            selectedCategoryId = categories.firstOrNull()?.id
+        }
+    }
 
     // File picker for multiple EPUB files
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -208,6 +230,9 @@ fun ImportEpubDialog(
                 selectedFiles.addAll(fileInfos)
                 if (fileInfos.size == 1) {
                     customTitle = fileInfos.first().title
+                } else if (fileInfos.size > 1) {
+                    // For combine mode, default title to first selected epub filename (without extension).
+                    customTitle = fileInfos.first().fileName.substringBeforeLast('.', fileInfos.first().fileName)
                 }
                 isLoadingFiles = false
             }
@@ -281,16 +306,80 @@ fun ImportEpubDialog(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { combineAsOneNovel = !combineAsOneNovel },
+                                        .clickable {
+                                            combineAsOneNovel = !combineAsOneNovel
+                                            if (combineAsOneNovel && customTitle.isBlank()) {
+                                                customTitle = selectedFiles.firstOrNull()?.fileName
+                                                    ?.substringBeforeLast('.', selectedFiles.first().fileName)
+                                                    .orEmpty()
+                                            }
+                                        },
                                 ) {
                                     Checkbox(
                                         checked = combineAsOneNovel,
-                                        onCheckedChange = { combineAsOneNovel = it },
+                                        onCheckedChange = {
+                                            combineAsOneNovel = it
+                                            if (it && customTitle.isBlank()) {
+                                                customTitle = selectedFiles.firstOrNull()?.fileName
+                                                    ?.substringBeforeLast('.', selectedFiles.first().fileName)
+                                                    .orEmpty()
+                                            }
+                                        },
                                     )
                                     Text(stringResource(TDMR.strings.epub_combine_files))
                                 }
                                 Spacer(Modifier.height(8.dp))
                             }
+
+                            // Optional: auto-add imported local novels to library and category
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { autoAddToLibrary = !autoAddToLibrary },
+                            ) {
+                                Checkbox(
+                                    checked = autoAddToLibrary,
+                                    onCheckedChange = { autoAddToLibrary = it },
+                                )
+                                Text(stringResource(TDMR.strings.epub_auto_add_to_category))
+                            }
+
+                            if (autoAddToLibrary) {
+                                val selectedCategory = categories.firstOrNull { it.id == selectedCategoryId }
+                                OutlinedButton(
+                                    onClick = { categoryMenuExpanded = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = selectedCategory?.visualName
+                                            ?: stringResource(TDMR.strings.epub_select_category),
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Icon(Icons.Outlined.ArrowDropDown, contentDescription = null)
+                                }
+                                DropdownMenu(
+                                    expanded = categoryMenuExpanded,
+                                    onDismissRequest = { categoryMenuExpanded = false },
+                                ) {
+                                    categories.forEach { category ->
+                                        DropdownMenuItem(
+                                            text = { Text(category.visualName) },
+                                            onClick = {
+                                                selectedCategoryId = category.id
+                                                categoryMenuExpanded = false
+                                            },
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
+
+                            Text(
+                                text = stringResource(TDMR.strings.epub_local_novels_note),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
@@ -317,7 +406,8 @@ fun ImportEpubDialog(
                                         files = selectedFiles.toList(),
                                         customTitle = customTitle.ifBlank { null },
                                         combineAsOne = combineAsOneNovel,
-                                        categoryId = null,
+                                        autoAddToLibrary = autoAddToLibrary,
+                                        categoryId = selectedCategoryId,
                                         storageManager = storageManager,
                                         onProgress = { current, total, fileName ->
                                             importProgress = ImportProgress(current, total, fileName, true)
@@ -417,12 +507,14 @@ private suspend fun importEpubFiles(
     files: List<EpubFileInfo>,
     customTitle: String?,
     combineAsOne: Boolean,
+    autoAddToLibrary: Boolean,
     categoryId: Long?,
     storageManager: StorageManager,
     onProgress: (current: Int, total: Int, fileName: String) -> Unit,
 ): ImportResult = withContext(Dispatchers.IO) {
     val errors = mutableListOf<String>()
     var successCount = 0
+    val importedNovelUrls = mutableListOf<String>()
 
     val localNovelsDir = storageManager.getLocalNovelSourceDirectory()
     if (localNovelsDir == null) {
@@ -434,7 +526,8 @@ private suspend fun importEpubFiles(
         onProgress(1, 1, customTitle ?: files.first().title)
 
         try {
-            val novelTitle = customTitle ?: files.first().title
+            val firstFileBaseName = files.first().fileName.substringBeforeLast('.', files.first().fileName)
+            val novelTitle = customTitle ?: firstFileBaseName
             val sanitizedTitle = sanitizeFileName(novelTitle)
 
             // Create novel folder
@@ -442,6 +535,7 @@ private suspend fun importEpubFiles(
             if (novelDir == null) {
                 errors.add("Failed to create directory for: $novelTitle")
             } else {
+                importedNovelUrls.add(sanitizedTitle)
                 // Copy each file as a chapter
                 files.forEachIndexed { index, file ->
                     val chapterFileName = "Chapter ${index + 1} - ${file.fileName}"
@@ -499,6 +593,7 @@ private suspend fun importEpubFiles(
                 if (novelDir == null) {
                     errors.add("Failed to create directory for: ${file.fileName}")
                 } else {
+                    importedNovelUrls.add(sanitizedTitle)
                     // Copy the epub file
                     val destFile = novelDir.createFile(file.fileName)
                     if (destFile != null) {
@@ -537,7 +632,63 @@ private suspend fun importEpubFiles(
         }
     }
 
+    if (autoAddToLibrary) {
+        val registrationErrors = registerImportedLocalNovels(
+            importedNovelUrls = importedNovelUrls.distinct(),
+            categoryId = categoryId,
+        )
+        errors.addAll(registrationErrors)
+    }
+
     ImportResult(successCount, errors.size, errors)
+}
+
+private suspend fun registerImportedLocalNovels(
+    importedNovelUrls: List<String>,
+    categoryId: Long?,
+): List<String> {
+    if (importedNovelUrls.isEmpty()) return emptyList()
+
+    val networkToLocalManga = Injekt.get<NetworkToLocalManga>()
+    val getMangaByUrlAndSourceId = Injekt.get<GetMangaByUrlAndSourceId>()
+    val getLibraryManga = Injekt.get<GetLibraryManga>()
+    val mangaRepository = Injekt.get<MangaRepository>()
+    val setMangaCategories = Injekt.get<SetMangaCategories>()
+
+    val errors = mutableListOf<String>()
+
+    importedNovelUrls.forEach { localUrl ->
+        try {
+            val existing = getMangaByUrlAndSourceId.await(localUrl, LocalNovelSource.ID)
+            val manga = existing ?: run {
+                val placeholder = SManga.create().apply {
+                    title = localUrl
+                    url = localUrl
+                }
+                networkToLocalManga(placeholder.toDomainManga(LocalNovelSource.ID, isNovel = true))
+            }
+
+            mangaRepository.update(
+                MangaUpdate(
+                    id = manga.id,
+                    favorite = true,
+                    dateAdded = System.currentTimeMillis(),
+                    isNovel = true,
+                ),
+            )
+
+            // UI updates immediately.
+            getLibraryManga.addToLibrary(manga.id)
+
+            if (categoryId != null && categoryId != 0L) {
+                setMangaCategories.await(manga.id, listOf(categoryId))
+            }
+        } catch (e: Exception) {
+            errors.add("$localUrl: ${e.message}")
+        }
+    }
+
+    return errors
 }
 
 private fun sanitizeFileName(name: String): String {

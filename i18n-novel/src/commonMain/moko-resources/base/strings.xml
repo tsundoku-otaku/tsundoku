@@ -209,6 +209,9 @@
     <string name="epub_selected_files">Selected files:</string>
     <string name="epub_novel_title">Novel title</string>
     <string name="epub_combine_files">Combine all files into one novel</string>
+    <string name="epub_auto_add_to_category">Automatically add imported EPUBs to this category</string>
+    <string name="epub_select_category">Select category</string>
+    <string name="epub_local_novels_note">This novel will be under "Local novels" after import in Browse.</string>
     <string name="epub_importing_progress">Importing %1$d/%2$d</string>
     <string name="epub_import_complete">Import Complete</string>
     <string name="epub_import_success_count">%d imported successfully</string>
