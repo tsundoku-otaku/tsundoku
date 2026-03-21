@@ -73,7 +73,6 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import tachiyomi.presentation.core.util.collectAsState
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.i18n.MR
@@ -634,12 +633,12 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
     if (isEpub) {
         CheckboxItem(
             label = "Enable EPUB CSS",
-            pref = screenModel.preferences.enableEpubStyles()
+            pref = screenModel.preferences.enableEpubStyles(),
         )
 
         CheckboxItem(
             label = "Enable EPUB JS",
-            pref = screenModel.preferences.enableEpubJs()
+            pref = screenModel.preferences.enableEpubJs(),
         )
     }
 

@@ -1,7 +1,6 @@
 package eu.kanade.presentation.library.components
 
 import android.net.Uri
-import eu.kanade.tachiyomi.util.system.toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -43,6 +42,7 @@ import com.hippo.unifile.UniFile
 import eu.kanade.presentation.category.visualName
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -580,7 +580,7 @@ private suspend fun importEpubFiles(
                         logcat(LogPriority.DEBUG, e) { "Failed to copy cover for combined novel" }
                     }
                 }
-                
+
                 // Write details.json if metadata exists
                 val combinedDescription = files.mapNotNull { it.description }.firstOrNull { it.isNotBlank() }
                 val combinedGenres = files.mapNotNull { it.genres }.flatMap { it.split(",") }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
@@ -603,7 +603,7 @@ private suspend fun importEpubFiles(
                         logcat(LogPriority.DEBUG, e) { "Failed to write details.json" }
                     }
                 }
-                
+
                 successCount = 1
             }
         } catch (e: Exception) {

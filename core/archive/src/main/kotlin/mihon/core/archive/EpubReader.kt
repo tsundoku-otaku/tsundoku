@@ -174,7 +174,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
             return relativePath
         }
-        
+
         val separator = pathSeparator
         val fullPath = if (relativePath.startsWith(separator)) {
             relativePath
@@ -183,10 +183,10 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         } else {
             "$basePath$separator$relativePath"
         }
-        
+
         val segments = fullPath.split(separator)
         val resolved = mutableListOf<String>()
-        
+
         for (segment in segments) {
             if (segment == "." || segment.isEmpty()) continue
             if (segment == "..") {
@@ -195,7 +195,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                 resolved.add(segment)
             }
         }
-        
+
         return resolved.joinToString(separator)
     }
 
@@ -441,13 +441,13 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                     try {
                         getInputStream(cssPath)?.use { stream ->
                             var cssText = stream.reader().readText()
-                            
+
                             // Let's resolve uris in url(...) inside the CSS too
                             val urlRegex = Regex("""url\(['"]?(.*?)['"]?\)""")
                             cssText = urlRegex.replace(cssText) { match ->
                                 val assetUrl = match.groupValues[1]
                                 if (assetUrl.startsWith("data:") || assetUrl.startsWith("http")) return@replace match.value
-                                
+
                                 val cssDir = getParentDirectory(cssPath)
                                 val assetPath = resolveZipPath(cssDir, assetUrl.substringBefore("?").substringBefore("#"))
                                 try {

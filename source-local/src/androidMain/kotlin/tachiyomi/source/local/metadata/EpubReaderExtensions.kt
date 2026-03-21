@@ -28,16 +28,16 @@ fun EpubReader.fillMetadata(manga: SManga, chapter: SChapter) {
     if (description.isNullOrBlank()) {
         description = doc.select("dc\\:description").firstOrNull()?.text()
     }
-    
+
     val subjects = doc.getElementsByTag("dc:subject").map { it.text() }
     val mappedSubjects = if (subjects.isEmpty()) {
         doc.select("dc\\:subject").map { it.text() }
     } else {
         subjects
     }
-    
+
     val collection = doc.select("meta[property=belongs-to-collection]").firstOrNull()?.text()
-    
+
     val currentTitle = runCatching { manga.title }.getOrNull()
     if (!collection.isNullOrBlank() && currentTitle.isNullOrBlank()) {
         manga.title = collection
@@ -52,7 +52,7 @@ fun EpubReader.fillMetadata(manga: SManga, chapter: SChapter) {
 
     creator?.text()?.let { manga.author = it }
     description?.let { if (it.isNotBlank()) manga.description = it }
-    
+
     if (mappedSubjects.isNotEmpty()) {
         val currentGenres = manga.genre?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
         val allGenres = (currentGenres + mappedSubjects).distinct()

@@ -304,7 +304,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 false
             }
         }
-        
+
         // Initial setup for background to avoid white flashes
         val theme = preferences.novelTheme().get()
         val backgroundColor = preferences.novelBackgroundColor().get()
@@ -1236,13 +1236,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         // Build global JS variables for custom scripts
         val chapterMetaScript = buildChapterMetaScript()
-        
+
         var finalContent = cleanContent
         var epubHead = ""
-        
+
         try {
             val doc = org.jsoup.Jsoup.parse(finalContent)
-            
+
             // Extract and filter EPUB styles
             if (preferences.enableEpubStyles().get()) {
                 doc.select("style[data-epub-css]").forEach { style ->
@@ -1250,7 +1250,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 }
             }
             doc.select("style[data-epub-css]").remove()
-            
+
             // Extract and filter EPUB scripts
             if (preferences.enableEpubJs().get()) {
                 doc.select("script[data-epub-js]").forEach { script ->
@@ -1396,7 +1396,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         val (themeBgColor, themeTextColor) = getThemeColors(theme)
         val finalBgColor = if (theme == "custom" && backgroundColor != 0) backgroundColor else themeBgColor
         val finalTextColor = if (fontColor != 0) fontColor else themeTextColor
-        
+
         val bgColorHex = String.format("#%06X", 0xFFFFFF and finalBgColor)
         val textColorHex = String.format("#%06X", 0xFFFFFF and finalTextColor)
 
