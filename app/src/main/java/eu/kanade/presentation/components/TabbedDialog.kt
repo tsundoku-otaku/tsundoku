@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
+import androidx.compose.ui.window.DialogProperties
+import eu.kanade.presentation.components.dialogProperties
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
@@ -53,6 +55,7 @@ fun TabbedDialog(
     onDismissRequest: () -> Unit,
     tabTitles: ImmutableList<TabTitle>,
     modifier: Modifier = Modifier,
+    properties: DialogProperties = dialogProperties,
     tabOverflowMenuContent: (@Composable ColumnScope.(() -> Unit) -> Unit)? = null,
     pagerState: PagerState = rememberPagerState { tabTitles.size },
     content: @Composable (Int) -> Unit,
@@ -60,6 +63,7 @@ fun TabbedDialog(
     AdaptiveSheet(
         modifier = modifier,
         onDismissRequest = onDismissRequest,
+        properties = properties,
     ) {
         val scope = rememberCoroutineScope()
 

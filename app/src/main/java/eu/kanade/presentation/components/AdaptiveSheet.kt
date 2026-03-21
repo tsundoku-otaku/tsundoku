@@ -64,13 +64,14 @@ fun AdaptiveSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     enableSwipeDismiss: Boolean = true,
+    properties: DialogProperties = dialogProperties,
     content: @Composable () -> Unit,
 ) {
     val isTabletUi = isTabletUi()
 
     Dialog(
         onDismissRequest = onDismissRequest,
-        properties = dialogProperties,
+        properties = properties,
     ) {
         AdaptiveSheetImpl(
             isTabletUi = isTabletUi,
@@ -83,7 +84,12 @@ fun AdaptiveSheet(
     }
 }
 
-private val dialogProperties = DialogProperties(
+val dialogProperties = DialogProperties(
     usePlatformDefaultWidth = false,
     decorFitsSystemWindows = true,
+)
+
+val imeAwareDialogProperties = DialogProperties(
+    usePlatformDefaultWidth = false,
+    decorFitsSystemWindows = false,
 )

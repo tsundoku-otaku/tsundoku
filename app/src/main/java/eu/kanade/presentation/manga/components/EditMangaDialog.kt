@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.TabTitle
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
+import eu.kanade.presentation.components.imeAwareDialogProperties
 import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.manga.model.Manga
@@ -84,9 +86,12 @@ fun EditMangaDialog(
             onDismissRequest()
         },
         tabTitles = tabTitles,
+        properties = imeAwareDialogProperties,
     ) { page ->
         Column(
             modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
                 .padding(
                     horizontal = TabbedDialogPaddings.Horizontal,
                     vertical = TabbedDialogPaddings.Vertical,
@@ -137,7 +142,7 @@ fun EditMangaDialog(
                     label = "Description",
                     value = description,
                     onValueChange = { description = it },
-                    minLines = 8,
+                    minLines = 1,
                     maxLines = 16,
                 )
             }
