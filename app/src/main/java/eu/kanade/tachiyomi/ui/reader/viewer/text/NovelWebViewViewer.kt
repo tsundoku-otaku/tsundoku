@@ -7,6 +7,7 @@ import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -263,7 +264,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun initWebView() {
+        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                // Remove blocksDescendants from reader_activity.xml's viewer_container parent
+                // so the WebView can actually receive text input focus.
+                (container.parent as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            }
+            override fun onViewDetachedFromWindow(v: View) {}
+        })
+
         webView = WebView(activity).apply {
+            isFocusable = true
+            isFocusableInTouchMode = true
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true

@@ -560,13 +560,11 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         pref = screenModel.preferences.novelSwipeNavigation(),
     )
 
-    // Text Selection (WebView reader only)
-    if (renderingMode == "webview") {
-        CheckboxItem(
-            label = stringResource(TDMR.strings.pref_novel_text_selectable),
-            pref = screenModel.preferences.novelTextSelectable(),
-        )
-    }
+    // Text Selection
+    CheckboxItem(
+        label = stringResource(TDMR.strings.pref_novel_text_selectable),
+        pref = screenModel.preferences.novelTextSelectable(),
+    )
 
     // Progress Slider
     CheckboxItem(

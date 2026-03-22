@@ -876,11 +876,19 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             )
-            // Text selection is not supported in the native text viewer.
-            // Use the WebView reader for copy/selection functionality.
-            setTextIsSelectable(false)
-            linksClickable = false
-            movementMethod = LinkOnlyMovementMethod
+            applyTextSelectionPreference(this)
+        }
+    }
+
+    private fun applyTextSelectionPreference(textView: TextView) {
+        val selectable = preferences.novelTextSelectable().get()
+        textView.setTextIsSelectable(selectable)
+        textView.linksClickable = false
+        if (!selectable) {
+            textView.movementMethod = LinkOnlyMovementMethod
+        } else {
+            // Explicitly set the movement method required for text selection
+            textView.movementMethod = android.text.method.ArrowKeyMovementMethod.getInstance()
         }
     }
 
