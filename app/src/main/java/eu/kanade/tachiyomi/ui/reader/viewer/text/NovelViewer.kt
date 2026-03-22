@@ -861,16 +861,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 }
         }
 
-        scope.launch {
-            preferences.novelTextSelectable().changes()
-                .drop(1)
-                .collectLatest {
-                    loadedChapters.forEach { loaded ->
-                        applyTextSelectionPreference(loaded.textView)
-                    }
-                }
-        }
-
         // Observe infinite scroll toggle - add/remove next chapter button
         scope.launch {
             preferences.novelInfiniteScroll().changes()
@@ -890,7 +880,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 }
         }
 
-        // In observePreferences(), add:
         scope.launch {
             preferences.novelTextSelectable().changes()
                 .drop(1)
