@@ -27,6 +27,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Decode HTML entities in JS manga title/descriptions `I&#x27;m` > `I'm` [@mrissaoussamau](https://github.com/mrissaoussama) [#76](https://github.com/tsundoku-otaku/tsundoku/pull/76)
 - Fix whiteflashes with webview on older android [@mrissaoussamau](https://github.com/mrissaoussama) [#77](https://github.com/tsundoku-otaku/tsundoku/pull/77)
 - EPUB improvements - CSS/JS Support, details.json, description/genre parsing [@mrissaoussamau](https://github.com/mrissaoussama) [#77](https://github.com/tsundoku-otaku/tsundoku/pull/77)
+- Support for text selection in TextView [@Rojikku](https://github.com/Rojikku) [@mrissaoussamau](https://github.com/mrissaoussama) [#95](https://github.com/tsundoku-otaku/tsundoku/pull/95)
 
 ### Added
 - Toggle under settings > Appearance that hides most manga UI elements[@mrissaoussamau](https://github.com/mrissaoussama) [#48](https://github.com/tsundoku-otaku/tsundoku/pull/48)
