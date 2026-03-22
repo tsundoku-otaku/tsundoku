@@ -745,17 +745,17 @@ class ReaderActivity : BaseActivity() {
             }
 
             if (showEditSaveDialog) {
-                androidx.compose.material3.AlertDialog(
+                AlertDialog(
                     onDismissRequest = { showEditSaveDialog = false },
-                    title = { androidx.compose.material3.Text("Save changes?") },
-                    text = { androidx.compose.material3.Text("Do you want to save your edits to this chapter?") },
+                    title = { Text(tachiyomi.presentation.core.i18n.stringResource(tachiyomi.i18n.novel.TDMR.strings.prompt_save_changes)) },
+                    text = { Text(tachiyomi.presentation.core.i18n.stringResource(tachiyomi.i18n.novel.TDMR.strings.prompt_save_changes_message)) },
                     confirmButton = {
                         androidx.compose.material3.TextButton(onClick = {
                             showEditSaveDialog = false
                             isEditing = false
                             (state.viewer as? NovelWebViewViewer)?.toggleEditMode(isEditing = false, save = true)
                         }) {
-                            androidx.compose.material3.Text("Save")
+                            Text(tachiyomi.presentation.core.i18n.stringResource(MR.strings.action_save))
                         }
                     },
                     dismissButton = {
@@ -764,7 +764,7 @@ class ReaderActivity : BaseActivity() {
                             isEditing = false
                             (state.viewer as? NovelWebViewViewer)?.toggleEditMode(isEditing = false, save = false)
                         }) {
-                            androidx.compose.material3.Text("Discard")
+                            Text(tachiyomi.presentation.core.i18n.stringResource(tachiyomi.i18n.novel.TDMR.strings.action_discard))
                         }
                     },
                 )

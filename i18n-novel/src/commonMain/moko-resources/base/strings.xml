@@ -115,7 +115,7 @@
     <string name="translate_details_merge_genres">Add to existing genres (don\'t replace)</string>
     <string name="action_export_epub">Export as EPUB</string>
     <string name="action_export_epub_bulk">Export selected as EPUB</string>
-    <string name="export_epub_progress">Exporting %1$d of %2$d chaptersâ€¦</string>
+    <string name="export_epub_progress">Exporting %1$d of %2$d chapters…</string>
     <string name="export_epub_success">EPUB exported successfully</string>
     <string name="export_epub_started">EPUB export started</string>
     <string name="export_epub_error">Failed to export EPUB: %s</string>
@@ -219,7 +219,7 @@
     <string name="epub_import_error_count">%d failed</string>
     <string name="epub_create_dir_failed">Failed to create directory for: %s</string>
     <string name="epub_novels_export_count">%d novel(s) will be exported.</string>
-    <string name="epub_and_more">â€¦ and %d more</string>
+    <string name="epub_and_more">… and %d more</string>
     <string name="epub_content_options">Content Options</string>
     <string name="epub_downloaded_only">Downloaded chapters only</string>
     <string name="epub_prefer_translated">Prefer translated chapters</string>
@@ -274,7 +274,7 @@
     <string name="novel_sort_source">Source order</string>
     <string name="novel_sort_chapter">Chapter number</string>
     <string name="novel_auto_split">Auto-split long chapters</string>
-    <string name="novel_split_word_count">Split word count (Ã—50)</string>
+    <string name="novel_split_word_count">Split word count (×50)</string>
     <string name="novel_force_lowercase">Force text to lowercase</string>
     <string name="novel_engine_format">Engine #%d</string>
     <string name="novel_enabled">Enabled</string>
@@ -284,7 +284,7 @@
     <string name="novel_add_rule">Add rule</string>
     <string name="novel_tag_regex">regex</string>
     <string name="novel_tag_text">text</string>
-    <string name="novel_rule_format">/%1$s/ â†’ %2$s</string>
+    <string name="novel_rule_format">/%1$s/ → %2$s</string>
     <string name="novel_rule_remove">(remove)</string>
     <string name="novel_no_rules">No rules added. Rules apply to chapter content before rendering.</string>
     <string name="novel_edit_rule">Edit Rule</string>
@@ -352,7 +352,7 @@
     <string name="pref_novel_realtime_translation">Real-time translation while reading</string>
     <string name="pref_novel_translation_engine_label">Engine</string>
     <string name="pref_novel_translation_target_label">Target language</string>
-    <string name="pref_novel_translation_hint">Configure translation engines in Settings â†’ Novel â†’ Translation</string>
+    <string name="pref_novel_translation_hint">Configure translation engines in Settings → Novel → Translation</string>
     <string name="action_disable_translation">Disable translation</string>
     <string name="not_configured">Not configured</string>
 
@@ -496,11 +496,11 @@
 
     <!-- Custom Source - Test screen -->
     <string name="custom_source_test_title">Test Source</string>
-    <string name="custom_source_testing">Testing sourceâ€¦</string>
+    <string name="custom_source_testing">Testing source…</string>
     <string name="custom_source_run_test">Run Test</string>
     <string name="custom_source_test_again">Test Again</string>
-    <string name="custom_source_all_tests_passed">âœ“ All tests passed</string>
-    <string name="custom_source_some_tests_failed">âœ— Some tests failed</string>
+    <string name="custom_source_all_tests_passed">✓ All tests passed</string>
+    <string name="custom_source_some_tests_failed">✗ Some tests failed</string>
     <string name="custom_source_export_subject">Custom Source: %s</string>
 
     <!-- Custom Source - WebView Element Selector Wizard -->
@@ -680,4 +680,9 @@
     <string name="pref_show_manga_source_name_summary">Display source name under status on manga details screen</string>
     <string name="action_hide_source_name">Hide source name</string>
     <string name="action_show_source_name">Show source name</string>
+    <string name="prompt_save_changes">Save changes?</string>
+    <string name="prompt_save_changes_message">Do you want to save your edits to this chapter?</string>
+    <string name="action_discard">Discard</string>
+    <string name="error_saving_edits">Failed to save edited chapter</string>
+    <string name="error_decoding_edits">Failed to decode edited content</string>
 </resources>

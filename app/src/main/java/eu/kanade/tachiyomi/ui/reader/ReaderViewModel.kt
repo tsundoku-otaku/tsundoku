@@ -29,6 +29,7 @@ import eu.kanade.tachiyomi.data.saver.Location
 import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader
@@ -74,8 +75,10 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
+import eu.kanade.tachiyomi.util.system.toast
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
+import tachiyomi.domain.chapter.model.Chapter as DomainChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
 import tachiyomi.domain.chapter.service.getChapterSort
 import tachiyomi.domain.download.service.DownloadPreferences
@@ -1442,61 +1445,78 @@ class ReaderViewModel @JvmOverloads constructor(
                     val htmlContent = (jsonObj["content"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: continue
 
                     val chapter = chapterList.find { it.chapter.id == id }?.chapter?.toDomainChapter() ?: continue
-
-                    val isDownloaded = downloadManager.isChapterDownloaded(chapter.name, chapter.scanlator, chapter.url, m.title, m.source)
-                    var chapterDir: com.hippo.unifile.UniFile? = if (isDownloaded) {
-                        downloadProvider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, m.title, s)
-                    } else {
-                        downloadProvider.getMangaDir(m.title, s).getOrNull()?.let { mangaDir ->
-                            val validName = downloadProvider.getValidChapterDirNames(chapter.name, chapter.scanlator, chapter.url).first()
-                            if (downloadPreferences.saveChaptersAsCBZ().get()) {
-                                mangaDir.createFile("$validName.cbz")
-                            } else {
-                                mangaDir.createDirectory(validName)
-                            }
-                        }
-                    }
-
-                    if (chapterDir != null) {
-                        try {
-                            val mangaDir = downloadProvider.getMangaDir(m.title, s).getOrNull()
-                            val validName = downloadProvider.getValidChapterDirNames(chapter.name, chapter.scanlator, chapter.url).first()
-
-                            if (downloadPreferences.saveChaptersAsCBZ().get()) {
-                                if (chapterDir.isDirectory) {
-                                    chapterDir.delete()
-                                    chapterDir = mangaDir?.createFile("$validName.cbz")
-                                }
-                                val targetFile = if (chapterDir?.name?.endsWith(".cbz") == true) chapterDir else mangaDir?.createFile("$validName.cbz")
-                                targetFile?.openOutputStream()?.let { os ->
-                                    java.util.zip.ZipOutputStream(os).use { zos ->
-                                        zos.putNextEntry(java.util.zip.ZipEntry("001.html"))
-                                        zos.write(htmlContent.toByteArray())
-                                        zos.closeEntry()
-                                    }
-                                }
-                            } else {
-                                if (chapterDir.isFile) {
-                                    chapterDir.delete()
-                                    chapterDir = mangaDir?.createDirectory(validName)
-                                }
-                                val targetDir = if (chapterDir?.isDirectory == true) chapterDir else mangaDir?.createDirectory(validName)
-                                val targetFile = targetDir?.findFile("001.html") ?: targetDir?.createFile("001.html")
-                                targetFile?.openOutputStream()?.bufferedWriter()?.use { it.write(htmlContent) }
-                            }
-
-                            if (!isDownloaded && mangaDir != null) {
-                                val dlCache: eu.kanade.tachiyomi.data.download.DownloadCache = uy.kohesive.injekt.Injekt.get()
-                                dlCache.addChapter(validName, mangaDir, m)
-                            }
-                        } catch (e: Exception) {
-                            logcat(logcat.LogPriority.ERROR, e) { "Failed to save edited chapter" }
-                        }
-                    }
+                    saveSingleChapterEdits(m, chapter, s, htmlContent)
                 }
                 setHasUnsavedChanges(false)
             } catch (e: Exception) {
-                logcat(logcat.LogPriority.ERROR, e) { "Failed to decode edited content json" }
+                logcat(LogPriority.ERROR, e) { "Failed to decode edited content json" }
+                Injekt.get<Application>().let { app ->
+                    app.toast(tachiyomi.i18n.novel.TDMR.strings.error_decoding_edits)
+                }
+            }
+        }
+    }
+
+    /**
+     * Replaces the local downloaded file for a given chapter with the specified edited [htmlContent].
+     * Supports both plain directory (.html) and CBZ packed (.cbz) chapter formats.
+     */
+    private suspend fun saveSingleChapterEdits(
+        m: Manga,
+        chapter: DomainChapter,
+        s: Source,
+        htmlContent: String,
+    ) {
+        val isDownloaded = downloadManager.isChapterDownloaded(chapter.name, chapter.scanlator, chapter.url, m.title, m.source)
+        val mangaDir = downloadProvider.getMangaDir(m.title, s).getOrNull() ?: return
+        val validName = downloadProvider.getValidChapterDirNames(chapter.name, chapter.scanlator, chapter.url).first()
+
+        try {
+            var chapterDir: com.hippo.unifile.UniFile? = if (isDownloaded) {
+                downloadProvider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, m.title, s)
+            } else {
+                if (downloadPreferences.saveChaptersAsCBZ().get()) {
+                    mangaDir.createFile("$validName.cbz")
+                } else {
+                    mangaDir.createDirectory(validName)
+                }
+            }
+
+            if (chapterDir != null) {
+                if (downloadPreferences.saveChaptersAsCBZ().get()) {
+                    if (chapterDir!!.isDirectory) {
+                        chapterDir!!.delete()
+                        chapterDir = mangaDir.createFile("$validName.cbz")
+                    }
+                    val targetFile = if (chapterDir!!.name?.endsWith(".cbz") == true) chapterDir!! else mangaDir.createFile("$validName.cbz")
+
+                    targetFile?.openOutputStream()?.let { os ->
+                        java.util.zip.ZipOutputStream(os).use { zos ->
+                            zos.putNextEntry(java.util.zip.ZipEntry("001.html"))
+                            zos.write(htmlContent.toByteArray())
+                            zos.closeEntry()
+                        }
+                    }
+                } else {
+                    if (chapterDir!!.isFile) {
+                        chapterDir!!.delete()
+                        chapterDir = mangaDir.createDirectory(validName)
+                    }
+                    val targetDir = if (chapterDir!!.isDirectory) chapterDir else mangaDir.createDirectory(validName)
+                    val targetFile = targetDir?.findFile("001.html") ?: targetDir?.createFile("001.html")
+                    targetFile?.openOutputStream()?.bufferedWriter()?.use { it.write(htmlContent) }
+                }
+
+                // If it wasn't downloaded before, notify the DownloadCache that it exists now
+                if (!isDownloaded) {
+                    val dlCache: eu.kanade.tachiyomi.data.download.DownloadCache = Injekt.get()
+                    dlCache.addChapter(validName, mangaDir, m)
+                }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to save edited chapter" }
+            Injekt.get<Application>().let { app ->
+                app.toast(tachiyomi.i18n.novel.TDMR.strings.error_saving_edits)
             }
         }
     }
