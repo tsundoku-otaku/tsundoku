@@ -537,30 +537,30 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     }
 
     private fun injectCustomScript() {
-        val variablesJs = """
-            window.TachiVariables = {
-                isEditMode: ${isEditingMode},
-                isInfScroll: ${preferences.novelInfiniteScroll().get()},
-                textSelectionBlocked: !${preferences.novelTextSelectable().get()},
-                forcedLowercase: ${preferences.novelForceTextLowercase().get()}
-            };
+        val chapter = currentChapters?.currChapter?.chapter
+            ?: loadedChapters.getOrNull(currentChapterIndex)?.chapter
+        val chapterTitle = (chapter?.name ?: "").jsEscape()
+        val chapterNumber = chapter?.chapter_number ?: -1f
+        val chapterUrl = (chapter?.url ?: "").jsEscape()
+        val novelUrl = (activity.viewModel.manga?.url ?: "").jsEscape()
+
+        val script = """
+        window.Tsundoku = {
+            chapterTitle: "$chapterTitle",
+            chapterNumber: $chapterNumber,
+            chapterUrl: "$chapterUrl",
+            novelUrl: "$novelUrl",
+            isEditMode: $isEditingMode,
+            isInfScroll: ${preferences.novelInfiniteScroll().get()},
+            textSelectionBlocked: ${!preferences.novelTextSelectable().get()},
+            forcedLowercase: ${preferences.novelForceTextLowercase().get()}
+        };
         """.trimIndent()
-        evaluateJavascriptSafe(variablesJs, null)
+        evaluateJavascriptSafe(script, null)
 
         val customJs = preferences.novelCustomJs().get()
         if (customJs.isNotBlank()) {
             evaluateJavascriptSafe(customJs, null)
-        }
-
-        // Inject enabled JS snippets
-        val jsSnippetsJson = preferences.novelCustomJsSnippets().get()
-        try {
-            val snippets = Json.decodeFromString<List<CodeSnippet>>(jsSnippetsJson)
-            snippets.filter { it.enabled }.forEach { snippet ->
-                evaluateJavascriptSafe(snippet.code, null)
-            }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "Failed to parse JS snippets: ${e.message}" }
         }
     }
 
@@ -1387,7 +1387,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             window.__TSUNDOKU_CHAPTER_NUMBER = $chapterNumber;
             window.__TSUNDOKU_CHAPTER_URL = "$chapterUrl";
             window.__TSUNDOKU_NOVEL_URL = "$novelUrl";
-            window.__TSUNDOKU_IS_EDIT_MODE = ${isEditingMode};
+            window.__TSUNDOKU_IS_EDIT_MODE = $isEditingMode;
             window.__TSUNDOKU_IS_INF_SCROLL = ${preferences.novelInfiniteScroll().get()};
             window.__TSUNDOKU_TEXT_SELECTION_BLOCKED = ${!preferences.novelTextSelectable().get()};
             window.__TSUNDOKU_FORCED_LOWERCASE = ${preferences.novelForceTextLowercase().get()};
@@ -1586,13 +1586,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 webView.postDelayed({
                     imm?.showSoftInput(webView, 0)
                 }, 120)
-
             }
         } else {
             webView.clearFocus()
             val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
             imm?.hideSoftInputFromWindow(webView.windowToken, 0)
-
         }
 
         val script = """

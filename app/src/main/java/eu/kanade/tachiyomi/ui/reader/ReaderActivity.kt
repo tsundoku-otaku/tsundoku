@@ -766,7 +766,7 @@ class ReaderActivity : BaseActivity() {
                         }) {
                             androidx.compose.material3.Text("Discard")
                         }
-                    }
+                    },
                 )
             }
 
