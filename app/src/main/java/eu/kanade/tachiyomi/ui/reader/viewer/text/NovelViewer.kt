@@ -441,6 +441,17 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         }
 
         scrollView.addView(contentContainer)
+
+        // Allow descendants to receive focus so TextView text selection works.
+        // The reader container typically sets FOCUS_BLOCK_DESCENDANTS which prevents
+        // the TextView's Editor from initializing properly for selection.
+        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                (container.parent as? ViewGroup)?.descendantFocusability =
+                    ViewGroup.FOCUS_AFTER_DESCENDANTS
+            }
+            override fun onViewDetachedFromWindow(v: View) {}
+        })
     }
 
     private fun setupScrollListener() {
@@ -866,6 +877,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                             addNextChapterButton()
                         }
                     }
+                }
+        }
+
+        // In observePreferences(), add:
+        scope.launch {
+            preferences.novelTextSelectable().changes()
+                .drop(1)
+                .collectLatest {
+                    reloadContent()
                 }
         }
     }
