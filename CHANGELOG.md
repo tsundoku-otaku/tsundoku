@@ -13,6 +13,10 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ## [Unreleased]
 
 
+### Added
+- Add Edit mode to edit chapters, fixes to images to make this work [@mrissaoussama](https://github.com/mrissaoussama) [#82](https://github.com/tsundoku-otaku/tsundoku/pull/82)
+
+
 ## [v0.1.2] - 2026-03-22
 ### Changed
 - Decode HTML entities in JS manga title/descriptions `I&#x27;m` > `I'm` [@mrissaoussama](https://github.com/mrissaoussama) [#76](https://github.com/tsundoku-otaku/tsundoku/pull/76)
