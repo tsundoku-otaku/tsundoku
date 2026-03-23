@@ -15,60 +15,60 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ## [v0.1.2] - 2026-03-22
 ### Changed
-- Decode HTML entities in JS manga title/descriptions `I&#x27;m` > `I'm` [@mrissaoussamau](https://github.com/mrissaoussama) [#76](https://github.com/tsundoku-otaku/tsundoku/pull/76)
-- Support for text selection in TextView [@Rojikku](https://github.com/Rojikku) [@mrissaoussamau](https://github.com/mrissaoussama) [#95](https://github.com/tsundoku-otaku/tsundoku/pull/95)
+- Decode HTML entities in JS manga title/descriptions `I&#x27;m` > `I'm` [@mrissaoussama](https://github.com/mrissaoussama) [#76](https://github.com/tsundoku-otaku/tsundoku/pull/76)
+- Support for text selection in TextView [@Rojikku](https://github.com/Rojikku) [@mrissaoussama](https://github.com/mrissaoussama) [#95](https://github.com/tsundoku-otaku/tsundoku/pull/95)
 
 ### Improved
-- New sorting option based on source name [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
-- Duplicate finder now has category filter [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
-- Hid Quick migration, removed from unnecessary places, added category option [@mrissaoussamau](https://github.com/mrissaoussama) [#43](https://github.com/tsundoku-otaku/tsundoku/pull/43)
-- Improve library performance when using filters and sorters [@mrissaoussamau](https://github.com/mrissaoussama) [#55](https://github.com/tsundoku-otaku/tsundoku/pull/55)
-- Add Enable/Disable for Extension Repos [@mrissaoussamau](https://github.com/mrissaoussama) [#50](https://github.com/tsundoku-otaku/tsundoku/pull/50)
+- New sorting option based on source name [@mrissaoussama](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
+- Duplicate finder now has category filter [@mrissaoussama](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
+- Hid Quick migration, removed from unnecessary places, added category option [@mrissaoussama](https://github.com/mrissaoussama) [#43](https://github.com/tsundoku-otaku/tsundoku/pull/43)
+- Improve library performance when using filters and sorters [@mrissaoussama](https://github.com/mrissaoussama) [#55](https://github.com/tsundoku-otaku/tsundoku/pull/55)
+- Add Enable/Disable for Extension Repos [@mrissaoussama](https://github.com/mrissaoussama) [#50](https://github.com/tsundoku-otaku/tsundoku/pull/50)
 - Improved novel reader settings UI [@Rojikku](https://github.com/Rojikku) [#49](https://github.com/tsundoku-otaku/tsundoku/pull/49)
-- Fix Epub import to add to library (Not just inside source) and add specific category to import [@mrissaoussamau](https://github.com/mrissaoussama) [#70](https://github.com/tsundoku-otaku/tsundoku/pull/70)
+- Fix Epub import to add to library (Not just inside source) and add specific category to import [@mrissaoussama](https://github.com/mrissaoussama) [#70](https://github.com/tsundoku-otaku/tsundoku/pull/70)
 - Improved novel edit UI [@Rojikku](https://github.com/Rojikku) [#72](https://github.com/tsundoku-otaku/tsundoku/pull/72)
-- Add `.nomedia` file to `localnovels` and `lnreader_plugins` dirs [@mrissaoussamau](https://github.com/mrissaoussama) [#75](https://github.com/tsundoku-otaku/tsundoku/pull/75)
-- Fix whiteflashes with webview on older android [@mrissaoussamau](https://github.com/mrissaoussama) [#77](https://github.com/tsundoku-otaku/tsundoku/pull/77)
-- EPUB improvements - CSS/JS Support, details.json, description/genre parsing [@mrissaoussamau](https://github.com/mrissaoussama) [#77](https://github.com/tsundoku-otaku/tsundoku/pull/77)
+- Add `.nomedia` file to `localnovels` and `lnreader_plugins` dirs [@mrissaoussama](https://github.com/mrissaoussama) [#75](https://github.com/tsundoku-otaku/tsundoku/pull/75)
+- Fix whiteflashes with webview on older android [@mrissaoussama](https://github.com/mrissaoussama) [#77](https://github.com/tsundoku-otaku/tsundoku/pull/77)
+- EPUB improvements - CSS/JS Support, details.json, description/genre parsing [@mrissaoussama](https://github.com/mrissaoussama) [#77](https://github.com/tsundoku-otaku/tsundoku/pull/77)
 
 ### Added
-- Toggle under settings > Appearance that hides most manga UI elements[@mrissaoussamau](https://github.com/mrissaoussama) [#48](https://github.com/tsundoku-otaku/tsundoku/pull/48)
-- Advanced Local Source EPUB volume ordering (Multiple EPUBs in one Novel) [Guide](https://tsundoku-otaku.github.io/docs/guides/local-source/novels) [@mrissaoussamau](https://github.com/mrissaoussama) [#71](https://github.com/tsundoku-otaku/tsundoku/pull/71)
-- Toggle under settings > Advanced that hides source name under manga details (For screenshots/bug reporting) [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
+- Toggle under settings > Appearance that hides most manga UI elements[@mrissaoussama](https://github.com/mrissaoussama) [#48](https://github.com/tsundoku-otaku/tsundoku/pull/48)
+- Advanced Local Source EPUB volume ordering (Multiple EPUBs in one Novel) [Guide](https://tsundoku-otaku.github.io/docs/guides/local-source/novels) [@mrissaoussama](https://github.com/mrissaoussama) [#71](https://github.com/tsundoku-otaku/tsundoku/pull/71)
+- Toggle under settings > Advanced that hides source name under manga details (For screenshots/bug reporting) [@mrissaoussama](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
 - Customizable novel reader bottom toolbar [@Rojikku](https://github.com/Rojikku) [#45](https://github.com/tsundoku-otaku/tsundoku/pull/45)
-- Support lnreader repo add link [@mrissaoussamau](https://github.com/mrissaoussama) [#47](https://github.com/tsundoku-otaku/tsundoku/pull/47)
+- Support lnreader repo add link [@mrissaoussama](https://github.com/mrissaoussama) [#47](https://github.com/tsundoku-otaku/tsundoku/pull/47)
 
 ### Fixed
 - Telemetry [@Rojikku](https://github.com/Rojikku) [d4ec8df](https://github.com/tsundoku-otaku/tsundoku/commit/d4ec8dff90707ddabfb39a49be678e3ccc7e7ba2)
-- Updates tab didn't show all items properly when showing one entry per novel [@mrissaoussamau](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
-- Improve storagemanager and directory creation to hopefully prevent issues with android 8 [@mrissaoussamau](https://github.com/mrissaoussama) [#44](https://github.com/tsundoku-otaku/tsundoku/pull/44) [#56](https://github.com/tsundoku-otaku/tsundoku/pull/56)
+- Updates tab didn't show all items properly when showing one entry per novel [@mrissaoussama](https://github.com/mrissaoussama) [#41](https://github.com/tsundoku-otaku/tsundoku/pull/41)
+- Improve storagemanager and directory creation to hopefully prevent issues with android 8 [@mrissaoussama](https://github.com/mrissaoussama) [#44](https://github.com/tsundoku-otaku/tsundoku/pull/44) [#56](https://github.com/tsundoku-otaku/tsundoku/pull/56)
 - Automatically refresh covers when auto-adding an EPUB to library [@Rojikku](https://github.com/Rojikku) [#80](https://github.com/tsundoku-otaku/tsundoku/pull/80)
 - Prevent keyboard overlap with new Edit UI Desc screen [@Rojikku](https://github.com/Rojikku) [#81](https://github.com/tsundoku-otaku/tsundoku/pull/81)
 
 ### Other
 - Merged Mihon [2f9edb5](https://github.com/mihonapp/mihon/commit/2f9edb551fb2255c11ccd8452a080e87b9c963eb) [@Rojikku](https://github.com/Rojikku)
-- Removed `(JS)` from extension add screen, keeping yellow badge [@mrissaoussamau](https://github.com/mrissaoussama) [#46](https://github.com/tsundoku-otaku/tsundoku/pull/46)
+- Removed `(JS)` from extension add screen, keeping yellow badge [@mrissaoussama](https://github.com/mrissaoussama) [#46](https://github.com/tsundoku-otaku/tsundoku/pull/46)
 
 ## [v0.1.1] - 2026-03-17
 ### Improved
 - Optimized Novel Delay Sliders and expanded ranges [@Rojikku](https://github.com/Rojikku) [5e220d2](https://github.com/tsundoku-otaku/tsundoku/commit/5e220d284ed5e71d5c422c1577cfcb0c26c47ff3)
-- Database Maintenance can happen in background as WorkerManager job [@mrissaoussamau](https://github.com/mrissaoussama) [#32](https://github.com/tsundoku-otaku/tsundoku/pull/32)
-- Library clear/clean operations can happen in background as WorkerManager job [@mrissaoussamau](https://github.com/mrissaoussama) [#33](https://github.com/tsundoku-otaku/tsundoku/pull/33)
-- Added pagination to updates screen (Allows dynamic loading of update history) [@mrissaoussamau](https://github.com/mrissaoussama) [#35](https://github.com/tsundoku-otaku/tsundoku/pull/35)
-- Added Gemini to translation options [@mrissaoussamau](https://github.com/mrissaoussama) [#38](https://github.com/tsundoku-otaku/tsundoku/pull/38)
+- Database Maintenance can happen in background as WorkerManager job [@mrissaoussama](https://github.com/mrissaoussama) [#32](https://github.com/tsundoku-otaku/tsundoku/pull/32)
+- Library clear/clean operations can happen in background as WorkerManager job [@mrissaoussama](https://github.com/mrissaoussama) [#33](https://github.com/tsundoku-otaku/tsundoku/pull/33)
+- Added pagination to updates screen (Allows dynamic loading of update history) [@mrissaoussama](https://github.com/mrissaoussama) [#35](https://github.com/tsundoku-otaku/tsundoku/pull/35)
+- Added Gemini to translation options [@mrissaoussama](https://github.com/mrissaoussama) [#38](https://github.com/tsundoku-otaku/tsundoku/pull/38)
 
 ### Changed
 - Corrected release logo color to match scheme with other releases (Lighter color) [@Rojikku](https://github.com/Rojikku) [e3fa1dc](https://github.com/tsundoku-otaku/tsundoku/commit/9eb8e1f0a23c9e3be986dbc657814c5ede4e56a2)
 
 ### Fixed
-- Added safeguards to prevent Out of Memory issues with library exportation [@mrissaoussamau](https://github.com/mrissaoussama) [#36](https://github.com/tsundoku-otaku/tsundoku/pull/36)
-- Browse source paging isolation and filter preset icons [@mrissaoussamau](https://github.com/mrissaoussama) [#37](https://github.com/tsundoku-otaku/tsundoku/pull/37)
-- Switching chapters restores novel scroll position [@mrissaoussamau](https://github.com/mrissaoussama) [#39](https://github.com/tsundoku-otaku/tsundoku/pull/39)
-- Added Out of Memory safeguards to importer, storage handling fix, and "various fixes" [@mrissaoussamau](https://github.com/mrissaoussama) [#40](https://github.com/tsundoku-otaku/tsundoku/pull/40)
+- Added safeguards to prevent Out of Memory issues with library exportation [@mrissaoussama](https://github.com/mrissaoussama) [#36](https://github.com/tsundoku-otaku/tsundoku/pull/36)
+- Browse source paging isolation and filter preset icons [@mrissaoussama](https://github.com/mrissaoussama) [#37](https://github.com/tsundoku-otaku/tsundoku/pull/37)
+- Switching chapters restores novel scroll position [@mrissaoussama](https://github.com/mrissaoussama) [#39](https://github.com/tsundoku-otaku/tsundoku/pull/39)
+- Added Out of Memory safeguards to importer, storage handling fix, and "various fixes" [@mrissaoussama](https://github.com/mrissaoussama) [#40](https://github.com/tsundoku-otaku/tsundoku/pull/40)
 
 ### Other
 - Merged Mihon [f6b2684](https://github.com/mihonapp/mihon/commit/f6b2684323569ef0eb23e143cc5d65d7cc1aae3c) [@Rojikku](https://github.com/Rojikku)
-- Batch track queries in stats screen to fix N+1 [@mrissaoussamau](https://github.com/mrissaoussama) [#34](https://github.com/tsundoku-otaku/tsundoku/pull/34)
+- Batch track queries in stats screen to fix N+1 [@mrissaoussama](https://github.com/mrissaoussama) [#34](https://github.com/tsundoku-otaku/tsundoku/pull/34)
 
 
 ## [v0.1.0] - 2026-03-06
@@ -77,14 +77,14 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Rebrand from Mihon [@Rojikku](https://github.com/Rojikku) [#5](https://github.com/tsundoku-otaku/tsundoku/pull/5)
 
 ### Added
-- Novel reading features [@mrissaoussamau](https://github.com/mrissaoussama)
-- Support lnreader JS plugins [@mrissaoussamau](https://github.com/mrissaoussama)
-- Support user configurable "custom extensions" [@mrissaoussamau](https://github.com/mrissaoussama)
-- Infinite load reading [@mrissaoussamau](https://github.com/mrissaoussama)
-- Import lnreader backups [@mrissaoussamau](https://github.com/mrissaoussama)
-- Download rate limiting options [@mrissaoussamau](https://github.com/mrissaoussama)
-- EPUB and local novel support [@mrissaoussamau](https://github.com/mrissaoussama)
-- TTS [@mrissaoussamau](https://github.com/mrissaoussama)
+- Novel reading features [@mrissaoussama](https://github.com/mrissaoussama)
+- Support lnreader JS plugins [@mrissaoussama](https://github.com/mrissaoussama)
+- Support user configurable "custom extensions" [@mrissaoussama](https://github.com/mrissaoussama)
+- Infinite load reading [@mrissaoussama](https://github.com/mrissaoussama)
+- Import lnreader backups [@mrissaoussama](https://github.com/mrissaoussama)
+- Download rate limiting options [@mrissaoussama](https://github.com/mrissaoussama)
+- EPUB and local novel support [@mrissaoussama](https://github.com/mrissaoussama)
+- TTS [@mrissaoussama](https://github.com/mrissaoussama)
 - **Translation System**: Chapter translation with configurable engines, smart language detection, real-time translation mode, contextual anchoring, EPUB export, translation queue screen, shared storage, chunk retry, CBZ support, localization
 - **Custom Source Builder**: CSS-selector-based source creation, "base on existing extension" cloning, WebView guided wizard, manual editor, import/export/share, test harness, site framework detection (Madara, LightNovelWP, etc.)
 - **Duplicate Detection**: Library duplicate finder with sortable FlowRow chips, source priority screen with per-source override rules, tracker-based duplicate detection
