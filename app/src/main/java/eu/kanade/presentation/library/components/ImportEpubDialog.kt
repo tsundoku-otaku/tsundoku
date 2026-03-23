@@ -72,6 +72,7 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import org.jsoup.Jsoup
 
 data class EpubFileInfo(
     val uri: Uri,
@@ -221,7 +222,7 @@ fun ImportEpubDialog(
                                 fileName = fileName,
                                 title = title,
                                 author = manga.author,
-                                description = manga.description,
+                                description = normalizeImportedDescription(manga.description),
                                 coverUri = coverUri,
                                 collection = runCatching { manga.title }.getOrNull()?.takeIf { it.isNotBlank() },
                                 genres = manga.genre,
@@ -803,4 +804,24 @@ private suspend fun registerImportedLocalNovels(
 
 private fun sanitizeFileName(name: String): String {
     return name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(200)
+}
+
+private fun normalizeImportedDescription(rawDescription: String?): String? {
+    if (rawDescription.isNullOrBlank()) return null
+
+    val doc = Jsoup.parse(rawDescription)
+    doc.select("br").append("\\n")
+    doc.select("p").prepend("\\n")
+    doc.select("div").prepend("\\n")
+
+    val text = doc.body()?.wholeText().orEmpty()
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .lines()
+        .map { it.trim() }
+        .joinToString("\n")
+        .replace(Regex("\n{3,}"), "\n\n")
+        .trim()
+
+    return text.ifBlank { null }
 }
