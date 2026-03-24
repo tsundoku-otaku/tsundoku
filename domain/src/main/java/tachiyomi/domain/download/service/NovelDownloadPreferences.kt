@@ -120,7 +120,7 @@ class NovelDownloadPreferences(
      */
     fun downloadChapterImages() = preferenceStore.getBoolean(
         "novel_download_chapter_images",
-        false,
+        true,
     )
 
     /**

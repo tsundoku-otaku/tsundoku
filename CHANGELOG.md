@@ -11,6 +11,8 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+### Changed
+- Set default of "download chapter images" to true  [@Rojikku](https://github.com/Rojikku) 
 
 
 ### Added
