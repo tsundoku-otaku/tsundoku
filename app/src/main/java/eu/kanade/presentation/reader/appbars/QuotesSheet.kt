@@ -166,7 +166,7 @@ fun QuotesSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(TDMR.strings.quotes_title),
+                        text = stringResource(TDMR.strings.action_quotes),
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Icon(
@@ -214,7 +214,7 @@ fun QuotesSheet(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(TDMR.strings.quotes_title),
+                        text = stringResource(TDMR.strings.action_quotes),
                         style = MaterialTheme.typography.titleLarge,
                     )
                     Row(
@@ -283,7 +283,7 @@ private fun QuoteItem(
             )
             Icon(
                 painter = painterResource(R.drawable.ic_close_24dp),
-                contentDescription = stringResource(TDMR.strings.quotes_delete),
+                contentDescription = stringResource(MR.strings.action_delete),
                 modifier = Modifier
                     .size(20.dp)
                     .clickable(onClick = { quoteToDelete.value = quote }),

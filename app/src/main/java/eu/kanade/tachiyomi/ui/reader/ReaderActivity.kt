@@ -397,9 +397,6 @@ class ReaderActivity : BaseActivity() {
             } else {}
         }
 
-        android.util.Log.d("ReaderActivity", "Quotes sheet composable: showQuotesState.value = ${showQuotesState.value}")
-        android.util.Log.d("ReaderActivity", "Quotes sheet composable: showQuotesSheet = $showQuotesSheet")
-
         if (showQuotesState.value) {
             android.util.Log.d("ReaderActivity", "Rendering QuotesSheet with ${quotesState.value.size} quotes")
             QuotesSheet(
