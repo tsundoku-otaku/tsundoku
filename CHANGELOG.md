@@ -12,7 +12,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased]
 ### Changed
-- Set default of "download chapter images" to true  [@Rojikku](https://github.com/Rojikku) 
+- Set default of "download chapter images" to true  [@Rojikku](https://github.com/Rojikku) [eee423d](https://github.com/tsundoku-otaku/tsundoku/commit/eee423d14a29ca71e8816350cd4b97a210be1330)
 
 
 ### Added
@@ -20,6 +20,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Fixed 
 - Improve HTML file detection which should fix some issues with downloaded content. [@mrissaoussama](https://github.com/mrissaoussama) [#133](https://github.com/tsundoku-otaku/tsundoku/pull/133)
+- Improve HTML file detection which should fix some issues with downloaded content. [@Rojikku](https://github.com/Rojikku)  [#134](https://github.com/tsundoku-otaku/tsundoku/pull/134)
 
 
 ## [v0.1.2] - 2026-03-22
