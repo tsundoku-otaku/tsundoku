@@ -37,6 +37,8 @@ import eu.kanade.tachiyomi.ui.reader.model.InsertPage
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.quote.Quote
+import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
@@ -124,6 +126,9 @@ class ReaderViewModel @JvmOverloads constructor(
     private val translationService: TranslationService = Injekt.get(),
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
 ) : ViewModel() {
+    private val quoteManager: QuoteManager by lazy {
+        QuoteManager(Injekt.get<Application>())
+    }
 
     private val mutableState = MutableStateFlow(
         State(
@@ -1547,6 +1552,34 @@ class ReaderViewModel @JvmOverloads constructor(
                 }
             }
         }
+    }
+
+    // Quotes functionality
+    fun getQuotes(): List<Quote> {
+        val manga = manga ?: return emptyList()
+        return quoteManager.getQuotes(manga.id)
+    }
+
+    fun saveQuote(text: String, chapterName: String) {
+        val manga = manga ?: return
+        val chapter = getCurrentChapter()?.chapter ?: return
+        val quote = Quote(
+            novelName = manga.title,
+            chapterName = chapterName,
+            content = text,
+            timestamp = System.currentTimeMillis(),
+        )
+        quoteManager.addQuote(manga.id, quote)
+    }
+
+    fun deleteQuote(quote: Quote) {
+        val manga = manga ?: return
+        quoteManager.removeQuote(manga.id, quote.id)
+    }
+
+    fun updateQuote(quote: Quote) {
+        val manga = manga ?: return
+        quoteManager.updateQuote(manga.id, quote)
     }
 
     sealed interface Dialog {

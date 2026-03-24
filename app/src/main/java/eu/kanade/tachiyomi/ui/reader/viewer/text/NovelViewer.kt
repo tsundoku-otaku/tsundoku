@@ -15,9 +15,12 @@ import android.text.Layout
 import android.text.Spanned
 import android.text.style.LeadingMarginSpan
 import android.text.style.LineHeightSpan
+import android.view.ActionMode
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -36,8 +39,11 @@ import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.quote.Quote
+import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -980,6 +986,38 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             )
             applyTextSelectionPreference(this)
+
+            // Set custom action mode callback for text selection
+            if (preferences.novelTextSelectable().get()) {
+                customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
+                    override fun onCreateActionMode(mode: android.view.ActionMode, menu: Menu): Boolean {
+                        // Add "Remember" action
+                        val rememberItem = menu.add(Menu.NONE, 1, Menu.NONE, "Remember")
+                        rememberItem.setIcon(android.R.drawable.ic_menu_save)
+                        rememberItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                        return true
+                    }
+
+                    override fun onPrepareActionMode(mode: android.view.ActionMode, menu: Menu): Boolean {
+                        return false
+                    }
+
+                    override fun onActionItemClicked(mode: android.view.ActionMode, item: MenuItem): Boolean {
+                        return when (item.itemId) {
+                            1 -> { // Remember action
+                                onRememberSelectedText()
+                                mode.finish()
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+
+                    override fun onDestroyActionMode(mode: android.view.ActionMode) {
+                        // Action mode finished, selection cleared
+                    }
+                }
+            }
         }
     }
 
@@ -2129,5 +2167,64 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
     override fun handleGenericMotionEvent(event: MotionEvent): Boolean {
         return false
+    }
+
+    /**
+     * Get the currently selected text from the active chapter's TextView
+     */
+    fun getSelectedText(): String? {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return null
+        val textView = loaded.textView
+        if (!textView.hasSelection()) return null
+
+        val start = textView.selectionStart
+        val end = textView.selectionEnd
+        if (start < 0 || end < 0 || start >= end) return null
+
+        val text = textView.text.toString()
+        return text.substring(start, end)
+    }
+
+    /**
+     * Get the current chapter name for quote context
+     */
+    fun getCurrentChapterName(): String? {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return null
+        return loaded.chapter.chapter.name
+    }
+
+    /**
+     * Check if text is currently selected
+     */
+    fun hasTextSelection(): Boolean {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return false
+        return loaded.textView.hasSelection()
+    }
+
+    /**
+     * Clear text selection
+     */
+    fun clearTextSelection() {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return
+        val textView = loaded.textView
+        if (textView.hasSelection()) {
+            textView.clearFocus()
+        }
+    }
+
+    /**
+     * Handle the "Remember" action from text selection menu
+     */
+    private fun onRememberSelectedText() {
+        val selectedText = getSelectedText()
+        val chapterName = getCurrentChapterName()
+
+        if (selectedText != null && chapterName != null) {
+            activity.onRememberSelectedText()
+            // Clear selection after adding quote
+            clearTextSelection()
+        } else {
+            activity.toast("No text selected")
+        }
     }
 }

@@ -1,11 +1,18 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.drawable.ColorDrawable
+import android.net.Uri
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.view.GestureDetector
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -24,9 +31,12 @@ import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.quote.Quote
+import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -343,6 +353,28 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
             // Enable text selection via long press
             isLongClickable = true
+
+            // Add custom text selection action mode for "Remember" functionality
+            setOnLongClickListener {
+                // Only show custom action mode if text selection is enabled
+                if (preferences.novelTextSelectable().get()) {
+                    true // Consume the long click to show our custom action mode
+                } else {
+                    false // Let WebView handle it normally
+                }
+            }
+
+            // Set custom action mode callback for text selection
+            setOnCreateContextMenuListener { menu, _, _ ->
+                // Only add our custom item if text selection is enabled
+                if (preferences.novelTextSelectable().get()) {
+                    menu.add(Menu.NONE, 1, Menu.NONE, "Remember")
+                        .setOnMenuItemClickListener {
+                            onRememberSelectedText()
+                            true
+                        }
+                }
+            }
 
             setOnTouchListener { _, event ->
                 gestureDetector.onTouchEvent(event)
@@ -2150,4 +2182,95 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     private fun splitTextForTts(text: String, maxLength: Int): List<String> =
         NovelViewerTextUtils.splitTextForTts(text, maxLength)
+
+    /**
+     * Get the currently selected text from the WebView
+     */
+    fun getSelectedText(): String? {
+        var selectedText: String? = null
+        evaluateJavascriptSafe(
+            """
+            (function() {
+                var selection = window.getSelection();
+                if (selection && selection.toString().trim()) {
+                    return selection.toString().trim();
+                }
+                return null;
+            })();
+            """.trimIndent(),
+        ) { result ->
+            // JavaScript returns quoted string, need to unquote and unescape
+            selectedText = result?.let {
+                if (it.startsWith("\"") && it.endsWith("\"")) {
+                    it.substring(1, it.length - 1)
+                        .replace("\\n", "\n")
+                        .replace("\\t", "\t")
+                        .replace("\\\"", "\"")
+                        .replace("\\\\", "\\")
+                } else {
+                    it
+                }
+            }
+        }
+        return selectedText
+    }
+
+    /**
+     * Get the current chapter name for quote context
+     */
+    fun getCurrentChapterName(): String? {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return null
+        return loaded.chapter.name
+    }
+
+    /**
+     * Check if text is currently selected in the WebView
+     */
+    fun hasTextSelection(): Boolean {
+        var hasSelection = false
+        evaluateJavascriptSafe(
+            """
+            (function() {
+                var selection = window.getSelection();
+                return selection && selection.toString().trim().length > 0;
+            })();
+            """.trimIndent(),
+        ) { result ->
+            hasSelection = result == "true"
+        }
+        return hasSelection
+    }
+
+    /**
+     * Clear text selection in the WebView
+     */
+    fun clearTextSelection() {
+        evaluateJavascriptSafe(
+            """
+            (function() {
+                var selection = window.getSelection();
+                if (selection) {
+                    selection.removeAllRanges();
+                }
+            })();
+            """.trimIndent(),
+            null,
+        )
+    }
+
+    /**
+     * Handle the "Remember" action from text selection menu
+     */
+    private fun onRememberSelectedText() {
+        val selectedText = getSelectedText()
+        val chapterName = getCurrentChapterName()
+
+        if (selectedText != null && chapterName != null) {
+            activity.onRememberSelectedText()
+            // Clear selection after adding quote
+            clearTextSelection()
+        } else {
+            activity.toast("No text selected")
+        }
+    }
 }

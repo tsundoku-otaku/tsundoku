@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.outlined.NavigateNext
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.RecordVoiceOver
@@ -126,6 +127,7 @@ fun NovelReaderAppBars(
     isEditing: Boolean = false,
     onToggleEdit: () -> Unit = {},
     isWebView: Boolean = true,
+    onQuotes: () -> Unit,
 
     // Toolbar customization
     bottomBarItems: List<BottomBarItemState>,
@@ -213,6 +215,7 @@ fun NovelReaderAppBars(
                     isEditing = isEditing,
                     isWebView = isWebView,
                     onToggleEdit = onToggleEdit,
+                    onQuotes = onQuotes,
                 )
             }
         }
@@ -343,6 +346,7 @@ private fun NovelReaderBottomBar(
     isEditing: Boolean,
     isWebView: Boolean,
     onToggleEdit: () -> Unit,
+    onQuotes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -457,6 +461,13 @@ private fun NovelReaderBottomBar(
                         )
                     }
 
+                    // Quotes
+                    BottomBarItem.QUOTES -> IconButton(onClick = onQuotes) {
+                        Icon(
+                            Icons.Outlined.FormatQuote,
+                            contentDescription = stringResource(TDMR.strings.action_quotes),
+                        )
+                    }
                     // Edit
                     BottomBarItem.EDIT -> androidx.compose.material3.Surface(
                         modifier = Modifier.padding(4.dp),
@@ -492,6 +503,7 @@ internal fun bottomBarItemInfo(
     BottomBarItem.TRANSLATE -> Icons.Outlined.Translate to stringResource(TDMR.strings.action_translate)
     BottomBarItem.AUTO_SCROLL -> Icons.Outlined.PlayArrow to stringResource(TDMR.strings.action_start_auto_scroll)
     BottomBarItem.TTS -> Icons.Outlined.RecordVoiceOver to stringResource(TDMR.strings.pref_novel_tts)
+    BottomBarItem.QUOTES -> Icons.Outlined.FormatQuote to stringResource(TDMR.strings.action_quotes)
     BottomBarItem.ORIENTATION -> orientation.icon to stringResource(MR.strings.rotation_type)
     BottomBarItem.SETTINGS -> Icons.Outlined.Settings to stringResource(MR.strings.action_settings)
     BottomBarItem.EDIT -> Icons.Outlined.Edit to stringResource(MR.strings.action_edit)

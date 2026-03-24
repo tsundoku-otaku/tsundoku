@@ -20,6 +20,7 @@ enum class BottomBarItem(val id: String) {
     ORIENTATION("orientation"),
     SETTINGS("settings"),
     EDIT("edit"),
+    QUOTES("quotes"),
 }
 
 data class BottomBarItemState(
@@ -34,6 +35,7 @@ val DefaultBottomBarItems = listOf(
     BottomBarItemState(BottomBarItem.TRANSLATE),
     BottomBarItemState(BottomBarItem.AUTO_SCROLL),
     BottomBarItemState(BottomBarItem.TTS),
+    BottomBarItemState(BottomBarItem.QUOTES),
     BottomBarItemState(BottomBarItem.ORIENTATION),
     BottomBarItemState(BottomBarItem.SETTINGS),
     BottomBarItemState(BottomBarItem.EDIT),
