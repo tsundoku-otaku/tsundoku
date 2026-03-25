@@ -1230,10 +1230,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun prependHtmlContent(content: String, chapterId: Long, chapterName: String) {
         // Strip script/style/noscript tags from content
         var cleanContent = content
-            .replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
             .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<style[^>]*>[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<noscript[^>]*>[\\s\\S]*?</noscript>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
         if (preferences.novelBlockMedia.get()) {
             cleanContent = stripMediaTags(cleanContent)
         }
@@ -1291,10 +1291,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun appendHtmlContent(content: String, chapterId: Long, chapterName: String) {
         // Strip script/style/noscript tags from content
         var cleanContent = content
-            .replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
             .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<style[^>]*>[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<noscript[^>]*>[\\s\\S]*?</noscript>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
         if (preferences.novelBlockMedia.get()) {
             cleanContent = stripMediaTags(cleanContent)
         }
@@ -1334,10 +1334,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun loadHtmlContent(content: String, chapterId: Long? = null, chapterName: String? = null) {
         // Strip script tags from content to prevent unwanted JS execution
         var cleanContent = content
-            .replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
             .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<style[^>]*>[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<noscript[^>]*>[\\s\\S]*?</noscript>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
 
         val blockMedia = preferences.novelBlockMedia.get()
         if (blockMedia) {
@@ -1464,9 +1464,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             .replace(Regex("<img[^>]*>", RegexOption.IGNORE_CASE), "")
             .replace(Regex("<image[^>]*>", RegexOption.IGNORE_CASE), "")
             .replace(Regex("</image>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<svg[^>]*>[\\s\\S]*?</svg>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<video[^>]*>[\\s\\S]*?</video>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<audio[^>]*>[\\s\\S]*?</audio>", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("<svg[^>]*>.*?</svg>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<video[^>]*>.*?</video>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            .replace(Regex("<audio[^>]*>.*?</audio>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
             .replace(Regex("<source[^>]*>", RegexOption.IGNORE_CASE), "")
     }
 

@@ -12,7 +12,7 @@ class CreateExtensionRepo(
     private val repository: ExtensionRepoRepository,
     private val service: ExtensionRepoService,
 ) {
-    private val repoRegex = """^https://.*/index\.min\.json$""".toRegex()
+    private val repoRegex = """^https://.*?/index\.min\.json$""".toRegex()
 
     suspend fun await(indexUrl: String): Result {
         // Allow any URL, but try to append index.min.json if it looks like a base URL

@@ -64,7 +64,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         }
 
         // Fallback: common cover filenames inside archive
-        val commonPattern = Regex("(?i)(^|.*/)(cover)\\.(jpg|jpeg|png|webp)$")
+        val commonPattern = Regex("(?i)(^|.*?/)(cover)\\.(jpg|jpeg|png|webp)$")
         val commonCandidates = reader.useEntries { entries ->
             entries.mapNotNull { entry ->
                 val name = entry.name

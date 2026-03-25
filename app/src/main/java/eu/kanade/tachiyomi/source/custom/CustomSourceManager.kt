@@ -373,7 +373,7 @@ class CustomSourceManager(
                         val pages = source.getPageList(chapterToTest)
                         if (pages.isNotEmpty()) {
                             val content = source.fetchPageText(pages.first())
-                            val cleanContent = content.replace(Regex("<[^>]*>"), "").trim()
+                            val cleanContent = content.replace(Regex("<[^>]+>"), "").trim()
                             val preview = if (cleanContent.length > 200) {
                                 "${cleanContent.take(100)}...${cleanContent.takeLast(100)}"
                             } else {

@@ -1436,7 +1436,7 @@ class MangaScreenModel(
 
             if (details.saveTagsToNotes && !details.translatedGenres.isNullOrEmpty()) {
                 val tagsString = "Translated Tags: ${details.translatedGenres.joinToString(", ")}"
-                val tagsRegex = Regex("""Translated Tags:.*""")
+                val tagsRegex = Regex("""Translated Tags:.*$""")
                 newNotes = if (newNotes.isBlank()) {
                     tagsString
                 } else if (tagsRegex.containsMatchIn(newNotes)) {

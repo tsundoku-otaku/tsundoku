@@ -66,8 +66,8 @@ object NovelViewerTextUtils {
         // We unconditionally hide the first heading.
         val extractPatterns = listOf(
             """<h[1-6][^>]*>.*?</h[1-6]>""".toRegex(RegexOption.IGNORE_CASE) to true,
-            """<(strong|b|em)[^>]*>.*?</\1>""".toRegex(RegexOption.IGNORE_CASE) to false,
-            """<p[^>]*>.*?</p>""".toRegex(RegexOption.IGNORE_CASE) to false,
+            """<(strong|[bi]|em)\b[^>]*>.*?</\1>""".toRegex(RegexOption.IGNORE_CASE) to false,
+            """<p\b[^>]*>.*?</p>""".toRegex(RegexOption.IGNORE_CASE) to false,
             """<(div|span)[^>]*>.*?</\1>""".toRegex(RegexOption.IGNORE_CASE) to false,
         )
 

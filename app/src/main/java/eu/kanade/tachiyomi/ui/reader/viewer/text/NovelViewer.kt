@@ -1765,13 +1765,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         var processedContent = content
 
         // Strip script tags and their content — they would render as visible text
-        processedContent = processedContent.replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
+        processedContent = processedContent.replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
         processedContent = processedContent.replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
         // Strip style tags too — their CSS rules show up as text in TextView
-        processedContent = processedContent.replace(Regex("<style[^>]*>[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), "")
+        processedContent = processedContent.replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
         processedContent = processedContent.replace(Regex("<style[^>]*/>", RegexOption.IGNORE_CASE), "")
         // Strip noscript tags
-        processedContent = processedContent.replace(Regex("<noscript[^>]*>[\\s\\S]*?</noscript>", RegexOption.IGNORE_CASE), "")
+        processedContent = processedContent.replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
 
         processedContent = applyRegexReplacements(processedContent)
 
@@ -1779,16 +1779,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         if (preferences.novelBlockMedia.get()) {
             processedContent = processedContent
                 .replace(Regex("<img[^>]*>", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("<image[^>]*>", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("</image>", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("<video[^>]*>[\\s\\S]*?</video>", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("<audio[^>]*>[\\s\\S]*?</audio>", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("</?image[^>]*>", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("<video[^>]*>.*?</video>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                .replace(Regex("<audio[^>]*>.*?</audio>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
                 .replace(Regex("<source[^>]*>", RegexOption.IGNORE_CASE), "")
         }
 
         // First, strip any existing leading non-breaking spaces from paragraphs
         // This prevents double-spacing when indent is applied
-        processedContent = processedContent.replace(Regex("<p>(\u00A0|&#160;|&nbsp;)+"), "<p>")
+        processedContent = processedContent.replace(Regex("<p>(?:\u00A0|&#160;|&nbsp;)+"), "<p>")
 
         // If content doesn't have <p> tags, wrap paragraphs (double newlines or single <br> followed by text)
         if (!processedContent.contains("<p>", ignoreCase = true)) {

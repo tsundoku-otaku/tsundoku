@@ -218,7 +218,7 @@ class CustomHttpTranslateEngine(
 
         for (part in parts) {
             // Check for array access: fieldName[0]
-            val arrayMatch = Regex("""(.+)\[(\d+)\]""").matchEntire(part)
+            val arrayMatch = Regex("""(.+?)\[(\d+)\]""").matchEntire(part)
             if (arrayMatch != null) {
                 val fieldName = arrayMatch.groupValues[1]
                 val index = arrayMatch.groupValues[2].toInt()

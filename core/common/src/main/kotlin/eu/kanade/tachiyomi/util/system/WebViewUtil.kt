@@ -100,7 +100,7 @@ fun WebView.setDefaultSettings() {
 }
 
 private fun WebView.getWebViewMajorVersion(): Int {
-    val uaRegexMatch = """.*Chrome/(\d+)\..*""".toRegex().matchEntire(getDefaultUserAgentString())
+    val uaRegexMatch = """.*?Chrome/(\d+)\..*$""".toRegex().matchEntire(getDefaultUserAgentString())
     return if (uaRegexMatch != null && uaRegexMatch.groupValues.size > 1) {
         uaRegexMatch.groupValues[1].toInt()
     } else {
