@@ -1244,7 +1244,7 @@ class ReaderActivity : BaseActivity() {
     fun onRememberSelectedText() {
         val selectedText = when (val viewer = viewModel.state.value.viewer) {
             is NovelViewer -> viewer.getSelectedText()
-            is NovelWebViewViewer -> viewer.getSelectedText()
+            is NovelWebViewViewer -> viewer.pendingSelectedText ?: viewer.getSelectedText()
             else -> null
         }
         val chapterName = when (val viewer = viewModel.state.value.viewer) {

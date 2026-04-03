@@ -4,9 +4,11 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.view.ActionMode
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -91,6 +93,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var ttsInitialized = false
     private var pendingTtsText: String? = null
     private var isTtsAutoPlay = false // Track if TTS should auto-continue to next chapter
+
+    var pendingSelectedText: String? = null
 
     private val gestureDetector = GestureDetector(
         activity,
@@ -280,7 +284,62 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             override fun onViewDetachedFromWindow(v: View) {}
         })
 
-        webView = WebView(activity).apply {
+        webView = object : WebView(activity) {
+            override fun startActionMode(callback: ActionMode.Callback?, type: Int): ActionMode? {
+                if (!preferences.novelTextSelectable().get() || callback == null) {
+                    return super.startActionMode(callback, type)
+                }
+                // Preserve Callback2 so the floating toolbar anchors correctly to the selection
+                val wrapped = if (callback is ActionMode.Callback2) {
+                    object : ActionMode.Callback2() {
+                        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                            val result = callback.onCreateActionMode(mode, menu)
+                            menu.add(Menu.NONE, REMEMBER_MENU_ITEM_ID, Menu.NONE, activity.stringResource(TDMR.strings.action_remember))
+                                .setIcon(android.R.drawable.ic_menu_save)
+                                .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                            return result
+                        }
+                        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean =
+                            callback.onPrepareActionMode(mode, menu)
+                        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                            if (item.itemId == REMEMBER_MENU_ITEM_ID) {
+                                onRememberSelectedText(mode)  // pass mode in
+                                return true
+                            }
+                            return callback.onActionItemClicked(mode, item)
+                        }
+                        override fun onDestroyActionMode(mode: ActionMode) =
+                            callback.onDestroyActionMode(mode)
+                        // Forward the content rect so the toolbar floats near the selection
+                        override fun onGetContentRect(mode: ActionMode, view: View, outRect: android.graphics.Rect) =
+                            callback.onGetContentRect(mode, view, outRect)
+                    }
+                } else {
+                    object : ActionMode.Callback {
+                        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+                            val result = callback.onCreateActionMode(mode, menu)
+                            menu.add(Menu.NONE, REMEMBER_MENU_ITEM_ID, Menu.NONE, activity.stringResource(TDMR.strings.action_remember))
+                                .setIcon(android.R.drawable.ic_menu_save)
+                                .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                            return result
+                        }
+                        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean =
+                            callback.onPrepareActionMode(mode, menu)
+                        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+                            if (item.itemId == REMEMBER_MENU_ITEM_ID) {
+                                onRememberSelectedText()
+                                mode.finish()
+                                return true
+                            }
+                            return callback.onActionItemClicked(mode, item)
+                        }
+                        override fun onDestroyActionMode(mode: ActionMode) =
+                            callback.onDestroyActionMode(mode)
+                    }
+                }
+                return super.startActionMode(wrapped, type)
+            }
+        }.apply {
             isFocusable = true
             isFocusableInTouchMode = true
             settings.apply {
@@ -2230,16 +2289,43 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     /**
      * Handle the "Remember" action from text selection menu
      */
-    private fun onRememberSelectedText() {
-        val selectedText = getSelectedText()
-        val chapterName = getCurrentChapterName()
+    private fun onRememberSelectedText(actionMode: ActionMode? = null) {
+        evaluateJavascriptSafe(
+            """
+        (function() {
+            var selection = window.getSelection();
+            if (selection && selection.toString().trim()) {
+                return selection.toString().trim();
+            }
+            return null;
+        })();
+        """.trimIndent(),
+        ) { result ->
+            activity.runOnUiThread {
+                actionMode?.finish()  // finish AFTER JS has read the selection
+                val selectedText = if (result != null && result != "null" &&
+                    result.startsWith("\"") && result.endsWith("\"")
+                ) {
+                    result.substring(1, result.length - 1)
+                        .replace("\\n", "\n")
+                        .replace("\\t", "\t")
+                        .replace("\\\"", "\"")
+                        .replace("\\\\", "\\")
+                } else {
+                    null
+                }
 
-        if (selectedText != null && chapterName != null) {
-            activity.onRememberSelectedText()
-            // Clear selection after adding quote
-            clearTextSelection()
-        } else {
-            activity.toast("No text selected")
+                if (!selectedText.isNullOrBlank()) {
+                    pendingSelectedText = selectedText
+                    activity.onRememberSelectedText()
+                    clearTextSelection()
+                } else {
+                    activity.toast("No text selected")
+                }
+            }
         }
+    }
+    companion object {
+        private const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
     }
 }
