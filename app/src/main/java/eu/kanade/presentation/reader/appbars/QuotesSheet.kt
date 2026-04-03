@@ -98,11 +98,16 @@ fun QuotesSheet(
     val itemHeight = remember { mutableFloatStateOf(0f) }
     val listState = rememberLazyListState()
 
+    // Create a key based on quotes content to force refresh when quotes are edited
+    val quotesKey = remember(quotes) {
+        quotes.joinToString(separator = "|") { "${it.id}:${it.content}" }
+    }
+
     // Mutable list for smooth reordering during drag
-    val reorderedQuotes = remember { mutableStateListOf<Quote>() }
+    val reorderedQuotes = remember(quotesKey) { mutableStateListOf<Quote>() }
 
     // Initialize or update reorderedQuotes when quotes change
-    if (reorderedQuotes.isEmpty() || reorderedQuotes.size != quotes.size) {
+    LaunchedEffect(quotesKey) {
         reorderedQuotes.clear()
         reorderedQuotes.addAll(quotes)
     }
