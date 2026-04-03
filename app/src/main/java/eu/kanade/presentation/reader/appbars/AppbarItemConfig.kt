@@ -26,20 +26,22 @@ enum class BottomBarItem(val id: String) {
 data class BottomBarItemState(
     val item: BottomBarItem,
     val enabled: Boolean = true, // whether it appears in the bar
+    val defaultEnabled: Boolean = true, // default visibility state for reset
 )
 
 // Default ordering & visibility
+// Items with defaultEnabled = false are hidden by default and won't appear when resetting to default
 val DefaultBottomBarItems = listOf(
-    BottomBarItemState(BottomBarItem.PREV_CHAPTER),
-    BottomBarItemState(BottomBarItem.SCROLL_TO_TOP),
-    BottomBarItemState(BottomBarItem.TRANSLATE),
-    BottomBarItemState(BottomBarItem.AUTO_SCROLL),
-    BottomBarItemState(BottomBarItem.TTS),
-    BottomBarItemState(BottomBarItem.QUOTES),
-    BottomBarItemState(BottomBarItem.ORIENTATION),
-    BottomBarItemState(BottomBarItem.SETTINGS),
-    BottomBarItemState(BottomBarItem.EDIT),
-    BottomBarItemState(BottomBarItem.NEXT_CHAPTER),
+    BottomBarItemState(BottomBarItem.PREV_CHAPTER, defaultEnabled = true),
+    BottomBarItemState(BottomBarItem.SCROLL_TO_TOP, defaultEnabled = true),
+    BottomBarItemState(BottomBarItem.TRANSLATE, defaultEnabled = false),
+    BottomBarItemState(BottomBarItem.AUTO_SCROLL, defaultEnabled = false),
+    BottomBarItemState(BottomBarItem.TTS, defaultEnabled = true),
+    BottomBarItemState(BottomBarItem.QUOTES, defaultEnabled = true),
+    BottomBarItemState(BottomBarItem.ORIENTATION, defaultEnabled = false),
+    BottomBarItemState(BottomBarItem.SETTINGS, defaultEnabled = true),
+    BottomBarItemState(BottomBarItem.EDIT, defaultEnabled = false),
+    BottomBarItemState(BottomBarItem.NEXT_CHAPTER, defaultEnabled = true),
 )
 
 @Serializable
