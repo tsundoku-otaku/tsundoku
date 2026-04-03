@@ -1582,6 +1582,11 @@ class ReaderViewModel @JvmOverloads constructor(
         quoteManager.updateQuote(manga.id, quote)
     }
 
+    fun reorderQuotes(quotes: List<Quote>) {
+        val manga = manga ?: return
+        quoteManager.reorderQuotes(manga.id, quotes)
+    }
+
     sealed interface Dialog {
         data object Loading : Dialog
         data object Settings : Dialog

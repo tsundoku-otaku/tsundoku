@@ -428,6 +428,11 @@ class ReaderActivity : BaseActivity() {
                     viewModel.saveQuote(content, "")
                     quotesState.value = viewModel.getQuotes()
                 },
+                onQuoteReorder = { reorderedQuotes ->
+                    android.util.Log.d("ReaderActivity", "Quotes reordered: ${reorderedQuotes.size} quotes")
+                    viewModel.reorderQuotes(reorderedQuotes)
+                    quotesState.value = viewModel.getQuotes()
+                },
             )
         } else {}
     }

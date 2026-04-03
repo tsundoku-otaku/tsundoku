@@ -103,10 +103,10 @@ class QuoteManager(private val context: Context) {
     }
 
     /**
-     * Get all quotes for a novel, sorted by timestamp (newest first)
+     * Get all quotes for a novel, preserving the stored order
      */
     fun getQuotes(novelId: Long): List<Quote> {
-        return loadQuotes(novelId).sortedByDescending { it.timestamp }
+        return loadQuotes(novelId)
     }
 
     /**
@@ -124,6 +124,14 @@ class QuoteManager(private val context: Context) {
      */
     fun getQuoteCount(novelId: Long): Int {
         return loadQuotes(novelId).size
+    }
+
+    /**
+     * Reorder quotes for a novel
+     */
+    fun reorderQuotes(novelId: Long, quotes: List<Quote>) {
+        saveQuotes(novelId, quotes)
+        logcat(LogPriority.DEBUG) { "Quotes reordered for novel $novelId: ${quotes.size} quotes" }
     }
 }
 
