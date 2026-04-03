@@ -345,28 +345,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             // Enable text selection via long press
             isLongClickable = true
 
-            // Add custom text selection action mode for "Remember" functionality
-            setOnLongClickListener {
-                // Only show custom action mode if text selection is enabled
-                if (preferences.novelTextSelectable().get()) {
-                    true // Consume the long click to show our custom action mode
-                } else {
-                    false // Let WebView handle it normally
-                }
-            }
-
-            // Set custom action mode callback for text selection
-            setOnCreateContextMenuListener { menu, _, _ ->
-                // Only add our custom item if text selection is enabled
-                if (preferences.novelTextSelectable().get()) {
-                    menu.add(Menu.NONE, 1, Menu.NONE, activity.stringResource(TDMR.strings.action_remember))
-                        .setOnMenuItemClickListener {
-                            onRememberSelectedText()
-                            true
-                        }
-                }
-            }
-
             setOnTouchListener { _, event ->
                 gestureDetector.onTouchEvent(event)
                 false
