@@ -1,11 +1,13 @@
 package eu.kanade.tachiyomi.ui.reader.quote
 
 import android.content.Context
+import com.hippo.unifile.UniFile
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.logcat
+import tachiyomi.domain.storage.service.StorageManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -22,15 +24,19 @@ class QuoteManager(private val context: Context) {
 
     private val jsonFormat = Json { prettyPrint = true }
 
-    private val quotesDir: File by lazy {
-        File(context.filesDir, QUOTES_DIR).apply { mkdirs() }
+    private val storageManager: StorageManager by lazy {
+        Injekt.get<StorageManager>()
+    }
+
+    private val quotesDir: UniFile? by lazy {
+        storageManager.getQuotesDirectory()
     }
 
     /**
      * Get the file for storing quotes for a specific novel
      */
-    private fun getQuotesFile(novelId: Long): File {
-        return File(quotesDir, "novel_$novelId.json")
+    private fun getQuotesFile(novelId: Long): UniFile? {
+        return quotesDir?.findFile("novel_$novelId.json")
     }
 
     /**
@@ -40,8 +46,10 @@ class QuoteManager(private val context: Context) {
         try {
             val novelQuotes = NovelQuotes(novelId, quotes)
             val json = jsonFormat.encodeToString(novelQuotes)
-            val file = getQuotesFile(novelId)
-            file.writeText(json)
+            val file = quotesDir?.createFile("novel_$novelId.json") ?: return
+            file.openOutputStream().use { outputStream ->
+                outputStream.write(json.toByteArray())
+            }
             logcat(LogPriority.DEBUG) { "Quotes saved for novel $novelId: ${quotes.size} quotes" }
         } catch (e: IOException) {
             logcat(LogPriority.ERROR) { "Failed to save quotes for novel $novelId: ${e.message}" }
@@ -56,10 +64,12 @@ class QuoteManager(private val context: Context) {
     fun loadQuotes(novelId: Long): List<Quote> {
         return try {
             val file = getQuotesFile(novelId)
-            if (!file.exists()) {
+            if (file == null || !file.exists()) {
                 emptyList()
             } else {
-                val json = file.readText()
+                val json = file.openInputStream().use { inputStream ->
+                    String(inputStream.readBytes())
+                }
                 val novelQuotes = jsonFormat.decodeFromString<NovelQuotes>(json)
                 novelQuotes.quotes
             }
@@ -114,7 +124,7 @@ class QuoteManager(private val context: Context) {
      */
     fun clearQuotes(novelId: Long) {
         val file = getQuotesFile(novelId)
-        if (file.exists()) {
+        if (file?.exists() == true) {
             file.delete()
         }
     }
