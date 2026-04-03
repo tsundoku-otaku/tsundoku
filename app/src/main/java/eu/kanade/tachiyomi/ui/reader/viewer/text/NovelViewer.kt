@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text
 
-import android.annotation.SuppressLint
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.Paint
@@ -9,13 +8,11 @@ import android.graphics.drawable.Drawable
 import android.graphics.text.LineBreaker
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.text.Editable
 import android.text.Html
 import android.text.Layout
 import android.text.Spanned
 import android.text.style.LeadingMarginSpan
 import android.text.style.LineHeightSpan
-import android.view.ActionMode
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
@@ -33,14 +30,11 @@ import androidx.core.widget.NestedScrollView
 import coil3.asDrawable
 import coil3.imageLoader
 import coil3.request.ImageRequest
-import eu.kanade.presentation.reader.settings.RegexReplacement
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
-import eu.kanade.tachiyomi.ui.reader.quote.Quote
-import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.util.system.toast
@@ -54,15 +48,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -992,7 +985,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
                     override fun onCreateActionMode(mode: android.view.ActionMode, menu: Menu): Boolean {
                         // Add "Remember" action
-                        val rememberItem = menu.add(Menu.NONE, 1, Menu.NONE, "Remember")
+                        val rememberItem = menu.add(Menu.NONE, 1, Menu.NONE, activity.stringResource(TDMR.strings.action_remember))
                         rememberItem.setIcon(android.R.drawable.ic_menu_save)
                         rememberItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
                         return true

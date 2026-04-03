@@ -111,8 +111,8 @@ fun QuotesSheet(
     if (quoteToDelete.value != null) {
         AlertDialog(
             onDismissRequest = { quoteToDelete.value = null },
-            title = { Text("Delete Quote") },
-            text = { Text("Are you sure you want to delete this quote?") },
+            title = { Text(stringResource(TDMR.strings.quotes_delete_confirm)) },
+            text = { Text(stringResource(TDMR.strings.quotes_delete_confirm)) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -120,12 +120,12 @@ fun QuotesSheet(
                         quoteToDelete.value = null
                     },
                 ) {
-                    Text("Delete")
+                    Text(stringResource(MR.strings.action_delete))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { quoteToDelete.value = null }) {
-                    Text("Cancel")
+                    Text(stringResource(MR.strings.action_cancel))
                 }
             },
         )
@@ -160,7 +160,7 @@ fun QuotesSheet(
                         selectedQuote.value = null
                     },
                 ) {
-                    Text("Edit")
+                    Text(stringResource(TDMR.strings.quotes_edit_title))
                 }
             },
             dismissButton = {
@@ -177,10 +177,10 @@ fun QuotesSheet(
                             selectedQuote.value = null
                         },
                     ) {
-                        Text("Copy")
+                        Text(stringResource(TDMR.strings.quotes_copy))
                     }
                     TextButton(onClick = { selectedQuote.value = null }) {
-                        Text("Close")
+                        Text(stringResource(MR.strings.action_close))
                     }
                 }
             },
@@ -191,7 +191,7 @@ fun QuotesSheet(
     if (editingQuote.value != null) {
         AlertDialog(
             onDismissRequest = { editingQuote.value = null },
-            title = { Text("Edit Quote") },
+            title = { Text(stringResource(TDMR.strings.quotes_edit_title)) },
             text = {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -199,7 +199,7 @@ fun QuotesSheet(
                     TextField(
                         value = editedContent.value,
                         onValueChange = { editedContent.value = it },
-                        label = { Text("Quote content") },
+                        label = { Text(stringResource(TDMR.strings.quotes_content_label)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -214,12 +214,12 @@ fun QuotesSheet(
                         editingQuote.value = null
                     },
                 ) {
-                    Text("Save")
+                    Text(stringResource(MR.strings.action_save))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { editingQuote.value = null }) {
-                    Text("Cancel")
+                    Text(stringResource(MR.strings.action_cancel))
                 }
             },
         )
@@ -232,7 +232,7 @@ fun QuotesSheet(
                 showAddDialog.value = false
                 newQuoteContent.value = ""
             },
-            title = { Text("Add Quote") },
+            title = { Text(stringResource(TDMR.strings.quotes_add_title)) },
             text = {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -240,7 +240,7 @@ fun QuotesSheet(
                     TextField(
                         value = newQuoteContent.value,
                         onValueChange = { newQuoteContent.value = it },
-                        label = { Text("Quote content") },
+                        label = { Text(stringResource(TDMR.strings.quotes_content_label)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -255,7 +255,7 @@ fun QuotesSheet(
                         newQuoteContent.value = ""
                     },
                 ) {
-                    Text("Save")
+                    Text(stringResource(MR.strings.action_save))
                 }
             },
             dismissButton = {
@@ -265,7 +265,7 @@ fun QuotesSheet(
                         newQuoteContent.value = ""
                     },
                 ) {
-                    Text("Cancel")
+                    Text(stringResource(MR.strings.action_cancel))
                 }
             },
         )
@@ -278,7 +278,7 @@ fun QuotesSheet(
         if (currentIndex >= 0 && itemHeight.floatValue > 0) {
             val newTargetIndex = (currentIndex + (dragOffset.floatValue / itemHeight.floatValue).toInt())
                 .coerceIn(0, quotes.size - 1)
-            
+
             if (newTargetIndex != targetIndex.intValue) {
                 targetIndex.intValue = newTargetIndex
                 // Update reorderedQuotes to show the item moving
@@ -293,9 +293,9 @@ fun QuotesSheet(
     // Function to handle drag end
     fun handleDragEnd() {
         // Properly compare lists to detect if reordering occurred
-        val hasChanged = reorderedQuotes.size != quotes.size || 
+        val hasChanged = reorderedQuotes.size != quotes.size ||
             reorderedQuotes.zip(quotes).any { (reordered, original) -> reordered != original }
-        
+
         if (hasChanged) {
             onQuoteReorder(reorderedQuotes.toList())
         }
@@ -451,7 +451,7 @@ fun QuotesSheet(
                             selectedQuote = selectedQuote,
                             isReorderMode = isReorderMode.value,
                             draggedIndex = draggedIndex.intValue,
-                            onDragStart = { 
+                            onDragStart = {
                                 draggedIndex.intValue = index
                                 targetIndex.intValue = index
                             },

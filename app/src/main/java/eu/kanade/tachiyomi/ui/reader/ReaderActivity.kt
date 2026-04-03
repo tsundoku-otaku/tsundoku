@@ -394,7 +394,7 @@ class ReaderActivity : BaseActivity() {
             showQuotesState.value = showQuotesSheet
             if (showQuotesSheet) {
                 quotesState.value = viewModel.getQuotes()
-            } else {}
+            }
         }
 
         // Handle back button when quotes sheet is open
@@ -403,38 +403,36 @@ class ReaderActivity : BaseActivity() {
         }
 
         if (showQuotesState.value) {
-            android.util.Log.d("ReaderActivity", "Rendering QuotesSheet with ${quotesState.value.size} quotes")
             QuotesSheet(
                 quotes = quotesState.value,
                 onDismiss = {
-                    android.util.Log.d("ReaderActivity", "QuotesSheet dismissed")
                     showQuotesSheet = false
                 },
                 onQuoteClick = { quote ->
-                    android.util.Log.d("ReaderActivity", "Quote clicked: ${quote.content.take(50)}...")
+                    logcat(LogPriority.DEBUG) { "Quote clicked: ${quote.content.take(50)}..." }
                 },
                 onQuoteDelete = { quote ->
-                    android.util.Log.d("ReaderActivity", "Quote deleted: ${quote.content.take(50)}...")
+                    logcat(LogPriority.DEBUG) { "Quote deleted: ${quote.content.take(50)}..." }
                     viewModel.deleteQuote(quote)
                     quotesState.value = viewModel.getQuotes()
                 },
                 onQuoteUpdate = { quote ->
-                    android.util.Log.d("ReaderActivity", "Quote updated: ${quote.content.take(50)}...")
+                    logcat(LogPriority.DEBUG) { "Quote updated: ${quote.content.take(50)}..." }
                     viewModel.updateQuote(quote)
                     quotesState.value = viewModel.getQuotes()
                 },
                 onQuoteAdd = { content ->
-                    android.util.Log.d("ReaderActivity", "Quote added: ${content.take(50)}...")
+                    logcat(LogPriority.DEBUG) { "Quote added: ${content.take(50)}..." }
                     viewModel.saveQuote(content, "")
                     quotesState.value = viewModel.getQuotes()
                 },
                 onQuoteReorder = { reorderedQuotes ->
-                    android.util.Log.d("ReaderActivity", "Quotes reordered: ${reorderedQuotes.size} quotes")
+                    logcat(LogPriority.DEBUG) { "Quotes reordered: ${reorderedQuotes.size} quotes" }
                     viewModel.reorderQuotes(reorderedQuotes)
                     quotesState.value = viewModel.getQuotes()
                 },
             )
-        } else {}
+        }
     }
 
     /**
