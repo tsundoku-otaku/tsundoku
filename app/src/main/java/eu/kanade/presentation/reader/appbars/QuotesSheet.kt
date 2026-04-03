@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -84,10 +86,14 @@ fun QuotesSheet(
             onDismissRequest = { selectedQuote.value = null },
             title = { Text(selectedQuote.value?.chapterName ?: "") },
             text = {
-                Text(
-                    text = selectedQuote.value?.content ?: "",
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = selectedQuote.value?.content ?: "",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(
@@ -114,12 +120,16 @@ fun QuotesSheet(
             onDismissRequest = { editingQuote.value = null },
             title = { Text("Edit Quote") },
             text = {
-                androidx.compose.material3.TextField(
-                    value = editedContent.value,
-                    onValueChange = { editedContent.value = it },
-                    label = { Text("Quote content") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    androidx.compose.material3.TextField(
+                        value = editedContent.value,
+                        onValueChange = { editedContent.value = it },
+                        label = { Text("Quote content") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             },
             confirmButton = {
                 Row {
