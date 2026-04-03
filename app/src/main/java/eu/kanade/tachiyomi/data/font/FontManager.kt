@@ -122,14 +122,54 @@ class FontManager(
                 }
             } ?: return@withContext Result.failure(Exception("Cannot read source file"))
 
-            // Validate font file
+            // Validate font file properly
             try {
-                val testTypeface = Typeface.createFromFile(
-                    File(targetFile.uri.path ?: targetFile.filePath ?: ""),
-                )
-                if (testTypeface == null) throw Exception("Invalid font file")
+                // First try direct file path if available
+                val filePath = targetFile.filePath
+                val testTypeface = if (filePath != null) {
+                    Typeface.createFromFile(filePath)
+                } else {
+                    // For scoped storage we need to copy to temp file first to validate
+                    context.contentResolver.openInputStream(targetFile.uri)?.use { input ->
+                        val tempFile = File.createTempFile("font_validate_", ".tmp", context.cacheDir)
+                        tempFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                        val typeface = Typeface.createFromFile(tempFile)
+                        tempFile.delete()
+                        typeface
+                    }
+                }
+
+                if (testTypeface == null) {
+                    throw Exception("Failed to load typeface")
+                }
+
+                // Additional check: Android often returns default typeface instead of null
+                // when font is invalid, so verify we didn't just get fallback
+                if (testTypeface == Typeface.DEFAULT) {
+                    // Check file header to verify it's actually a font file
+                    context.contentResolver.openInputStream(targetFile.uri)?.use { input ->
+                        val header = ByteArray(4)
+                        if (input.read(header) != 4) throw Exception("File too small")
+                        
+                        // TTF: 0x00010000 or 0x74727565 ('true')
+                        // OTF: 0x4F54544F ('OTTO')
+                        val magic = (header[0].toInt() shl 24) or
+                            (header[1].toInt() shl 16) or
+                            (header[2].toInt() shl 8) or
+                            header[3].toInt()
+                            
+                        if (magic != 0x00010000 &&
+                            magic != 0x74727565 &&
+                            magic != 0x4F54544F) {
+                            throw Exception("Not a valid TTF/OTF file")
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 targetFile.delete()
+                logcat(LogPriority.WARN) { "Font validation failed: ${e.message}" }
                 return@withContext Result.failure(Exception("Invalid or corrupted font file"))
             }
 
@@ -217,6 +257,31 @@ class FontManager(
             } ?: throw Exception("Cannot write font file")
 
             emit(FontDownloadState.Downloading(100))
+
+            // Validate downloaded font before returning success
+            try {
+                // Check file header
+                context.contentResolver.openInputStream(targetFile.uri)?.use { input ->
+                    val header = ByteArray(4)
+                    if (input.read(header) != 4) throw Exception("Downloaded file is incomplete")
+                    
+                    val magic = (header[0].toInt() shl 24) or
+                        (header[1].toInt() shl 16) or
+                        (header[2].toInt() shl 8) or
+                        header[3].toInt()
+                        
+                    if (magic != 0x00010000 &&
+                        magic != 0x74727565 &&
+                        magic != 0x4F54544F &&
+                        magic != 0x774F4632 && // woff2
+                        magic != 0x774F4646) { // woff
+                        throw Exception("Downloaded file is not a valid font")
+                    }
+                }
+            } catch (e: Exception) {
+                targetFile.delete()
+                throw e
+            }
 
             val fontInfo = FontInfo(
                 name = fontFamily,
@@ -342,21 +407,18 @@ class FontManager(
             try {
                 val uri = Uri.parse(fontInfo.path)
                 val file = UniFile.fromUri(context, uri)
-                val filePath = file?.filePath ?: file?.uri?.path
-                if (filePath != null) {
-                    Typeface.createFromFile(filePath)
-                } else {
-                    // Fallback: try to create from input stream
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        val tempFile = File.createTempFile("font_", ".ttf", context.cacheDir)
-                        tempFile.outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                        Typeface.createFromFile(tempFile).also {
-                            tempFile.delete()
-                        }
-                    } ?: Typeface.DEFAULT
-                }
+                
+                // Always use temp file method - this works reliably across all Android versions
+                // and storage locations, avoiding issues with content URIs and scoped storage
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val tempFile = File.createTempFile("font_", ".tmp", context.cacheDir)
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                    val typeface = Typeface.createFromFile(tempFile)
+                    tempFile.delete()
+                    typeface
+                } ?: Typeface.DEFAULT
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to load typeface: ${fontInfo.path}" }
                 Typeface.DEFAULT
