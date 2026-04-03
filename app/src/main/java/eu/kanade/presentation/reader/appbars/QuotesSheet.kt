@@ -21,13 +21,18 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.R
@@ -43,18 +48,17 @@ fun QuotesSheet(
     onDismiss: () -> Unit,
     onQuoteClick: (Quote) -> Unit,
     onQuoteDelete: (Quote) -> Unit,
-    onRemember: (() -> Unit)? = null,
     onQuoteUpdate: (Quote) -> Unit,
 ) {
     // State to track which quote is being deleted
-    val quoteToDelete = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Quote?>(null) }
+    val quoteToDelete = remember { mutableStateOf<Quote?>(null) }
 
     // State to track which quote is being viewed in detail
-    val selectedQuote = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Quote?>(null) }
+    val selectedQuote = remember { mutableStateOf<Quote?>(null) }
 
     // State to track which quote is being edited
-    val editingQuote = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Quote?>(null) }
-    val editedContent = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    val editingQuote = remember { mutableStateOf<Quote?>(null) }
+    val editedContent = remember { mutableStateOf("") }
 
     // Show confirmation dialog if a quote is selected for deletion
     if (quoteToDelete.value != null) {
@@ -63,7 +67,7 @@ fun QuotesSheet(
             title = { Text("Delete Quote") },
             text = { Text("Are you sure you want to delete this quote?") },
             confirmButton = {
-                androidx.compose.material3.TextButton(
+                TextButton(
                     onClick = {
                         onQuoteDelete(quoteToDelete.value!!)
                         quoteToDelete.value = null
@@ -73,7 +77,7 @@ fun QuotesSheet(
                 }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { quoteToDelete.value = null }) {
+                TextButton(onClick = { quoteToDelete.value = null }) {
                     Text("Cancel")
                 }
             },
@@ -87,7 +91,7 @@ fun QuotesSheet(
             title = { Text(selectedQuote.value?.chapterName ?: "") },
             text = {
                 Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState())
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
                 ) {
                     Text(
                         text = selectedQuote.value?.content ?: "",
@@ -96,7 +100,7 @@ fun QuotesSheet(
                 }
             },
             confirmButton = {
-                androidx.compose.material3.TextButton(
+                TextButton(
                     onClick = {
                         editingQuote.value = selectedQuote.value
                         editedContent.value = selectedQuote.value?.content ?: ""
@@ -107,7 +111,7 @@ fun QuotesSheet(
                 }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { selectedQuote.value = null }) {
+                TextButton(onClick = { selectedQuote.value = null }) {
                     Text("Close")
                 }
             },
@@ -121,9 +125,9 @@ fun QuotesSheet(
             title = { Text("Edit Quote") },
             text = {
                 Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState())
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
                 ) {
-                    androidx.compose.material3.TextField(
+                    TextField(
                         value = editedContent.value,
                         onValueChange = { editedContent.value = it },
                         label = { Text("Quote content") },
@@ -132,22 +136,20 @@ fun QuotesSheet(
                 }
             },
             confirmButton = {
-                Row {
-                    androidx.compose.material3.TextButton(
-                        onClick = {
-                            val updatedQuote = editingQuote.value?.copy(content = editedContent.value)
-                            if (updatedQuote != null) {
-                                onQuoteUpdate(updatedQuote)
-                            }
-                            editingQuote.value = null
-                        },
-                    ) {
-                        Text("Save")
-                    }
+                TextButton(
+                    onClick = {
+                        val updatedQuote = editingQuote.value?.copy(content = editedContent.value)
+                        if (updatedQuote != null) {
+                            onQuoteUpdate(updatedQuote)
+                        }
+                        editingQuote.value = null
+                    },
+                ) {
+                    Text("Save")
                 }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { editingQuote.value = null }) {
+                TextButton(onClick = { editingQuote.value = null }) {
                     Text("Cancel")
                 }
             },
@@ -197,7 +199,7 @@ fun QuotesSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth(),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -227,19 +229,14 @@ fun QuotesSheet(
                         text = stringResource(TDMR.strings.action_quotes),
                         style = MaterialTheme.typography.titleLarge,
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_close_24dp),
-                            contentDescription = stringResource(MR.strings.action_close),
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clickable(onClick = onDismiss),
-                            tint = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
+                    Icon(
+                        painter = painterResource(R.drawable.ic_close_24dp),
+                        contentDescription = stringResource(MR.strings.action_close),
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable(onClick = onDismiss),
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -269,8 +266,8 @@ private fun QuoteItem(
     quote: Quote,
     onQuoteClick: (Quote) -> Unit,
     onQuoteDelete: (Quote) -> Unit,
-    quoteToDelete: androidx.compose.runtime.MutableState<Quote?>,
-    selectedQuote: androidx.compose.runtime.MutableState<Quote?>,
+    quoteToDelete: MutableState<Quote?>,
+    selectedQuote: MutableState<Quote?>,
 ) {
     Column(
         modifier = Modifier

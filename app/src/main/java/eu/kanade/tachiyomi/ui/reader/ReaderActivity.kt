@@ -413,7 +413,6 @@ class ReaderActivity : BaseActivity() {
                     viewModel.deleteQuote(quote)
                     quotesState.value = viewModel.getQuotes()
                 },
-                onRemember = ::onRememberSelectedText,
                 onQuoteUpdate = { quote ->
                     android.util.Log.d("ReaderActivity", "Quote updated: ${quote.content.take(50)}...")
                     viewModel.updateQuote(quote)
