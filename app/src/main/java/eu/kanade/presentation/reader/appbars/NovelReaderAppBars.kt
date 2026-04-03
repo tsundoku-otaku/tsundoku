@@ -16,6 +16,7 @@ import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -349,47 +350,73 @@ private fun NovelReaderBottomBar(
     onQuotes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Previous chapter - left position, left arrow icon
-        items
-            .filter { it.enabled && (isWebView || it.item != BottomBarItem.EDIT) }
-            .forEach { itemState ->
+    val enabledItems = remember(items, isWebView) {
+        items.filter { it.enabled && (isWebView || it.item != BottomBarItem.EDIT) }
+    }
+
+    BoxWithConstraints(modifier = modifier) {
+        val availableWidth = maxWidth
+        // Calculate icon size based on available width and number of items
+        // Standard IconButton is 48dp, but we can scale down to 36dp minimum
+        val itemCount = enabledItems.size
+        val idealTotalWidth = (itemCount * 48).dp
+        val scaleFactor = if (idealTotalWidth > availableWidth) {
+            (availableWidth / idealTotalWidth).coerceIn(0.75f, 1f)
+        } else {
+            1f
+        }
+        val iconSize = (24 * scaleFactor).dp
+        val buttonSize = (48 * scaleFactor).dp
+        val paddingSize = (4 * scaleFactor).dp
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            enabledItems.forEach { itemState ->
                 when (itemState.item) {
                     BottomBarItem.PREV_CHAPTER -> IconButton(
                         onClick = onPreviousChapter,
                         enabled = enabledPrevious,
+                        modifier = Modifier.size(buttonSize),
                     ) {
                         Icon(
                             Icons.AutoMirrored.Outlined.NavigateBefore,
                             contentDescription = stringResource(MR.strings.action_previous_chapter),
+                            modifier = Modifier.size(iconSize),
                         )
                     }
 
                     BottomBarItem.NEXT_CHAPTER -> IconButton(
                         onClick = onNextChapter,
                         enabled = enabledNext,
+                        modifier = Modifier.size(buttonSize),
                     ) {
                         Icon(
                             Icons.AutoMirrored.Outlined.NavigateNext,
                             contentDescription = stringResource(MR.strings.action_next_chapter),
+                            modifier = Modifier.size(iconSize),
                         )
                     }
 
                     // Scroll to top
-                    BottomBarItem.SCROLL_TO_TOP -> IconButton(onClick = onScrollToTop) {
+                    BottomBarItem.SCROLL_TO_TOP -> IconButton(
+                        onClick = onScrollToTop,
+                        modifier = Modifier.size(buttonSize),
+                    ) {
                         Icon(
                             Icons.Outlined.VerticalAlignTop,
                             contentDescription = stringResource(TDMR.strings.action_scroll_to_top),
+                            modifier = Modifier.size(iconSize),
                         )
                     }
 
                     // Translation toggle - tap for quick translate, long-press for language picker
                     BottomBarItem.TRANSLATE -> androidx.compose.material3.Surface(
-                        modifier = Modifier.padding(4.dp),
+                        modifier = Modifier
+                            .size(buttonSize)
+                            .padding(paddingSize),
                         shape = MaterialTheme.shapes.small,
                         color = if (isTranslating) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
                     ) {
@@ -404,12 +431,16 @@ private fun NovelReaderBottomBar(
                                 imageVector = Icons.Outlined.Translate,
                                 contentDescription = stringResource(TDMR.strings.action_translate),
                                 tint = if (isTranslating) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(40.dp).padding(8.dp),
+                                modifier = Modifier.size(iconSize),
                             )
                         }
                     }
+
                     // Auto-scroll toggle
-                    BottomBarItem.AUTO_SCROLL -> IconButton(onClick = onToggleAutoScroll) {
+                    BottomBarItem.AUTO_SCROLL -> IconButton(
+                        onClick = onToggleAutoScroll,
+                        modifier = Modifier.size(buttonSize),
+                    ) {
                         Icon(
                             imageVector = if (isAutoScrolling) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
                             contentDescription = stringResource(
@@ -419,15 +450,18 @@ private fun NovelReaderBottomBar(
                                     TDMR.strings.action_start_auto_scroll
                                 },
                             ),
+                            modifier = Modifier.size(iconSize),
                         )
                     }
 
                     // TTS toggle - tap to play/pause, long press to stop
                     BottomBarItem.TTS -> Box(
-                        modifier = Modifier.size(48.dp).combinedClickable(
-                            onClick = onToggleTts,
-                            onLongClick = onLongPressTts,
-                        ),
+                        modifier = Modifier
+                            .size(buttonSize)
+                            .combinedClickable(
+                                onClick = onToggleTts,
+                                onLongClick = onLongPressTts,
+                            ),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
@@ -442,35 +476,51 @@ private fun NovelReaderBottomBar(
                             } else {
                                 MaterialTheme.colorScheme.onSurface
                             },
+                            modifier = Modifier.size(iconSize),
                         )
                     }
 
                     // Orientation
-                    BottomBarItem.ORIENTATION -> IconButton(onClick = onClickOrientation) {
+                    BottomBarItem.ORIENTATION -> IconButton(
+                        onClick = onClickOrientation,
+                        modifier = Modifier.size(buttonSize),
+                    ) {
                         Icon(
                             orientation.icon,
                             contentDescription = stringResource(MR.strings.rotation_type),
+                            modifier = Modifier.size(iconSize),
                         )
                     }
 
                     // Settings
-                    BottomBarItem.SETTINGS -> IconButton(onClick = onClickSettings) {
+                    BottomBarItem.SETTINGS -> IconButton(
+                        onClick = onClickSettings,
+                        modifier = Modifier.size(buttonSize),
+                    ) {
                         Icon(
                             Icons.Outlined.Settings,
                             contentDescription = stringResource(MR.strings.action_settings),
+                            modifier = Modifier.size(iconSize),
                         )
                     }
 
                     // Quotes
-                    BottomBarItem.QUOTES -> IconButton(onClick = onQuotes) {
+                    BottomBarItem.QUOTES -> IconButton(
+                        onClick = onQuotes,
+                        modifier = Modifier.size(buttonSize),
+                    ) {
                         Icon(
                             Icons.Outlined.FormatQuote,
                             contentDescription = stringResource(TDMR.strings.action_quotes),
+                            modifier = Modifier.size(iconSize),
                         )
                     }
+
                     // Edit
                     BottomBarItem.EDIT -> androidx.compose.material3.Surface(
-                        modifier = Modifier.padding(4.dp),
+                        modifier = Modifier
+                            .size(buttonSize)
+                            .padding(paddingSize),
                         shape = MaterialTheme.shapes.small,
                         color = if (isEditing) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                         border = if (isEditing) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
@@ -480,11 +530,13 @@ private fun NovelReaderBottomBar(
                                 Icons.Outlined.Edit,
                                 contentDescription = "Edit",
                                 tint = if (isEditing) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.size(iconSize),
                             )
                         }
                     }
                 }
             }
+        }
     }
 }
 
