@@ -303,13 +303,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                             callback.onPrepareActionMode(mode, menu)
                         override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
                             if (item.itemId == REMEMBER_MENU_ITEM_ID) {
-                                onRememberSelectedText(mode)  // pass mode in
+                                onRememberSelectedText(mode) // pass mode in
                                 return true
                             }
                             return callback.onActionItemClicked(mode, item)
                         }
                         override fun onDestroyActionMode(mode: ActionMode) =
                             callback.onDestroyActionMode(mode)
+
                         // Forward the content rect so the toolbar floats near the selection
                         override fun onGetContentRect(mode: ActionMode, view: View, outRect: android.graphics.Rect) =
                             callback.onGetContentRect(mode, view, outRect)
@@ -2299,10 +2300,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             }
             return null;
         })();
-        """.trimIndent(),
+            """.trimIndent(),
         ) { result ->
             activity.runOnUiThread {
-                actionMode?.finish()  // finish AFTER JS has read the selection
+                actionMode?.finish() // finish AFTER JS has read the selection
                 val selectedText = if (result != null && result != "null" &&
                     result.startsWith("\"") && result.endsWith("\"")
                 ) {

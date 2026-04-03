@@ -46,13 +46,13 @@ class QuoteManager(private val context: Context) {
         try {
             val novelQuotes = NovelQuotes(novelId, quotes)
             val json = jsonFormat.encodeToString(novelQuotes)
-            
+
             // Delete existing file first to avoid duplicate files
             val existingFile = getQuotesFile(novelId)
             if (existingFile?.exists() == true) {
                 existingFile.delete()
             }
-            
+
             val file = quotesDir?.createFile("novel_$novelId.json") ?: return
             file.openOutputStream().use { outputStream ->
                 outputStream.write(json.toByteArray())
