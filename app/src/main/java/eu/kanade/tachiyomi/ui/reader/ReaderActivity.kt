@@ -423,6 +423,11 @@ class ReaderActivity : BaseActivity() {
                     viewModel.updateQuote(quote)
                     quotesState.value = viewModel.getQuotes()
                 },
+                onQuoteAdd = { content ->
+                    android.util.Log.d("ReaderActivity", "Quote added: ${content.take(50)}...")
+                    viewModel.saveQuote(content, "")
+                    quotesState.value = viewModel.getQuotes()
+                },
             )
         } else {}
     }

@@ -19,11 +19,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.surfaceColorAtElevation
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +52,7 @@ fun QuotesSheet(
     onQuoteClick: (Quote) -> Unit,
     onQuoteDelete: (Quote) -> Unit,
     onQuoteUpdate: (Quote) -> Unit,
+    onQuoteAdd: (String) -> Unit,
 ) {
     // State to track which quote is being deleted
     val quoteToDelete = remember { mutableStateOf<Quote?>(null) }
@@ -59,6 +63,10 @@ fun QuotesSheet(
     // State to track which quote is being edited
     val editingQuote = remember { mutableStateOf<Quote?>(null) }
     val editedContent = remember { mutableStateOf("") }
+
+    // State to track adding a new quote
+    val showAddDialog = remember { mutableStateOf(false) }
+    val newQuoteContent = remember { mutableStateOf("") }
 
     // Show confirmation dialog if a quote is selected for deletion
     if (quoteToDelete.value != null) {
@@ -155,6 +163,52 @@ fun QuotesSheet(
             },
         )
     }
+
+    // Show add quote dialog
+    if (showAddDialog.value) {
+        AlertDialog(
+            onDismissRequest = {
+                showAddDialog.value = false
+                newQuoteContent.value = ""
+            },
+            title = { Text("Add Quote") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                ) {
+                    TextField(
+                        value = newQuoteContent.value,
+                        onValueChange = { newQuoteContent.value = it },
+                        label = { Text("Quote content") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (newQuoteContent.value.isNotBlank()) {
+                            onQuoteAdd(newQuoteContent.value)
+                        }
+                        showAddDialog.value = false
+                        newQuoteContent.value = ""
+                    },
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showAddDialog.value = false
+                        newQuoteContent.value = ""
+                    },
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
     if (quotes.isEmpty()) {
         Box(
             modifier = Modifier
@@ -181,14 +235,28 @@ fun QuotesSheet(
                         text = stringResource(TDMR.strings.action_quotes),
                         style = MaterialTheme.typography.titleLarge,
                     )
-                    Icon(
-                        painter = painterResource(R.drawable.ic_close_24dp),
-                        contentDescription = stringResource(MR.strings.action_close),
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clickable(onClick = onDismiss),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = { showAddDialog.value = true },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Add,
+                                contentDescription = "Add quote",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close_24dp),
+                            contentDescription = stringResource(MR.strings.action_close),
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clickable(onClick = onDismiss),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -229,14 +297,28 @@ fun QuotesSheet(
                         text = stringResource(TDMR.strings.action_quotes),
                         style = MaterialTheme.typography.titleLarge,
                     )
-                    Icon(
-                        painter = painterResource(R.drawable.ic_close_24dp),
-                        contentDescription = stringResource(MR.strings.action_close),
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clickable(onClick = onDismiss),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(
+                            onClick = { showAddDialog.value = true },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Add,
+                                contentDescription = "Add quote",
+                                tint = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
+                        Icon(
+                            painter = painterResource(R.drawable.ic_close_24dp),
+                            contentDescription = stringResource(MR.strings.action_close),
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clickable(onClick = onDismiss),
+                            tint = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
