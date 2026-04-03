@@ -133,9 +133,15 @@ fun QuotesSheet(
 
     // Show quote detail dialog when a quote is selected
     if (selectedQuote.value != null) {
+        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
         AlertDialog(
             onDismissRequest = { selectedQuote.value = null },
-            title = { Text(selectedQuote.value?.chapterName ?: "") },
+            title = {
+                Text(
+                    text = selectedQuote.value?.chapterName ?: "",
+                )
+            },
             text = {
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
@@ -158,8 +164,24 @@ fun QuotesSheet(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { selectedQuote.value = null }) {
-                    Text("Close")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(
+                        onClick = {
+                            val quote = selectedQuote.value
+                            if (quote != null) {
+                                val textToCopy = "\"${quote.content}\"\n\n- ${quote.novelName}, ${quote.chapterName}"
+                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(textToCopy))
+                            }
+                            selectedQuote.value = null
+                        },
+                    ) {
+                        Text("Copy")
+                    }
+                    TextButton(onClick = { selectedQuote.value = null }) {
+                        Text("Close")
+                    }
                 }
             },
         )
