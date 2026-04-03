@@ -397,6 +397,11 @@ class ReaderActivity : BaseActivity() {
             } else {}
         }
 
+        // Handle back button when quotes sheet is open
+        androidx.activity.compose.BackHandler(enabled = showQuotesSheet) {
+            showQuotesSheet = false
+        }
+
         if (showQuotesState.value) {
             android.util.Log.d("ReaderActivity", "Rendering QuotesSheet with ${quotesState.value.size} quotes")
             QuotesSheet(
