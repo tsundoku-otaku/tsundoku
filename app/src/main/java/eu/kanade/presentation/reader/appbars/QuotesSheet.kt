@@ -201,12 +201,14 @@ fun QuotesSheet(
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 ) {
-                    TextField(
-                        value = editedContent.value,
-                        onValueChange = { editedContent.value = it },
-                        label = { Text(stringResource(TDMR.strings.quotes_content_label)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                TextField(
+                    value = editedContent.value,
+                    onValueChange = { editedContent.value = it },
+                    label = { Text(stringResource(TDMR.strings.quotes_content_label)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 5,
+                    maxLines = 12,
+                )
                 }
             },
             confirmButton = {
@@ -537,27 +539,25 @@ private fun QuoteItem(
         // Chapter info
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (isReorderMode) {
-                    Icon(
-                        imageVector = Icons.Outlined.Reorder,
-                        contentDescription = "Drag to reorder",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp),
-                    )
-                }
-                Text(
-                    text = quote.chapterName,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
+            if (isReorderMode) {
+                Icon(
+                    imageVector = Icons.Outlined.Reorder,
+                    contentDescription = "Drag to reorder",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
                 )
             }
+            Text(
+                text = quote.chapterName,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (!isReorderMode) {
                 Icon(
                     painter = painterResource(R.drawable.ic_close_24dp),
