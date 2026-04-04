@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,6 +38,7 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -97,6 +100,20 @@ fun QuotesSheet(
     val dragOffset = remember { mutableFloatStateOf(0f) }
     val itemHeight = remember { mutableFloatStateOf(0f) }
     val listState = rememberLazyListState()
+
+    // State for sheet expansion
+    var isExpanded by remember { mutableStateOf(false) }
+    val sheetMaxHeight by animateDpAsState(
+        targetValue = if (isExpanded) 1000.dp else 480.dp,
+        label = "sheetHeight",
+    )
+
+    // Detect if more content is available below current scroll position
+    val hasMoreContent by remember {
+        derivedStateOf {
+            listState.canScrollForward
+        }
+    }
 
     // Create a key based on quotes content to force refresh when quotes are edited
     val quotesKey = remember(quotes) {
@@ -313,19 +330,53 @@ fun QuotesSheet(
     if (quotes.isEmpty()) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .clickable(onClick = onDismiss),
+                .fillMaxSize(),
             contentAlignment = Alignment.BottomCenter,
         ) {
+            // Dismiss area outside the sheet
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onDismiss)
+            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = sheetMaxHeight)
                     .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .background(MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp))
                     .padding(16.dp)
                     // Add bottom padding to keep quotes sheet above UI buttons
-                    .padding(bottom = 80.dp),
+                    .padding(bottom = 80.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                if (dragAmount.y < -10) { // Dragging up
+                                    isExpanded = true
+                                } else if (dragAmount.y > 10) { // Dragging down
+                                    isExpanded = false
+                                }
+                            },
+                        )
+                    },
             ) {
+                // Drag handle
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 40.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                            .clickable { isExpanded = !isExpanded }
+                    )
+                }
+
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -384,19 +435,53 @@ fun QuotesSheet(
     } else {
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .clickable(onClick = onDismiss),
+                .fillMaxSize(),
             contentAlignment = Alignment.BottomCenter,
         ) {
+            // Dismiss area outside the sheet
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(onClick = onDismiss)
+            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(max = sheetMaxHeight)
                     .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .background(MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp))
                     .padding(16.dp)
                     // Add bottom padding to keep quotes sheet above UI buttons
-                    .padding(bottom = 80.dp),
+                    .padding(bottom = 80.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                if (dragAmount.y < -10) { // Dragging up
+                                    isExpanded = true
+                                } else if (dragAmount.y > 10) { // Dragging down
+                                    isExpanded = false
+                                }
+                            },
+                        )
+                    },
             ) {
+                // Drag handle
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 40.dp, height = 4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                            .clickable { isExpanded = !isExpanded }
+                    )
+                }
+
                 // Header
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -444,9 +529,14 @@ fun QuotesSheet(
 
                 // Quotes list
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     state = listState,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = if (hasMoreContent) {
+                        androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
+                    } else {
+                        androidx.compose.foundation.layout.PaddingValues(bottom = 0.dp)
+                    }
                 ) {
                     itemsIndexed(reorderedQuotes) { index, quote ->
                         QuoteItem(
@@ -465,6 +555,23 @@ fun QuotesSheet(
                             onDragEnd = { handleDragEnd() },
                             onDrag = { dragAmount -> handleDragMove(dragAmount) },
                             onItemHeightMeasured = { height -> itemHeight.floatValue = height },
+                        )
+                    }
+                }
+
+                // Scroll indicator when more content is available below
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (hasMoreContent) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_arrow_down_24dp),
+                            contentDescription = "Scroll down for more quotes",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp),
                         )
                     }
                 }
