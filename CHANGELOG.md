@@ -24,6 +24,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Improve HTML file detection which should fix some issues with downloaded content. [@mrissaoussama](https://github.com/mrissaoussama) [#133](https://github.com/tsundoku-otaku/tsundoku/pull/133)
 - Fixed bottom bar resizing [@Rojikku](https://github.com/Rojikku) [#96](https://github.com/tsundoku-otaku/tsundoku/pull/96)
 - Improve HTML file detection which should fix some issues with downloaded content. [@Rojikku](https://github.com/Rojikku)  [#134](https://github.com/tsundoku-otaku/tsundoku/pull/134)
+- Fixed ttf font importing [@Rojikku](https://github.com/Rojikku)  [#135](https://github.com/tsundoku-otaku/tsundoku/pull/135)
 
 
 ## [v0.1.2] - 2026-03-22
