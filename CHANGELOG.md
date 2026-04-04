@@ -18,7 +18,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Added
 - Add Edit mode to edit chapters, fixes to images to make this work [@mrissaoussama](https://github.com/mrissaoussama) [#82](https://github.com/tsundoku-otaku/tsundoku/pull/82)
-- Added Excerpt Notes/In-Reader Quotes. Save arbitrary/highlighted text, associated to certain chapters, and allow editing and reordering. Saved to a json file in `quotes`  [@Rojikku](https://github.com/Rojikku) [#96](https://github.com/tsundoku-otaku/tsundoku/pull/96)
+- Added Excerpt Notes/In-Reader Quotes. Save arbitrary/highlighted text, associated to certain chapters, and allow editing and reordering. Saved to a json file in `quotes`  [@Rojikku](https://github.com/Rojikku) [#96](https://github.com/tsundoku-otaku/tsundoku/pull/96) Improved UI in [#136](https://github.com/tsundoku-otaku/tsundoku/pull/136)
 
 ### Fixed 
 - Improve HTML file detection which should fix some issues with downloaded content. [@mrissaoussama](https://github.com/mrissaoussama) [#133](https://github.com/tsundoku-otaku/tsundoku/pull/133)
