@@ -1,7 +1,8 @@
 plugins {
-    id("mihon.library")
-    kotlin("android")
-    kotlin("plugin.serialization")
+    alias(mihonx.plugins.android.library)
+    alias(mihonx.plugins.spotless)
+
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -23,24 +24,24 @@ dependencies {
 
     api(libs.logcat)
 
-    api(libs.rxjava)
+    api(libs.rxJava)
 
     api(libs.okhttp.core)
     api(libs.okhttp.logging)
     api(libs.okhttp.brotli)
-    api(libs.okhttp.dnsoverhttps)
+    api(libs.okhttp.dnsOverHttps)
     api(libs.okio)
 
     implementation(libs.image.decoder)
 
     implementation(libs.unifile)
-    implementation(libs.libarchive)
+    implementation(libs.archive)
 
-    api(kotlinx.coroutines.core)
-    api(kotlinx.serialization.json)
-    api(kotlinx.serialization.json.okio)
+    api(libs.kotlinx.coroutines.core)
+    api(libs.kotlinx.serialization.json)
+    api(libs.kotlinx.serialization.jsonOkio)
 
-    api(libs.preferencektx)
+    api(libs.androidx.preference)
 
     implementation(libs.jsoup)
 
@@ -48,7 +49,7 @@ dependencies {
     implementation(libs.natural.comparator)
 
     // JavaScript engine
-    // implementation(libs.bundles.js.engine)
+    // implementation(libs.quickJs)
     implementation("io.github.dokar3:quickjs-kt:1.0.0-alpha13")
 
     testImplementation(libs.bundles.test)

@@ -26,7 +26,7 @@ object NovelViewerTextUtils {
      * Each enabled rule is applied in order — supports both plain text and regex patterns.
      */
     fun applyRegexReplacements(content: String, preferences: ReaderPreferences): String {
-        val rulesJson = preferences.novelRegexReplacements().get()
+        val rulesJson = preferences.novelRegexReplacements.get()
         if (rulesJson.isBlank() || rulesJson == "[]") return content
 
         val rules: List<RegexReplacement> = try {
@@ -166,8 +166,8 @@ object NovelViewerTextUtils {
      * @return A [Pair] of `(backgroundColor, textColor)` as packed ARGB [Int]s.
      */
     fun getThemeColors(activity: Activity, preferences: ReaderPreferences, theme: String): Pair<Int, Int> {
-        val backgroundColor = preferences.novelBackgroundColor().get()
-        val fontColor = preferences.novelFontColor().get()
+        val backgroundColor = preferences.novelBackgroundColor.get()
+        val fontColor = preferences.novelFontColor.get()
 
         return when (theme) {
             "app" -> {

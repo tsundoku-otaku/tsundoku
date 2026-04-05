@@ -157,14 +157,14 @@ class MangaScreenModel(
     private val filteredChapters: List<ChapterList.Item>?
         get() = successState?.processedChapters
 
-    val chapterSwipeStartAction = libraryPreferences.swipeToEndAction().get()
-    val chapterSwipeEndAction = libraryPreferences.swipeToStartAction().get()
-    var autoTrackState = trackPreferences.autoUpdateTrackOnMarkRead().get()
+    val chapterSwipeStartAction = libraryPreferences.swipeToEndAction.get()
+    val chapterSwipeEndAction = libraryPreferences.swipeToStartAction.get()
+    var autoTrackState = trackPreferences.autoUpdateTrackOnMarkRead.get()
 
-    private val skipFiltered by readerPreferences.skipFiltered().asState(screenModelScope)
+    private val skipFiltered by readerPreferences.skipFiltered.asState(screenModelScope)
 
     val isUpdateIntervalEnabled =
-        LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD in libraryPreferences.autoUpdateMangaRestrictions().get()
+        LibraryPreferences.MANGA_OUTSIDE_RELEASE_PERIOD in libraryPreferences.autoUpdateMangaRestrictions.get()
 
     private val selectedPositions: Array<Int> = arrayOf(-1, -1) // first and last selected index in list
     private val selectedChapterIds: HashSet<Long> = HashSet()
@@ -200,7 +200,11 @@ class MangaScreenModel(
             ) { mangaAndChapters, _, _, _ -> mangaAndChapters }
                 .flowWithLifecycle(lifecycle)
                 .collectLatest { (manga, chapters) ->
-                    val translatedChapterIds = translatedChapterRepository.getTranslatedChapterIds(chapters.map { it.id })
+                    val translatedChapterIds = translatedChapterRepository.getTranslatedChapterIds(
+                        chapters.map {
+                            it.id
+                        },
+                    )
                     updateSuccessState {
                         it.copy(
                             manga = manga,
@@ -264,9 +268,9 @@ class MangaScreenModel(
                     excludedScanlators = excludedScanlatorsDeferred.await(),
                     isRefreshingData = needRefreshInfo || needRefreshChapter,
                     dialog = null,
-                    hideMissingChapters = libraryPreferences.hideMissingChapters().get(),
+                    hideMissingChapters = libraryPreferences.hideMissingChapters.get(),
                     isNovel = manga.isNovel,
-                    showSourceName = libraryPreferences.showMangaSourceName().get(),
+                    showSourceName = libraryPreferences.showMangaSourceName.get(),
                 )
             }
 
@@ -393,7 +397,7 @@ class MangaScreenModel(
                 val categories = allCategories.filter {
                     it.contentType == contentType || it.contentType == Category.CONTENT_TYPE_ALL
                 }
-                val defaultCategoryId = libraryPreferences.defaultCategory().get().toLong()
+                val defaultCategoryId = libraryPreferences.defaultCategory.get().toLong()
                 val defaultCategory = categories.find { it.id == defaultCategoryId }
                 when {
                     // Default category set
@@ -1482,19 +1486,30 @@ class MangaScreenModel(
             val chaptersToTranslate = if (forceRetranslate) {
                 downloadedChapters
             } else {
-                val translatedIds = translatedChapterRepository.getTranslatedChapterIds(downloadedChapters.map { it.id })
+                val translatedIds = translatedChapterRepository.getTranslatedChapterIds(
+                    downloadedChapters.map {
+                        it.id
+                    },
+                )
                 downloadedChapters.filter { it.id !in translatedIds }
             }
 
             if (chaptersToTranslate.isEmpty()) {
                 withUIContext {
-                    snackbarHostState.showSnackbar(context.stringResource(MR.strings.translation_all_downloaded_already_translated))
+                    snackbarHostState.showSnackbar(
+                        context.stringResource(MR.strings.translation_all_downloaded_already_translated),
+                    )
                 }
                 return@launchIO
             }
 
             // Queue chapters for translation
-            translationService.enqueueAll(manga, chaptersToTranslate, TranslationService.PRIORITY_NORMAL, forceRetranslate)
+            translationService.enqueueAll(
+                manga,
+                chaptersToTranslate,
+                TranslationService.PRIORITY_NORMAL,
+                forceRetranslate,
+            )
 
             // Start background worker with notification
             TranslationJob.start(context)
@@ -1524,12 +1539,19 @@ class MangaScreenModel(
 
             if (chaptersToTranslate.isEmpty()) {
                 withUIContext {
-                    snackbarHostState.showSnackbar(context.stringResource(MR.strings.translation_selected_already_translated))
+                    snackbarHostState.showSnackbar(
+                        context.stringResource(MR.strings.translation_selected_already_translated),
+                    )
                 }
                 return@launchIO
             }
 
-            translationService.enqueueAll(manga, chaptersToTranslate, TranslationService.PRIORITY_NORMAL, forceRetranslate)
+            translationService.enqueueAll(
+                manga,
+                chaptersToTranslate,
+                TranslationService.PRIORITY_NORMAL,
+                forceRetranslate,
+            )
             TranslationJob.start(context)
 
             withUIContext {

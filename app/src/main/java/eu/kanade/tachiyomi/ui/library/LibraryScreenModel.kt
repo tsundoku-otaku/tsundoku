@@ -129,7 +129,7 @@ class LibraryScreenModel(
 
     init {
         mutableState.update { state ->
-            state.copy(activeCategoryIndex = libraryPreferences.lastUsedCategory().get())
+            state.copy(activeCategoryIndex = libraryPreferences.lastUsedCategory.get())
         }
         screenModelScope.launchIO {
             val itemPreferencesFlow = getLibraryItemPreferencesFlow()
@@ -152,7 +152,7 @@ class LibraryScreenModel(
 
             val chapterMatchIdsFlow = combine(
                 searchQueryFlow,
-                libraryPreferences.searchChapterNames().changes(),
+                libraryPreferences.searchChapterNames.changes(),
             ) { query, searchChapters ->
                 if (query.isNullOrEmpty() || !searchChapters) {
                     emptySet()
@@ -175,8 +175,8 @@ class LibraryScreenModel(
             val searchWithChapterMatchesFlow = combine(
                 searchQueryFlow,
                 chapterMatchIdsFlow,
-                libraryPreferences.searchByUrl().changes(),
-                libraryPreferences.useRegexSearch().changes(),
+                libraryPreferences.searchByUrl.changes(),
+                libraryPreferences.useRegexSearch.changes(),
             ) { query, chapterMatchIds, searchByUrl, useRegex ->
                 SearchConfig(query, chapterMatchIds, searchByUrl, useRegex)
             }
@@ -256,9 +256,9 @@ class LibraryScreenModel(
         }
 
         combine(
-            libraryPreferences.categoryTabs().changes(),
-            libraryPreferences.categoryNumberOfItems().changes(),
-            libraryPreferences.showContinueReadingButton().changes(),
+            libraryPreferences.categoryTabs.changes(),
+            libraryPreferences.categoryNumberOfItems.changes(),
+            libraryPreferences.showContinueReadingButton.changes(),
         ) { a, b, c -> arrayOf(a, b, c) }
             .onEach { (showCategoryTabs, showMangaCount, showMangaContinueButton) ->
                 mutableState.update { state ->
@@ -527,7 +527,7 @@ class LibraryScreenModel(
 
         return mapValues { (key, value) ->
             if (key.sort.type == LibrarySort.Type.Random) {
-                return@mapValues value.shuffled(Random(libraryPreferences.randomSortSeed().get()))
+                return@mapValues value.shuffled(Random(libraryPreferences.randomSortSeed.get()))
             }
 
             val manga = value.mapNotNull { favoritesById[it] }
@@ -543,32 +543,32 @@ class LibraryScreenModel(
     private fun getLibraryItemPreferencesFlow(): Flow<ItemPreferences> {
         return combine(
             combine(
-                libraryPreferences.downloadBadge().changes(),
-                libraryPreferences.unreadBadge().changes(),
-                libraryPreferences.localBadge().changes(),
-                libraryPreferences.languageBadge().changes(),
-                libraryPreferences.autoUpdateMangaRestrictions().changes(),
-                preferences.downloadedOnly().changes(),
+                libraryPreferences.downloadBadge.changes(),
+                libraryPreferences.unreadBadge.changes(),
+                libraryPreferences.localBadge.changes(),
+                libraryPreferences.languageBadge.changes(),
+                libraryPreferences.autoUpdateMangaRestrictions.changes(),
+                preferences.downloadedOnly.changes(),
             ) { arr -> arr },
             combine(
-                libraryPreferences.filterDownloaded().changes(),
-                libraryPreferences.filterUnread().changes(),
-                libraryPreferences.filterStarted().changes(),
-                libraryPreferences.filterBookmarked().changes(),
-                libraryPreferences.filterCompleted().changes(),
+                libraryPreferences.filterDownloaded.changes(),
+                libraryPreferences.filterUnread.changes(),
+                libraryPreferences.filterStarted.changes(),
+                libraryPreferences.filterBookmarked.changes(),
+                libraryPreferences.filterCompleted.changes(),
                 libraryPreferences.filterIntervalCustom().changes(),
-                libraryPreferences.excludedExtensions().changes(),
+                libraryPreferences.excludedExtensions.changes(),
                 libraryPreferences.filterNovel().changes(),
             ) { arr -> arr },
             combine(
-                libraryPreferences.includedTags().changes(),
-                libraryPreferences.excludedTags().changes(),
+                libraryPreferences.includedTags.changes(),
+                libraryPreferences.excludedTags.changes(),
                 libraryPreferences.filterNoTags().changes(),
-                libraryPreferences.tagIncludeMode().changes(),
-                libraryPreferences.tagExcludeMode().changes(),
-                libraryPreferences.tagCaseSensitive().changes(),
+                libraryPreferences.tagIncludeMode.changes(),
+                libraryPreferences.tagExcludeMode.changes(),
+                libraryPreferences.tagCaseSensitive.changes(),
                 libraryPreferences.filterChapterCount().changes(),
-                libraryPreferences.filterChapterCountThreshold().changes(),
+                libraryPreferences.filterChapterCountThreshold.changes(),
             ) { arr -> arr },
         ) { first, second, third ->
             ItemPreferences(
@@ -679,9 +679,9 @@ class LibraryScreenModel(
 
     private fun getLibraryDisplayPreferencesFlow(): Flow<DisplayPreferences> {
         return combine(
-            libraryPreferences.unreadBadge().changes(),
-            libraryPreferences.localBadge().changes(),
-            libraryPreferences.languageBadge().changes(),
+            libraryPreferences.unreadBadge.changes(),
+            libraryPreferences.localBadge.changes(),
+            libraryPreferences.languageBadge.changes(),
         ) { unreadBadge, localBadge, languageBadge ->
             DisplayPreferences(
                 unreadBadge = unreadBadge,
@@ -992,11 +992,11 @@ class LibraryScreenModel(
     }
 
     fun getDisplayMode(): PreferenceMutableState<LibraryDisplayMode> {
-        return libraryPreferences.displayMode().asState(screenModelScope)
+        return libraryPreferences.displayMode.asState(screenModelScope)
     }
 
     fun getColumnsForOrientation(isLandscape: Boolean): PreferenceMutableState<Int> {
-        return (if (isLandscape) libraryPreferences.landscapeColumns() else libraryPreferences.portraitColumns())
+        return (if (isLandscape) libraryPreferences.landscapeColumns else libraryPreferences.portraitColumns)
             .asState(screenModelScope)
     }
 
@@ -1153,7 +1153,7 @@ class LibraryScreenModel(
         }
             .coercedActiveCategoryIndex
 
-        libraryPreferences.lastUsedCategory().set(newIndex)
+        libraryPreferences.lastUsedCategory.set(newIndex)
     }
 
     fun openChangeCategoryDialog() {

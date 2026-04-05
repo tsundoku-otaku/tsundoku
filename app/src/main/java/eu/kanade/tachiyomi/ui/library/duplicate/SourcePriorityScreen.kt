@@ -75,10 +75,14 @@ object SourcePriorityScreen : Screen {
             },
         ) { contentPadding ->
             val sourceTypes = listOf(
-                DuplicateDetectionScreenModel.SourceType.JS to stringResource(MR.strings.duplicate_source_type_js_extensions),
-                DuplicateDetectionScreenModel.SourceType.KT to stringResource(MR.strings.duplicate_source_type_kt_extensions),
-                DuplicateDetectionScreenModel.SourceType.CUSTOM to stringResource(MR.strings.duplicate_source_type_custom_extensions),
-                DuplicateDetectionScreenModel.SourceType.LOCAL to stringResource(MR.strings.duplicate_source_type_local_source),
+                DuplicateDetectionScreenModel.SourceType.JS to
+                    stringResource(MR.strings.duplicate_source_type_js_extensions),
+                DuplicateDetectionScreenModel.SourceType.KT to
+                    stringResource(MR.strings.duplicate_source_type_kt_extensions),
+                DuplicateDetectionScreenModel.SourceType.CUSTOM to
+                    stringResource(MR.strings.duplicate_source_type_custom_extensions),
+                DuplicateDetectionScreenModel.SourceType.LOCAL to
+                    stringResource(MR.strings.duplicate_source_type_local_source),
             )
 
             LazyColumn(
@@ -217,7 +221,7 @@ class SourcePriorityScreenModel(
     }
 
     private fun loadTypePriorities() {
-        val raw = libraryPreferences.sourceTypePriorities().get()
+        val raw = libraryPreferences.sourceTypePriorities.get()
         if (raw.isBlank()) return
         val map = raw.split(";").filter { it.isNotBlank() }.mapNotNull { entry ->
             val parts = entry.split(":")
@@ -232,12 +236,17 @@ class SourcePriorityScreenModel(
             }
         }.toMap()
         mutableState.update {
-            it.copy(typePriorities = DuplicateDetectionScreenModel.SourceType.entries.associateWith { type -> map[type] ?: 0 })
+            it.copy(
+                typePriorities = DuplicateDetectionScreenModel.SourceType.entries.associateWith { type ->
+                    map[type]
+                        ?: 0
+                },
+            )
         }
     }
 
     private fun loadSourcePriorities() {
-        val raw = libraryPreferences.specificSourcePriorities().get()
+        val raw = libraryPreferences.specificSourcePriorities.get()
         if (raw.isBlank()) return
         val map = raw.split(";").filter { it.isNotBlank() }.mapNotNull { entry ->
             val parts = entry.split(":")
@@ -297,13 +306,13 @@ class SourcePriorityScreenModel(
         val serialized = map.entries
             .filter { it.value != 0 }
             .joinToString(";") { "${it.key.name}:${it.value}" }
-        libraryPreferences.sourceTypePriorities().set(serialized)
+        libraryPreferences.sourceTypePriorities.set(serialized)
     }
 
     private fun saveSourcePriorities(map: Map<Long, Int>) {
         val serialized = map.entries
             .filter { it.value != 0 }
             .joinToString(";") { "${it.key}:${it.value}" }
-        libraryPreferences.specificSourcePriorities().set(serialized)
+        libraryPreferences.specificSourcePriorities.set(serialized)
     }
 }

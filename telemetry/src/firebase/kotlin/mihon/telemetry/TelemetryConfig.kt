@@ -2,9 +2,13 @@ package tsundoku.telemetry
 
 import android.content.Context
 import android.util.Log
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
 import com.google.firebase.FirebaseApp
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 
 object TelemetryConfig {
     private const val TAG: String = "Telemetry"
@@ -15,9 +19,30 @@ object TelemetryConfig {
         // To stop forks/test builds from polluting our data
         if (!context.isTsundokuProductionApp()) return
 
-        analytics = FirebaseAnalytics.getInstance(context)
-        FirebaseApp.initializeApp(context)
-        crashlytics = FirebaseCrashlytics.getInstance()
+        // Check if Google Play Services is available before initializing Firebase
+        if (!isGooglePlayServicesAvailable(context)) {
+            logcat(LogPriority.WARN) { "Google Play Services not available, skipping Firebase initialization" }
+            return
+        }
+
+        try {
+            analytics = FirebaseAnalytics.getInstance(context)
+            FirebaseApp.initializeApp(context)
+            crashlytics = FirebaseCrashlytics.getInstance()
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to initialize Firebase" }
+        }
+    }
+
+    private fun isGooglePlayServicesAvailable(context: Context): Boolean {
+        return try {
+            val availability = GoogleApiAvailability.getInstance()
+            val resultCode = availability.isGooglePlayServicesAvailable(context)
+            resultCode == ConnectionResult.SUCCESS
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Unable to check Google Play Services availability" }
+            false
+        }
     }
 
     fun setAnalyticsEnabled(enabled: Boolean) {

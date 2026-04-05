@@ -62,7 +62,9 @@ data object UpdatesTab : Tab {
         val settingsScreenModel = rememberScreenModel { UpdatesSettingsScreenModel() }
         val basePreferences = remember { Injekt.get<BasePreferences>() }
         val state by screenModel.state.collectAsState()
-        val hideMangaUi by basePreferences.hideMangaUi().changes().collectAsState(initial = basePreferences.hideMangaUi().get())
+        val hideMangaUi by basePreferences.hideMangaUi.changes().collectAsState(
+            initial = basePreferences.hideMangaUi.get(),
+        )
 
         LaunchedEffect(hideMangaUi) {
             screenModel.syncFilterWithHideManga(hideMangaUi)

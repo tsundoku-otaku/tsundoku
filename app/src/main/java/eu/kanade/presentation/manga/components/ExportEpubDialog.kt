@@ -166,7 +166,9 @@ fun ExportEpubDialog(
                     } else {
                         stringResource(TDMR.strings.epub_source_info)
                     } + when (translationMode) {
-                        TranslationMode.TRANSLATED -> " " + stringResource(TDMR.strings.epub_translation_translated_info)
+                        TranslationMode.TRANSLATED ->
+                            " " +
+                                stringResource(TDMR.strings.epub_translation_translated_info)
                         TranslationMode.BOTH -> " " + stringResource(TDMR.strings.epub_translation_both_info)
                         else -> ""
                     },

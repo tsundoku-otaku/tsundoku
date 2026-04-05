@@ -104,7 +104,7 @@ fun BottomBarEditorSheet(
         TextButton(
             onClick = {
                 mutableItems.clear()
-                mutableItems.addAll(DefaultBottomBarItems)
+                mutableItems.addAll(DefaultBottomBarItems.map { it.copy(enabled = it.defaultEnabled) })
             },
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)

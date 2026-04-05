@@ -132,9 +132,9 @@ class Downloader(
     var isPaused: Boolean = false
 
     init {
-        scope.launch {
-            val chapters = store.restore()
-            addAllToQueue(chapters)
+        launchNow {
+            val chapters = async { store.restore() }
+            addAllToQueue(chapters.await())
         }
     }
 
@@ -224,7 +224,7 @@ class Downloader(
         downloaderJob = scope.launch {
             val activeDownloadsFlow = combine(
                 queueState,
-                downloadPreferences.parallelSourceLimit().changes(),
+                downloadPreferences.parallelSourceLimit.changes(),
                 novelDownloadPreferences.parallelNovelDownloads().changes(),
             ) { a, b, c -> Triple(a, b, c) }.transformLatest { (queue, parallelCount, parallelNovelCount) ->
                 while (true) {
@@ -312,7 +312,13 @@ class Downloader(
             val baseDelay = override.downloadDelay?.toLong() ?: novelDownloadPreferences.downloadDelay().get().toLong()
             val randomRange = override.randomDelayRange ?: novelDownloadPreferences.randomDelayRange().get()
             val randomMin = novelDownloadPreferences.randomDelayMin().get().toLong()
-            val randomDelay = if (randomRange > 0) Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1)) else 0L
+            val randomDelay = if (randomRange >
+                0
+            ) {
+                Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1))
+            } else {
+                0L
+            }
             return baseDelay + randomDelay
         }
 
@@ -320,7 +326,11 @@ class Downloader(
         val baseDelay = novelDownloadPreferences.downloadDelay().get().toLong()
         val randomRange = novelDownloadPreferences.randomDelayRange().get()
         val randomMin = novelDownloadPreferences.randomDelayMin().get().toLong()
-        val randomDelay = if (randomRange > 0) Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1)) else 0L
+        val randomDelay = if (randomRange > 0) {
+            Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1))
+        } else {
+            0L
+        }
 
         return baseDelay + randomDelay
     }
@@ -532,7 +542,7 @@ class Downloader(
             // Start downloading images/text, consider we can have downloaded images already
             val isNovel = download.source.isNovelSource()
             pageList.asFlow().flatMapMerge(
-                concurrency = if (isNovel) 1 else downloadPreferences.parallelPageLimit().get(),
+                concurrency = if (isNovel) 1 else downloadPreferences.parallelPageLimit.get(),
             ) { page ->
                 flow {
                     // For novel sources, skip image URL fetching - we'll get text content instead
@@ -577,7 +587,7 @@ class Downloader(
             }
 
             // Only rename the directory if it's downloaded
-            if (downloadPreferences.saveChaptersAsCBZ().get()) {
+            if (downloadPreferences.saveChaptersAsCBZ.get()) {
                 archiveChapter(mangaDir, chapterDirname, tmpDir, isNovel = download.source.isNovelSource())
             } else {
                 tmpDir.renameTo(chapterDirname)
@@ -814,7 +824,7 @@ class Downloader(
     }
 
     private fun splitTallImageIfNeeded(page: Page, tmpDir: UniFile) {
-        if (!downloadPreferences.splitTallImages().get()) return
+        if (!downloadPreferences.splitTallImages.get()) return
 
         try {
             val filenamePrefix = "%03d".format(Locale.ENGLISH, page.number)

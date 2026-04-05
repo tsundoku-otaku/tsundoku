@@ -5,141 +5,175 @@ import androidx.compose.ui.graphics.BlendMode
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.presentation.reader.appbars.DefaultBottomBarItems
 import eu.kanade.presentation.reader.appbars.serialize
+import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.core.common.preference.getEnum
 import tachiyomi.i18n.MR
 
 class ReaderPreferences(
-    private val preferenceStore: PreferenceStore,
+    preferenceStore: PreferenceStore,
 ) {
 
     // region General
 
-    fun pageTransitions() = preferenceStore.getBoolean("pref_enable_transitions_key", true)
+    val pageTransitions: Preference<Boolean> = preferenceStore.getBoolean("pref_enable_transitions_key", true)
 
-    fun flashOnPageChange() = preferenceStore.getBoolean("pref_reader_flash", false)
+    val flashOnPageChange: Preference<Boolean> = preferenceStore.getBoolean("pref_reader_flash", false)
 
-    fun flashDurationMillis() = preferenceStore.getInt("pref_reader_flash_duration", MILLI_CONVERSION)
+    val flashDurationMillis: Preference<Int> = preferenceStore.getInt("pref_reader_flash_duration", MILLI_CONVERSION)
 
-    fun flashPageInterval() = preferenceStore.getInt("pref_reader_flash_interval", 1)
+    val flashPageInterval: Preference<Int> = preferenceStore.getInt("pref_reader_flash_interval", 1)
 
-    fun flashColor() = preferenceStore.getEnum("pref_reader_flash_mode", FlashColor.BLACK)
+    val flashColor: Preference<FlashColor> = preferenceStore.getEnum("pref_reader_flash_mode", FlashColor.BLACK)
 
-    fun doubleTapAnimSpeed() = preferenceStore.getInt("pref_double_tap_anim_speed", 500)
+    val doubleTapAnimSpeed: Preference<Int> = preferenceStore.getInt("pref_double_tap_anim_speed", 500)
 
-    fun showPageNumber() = preferenceStore.getBoolean("pref_show_page_number_key", true)
+    val showPageNumber: Preference<Boolean> = preferenceStore.getBoolean("pref_show_page_number_key", true)
 
-    fun showReadingMode() = preferenceStore.getBoolean("pref_show_reading_mode", true)
+    val showReadingMode: Preference<Boolean> = preferenceStore.getBoolean("pref_show_reading_mode", true)
 
-    fun fullscreen() = preferenceStore.getBoolean("fullscreen", true)
+    val fullscreen: Preference<Boolean> = preferenceStore.getBoolean("fullscreen", true)
 
-    fun drawUnderCutout() = preferenceStore.getBoolean("cutout_short", true)
+    val drawUnderCutout: Preference<Boolean> = preferenceStore.getBoolean("cutout_short", true)
 
-    fun keepScreenOn() = preferenceStore.getBoolean("pref_keep_screen_on_key", false)
+    val keepScreenOn: Preference<Boolean> = preferenceStore.getBoolean("pref_keep_screen_on_key", false)
 
-    fun defaultReadingMode() = preferenceStore.getInt(
+    val defaultReadingMode: Preference<Int> = preferenceStore.getInt(
         "pref_default_reading_mode_key",
         ReadingMode.RIGHT_TO_LEFT.flagValue,
     )
 
-    fun defaultOrientationType() = preferenceStore.getInt(
+    val defaultOrientationType: Preference<Int> = preferenceStore.getInt(
         "pref_default_orientation_type_key",
         ReaderOrientation.FREE.flagValue,
     )
 
-    fun webtoonDoubleTapZoomEnabled() = preferenceStore.getBoolean("pref_enable_double_tap_zoom_webtoon", true)
+    val webtoonDoubleTapZoomEnabled: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_enable_double_tap_zoom_webtoon",
+        true,
+    )
 
-    fun imageScaleType() = preferenceStore.getInt("pref_image_scale_type_key", 1)
+    val imageScaleType: Preference<Int> = preferenceStore.getInt("pref_image_scale_type_key", 1)
 
-    fun zoomStart() = preferenceStore.getInt("pref_zoom_start_key", 1)
+    val zoomStart: Preference<Int> = preferenceStore.getInt("pref_zoom_start_key", 1)
 
-    fun readerTheme() = preferenceStore.getInt("pref_reader_theme_key", 1)
+    val readerTheme: Preference<Int> = preferenceStore.getInt("pref_reader_theme_key", 1)
 
-    fun alwaysShowChapterTransition() = preferenceStore.getBoolean("always_show_chapter_transition", true)
+    val alwaysShowChapterTransition: Preference<Boolean> = preferenceStore.getBoolean(
+        "always_show_chapter_transition",
+        true,
+    )
 
-    fun cropBorders() = preferenceStore.getBoolean("crop_borders", false)
+    val cropBorders: Preference<Boolean> = preferenceStore.getBoolean("crop_borders", false)
 
-    fun navigateToPan() = preferenceStore.getBoolean("navigate_pan", true)
+    val navigateToPan: Preference<Boolean> = preferenceStore.getBoolean("navigate_pan", true)
 
-    fun landscapeZoom() = preferenceStore.getBoolean("landscape_zoom", true)
+    val landscapeZoom: Preference<Boolean> = preferenceStore.getBoolean("landscape_zoom", true)
 
-    fun cropBordersWebtoon() = preferenceStore.getBoolean("crop_borders_webtoon", false)
+    val cropBordersWebtoon: Preference<Boolean> = preferenceStore.getBoolean("crop_borders_webtoon", false)
 
-    fun webtoonSidePadding() = preferenceStore.getInt("webtoon_side_padding", WEBTOON_PADDING_MIN)
+    val webtoonSidePadding: Preference<Int> = preferenceStore.getInt("webtoon_side_padding", WEBTOON_PADDING_MIN)
 
-    fun readerHideThreshold() = preferenceStore.getEnum("reader_hide_threshold", ReaderHideThreshold.LOW)
+    val readerHideThreshold: Preference<ReaderHideThreshold> = preferenceStore.getEnum(
+        "reader_hide_threshold",
+        ReaderHideThreshold.LOW,
+    )
 
-    fun folderPerManga() = preferenceStore.getBoolean("create_folder_per_manga", false)
+    val folderPerManga: Preference<Boolean> = preferenceStore.getBoolean("create_folder_per_manga", false)
 
-    fun skipRead() = preferenceStore.getBoolean("skip_read", false)
+    val skipRead: Preference<Boolean> = preferenceStore.getBoolean("skip_read", false)
 
-    fun skipFiltered() = preferenceStore.getBoolean("skip_filtered", true)
+    val skipFiltered: Preference<Boolean> = preferenceStore.getBoolean("skip_filtered", true)
 
-    fun skipDupe() = preferenceStore.getBoolean("skip_dupe", false)
+    val skipDupe: Preference<Boolean> = preferenceStore.getBoolean("skip_dupe", false)
 
-    fun webtoonDisableZoomOut() = preferenceStore.getBoolean("webtoon_disable_zoom_out", false)
+    val webtoonDisableZoomOut: Preference<Boolean> = preferenceStore.getBoolean("webtoon_disable_zoom_out", false)
 
-    fun autoTranslate() = preferenceStore.getBoolean("pref_auto_translate", false)
+    val autoTranslate: Preference<Boolean> = preferenceStore.getBoolean("pref_auto_translate", false)
 
     // endregion
 
-    // region Split two page spread
+    // region Split two-page spread
 
-    fun dualPageSplitPaged() = preferenceStore.getBoolean("pref_dual_page_split", false)
+    val dualPageSplitPaged: Preference<Boolean> = preferenceStore.getBoolean("pref_dual_page_split", false)
 
-    fun dualPageInvertPaged() = preferenceStore.getBoolean("pref_dual_page_invert", false)
+    val dualPageInvertPaged: Preference<Boolean> = preferenceStore.getBoolean("pref_dual_page_invert", false)
 
-    fun dualPageSplitWebtoon() = preferenceStore.getBoolean("pref_dual_page_split_webtoon", false)
+    val dualPageSplitWebtoon: Preference<Boolean> = preferenceStore.getBoolean("pref_dual_page_split_webtoon", false)
 
-    fun dualPageInvertWebtoon() = preferenceStore.getBoolean("pref_dual_page_invert_webtoon", false)
+    val dualPageInvertWebtoon: Preference<Boolean> = preferenceStore.getBoolean("pref_dual_page_invert_webtoon", false)
 
-    fun dualPageRotateToFit() = preferenceStore.getBoolean("pref_dual_page_rotate", false)
+    val dualPageRotateToFit: Preference<Boolean> = preferenceStore.getBoolean("pref_dual_page_rotate", false)
 
-    fun dualPageRotateToFitInvert() = preferenceStore.getBoolean("pref_dual_page_rotate_invert", false)
+    val dualPageRotateToFitInvert: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_dual_page_rotate_invert",
+        false,
+    )
 
-    fun dualPageRotateToFitWebtoon() = preferenceStore.getBoolean("pref_dual_page_rotate_webtoon", false)
+    val dualPageRotateToFitWebtoon: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_dual_page_rotate_webtoon",
+        false,
+    )
 
-    fun dualPageRotateToFitInvertWebtoon() = preferenceStore.getBoolean("pref_dual_page_rotate_invert_webtoon", false)
+    val dualPageRotateToFitInvertWebtoon: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_dual_page_rotate_invert_webtoon",
+        false,
+    )
 
     // endregion
 
     // region Color filter
 
-    fun customBrightness() = preferenceStore.getBoolean("pref_custom_brightness_key", false)
+    val customBrightness: Preference<Boolean> = preferenceStore.getBoolean("pref_custom_brightness_key", false)
 
-    fun customBrightnessValue() = preferenceStore.getInt("custom_brightness_value", 0)
+    val customBrightnessValue: Preference<Int> = preferenceStore.getInt("custom_brightness_value", 0)
 
-    fun colorFilter() = preferenceStore.getBoolean("pref_color_filter_key", false)
+    val colorFilter: Preference<Boolean> = preferenceStore.getBoolean("pref_color_filter_key", false)
 
-    fun colorFilterValue() = preferenceStore.getInt("color_filter_value", 0)
+    val colorFilterValue: Preference<Int> = preferenceStore.getInt("color_filter_value", 0)
 
-    fun colorFilterMode() = preferenceStore.getInt("color_filter_mode", 0)
+    val colorFilterMode: Preference<Int> = preferenceStore.getInt("color_filter_mode", 0)
 
-    fun grayscale() = preferenceStore.getBoolean("pref_grayscale", false)
+    val grayscale: Preference<Boolean> = preferenceStore.getBoolean("pref_grayscale", false)
 
-    fun invertedColors() = preferenceStore.getBoolean("pref_inverted_colors", false)
+    val invertedColors: Preference<Boolean> = preferenceStore.getBoolean("pref_inverted_colors", false)
 
     // endregion
 
     // region Controls
 
-    fun readWithLongTap() = preferenceStore.getBoolean("reader_long_tap", true)
+    val readWithLongTap: Preference<Boolean> = preferenceStore.getBoolean("reader_long_tap", true)
 
-    fun readWithVolumeKeys() = preferenceStore.getBoolean("reader_volume_keys", false)
+    val readWithVolumeKeys: Preference<Boolean> = preferenceStore.getBoolean("reader_volume_keys", false)
 
-    fun readWithVolumeKeysInverted() = preferenceStore.getBoolean("reader_volume_keys_inverted", false)
+    val readWithVolumeKeysInverted: Preference<Boolean> = preferenceStore.getBoolean(
+        "reader_volume_keys_inverted",
+        false,
+    )
 
-    fun navigationModePager() = preferenceStore.getInt("reader_navigation_mode_pager", 0)
+    val navigationModePager: Preference<Int> = preferenceStore.getInt("reader_navigation_mode_pager", 0)
 
-    fun navigationModeWebtoon() = preferenceStore.getInt("reader_navigation_mode_webtoon", 0)
+    val navigationModeWebtoon: Preference<Int> = preferenceStore.getInt("reader_navigation_mode_webtoon", 0)
 
-    fun pagerNavInverted() = preferenceStore.getEnum("reader_tapping_inverted", TappingInvertMode.NONE)
+    val pagerNavInverted: Preference<TappingInvertMode> = preferenceStore.getEnum(
+        "reader_tapping_inverted",
+        TappingInvertMode.NONE,
+    )
 
-    fun webtoonNavInverted() = preferenceStore.getEnum("reader_tapping_inverted_webtoon", TappingInvertMode.NONE)
+    val webtoonNavInverted: Preference<TappingInvertMode> = preferenceStore.getEnum(
+        "reader_tapping_inverted_webtoon",
+        TappingInvertMode.NONE,
+    )
 
-    fun showNavigationOverlayNewUser() = preferenceStore.getBoolean("reader_navigation_overlay_new_user", true)
+    val showNavigationOverlayNewUser: Preference<Boolean> = preferenceStore.getBoolean(
+        "reader_navigation_overlay_new_user",
+        true,
+    )
 
-    fun showNavigationOverlayOnStart() = preferenceStore.getBoolean("reader_navigation_overlay_on_start", false)
+    val showNavigationOverlayOnStart: Preference<Boolean> = preferenceStore.getBoolean(
+        "reader_navigation_overlay_on_start",
+        false,
+    )
 
     // endregion
 
@@ -168,118 +202,124 @@ class ReaderPreferences(
     }
 
     // region Novel
-    fun novelFontSize() = preferenceStore.getInt("pref_novel_font_size", 16)
-    fun novelFontFamily() = preferenceStore.getString("pref_novel_font_family", "sans-serif")
-    fun novelTheme() = preferenceStore.getString("pref_novel_theme", "app")
-    fun novelLineHeight() = preferenceStore.getFloat("pref_novel_line_height", 1.6f)
-    fun novelTextAlign() = preferenceStore.getString("pref_novel_text_align", "left")
-    fun novelAutoScrollSpeed() = preferenceStore.getInt("pref_novel_auto_scroll_speed", 30)
-    fun novelVolumeKeysScroll() = preferenceStore.getBoolean("pref_novel_volume_keys_scroll", false)
-    fun novelTapToScroll() = preferenceStore.getBoolean("pref_novel_tap_to_scroll", false)
-    fun novelTextSelectable() = preferenceStore.getBoolean("pref_novel_text_selectable", true)
+    val novelFontSize: Preference<Int> = preferenceStore.getInt("pref_novel_font_size", 16)
+    val novelFontFamily: Preference<String> = preferenceStore.getString("pref_novel_font_family", "sans-serif")
+    val novelTheme: Preference<String> = preferenceStore.getString("pref_novel_theme", "app")
+    val novelLineHeight: Preference<Float> = preferenceStore.getFloat("pref_novel_line_height", 1.6f)
+    val novelTextAlign: Preference<String> = preferenceStore.getString("pref_novel_text_align", "left")
+    val novelAutoScrollSpeed: Preference<Int> = preferenceStore.getInt("pref_novel_auto_scroll_speed", 30)
+    val novelVolumeKeysScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_volume_keys_scroll", false)
+    val novelTapToScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tap_to_scroll", false)
+    val novelTextSelectable: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_text_selectable", true)
 
     // Block media elements (images, videos) in WebView and TextView readers
-    fun novelBlockMedia() = preferenceStore.getBoolean("pref_novel_block_media", false)
+    val novelBlockMedia: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_block_media", false)
 
     // Font color (stored as ARGB int, 0 means use theme default)
     // Note: 0xFFFFFFFF (white) = -1 as signed int, so 0 is used as the "unset" marker
-    fun novelFontColor() = preferenceStore.getInt("pref_novel_font_color", 0)
+    val novelFontColor: Preference<Int> = preferenceStore.getInt("pref_novel_font_color", 0)
 
     // Background color (stored as ARGB int, 0 means use theme default)
-    fun novelBackgroundColor() = preferenceStore.getInt("pref_novel_background_color", 0)
+    val novelBackgroundColor: Preference<Int> = preferenceStore.getInt("pref_novel_background_color", 0)
 
     // Paragraph indentation in em units (0 = no indent, default 2em)
-    fun novelParagraphIndent() = preferenceStore.getFloat("pref_novel_paragraph_indent", 0f)
+    val novelParagraphIndent: Preference<Float> = preferenceStore.getFloat("pref_novel_paragraph_indent", 0f)
 
     // Margin preferences (in dp)
-    fun novelMarginLeft() = preferenceStore.getInt("pref_novel_margin_left", 16)
-    fun novelMarginRight() = preferenceStore.getInt("pref_novel_margin_right", 16)
-    fun novelMarginTop() = preferenceStore.getInt("pref_novel_margin_top", 50)
-    fun novelMarginBottom() = preferenceStore.getInt("pref_novel_margin_bottom", 16)
+    val novelMarginLeft: Preference<Int> = preferenceStore.getInt("pref_novel_margin_left", 16)
+    val novelMarginRight: Preference<Int> = preferenceStore.getInt("pref_novel_margin_right", 16)
+    val novelMarginTop: Preference<Int> = preferenceStore.getInt("pref_novel_margin_top", 50)
+    val novelMarginBottom: Preference<Int> = preferenceStore.getInt("pref_novel_margin_bottom", 16)
 
     // Rendering mode: "default" = TextView, "webview" = WebView rendering
-    fun novelRenderingMode() = preferenceStore.getString("pref_novel_rendering_mode", "default")
+    val novelRenderingMode: Preference<String> = preferenceStore.getString("pref_novel_rendering_mode", "default")
 
     // EPUB specific toggles
-    fun enableEpubStyles() = preferenceStore.getBoolean("pref_novel_enable_epub_css", true)
-    fun enableEpubJs() = preferenceStore.getBoolean("pref_novel_enable_epub_js", false)
+    val enableEpubStyles: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_enable_epub_css", true)
+    val enableEpubJs: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_enable_epub_js", false)
 
     // Custom CSS/JS stored as JSON array of {title, code} objects
-    fun novelCustomCss() = preferenceStore.getString("pref_novel_custom_css", "")
-    fun novelCustomJs() = preferenceStore.getString("pref_novel_custom_js", "")
-    fun novelCustomCssSnippets() = preferenceStore.getString("pref_novel_css_snippets", "[]")
-    fun novelCustomJsSnippets() = preferenceStore.getString("pref_novel_js_snippets", "[]")
+    val novelCustomCss: Preference<String> = preferenceStore.getString("pref_novel_custom_css", "")
+    val novelCustomJs: Preference<String> = preferenceStore.getString("pref_novel_custom_js", "")
+    val novelCustomCssSnippets: Preference<String> = preferenceStore.getString("pref_novel_css_snippets", "[]")
+    val novelCustomJsSnippets: Preference<String> = preferenceStore.getString("pref_novel_js_snippets", "[]")
 
     // Global CSS/JS presets stored as JSON array of {name, css, js} objects
-    fun novelGlobalPresets() = preferenceStore.getString("pref_novel_global_presets", "[]")
+    val novelGlobalPresets: Preference<String> = preferenceStore.getString("pref_novel_global_presets", "[]")
 
     // Currently active global preset name (empty = none)
-    fun novelActivePreset() = preferenceStore.getString("pref_novel_active_preset", "")
+    val novelActivePreset: Preference<String> = preferenceStore.getString("pref_novel_active_preset", "")
 
     // Regex find/replace rules stored as JSON array of {title, pattern, replacement, enabled, isRegex}
     // Applied to chapter HTML content before rendering in both WebView and TextView modes
-    fun novelRegexReplacements() = preferenceStore.getString("pref_novel_regex_replacements", "[]")
+    val novelRegexReplacements: Preference<String> = preferenceStore.getString("pref_novel_regex_replacements", "[]")
 
     // Infinite scroll - automatically load next/previous chapters
-    fun novelInfiniteScroll() = preferenceStore.getBoolean("pref_novel_infinite_scroll", false)
+    val novelInfiniteScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_infinite_scroll", false)
 
     // Keep chapters loaded in memory (0 = only current, 1 = current + prev, 2 = current + next, 3 = both)
-    fun novelKeepChaptersLoaded() = preferenceStore.getInt("pref_novel_keep_chapters_loaded", 0)
+    val novelKeepChaptersLoaded: Preference<Int> = preferenceStore.getInt("pref_novel_keep_chapters_loaded", 0)
 
     // Custom brightness for novel reader
-    fun novelCustomBrightness() = preferenceStore.getBoolean("pref_novel_custom_brightness", false)
+    val novelCustomBrightness: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_custom_brightness", false)
 
     // Brightness value for novel reader (-75 to 100, 0 = system)
-    fun novelCustomBrightnessValue() = preferenceStore.getInt("pref_novel_custom_brightness_value", 0)
+    val novelCustomBrightnessValue: Preference<Int> = preferenceStore.getInt("pref_novel_custom_brightness_value", 0)
 
     // Show progress slider in novel reader (allows scrolling to position in current chapter)
-    fun novelShowProgressSlider() = preferenceStore.getBoolean("pref_novel_show_progress_slider", true)
+    val novelShowProgressSlider: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_novel_show_progress_slider",
+        true,
+    )
 
     // Hide chapter title in novel content
-    fun novelHideChapterTitle() = preferenceStore.getBoolean("pref_novel_hide_chapter_title", false)
+    val novelHideChapterTitle: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_hide_chapter_title", false)
 
     // Force lowercase for all chapter content
-    fun novelForceTextLowercase() = preferenceStore.getBoolean("pref_novel_force_lowercase", false)
+    val novelForceTextLowercase: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_force_lowercase", false)
 
     // Auto-split text after X words until punctuation mark (0 = disabled)
-    fun novelAutoSplitText() = preferenceStore.getBoolean("pref_novel_auto_split_text", false)
-    fun novelAutoSplitWordCount() = preferenceStore.getInt("pref_novel_auto_split_word_count", 50)
+    val novelAutoSplitText: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_auto_split_text", false)
+    val novelAutoSplitWordCount: Preference<Int> = preferenceStore.getInt("pref_novel_auto_split_word_count", 50)
 
     // Use source's original fonts (don't force a specific font family)
-    fun novelUseOriginalFonts() = preferenceStore.getBoolean("pref_novel_use_original_fonts", false)
+    val novelUseOriginalFonts: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_use_original_fonts", false)
 
     // Chapter sort order for novel reader: "source" = use source order, "chapter_number" = sort by chapter number
     // Default is "source" since many novel sources don't provide proper chapter numbers
-    fun novelChapterSortOrder() = preferenceStore.getString("pref_novel_chapter_sort_order", "source")
+    val novelChapterSortOrder: Preference<String> = preferenceStore.getString("pref_novel_chapter_sort_order", "source")
 
     // Keep screen on while reading
-    fun novelKeepScreenOn() = preferenceStore.getBoolean("pref_novel_keep_screen_on", false)
+    val novelKeepScreenOn: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_keep_screen_on", false)
 
     // Paragraph spacing (additional space between paragraphs in em units)
-    fun novelParagraphSpacing() = preferenceStore.getFloat("pref_novel_paragraph_spacing", 0.5f)
+    val novelParagraphSpacing: Preference<Float> = preferenceStore.getFloat("pref_novel_paragraph_spacing", 0.5f)
 
     // Swipe navigation - swipe left/right to change chapters
-    fun novelSwipeNavigation() = preferenceStore.getBoolean("pref_novel_swipe_navigation", false)
+    val novelSwipeNavigation: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_swipe_navigation", false)
 
     // Chapter title display format: 0 = name only, 1 = number only, 2 = both (name + number)
-    fun novelChapterTitleDisplay() = preferenceStore.getInt("pref_novel_chapter_title_display", 2)
+    val novelChapterTitleDisplay: Preference<Int> = preferenceStore.getInt("pref_novel_chapter_title_display", 2)
 
     // Auto-load next chapter at percentage (legacy 0 may exist; treated as default)
-    fun novelAutoLoadNextChapterAt() = preferenceStore.getInt("pref_novel_auto_load_next_at", 95)
+    val novelAutoLoadNextChapterAt: Preference<Int> = preferenceStore.getInt("pref_novel_auto_load_next_at", 95)
 
     // Mark chapter as read when progress reaches this percentage
-    fun novelMarkAsReadThreshold() = preferenceStore.getInt("pref_novel_mark_read_threshold", 95)
+    val novelMarkAsReadThreshold: Preference<Int> = preferenceStore.getInt("pref_novel_mark_read_threshold", 95)
 
     // Show raw HTML (display HTML tags without parsing) - useful for debugging
-    fun novelShowRawHtml() = preferenceStore.getBoolean("pref_novel_show_raw_html", false)
+    val novelShowRawHtml: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_show_raw_html", false)
 
     // TTS (Text-to-Speech) preferences
-    fun novelTtsSpeed() = preferenceStore.getFloat("pref_novel_tts_speed", 1.0f)
-    fun novelTtsPitch() = preferenceStore.getFloat("pref_novel_tts_pitch", 1.0f)
-    fun novelTtsVoice() = preferenceStore.getString("pref_novel_tts_voice", "")
-    fun novelTtsAutoNextChapter() = preferenceStore.getBoolean("pref_novel_tts_auto_next", true)
+    val novelTtsSpeed: Preference<Float> = preferenceStore.getFloat("pref_novel_tts_speed", 1.0f)
+    val novelTtsPitch: Preference<Float> = preferenceStore.getFloat("pref_novel_tts_pitch", 1.0f)
+    val novelTtsVoice: Preference<String> = preferenceStore.getString("pref_novel_tts_voice", "")
+    val novelTtsAutoNextChapter: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_auto_next", true)
 
-    fun novelBottomBarItems() = preferenceStore.getString("novel_bottom_bar_items", DefaultBottomBarItems.serialize())
+    val novelBottomBarItems: Preference<String> = preferenceStore.getString(
+        "novel_bottom_bar_items",
+        DefaultBottomBarItems.serialize(),
+    )
     // endregion
 
     companion object {

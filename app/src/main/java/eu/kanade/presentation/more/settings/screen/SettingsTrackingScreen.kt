@@ -99,7 +99,7 @@ object SettingsTrackingScreen : SearchableSettings {
         val trackPreferences = remember { Injekt.get<TrackPreferences>() }
         val trackerManager = remember { Injekt.get<TrackerManager>() }
         val sourceManager = remember { Injekt.get<SourceManager>() }
-        val autoTrackStatePref = trackPreferences.autoUpdateTrackOnMarkRead()
+        val autoTrackStatePref = trackPreferences.autoUpdateTrackOnMarkRead
 
         var dialog by remember { mutableStateOf<Any?>(null) }
         dialog?.run {
@@ -151,23 +151,23 @@ object SettingsTrackingScreen : SearchableSettings {
 
         return listOf(
             Preference.PreferenceItem.SwitchPreference(
-                preference = trackPreferences.autoUpdateTrack(),
+                preference = trackPreferences.autoUpdateTrack,
                 title = stringResource(MR.strings.pref_auto_update_manga_sync),
             ),
             Preference.PreferenceItem.ListPreference(
-                preference = trackPreferences.autoUpdateTrackOnMarkRead(),
+                preference = trackPreferences.autoUpdateTrackOnMarkRead,
                 entries = AutoTrackState.entries
                     .associateWith { stringResource(it.titleRes) }
                     .toPersistentMap(),
                 title = stringResource(MR.strings.pref_auto_update_manga_on_mark_read),
             ),
             Preference.PreferenceItem.EditTextPreference(
-                preference = trackPreferences.minChaptersBeforeTrackingManga(),
+                preference = trackPreferences.minChaptersBeforeTrackingManga,
                 title = "Minimum chapters before tracking (Manga)",
                 subtitle = "Number of chapters that must be read before auto-tracking starts for manga (0 = always track)",
             ),
             Preference.PreferenceItem.EditTextPreference(
-                preference = trackPreferences.minChaptersBeforeTrackingNovel(),
+                preference = trackPreferences.minChaptersBeforeTrackingNovel,
                 title = "Minimum chapters before tracking (Novels)",
                 subtitle = "Number of chapters that must be read before auto-tracking starts for novels (0 = always track)",
             ),
@@ -225,17 +225,17 @@ object SettingsTrackingScreen : SearchableSettings {
                         logout = { dialog = LogoutDialog(trackerManager.novelUpdates) },
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = trackPreferences.novelUpdatesMarkChaptersAsRead(),
+                        preference = trackPreferences.novelUpdatesMarkChaptersAsRead,
                         title = "Mark chapters as read on NovelUpdates",
                         subtitle = "Automatically mark chapters as read when you read them in the app",
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = trackPreferences.novelUpdatesSyncReadingList(),
+                        preference = trackPreferences.novelUpdatesSyncReadingList,
                         title = "Sync reading list",
                         subtitle = "Keep reading list status in sync with NovelUpdates",
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = trackPreferences.novelUpdatesUseCustomListMapping(),
+                        preference = trackPreferences.novelUpdatesUseCustomListMapping,
                         title = "Custom list mapping",
                         subtitle = "Map statuses to custom NovelUpdates lists",
                     ),
@@ -259,12 +259,12 @@ object SettingsTrackingScreen : SearchableSettings {
                         logout = { dialog = LogoutDialog(trackerManager.novelList) },
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = trackPreferences.novelListMarkChaptersAsRead(),
+                        preference = trackPreferences.novelListMarkChaptersAsRead,
                         title = "Mark chapters as read on NovelList",
                         subtitle = "Automatically mark chapters as read when you read them in the app",
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = trackPreferences.novelListSyncReadingList(),
+                        preference = trackPreferences.novelListSyncReadingList,
                         title = "Sync reading list",
                         subtitle = "Keep reading list status in sync with NovelList",
                     ),
@@ -590,7 +590,7 @@ object SettingsTrackingScreen : SearchableSettings {
 
         // Load cached lists
         var availableLists by remember {
-            val cached = trackPreferences.novelUpdatesCachedLists().get()
+            val cached = trackPreferences.novelUpdatesCachedLists.get()
             val lists = try {
                 if (cached.isNotEmpty() && cached != "[]") {
                     kotlinx.serialization.json.Json.decodeFromString<List<List<String>>>(cached)
@@ -613,7 +613,7 @@ object SettingsTrackingScreen : SearchableSettings {
 
         // Current mappings (status ID -> list ID)
         var mappings by remember {
-            val json = trackPreferences.novelUpdatesCustomListMapping().get()
+            val json = trackPreferences.novelUpdatesCustomListMapping.get()
             val map = try {
                 if (json.isNotEmpty() && json != "{}") {
                     kotlinx.serialization.json.Json.decodeFromString<Map<String, String>>(json)
@@ -664,8 +664,8 @@ object SettingsTrackingScreen : SearchableSettings {
                                         val cached = kotlinx.serialization.json.Json.encodeToString(
                                             lists.map { listOf(it.first, it.second) },
                                         )
-                                        trackPreferences.novelUpdatesCachedLists().set(cached)
-                                        trackPreferences.novelUpdatesLastListRefresh()
+                                        trackPreferences.novelUpdatesCachedLists.set(cached)
+                                        trackPreferences.novelUpdatesLastListRefresh
                                             .set(System.currentTimeMillis())
                                     }
                                     withUIContext {
@@ -738,7 +738,7 @@ object SettingsTrackingScreen : SearchableSettings {
             confirmButton = {
                 Button(
                     onClick = {
-                        trackPreferences.novelUpdatesCustomListMapping().set(
+                        trackPreferences.novelUpdatesCustomListMapping.set(
                             kotlinx.serialization.json.Json.encodeToString(mappings),
                         )
                         onDismissRequest()

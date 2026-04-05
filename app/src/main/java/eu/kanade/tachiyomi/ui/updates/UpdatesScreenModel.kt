@@ -97,7 +97,7 @@ class UpdatesScreenModel(
     private val updatesPreferences: UpdatesPreferences = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateScreenModel<UpdatesScreenModel.State>(
-    State(groupByNovel = Injekt.get<LibraryPreferences>().updatesGroupByNovel().get()),
+    State(groupByNovel = Injekt.get<LibraryPreferences>().updatesGroupByNovel.get()),
 ) {
 
     companion object {
@@ -110,7 +110,7 @@ class UpdatesScreenModel(
     private val _events: Channel<Event> = Channel(Int.MAX_VALUE)
     val events: Flow<Event> = _events.receiveAsFlow()
 
-    val lastUpdated by libraryPreferences.lastUpdatedTimestamp().asState(screenModelScope)
+    val lastUpdated by libraryPreferences.lastUpdatedTimestamp.asState(screenModelScope)
 
     // First and last selected index in list
     private val selectedPositions: Array<Int> = arrayOf(-1, -1)
@@ -142,7 +142,7 @@ class UpdatesScreenModel(
                     },
                 downloadCache.changes,
                 downloadManager.queueState,
-                libraryPreferences.lastUpdatesClearedTimestamp().changes(),
+                libraryPreferences.lastUpdatesClearedTimestamp.changes(),
                 // needed for Kotlin filters (downloaded)
                 getUpdatesItemPreferenceFlow().distinctUntilChanged { old, new ->
                     old.filterDownloaded == new.filterDownloaded
@@ -325,7 +325,7 @@ class UpdatesScreenModel(
         }
     }
 
-    private suspend fun startDownloadingNow(chapterId: Long) {
+    private fun startDownloadingNow(chapterId: Long) {
         downloadManager.startDownloadNow(chapterId)
     }
 
@@ -503,13 +503,13 @@ class UpdatesScreenModel(
     }
 
     fun resetNewUpdatesCount() {
-        libraryPreferences.newUpdatesCount().set(0)
+        libraryPreferences.newUpdatesCount.set(0)
     }
 
     fun toggleGroupByNovel() {
         val newValue = !state.value.groupByNovel
         mutableState.update { it.copy(groupByNovel = newValue) }
-        libraryPreferences.updatesGroupByNovel().set(newValue)
+        libraryPreferences.updatesGroupByNovel.set(newValue)
     }
 
     fun clearUpdatesCacheAll() {
@@ -531,11 +531,11 @@ class UpdatesScreenModel(
 
     private fun getUpdatesItemPreferenceFlow(): Flow<ItemPreferences> {
         return combine(
-            updatesPreferences.filterDownloaded().changes(),
-            updatesPreferences.filterUnread().changes(),
-            updatesPreferences.filterStarted().changes(),
-            updatesPreferences.filterBookmarked().changes(),
-            updatesPreferences.filterExcludedScanlators().changes(),
+            updatesPreferences.filterDownloaded.changes(),
+            updatesPreferences.filterUnread.changes(),
+            updatesPreferences.filterStarted.changes(),
+            updatesPreferences.filterBookmarked.changes(),
+            updatesPreferences.filterExcludedScanlators.changes(),
         ) { downloaded, unread, started, bookmarked, excludedScanlators ->
             ItemPreferences(
                 filterDownloaded = downloaded,

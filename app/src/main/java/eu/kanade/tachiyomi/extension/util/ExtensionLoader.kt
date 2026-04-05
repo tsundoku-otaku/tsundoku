@@ -19,7 +19,7 @@ import eu.kanade.tachiyomi.util.storage.copyAndSetReadOnlyTo
 import eu.kanade.tachiyomi.util.system.ChildFirstPathClassLoader
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.injectLazy
@@ -44,7 +44,7 @@ internal object ExtensionLoader {
     private val preferences: SourcePreferences by injectLazy()
     private val trustExtension: TrustExtension by injectLazy()
     private val loadNsfwSource by lazy {
-        preferences.showNsfwSource().get()
+        preferences.showNsfwSource.get()
     }
 
     private const val EXTENSION_FEATURE = "tachiyomi.extension"
@@ -116,7 +116,7 @@ internal object ExtensionLoader {
      *
      * @param context The application context.
      */
-    suspend fun loadExtensions(context: Context): List<LoadResult> {
+    fun loadExtensions(context: Context): List<LoadResult> {
         val pkgManager = context.packageManager
 
         val installedPkgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -190,13 +190,14 @@ internal object ExtensionLoader {
         if (extPkgs.isEmpty()) return emptyList()
 
         // Load each extension concurrently and wait for completion
-        return coroutineScope {
+        return runBlocking {
             // Preload trusted fingerprints ONCE before loading all extensions
             trustExtension.preloadTrustedFingerprints()
 
-            extPkgs.map {
+            val deferred = extPkgs.map {
                 async { loadExtension(context, it) }
-            }.awaitAll()
+            }
+            deferred.awaitAll()
         }
     }
 

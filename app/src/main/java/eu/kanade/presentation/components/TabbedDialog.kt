@@ -80,7 +80,15 @@ fun TabbedDialog(
                             selected = pagerState.currentPage == index,
                             onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                             text = if (tab is TabTitle.Text) ({ TabText(text = tab.value) }) else null,
-                            icon = if (tab is TabTitle.Icon) ({ Icon(imageVector = tab.imageVector, contentDescription = null) }) else null,
+                            icon = if (tab is TabTitle.Icon) {
+                                (
+                                    {
+                                        Icon(imageVector = tab.imageVector, contentDescription = null)
+                                    }
+                                    )
+                            } else {
+                                null
+                            },
                             unselectedContentColor = MaterialTheme.colorScheme.onSurface,
                         )
                     }

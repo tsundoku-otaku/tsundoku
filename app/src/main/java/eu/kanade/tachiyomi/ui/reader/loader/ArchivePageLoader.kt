@@ -16,13 +16,13 @@ internal class ArchivePageLoader(private val reader: ArchiveReader) : PageLoader
         entries
             .filter { entry ->
                 entry.isFile && (
-                    entry.name.endsWith(".html", ignoreCase = true) ||
+                    entry.name.isHtmlContentFileName() ||
                         ImageUtil.isImage(entry.name) { reader.getInputStream(entry.name)!! }
                     )
             }
             .sortedWith { f1, f2 -> f1.name.compareToCaseInsensitiveNaturalOrder(f2.name) }
             .mapIndexed { i, entry ->
-                val isHtml = entry.name.endsWith(".html", ignoreCase = true)
+                val isHtml = entry.name.isHtmlContentFileName()
                 val textContent = if (isHtml) {
                     reader.getInputStream(entry.name)?.use { it.bufferedReader().readText() }
                 } else {
@@ -49,5 +49,10 @@ internal class ArchivePageLoader(private val reader: ArchiveReader) : PageLoader
     override fun recycle() {
         super.recycle()
         reader.close()
+    }
+
+    private fun String.isHtmlContentFileName(): Boolean {
+        val normalized = lowercase()
+        return normalized.endsWith(".html") || normalized.endsWith(".htm") || normalized.endsWith(".xhtml")
     }
 }

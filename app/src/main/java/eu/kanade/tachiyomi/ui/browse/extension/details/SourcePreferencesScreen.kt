@@ -146,13 +146,13 @@ class SourcePreferencesFragment : PreferenceFragmentCompat() {
             isSingleLineTitle = false
 
             // Initialize from preference
-            val reversedSources = libraryPreferences.reversedChapterSources().get()
+            val reversedSources = libraryPreferences.reversedChapterSources.get()
             isChecked = sourceId.toString() in reversedSources
 
             setOnPreferenceChangeListener { _, newValue ->
                 val reversed = newValue as Boolean
-                val currentSet = libraryPreferences.reversedChapterSources().get()
-                libraryPreferences.reversedChapterSources().set(
+                val currentSet = libraryPreferences.reversedChapterSources.get()
+                libraryPreferences.reversedChapterSources.set(
                     if (reversed) {
                         currentSet + sourceId.toString()
                     } else {

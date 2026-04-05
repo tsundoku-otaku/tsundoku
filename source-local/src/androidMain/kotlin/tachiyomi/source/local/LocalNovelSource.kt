@@ -427,7 +427,9 @@ actual class LocalNovelSource(
 
             when {
                 chapterFile.isDirectory -> {
-                    chapterFile.findFile(imagePath)?.openInputStream()?.readBytes()?.let { java.io.ByteArrayInputStream(it) }
+                    chapterFile.findFile(imagePath)?.openInputStream()?.readBytes()?.let {
+                        java.io.ByteArrayInputStream(it)
+                    }
                 }
                 chapterFile.extension.equals("epub", true) -> {
                     chapterFile.epubReader(context).use { epub ->

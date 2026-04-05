@@ -22,14 +22,14 @@ class StorageManager(
 
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    private var baseDir: UniFile? = getBaseDir(storagePreferences.baseStorageDirectory().get())
+    private var baseDir: UniFile? = getBaseDir(storagePreferences.baseStorageDirectory.get())
 
     private val _changes: Channel<Unit> = Channel(Channel.UNLIMITED)
     val changes = _changes.receiveAsFlow()
         .shareIn(scope, SharingStarted.Lazily, 1)
 
     init {
-        storagePreferences.baseStorageDirectory().changes()
+        storagePreferences.baseStorageDirectory.changes()
             .drop(1)
             .distinctUntilChanged()
             .onEach { uri ->
@@ -97,6 +97,10 @@ class StorageManager(
     fun getMassImportDirectory(): UniFile? {
         return getOrCreateDirectory(baseDir, MASS_IMPORT_PATH)
     }
+
+    fun getQuotesDirectory(): UniFile? {
+        return getOrCreateDirectory(baseDir, QUOTES_PATH)
+    }
 }
 
 private const val AUTOMATIC_BACKUPS_PATH = "autobackup"
@@ -107,3 +111,4 @@ private const val LNREADER_PLUGINS_PATH = "lnreader_plugins"
 private const val FONTS_PATH = "fonts"
 private const val TRANSLATIONS_PATH = "translations"
 private const val MASS_IMPORT_PATH = "mass_import"
+private const val QUOTES_PATH = "quotes"

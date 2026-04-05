@@ -97,11 +97,11 @@ data object LibraryTab : Tab {
         val settingsScreenModel =
             rememberScreenModel { LibrarySettingsScreenModel(type = LibraryScreenModel.LibraryType.Manga) }
         val state by screenModel.state.collectAsState()
-        val titleMaxLines by settingsScreenModel.libraryPreferences.titleMaxLines().changes().collectAsState(
-            settingsScreenModel.libraryPreferences.titleMaxLines().get(),
+        val titleMaxLines by settingsScreenModel.libraryPreferences.titleMaxLines.changes().collectAsState(
+            settingsScreenModel.libraryPreferences.titleMaxLines.get(),
         )
-        val showUrlInList by settingsScreenModel.libraryPreferences.showUrlInList().changes().collectAsState(
-            settingsScreenModel.libraryPreferences.showUrlInList().get(),
+        val showUrlInList by settingsScreenModel.libraryPreferences.showUrlInList.changes().collectAsState(
+            settingsScreenModel.libraryPreferences.showUrlInList.get(),
         )
 
         val snackbarHostState = remember { SnackbarHostState() }
@@ -288,7 +288,15 @@ data object LibraryTab : Tab {
                 DeleteLibraryMangaDialog(
                     containsLocalManga = dialog.manga.any(Manga::isLocal),
                     onDismissRequest = onDismissRequest,
-                    onConfirm = { deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations, clearCovers, clearDescriptions, clearTags ->
+                    onConfirm = {
+                            deleteManga,
+                            deleteChapter,
+                            clearChaptersFromDb,
+                            deleteTranslations,
+                            clearCovers,
+                            clearDescriptions,
+                            clearTags,
+                        ->
                         screenModel.removeMangas(
                             dialog.manga,
                             deleteManga,

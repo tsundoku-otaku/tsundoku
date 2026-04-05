@@ -42,7 +42,7 @@ internal class ExtensionApi {
 
     suspend fun findExtensions(): List<Extension.Available> {
         return withIOContext {
-            val disabledRepos = sourcePreferences.disabledExtensionRepos().get()
+            val disabledRepos = sourcePreferences.disabledExtensionRepos.get()
             getExtensionRepo.getAll()
                 .filterNot { it.baseUrl in disabledRepos }
                 .map { async { getExtensions(it) } }
@@ -81,7 +81,7 @@ internal class ExtensionApi {
         }
 
         // Update only enabled extension repo details
-        val disabledRepos = sourcePreferences.disabledExtensionRepos().get()
+        val disabledRepos = sourcePreferences.disabledExtensionRepos.get()
         val enabledRepos = getExtensionRepo.getAll().filterNot { it.baseUrl in disabledRepos }
         updateExtensionRepo.awaitAll(enabledRepos)
 

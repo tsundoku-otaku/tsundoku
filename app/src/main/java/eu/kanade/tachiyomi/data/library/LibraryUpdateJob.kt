@@ -115,7 +115,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         if (tags.contains(WORK_NAME_AUTO)) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
                 val preferences = Injekt.get<LibraryPreferences>()
-                val restrictions = preferences.autoUpdateDeviceRestrictions().get()
+                val restrictions = preferences.autoUpdateDeviceRestrictions.get()
                 if ((DEVICE_ONLY_ON_WIFI in restrictions) && !context.isConnectedToWifi()) {
                     return Result.retry()
                 }
@@ -129,7 +129,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
 
         setForegroundSafely()
 
-        libraryPreferences.lastUpdatedTimestamp().set(Instant.now().toEpochMilli())
+        libraryPreferences.lastUpdatedTimestamp.set(Instant.now().toEpochMilli())
 
         val mangaIds = loadMangaIds()
         forceFetchDetails = inputData.getBoolean(KEY_FETCH_DETAILS, false)
@@ -184,7 +184,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             0
         } else {
             try {
-                libraryPreferences.skipUpdateTime().get()
+                libraryPreferences.skipUpdateTime.get()
             } catch (_: Exception) {
                 0
             }
@@ -217,16 +217,16 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val includedCategories = if (categoryId != -1L) {
             listOf(categoryId)
         } else {
-            libraryPreferences.updateCategories().get().map { it.toLong() }
+            libraryPreferences.updateCategories.get().map { it.toLong() }
         }
         val excludedCategories = if (categoryId == -1L) {
-            libraryPreferences.updateCategoriesExclude().get().map { it.toLong() }
+            libraryPreferences.updateCategoriesExclude.get().map { it.toLong() }
         } else {
             emptyList()
         }
 
-        val restrictions = libraryPreferences.autoUpdateMangaRestrictions().get()
-        val skipUpdateTime = libraryPreferences.skipUpdateTime().get()
+        val restrictions = libraryPreferences.autoUpdateMangaRestrictions.get()
+        val skipUpdateTime = libraryPreferences.skipUpdateTime.get()
         val skippedUpdates = mutableListOf<Pair<Manga, String?>>()
         val (_, fetchWindowUpperBound) = fetchInterval.getWindow(ZonedDateTime.now())
         val currentTime = System.currentTimeMillis()
@@ -328,7 +328,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val failedUpdates = CopyOnWriteArrayList<Pair<Manga, String?>>()
         val hasDownloads = AtomicBoolean(false)
         val fetchWindow = fetchInterval.getWindow(ZonedDateTime.now())
-        val globalUpdateThrottlingMs = libraryPreferences.autoUpdateThrottle().get().toLong()
+        val globalUpdateThrottlingMs = libraryPreferences.autoUpdateThrottle.get().toLong()
         val novelThrottleEnabled = novelDownloadPreferences.enableUpdateThrottling().get()
         val updateStagger = novelDownloadPreferences.enableUpdateStaggering().get()
         val novelUpdateThrottlingMs = novelDownloadPreferences.updateDelay().get().toLong()
@@ -342,7 +342,9 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
 
                         // Determine update throttling based on source type and overrides
                         Log.d("LibraryUpdate", "Source ${source?.name} novel: ${(source?.isNovelSource)}")
-                        val updateThrottlingMs = if ((source?.isNovelSource ?: false || source is NovelSource) && novelThrottleEnabled) {
+                        val updateThrottlingMs = if ((source?.isNovelSource ?: false || source is NovelSource) &&
+                            novelThrottleEnabled
+                        ) {
                             val sourceId = source.id
                             val override = novelDownloadPreferences.getSourceOverride(sourceId)
                             if (override != null && override.enabled) {
@@ -400,7 +402,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                                 hasDownloads.store(true)
                                             }
 
-                                            libraryPreferences.newUpdatesCount().getAndSet { it + newChapters.size }
+                                            libraryPreferences.newUpdatesCount.getAndSet { it + newChapters.size }
 
                                             // Convert to the manga that contains new chapters
                                             newUpdates.add(manga to newChapters.toTypedArray())
@@ -472,7 +474,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val source = sourceManager.getOrStub(manga.source)
 
         // Update manga metadata if needed
-        if (forceFetchDetails || libraryPreferences.autoUpdateMetadata().get()) {
+        if (forceFetchDetails || libraryPreferences.autoUpdateMetadata.get()) {
             val networkManga = source.getMangaDetails(manga.toSManga())
             updateManga.awaitUpdateFromSource(manga, networkManga, manualFetch = forceFetchDetails, coverCache)
         }
@@ -525,7 +527,9 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val maxMem = runtime.maxMemory()
         val usedMem = runtime.totalMemory() - runtime.freeMemory()
         if (usedMem.toDouble() / maxMem > MEMORY_PRESSURE_THRESHOLD) {
-            logcat(LogPriority.WARN) { "LibraryUpdate: Memory pressure ${usedMem / 1024 / 1024}MB / ${maxMem / 1024 / 1024}MB, pausing..." }
+            logcat(LogPriority.WARN) {
+                "LibraryUpdate: Memory pressure ${usedMem / 1024 / 1024}MB / ${maxMem / 1024 / 1024}MB, pausing..."
+            }
             System.gc()
             delay(2000)
         }
@@ -631,9 +635,9 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             prefInterval: Int? = null,
         ) {
             val preferences = Injekt.get<LibraryPreferences>()
-            val interval = prefInterval ?: preferences.autoUpdateInterval().get()
+            val interval = prefInterval ?: preferences.autoUpdateInterval.get()
             if (interval > 0) {
-                val restrictions = preferences.autoUpdateDeviceRestrictions().get()
+                val restrictions = preferences.autoUpdateDeviceRestrictions.get()
                 val networkType = if (DEVICE_NETWORK_NOT_METERED in restrictions) {
                     NetworkType.UNMETERED
                 } else {

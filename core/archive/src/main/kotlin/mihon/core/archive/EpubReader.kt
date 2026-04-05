@@ -230,7 +230,9 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                 val imageBasePath = getParentDirectory(entryPath)
                 document.select("img[src], image[xlink:href]").forEach { img ->
                     val src = if (img.hasAttr("src")) img.attr("src") else img.attr("xlink:href")
-                    if (!src.startsWith("http") && !src.startsWith("data:") && !src.startsWith("tsundoku-novel-image://")) {
+                    if (!src.startsWith("http") && !src.startsWith("data:") &&
+                        !src.startsWith("tsundoku-novel-image://")
+                    ) {
                         val imagePath = resolveZipPath(imageBasePath, src)
                         val novelUrl = "tsundoku-novel-image://${java.net.URLEncoder.encode(imagePath, "UTF-8")}"
                         if (img.hasAttr("src")) {
@@ -370,7 +372,9 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                 }
 
                 val src = rawSrc.substringBefore("#").trim()
-                if (src.isBlank() || src.startsWith("http") || src.startsWith("//") || src.startsWith("data:") || src.startsWith("tsundoku-novel-image://")) {
+                if (src.isBlank() || src.startsWith("http") || src.startsWith("//") || src.startsWith("data:") ||
+                    src.startsWith("tsundoku-novel-image://")
+                ) {
                     return@forEach
                 }
 
@@ -386,7 +390,8 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
             // TextView-based rendering doesn't reliably support SVG nodes.
             // Convert simple SVG image containers to regular <img> tags.
             document.select("svg").forEach { svg ->
-                val svgImage = svg.select("image").firstOrNull { it.hasAttr("xlink:href") || it.hasAttr("href") } ?: return@forEach
+                val svgImage =
+                    svg.select("image").firstOrNull { it.hasAttr("xlink:href") || it.hasAttr("href") } ?: return@forEach
                 val imageSrc = when {
                     svgImage.hasAttr("xlink:href") -> svgImage.attr("xlink:href")
                     svgImage.hasAttr("href") -> svgImage.attr("href")
@@ -413,10 +418,15 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                             val urlRegex = Regex("""url\(['"]?(.*?)['"]?\)""")
                             cssText = urlRegex.replace(cssText) { match ->
                                 val assetUrl = match.groupValues[1]
-                                if (assetUrl.startsWith("data:") || assetUrl.startsWith("http")) return@replace match.value
+                                if (assetUrl.startsWith("data:") ||
+                                    assetUrl.startsWith("http")
+                                ) {
+                                    return@replace match.value
+                                }
 
                                 val cssDir = getParentDirectory(cssPath)
-                                val assetPath = resolveZipPath(cssDir, assetUrl.substringBefore("?").substringBefore("#"))
+                                val assetPath =
+                                    resolveZipPath(cssDir, assetUrl.substringBefore("?").substringBefore("#"))
                                 try {
                                     getInputStream(assetPath)?.use { assetStream ->
                                         val bytes = assetStream.readBytes()

@@ -132,6 +132,8 @@ class MainActivity : BaseActivity() {
 
         super.onCreate(savedInstanceState)
 
+        val didMigration = Migrator.awaitAndRelease()
+
         // Do not let the launcher create a new activity http://stackoverflow.com/questions/16283079
         if (!isTaskRoot) {
             finish()
@@ -139,15 +141,10 @@ class MainActivity : BaseActivity() {
         }
 
         setComposeContent {
-            var didMigration by remember { mutableStateOf<Boolean?>(null) }
-            LaunchedEffect(Unit) {
-                didMigration = Migrator.awaitAndRelease()
-            }
-
             val context = LocalContext.current
 
             var incognito by remember { mutableStateOf(getIncognitoState.await(null)) }
-            val downloadOnly by preferences.downloadedOnly().collectAsState()
+            val downloadOnly by preferences.downloadedOnly.collectAsState()
             val indexing by downloadCache.isInitializing.collectAsState()
 
             val isSystemInDarkTheme = isSystemInDarkTheme()
@@ -179,7 +176,7 @@ class MainActivity : BaseActivity() {
                         handleIntentAction(intent, navigator)
 
                         // Reset Incognito Mode on relaunch
-                        preferences.incognitoMode().set(false)
+                        preferences.incognitoMode.set(false)
                     }
                 }
                 LaunchedEffect(navigator.lastItem) {
@@ -226,7 +223,7 @@ class MainActivity : BaseActivity() {
 
                 // Pop source-related screens when incognito mode is turned off
                 LaunchedEffect(Unit) {
-                    preferences.incognitoMode().changes()
+                    preferences.incognitoMode.changes()
                         .drop(1)
                         .filter { !it }
                         .onEach {
@@ -246,7 +243,7 @@ class MainActivity : BaseActivity() {
                 ShowOnboarding()
             }
 
-            var showChangelog by remember { mutableStateOf(didMigration == true && !BuildConfig.DEBUG) }
+            var showChangelog by remember { mutableStateOf(didMigration && !BuildConfig.DEBUG) }
             if (showChangelog) {
                 AlertDialog(
                     onDismissRequest = { showChangelog = false },
@@ -272,7 +269,7 @@ class MainActivity : BaseActivity() {
         }
         setSplashScreenExitAnimation(splashScreen)
 
-        if (isLaunch && libraryPreferences.autoClearChapterCache().get()) {
+        if (isLaunch && libraryPreferences.autoClearChapterCache.get()) {
             lifecycleScope.launchIO {
                 chapterCache.clear()
             }
@@ -341,7 +338,7 @@ class MainActivity : BaseActivity() {
         val navigator = LocalNavigator.currentOrThrow
 
         LaunchedEffect(Unit) {
-            if (!preferences.shownOnboardingFlow().get() && navigator.lastItem !is OnboardingScreen) {
+            if (!preferences.shownOnboardingFlow.get() && navigator.lastItem !is OnboardingScreen) {
                 navigator.push(OnboardingScreen())
             }
         }

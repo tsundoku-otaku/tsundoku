@@ -439,7 +439,11 @@ class ElementSelectorVoyagerScreen(
         // Handle success
         LaunchedEffect(state.savedSuccessfully) {
             if (state.savedSuccessfully) {
-                Toast.makeText(context, context.ctxStringResource(TDMR.strings.custom_source_created), Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    context,
+                    context.ctxStringResource(TDMR.strings.custom_source_created),
+                    Toast.LENGTH_LONG,
+                ).show()
                 navigator.popUntilRoot()
             }
         }
@@ -447,7 +451,11 @@ class ElementSelectorVoyagerScreen(
         // Handle error
         LaunchedEffect(state.error) {
             state.error?.let { error ->
-                Toast.makeText(context, context.ctxStringResource(TDMR.strings.custom_source_error_format, error), Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    context,
+                    context.ctxStringResource(TDMR.strings.custom_source_error_format, error),
+                    Toast.LENGTH_LONG,
+                ).show()
                 screenModel.clearError()
             }
         }

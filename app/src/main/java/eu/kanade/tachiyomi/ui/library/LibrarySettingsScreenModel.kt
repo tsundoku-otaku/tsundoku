@@ -123,8 +123,8 @@ class LibrarySettingsScreenModel(
      * When checked = false, the extension is excluded (add to excluded set)
      */
     fun toggleExtensionFilter(sourceId: String, checked: Boolean) {
-        val current = libraryPreferences.excludedExtensions().get()
-        libraryPreferences.excludedExtensions().set(
+        val current = libraryPreferences.excludedExtensions.get()
+        libraryPreferences.excludedExtensions.set(
             if (checked) {
                 // Checked = include = remove from excluded
                 current - sourceId
@@ -140,9 +140,9 @@ class LibrarySettingsScreenModel(
      */
     fun checkAllExtensions() {
         val availableSourceIds = extensionsFlow.value.map { it.sourceId.toString() }.toSet()
-        val current = libraryPreferences.excludedExtensions().get()
+        val current = libraryPreferences.excludedExtensions.get()
         // Remove all available extensions from excluded set
-        libraryPreferences.excludedExtensions().set(current - availableSourceIds)
+        libraryPreferences.excludedExtensions.set(current - availableSourceIds)
     }
 
     /**
@@ -150,36 +150,36 @@ class LibrarySettingsScreenModel(
      */
     fun uncheckAllExtensions() {
         val availableSourceIds = extensionsFlow.value.map { it.sourceId.toString() }.toSet()
-        val current = libraryPreferences.excludedExtensions().get()
+        val current = libraryPreferences.excludedExtensions.get()
         // Add all available extensions to excluded set
-        libraryPreferences.excludedExtensions().set(current + availableSourceIds)
+        libraryPreferences.excludedExtensions.set(current + availableSourceIds)
     }
 
     // Tag filtering methods
     fun toggleTagIncluded(tag: String) {
-        val included = libraryPreferences.includedTags().get()
-        val excluded = libraryPreferences.excludedTags().get()
+        val included = libraryPreferences.includedTags.get()
+        val excluded = libraryPreferences.excludedTags.get()
 
         when {
             tag in included -> {
                 // Currently included -> move to excluded
-                libraryPreferences.includedTags().set(included - tag)
-                libraryPreferences.excludedTags().set(excluded + tag)
+                libraryPreferences.includedTags.set(included - tag)
+                libraryPreferences.excludedTags.set(excluded + tag)
             }
             tag in excluded -> {
                 // Currently excluded -> remove filter
-                libraryPreferences.excludedTags().set(excluded - tag)
+                libraryPreferences.excludedTags.set(excluded - tag)
             }
             else -> {
                 // Not filtered -> include
-                libraryPreferences.includedTags().set(included + tag)
+                libraryPreferences.includedTags.set(included + tag)
             }
         }
     }
 
     fun clearAllTagFilters() {
-        libraryPreferences.includedTags().set(emptySet())
-        libraryPreferences.excludedTags().set(emptySet())
+        libraryPreferences.includedTags.set(emptySet())
+        libraryPreferences.excludedTags.set(emptySet())
         libraryPreferences.filterNoTags().set(TriState.DISABLED)
     }
 

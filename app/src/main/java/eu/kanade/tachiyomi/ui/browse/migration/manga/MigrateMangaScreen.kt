@@ -84,7 +84,9 @@ data class MigrateMangaScreen(
                     actionModeCounter = state.selection.size,
                     onCancelActionMode = { screenModel.clearSelection() },
                     actionModeActions = {
-                        var showMenu by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                        var showMenu by androidx.compose.runtime.remember {
+                            androidx.compose.runtime.mutableStateOf(false)
+                        }
                         IconButton(onClick = { screenModel.selectAll() }) {
                             Icon(
                                 imageVector = Icons.Outlined.SelectAll,

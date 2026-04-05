@@ -67,6 +67,9 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testReleaseUnitTest
 
+      - name: Verify SQLDelight migrations
+        run: ./gradlew verifySqlDelightMigration
+
       - name: Upload test report (if tests fail)
         if: failure()
         uses: actions/upload-artifact@v5

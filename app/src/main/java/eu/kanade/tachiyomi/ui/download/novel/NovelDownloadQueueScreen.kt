@@ -207,7 +207,11 @@ private fun NovelDownloadCard(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = stringResource(TDMR.strings.novel_downloads_chapters_format, item.downloadedChapters, item.totalChapters),
+                        text = stringResource(
+                            TDMR.strings.novel_downloads_chapters_format,
+                            item.downloadedChapters,
+                            item.totalChapters,
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -305,7 +309,10 @@ private fun NovelDownloadCard(
 
                 if (item.currentDownload != null) {
                     Text(
-                        text = stringResource(TDMR.strings.novel_downloads_chapter_format, item.currentDownload?.chapterName ?: ""),
+                        text = stringResource(
+                            TDMR.strings.novel_downloads_chapter_format,
+                            item.currentDownload?.chapterName ?: "",
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

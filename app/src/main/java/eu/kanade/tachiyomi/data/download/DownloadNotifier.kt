@@ -97,7 +97,7 @@ internal class DownloadNotifier(private val context: Context) {
                 download.pages!!.size,
             )
 
-            if (preferences.hideNotificationContent().get()) {
+            if (preferences.hideNotificationContent.get()) {
                 setContentTitle(downloadingProgressText)
                 setContentText(null)
             } else {

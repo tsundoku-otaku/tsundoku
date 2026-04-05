@@ -165,7 +165,7 @@ fun BrowseSourceToolbar(
 
         // Get current delay from preferences
         val sourcePreferences: eu.kanade.domain.source.service.SourcePreferences = remember { Injekt.get() }
-        var currentDelay by remember { mutableIntStateOf(sourcePreferences.pageLoadDelay().get()) }
+        var currentDelay by remember { mutableIntStateOf(sourcePreferences.pageLoadDelay.get()) }
 
         AlertDialog(
             onDismissRequest = { showPageJumpDialog = false },
@@ -210,7 +210,7 @@ fun BrowseSourceToolbar(
                                     val startPage = pageInput.toIntOrNull()
                                     val endPage = endPageInput.toIntOrNull()
                                     if (startPage != null && endPage != null && startPage > 0 && endPage >= startPage) {
-                                        sourcePreferences.pageLoadDelay().set(currentDelay)
+                                        sourcePreferences.pageLoadDelay.set(currentDelay)
                                         if (onPageRangeLoad != null) {
                                             onPageRangeLoad(startPage, endPage)
                                         } else {
@@ -259,7 +259,7 @@ fun BrowseSourceToolbar(
                             val endPage = endPageInput.toIntOrNull()
                             if (startPage != null && endPage != null && startPage > 0 && endPage >= startPage) {
                                 // Save delay preference when loading range
-                                sourcePreferences.pageLoadDelay().set(currentDelay)
+                                sourcePreferences.pageLoadDelay.set(currentDelay)
                                 if (onPageRangeLoad != null) {
                                     onPageRangeLoad(startPage, endPage)
                                 } else {

@@ -271,8 +271,8 @@ class NovelUpdates(id: Long) : BaseTracker(id, "NovelUpdates") {
     private fun statusToListId(status: Long): Long {
         // Check custom mapping first
         try {
-            if (trackPreferences.novelUpdatesUseCustomListMapping().get()) {
-                val json = trackPreferences.novelUpdatesCustomListMapping().get()
+            if (trackPreferences.novelUpdatesUseCustomListMapping.get()) {
+                val json = trackPreferences.novelUpdatesCustomListMapping.get()
                 if (json.isNotEmpty() && json != "{}") {
                     val mappings = Json.decodeFromString<Map<String, String>>(json)
                     val listId = mappings[status.toString()]

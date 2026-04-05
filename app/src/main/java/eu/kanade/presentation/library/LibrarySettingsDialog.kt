@@ -132,9 +132,9 @@ fun LibrarySettingsDialog(
 private fun ColumnScope.FilterPage(
     screenModel: LibrarySettingsScreenModel,
 ) {
-    val filterDownloaded by screenModel.libraryPreferences.filterDownloaded().collectAsState()
-    val downloadedOnly by screenModel.preferences.downloadedOnly().collectAsState()
-    val autoUpdateMangaRestrictions by screenModel.libraryPreferences.autoUpdateMangaRestrictions().collectAsState()
+    val filterDownloaded by screenModel.libraryPreferences.filterDownloaded.collectAsState()
+    val downloadedOnly by screenModel.preferences.downloadedOnly.collectAsState()
+    val autoUpdateMangaRestrictions by screenModel.libraryPreferences.autoUpdateMangaRestrictions.collectAsState()
 
     TriStateItem(
         label = stringResource(MR.strings.label_downloaded),
@@ -146,25 +146,25 @@ private fun ColumnScope.FilterPage(
         enabled = !downloadedOnly,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterDownloaded) },
     )
-    val filterUnread by screenModel.libraryPreferences.filterUnread().collectAsState()
+    val filterUnread by screenModel.libraryPreferences.filterUnread.collectAsState()
     TriStateItem(
         label = stringResource(MR.strings.action_filter_unread),
         state = filterUnread,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterUnread) },
     )
-    val filterStarted by screenModel.libraryPreferences.filterStarted().collectAsState()
+    val filterStarted by screenModel.libraryPreferences.filterStarted.collectAsState()
     TriStateItem(
         label = stringResource(MR.strings.label_started),
         state = filterStarted,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterStarted) },
     )
-    val filterBookmarked by screenModel.libraryPreferences.filterBookmarked().collectAsState()
+    val filterBookmarked by screenModel.libraryPreferences.filterBookmarked.collectAsState()
     TriStateItem(
         label = stringResource(MR.strings.action_filter_bookmarked),
         state = filterBookmarked,
         onClick = { screenModel.toggleFilter(LibraryPreferences::filterBookmarked) },
     )
-    val filterCompleted by screenModel.libraryPreferences.filterCompleted().collectAsState()
+    val filterCompleted by screenModel.libraryPreferences.filterCompleted.collectAsState()
     TriStateItem(
         label = stringResource(MR.strings.completed),
         state = filterCompleted,
@@ -178,7 +178,7 @@ private fun ColumnScope.FilterPage(
     )
 
     val filterChapterCount by screenModel.libraryPreferences.filterChapterCount().collectAsState()
-    val chapterCountThreshold by screenModel.libraryPreferences.filterChapterCountThreshold().collectAsState()
+    val chapterCountThreshold by screenModel.libraryPreferences.filterChapterCountThreshold.collectAsState()
     var thresholdText by remember { mutableStateOf(chapterCountThreshold.toString()) }
     TriStateItem(
         label = when (filterChapterCount) {
@@ -195,7 +195,7 @@ private fun ColumnScope.FilterPage(
             onValueChange = { value ->
                 thresholdText = value
                 value.toIntOrNull()?.takeIf { it > 0 }?.let {
-                    screenModel.libraryPreferences.filterChapterCountThreshold().set(it)
+                    screenModel.libraryPreferences.filterChapterCountThreshold.set(it)
                 }
             },
             label = { Text("Threshold") },
@@ -248,19 +248,19 @@ private fun ColumnScope.FilterPage(
     HeadingItem("Search Options")
     CheckboxItem(
         label = "Search chapter names",
-        pref = screenModel.libraryPreferences.searchChapterNames(),
+        pref = screenModel.libraryPreferences.searchChapterNames,
     )
     CheckboxItem(
         label = "Search novel descriptions and tags",
-        pref = screenModel.libraryPreferences.searchChapterContent(),
+        pref = screenModel.libraryPreferences.searchChapterContent,
     )
     CheckboxItem(
         label = "Search by URL",
-        pref = screenModel.libraryPreferences.searchByUrl(),
+        pref = screenModel.libraryPreferences.searchByUrl,
     )
     CheckboxItem(
         label = "Use regex search",
-        pref = screenModel.libraryPreferences.useRegexSearch(),
+        pref = screenModel.libraryPreferences.useRegexSearch,
     )
 }
 
@@ -341,7 +341,7 @@ private val displayModes = listOf(
 private fun ColumnScope.DisplayPage(
     screenModel: LibrarySettingsScreenModel,
 ) {
-    val displayMode by screenModel.libraryPreferences.displayMode().collectAsState()
+    val displayMode by screenModel.libraryPreferences.displayMode.collectAsState()
     SettingsChipRow(MR.strings.action_display_mode) {
         displayModes.map { (titleRes, mode) ->
             FilterChip(
@@ -356,9 +356,9 @@ private fun ColumnScope.DisplayPage(
         val configuration = LocalConfiguration.current
         val columnPreference = remember {
             if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                screenModel.libraryPreferences.landscapeColumns()
+                screenModel.libraryPreferences.landscapeColumns
             } else {
-                screenModel.libraryPreferences.portraitColumns()
+                screenModel.libraryPreferences.portraitColumns
             }
         }
 
@@ -380,47 +380,47 @@ private fun ColumnScope.DisplayPage(
     HeadingItem(MR.strings.overlay_header)
     CheckboxItem(
         label = stringResource(MR.strings.action_display_download_badge),
-        pref = screenModel.libraryPreferences.downloadBadge(),
+        pref = screenModel.libraryPreferences.downloadBadge,
     )
     CheckboxItem(
         label = stringResource(MR.strings.action_display_unread_badge),
-        pref = screenModel.libraryPreferences.unreadBadge(),
+        pref = screenModel.libraryPreferences.unreadBadge,
     )
     CheckboxItem(
         label = stringResource(MR.strings.action_display_local_badge),
-        pref = screenModel.libraryPreferences.localBadge(),
+        pref = screenModel.libraryPreferences.localBadge,
     )
     CheckboxItem(
         label = stringResource(MR.strings.action_display_language_badge),
-        pref = screenModel.libraryPreferences.languageBadge(),
+        pref = screenModel.libraryPreferences.languageBadge,
     )
     CheckboxItem(
         label = stringResource(MR.strings.action_display_show_continue_reading_button),
-        pref = screenModel.libraryPreferences.showContinueReadingButton(),
+        pref = screenModel.libraryPreferences.showContinueReadingButton,
     )
     CheckboxItem(
         label = "Show URL in list view",
-        pref = screenModel.libraryPreferences.showUrlInList(),
+        pref = screenModel.libraryPreferences.showUrlInList,
     )
 
-    val titleMaxLines by screenModel.libraryPreferences.titleMaxLines().collectAsState()
+    val titleMaxLines by screenModel.libraryPreferences.titleMaxLines.collectAsState()
     SliderItem(
         value = titleMaxLines,
         valueRange = 1..15,
         label = "Title Max Lines",
         valueString = titleMaxLines.toString(),
-        onChange = screenModel.libraryPreferences.titleMaxLines()::set,
+        onChange = screenModel.libraryPreferences.titleMaxLines::set,
         pillColor = MaterialTheme.colorScheme.surfaceContainerHighest,
     )
 
     HeadingItem(MR.strings.tabs_header)
     CheckboxItem(
         label = stringResource(MR.strings.action_display_show_tabs),
-        pref = screenModel.libraryPreferences.categoryTabs(),
+        pref = screenModel.libraryPreferences.categoryTabs,
     )
     CheckboxItem(
         label = stringResource(MR.strings.action_display_show_number_of_items),
-        pref = screenModel.libraryPreferences.categoryNumberOfItems(),
+        pref = screenModel.libraryPreferences.categoryNumberOfItems,
     )
 }
 
@@ -430,18 +430,18 @@ private fun ColumnScope.TagsPage(
     screenModel: LibrarySettingsScreenModel,
 ) {
     val tags by screenModel.tagsFlow.collectAsState()
-    val includedTags by screenModel.libraryPreferences.includedTags().collectAsState()
-    val excludedTags by screenModel.libraryPreferences.excludedTags().collectAsState()
+    val includedTags by screenModel.libraryPreferences.includedTags.collectAsState()
+    val excludedTags by screenModel.libraryPreferences.excludedTags.collectAsState()
     val filterNoTags by screenModel.libraryPreferences.filterNoTags().collectAsState()
     val noTagsCount by screenModel.noTagsCountFlow.collectAsState()
     val isLoading by screenModel.isLoading.collectAsState()
 
     // Tag options
-    val tagIncludeModeAnd by screenModel.libraryPreferences.tagIncludeMode().collectAsState()
-    val tagExcludeModeAnd by screenModel.libraryPreferences.tagExcludeMode().collectAsState()
-    val tagSortByName by screenModel.libraryPreferences.tagSortByName().collectAsState()
-    val tagSortAscending by screenModel.libraryPreferences.tagSortAscending().collectAsState()
-    val tagCaseSensitive by screenModel.libraryPreferences.tagCaseSensitive().collectAsState()
+    val tagIncludeModeAnd by screenModel.libraryPreferences.tagIncludeMode.collectAsState()
+    val tagExcludeModeAnd by screenModel.libraryPreferences.tagExcludeMode.collectAsState()
+    val tagSortByName by screenModel.libraryPreferences.tagSortByName.collectAsState()
+    val tagSortAscending by screenModel.libraryPreferences.tagSortAscending.collectAsState()
+    val tagCaseSensitive by screenModel.libraryPreferences.tagCaseSensitive.collectAsState()
 
     // Tag search state
     val tagSearchQuery by screenModel.tagSearchQuery.collectAsState()
@@ -495,13 +495,13 @@ private fun ColumnScope.TagsPage(
                 Row {
                     FilterChip(
                         selected = !tagIncludeModeAnd,
-                        onClick = { screenModel.libraryPreferences.tagIncludeMode().set(false) },
+                        onClick = { screenModel.libraryPreferences.tagIncludeMode.set(false) },
                         label = { Text("OR") },
                     )
                     Spacer(Modifier.width(8.dp))
                     FilterChip(
                         selected = tagIncludeModeAnd,
-                        onClick = { screenModel.libraryPreferences.tagIncludeMode().set(true) },
+                        onClick = { screenModel.libraryPreferences.tagIncludeMode.set(true) },
                         label = { Text("AND") },
                     )
                 }
@@ -519,13 +519,13 @@ private fun ColumnScope.TagsPage(
                 Row {
                     FilterChip(
                         selected = !tagExcludeModeAnd,
-                        onClick = { screenModel.libraryPreferences.tagExcludeMode().set(false) },
+                        onClick = { screenModel.libraryPreferences.tagExcludeMode.set(false) },
                         label = { Text("OR") },
                     )
                     Spacer(Modifier.width(8.dp))
                     FilterChip(
                         selected = tagExcludeModeAnd,
-                        onClick = { screenModel.libraryPreferences.tagExcludeMode().set(true) },
+                        onClick = { screenModel.libraryPreferences.tagExcludeMode.set(true) },
                         label = { Text("AND") },
                     )
                 }
@@ -543,13 +543,13 @@ private fun ColumnScope.TagsPage(
                 Row {
                     FilterChip(
                         selected = !tagSortByName,
-                        onClick = { screenModel.libraryPreferences.tagSortByName().set(false) },
+                        onClick = { screenModel.libraryPreferences.tagSortByName.set(false) },
                         label = { Text("Count") },
                     )
                     Spacer(Modifier.width(8.dp))
                     FilterChip(
                         selected = tagSortByName,
-                        onClick = { screenModel.libraryPreferences.tagSortByName().set(true) },
+                        onClick = { screenModel.libraryPreferences.tagSortByName.set(true) },
                         label = { Text("Name") },
                     )
                 }
@@ -567,13 +567,13 @@ private fun ColumnScope.TagsPage(
                 Row {
                     FilterChip(
                         selected = !tagSortAscending,
-                        onClick = { screenModel.libraryPreferences.tagSortAscending().set(false) },
+                        onClick = { screenModel.libraryPreferences.tagSortAscending.set(false) },
                         label = { Text("Desc") },
                     )
                     Spacer(Modifier.width(8.dp))
                     FilterChip(
                         selected = tagSortAscending,
-                        onClick = { screenModel.libraryPreferences.tagSortAscending().set(true) },
+                        onClick = { screenModel.libraryPreferences.tagSortAscending.set(true) },
                         label = { Text("Asc") },
                     )
                 }
@@ -584,7 +584,7 @@ private fun ColumnScope.TagsPage(
             // Case sensitivity toggle
             CheckboxItem(
                 label = "Case sensitive matching",
-                pref = screenModel.libraryPreferences.tagCaseSensitive(),
+                pref = screenModel.libraryPreferences.tagCaseSensitive,
             )
         }
     }
@@ -741,7 +741,7 @@ private fun ColumnScope.TagsPage(
 private fun ColumnScope.ExtensionsPage(
     screenModel: LibrarySettingsScreenModel,
 ) {
-    val excludedExtensions by screenModel.libraryPreferences.excludedExtensions().collectAsState()
+    val excludedExtensions by screenModel.libraryPreferences.excludedExtensions.collectAsState()
     val availableExtensions by screenModel.extensionsFlow.collectAsState()
     val isLoading by screenModel.isLoading.collectAsState()
     var showRefreshCompleted by remember { mutableStateOf(false) }

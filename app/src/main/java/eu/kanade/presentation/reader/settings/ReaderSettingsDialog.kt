@@ -110,7 +110,7 @@ private fun NovelReaderSettingsDialog(
     onShowMenus: () -> Unit,
     screenModel: ReaderSettingsScreenModel,
 ) {
-    val renderingMode by screenModel.preferences.novelRenderingMode().collectAsState()
+    val renderingMode by screenModel.preferences.novelRenderingMode.collectAsState()
     val tabTitles = persistentListOf(
         TabTitle.Icon(imageVector = Icons.Outlined.TextFields), // Reading
         TabTitle.Icon(imageVector = Icons.Outlined.Palette), // Appearance

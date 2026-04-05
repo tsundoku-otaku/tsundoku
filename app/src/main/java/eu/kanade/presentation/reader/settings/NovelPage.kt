@@ -164,10 +164,10 @@ private val backgroundColors = listOf(
 @Composable
 internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel, renderingMode: String) {
     val context = LocalContext.current
-    val fontFamily by screenModel.preferences.novelFontFamily().collectAsState()
-    val textAlign by screenModel.preferences.novelTextAlign().collectAsState()
-    val autoSplitEnabled by screenModel.preferences.novelAutoSplitText().collectAsState()
-    val autoSplitWordCount by screenModel.preferences.novelAutoSplitWordCount().collectAsState()
+    val fontFamily by screenModel.preferences.novelFontFamily.collectAsState()
+    val textAlign by screenModel.preferences.novelTextAlign.collectAsState()
+    val autoSplitEnabled by screenModel.preferences.novelAutoSplitText.collectAsState()
+    val autoSplitWordCount by screenModel.preferences.novelAutoSplitWordCount.collectAsState()
 
     // Load custom fonts from FontManager
     val fontManager = remember { FontManager(context) }
@@ -184,7 +184,7 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
         renderingModes.map { (labelRes, value) ->
             FilterChip(
                 selected = renderingMode == value,
-                onClick = { screenModel.preferences.novelRenderingMode().set(value) },
+                onClick = { screenModel.preferences.novelRenderingMode.set(value) },
                 label = { Text(stringResource(labelRes)) },
             )
         }
@@ -195,15 +195,15 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
         label = stringResource(TDMR.strings.pref_font_family),
         options = allFonts,
         selected = fontFamily,
-        onSelect = { screenModel.preferences.novelFontFamily().set(it) },
-        defaultValue = screenModel.preferences.novelFontFamily().defaultValue(),
+        onSelect = { screenModel.preferences.novelFontFamily.set(it) },
+        defaultValue = screenModel.preferences.novelFontFamily.defaultValue(),
     )
 
     // Use Original Fonts (WebView mode only)
     if (renderingMode == "webview") {
         CheckboxItem(
             label = stringResource(TDMR.strings.pref_novel_use_original_fonts),
-            pref = screenModel.preferences.novelUseOriginalFonts(),
+            pref = screenModel.preferences.novelUseOriginalFonts,
         )
     }
 
@@ -212,7 +212,7 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
         textAlignments.forEach { (icon, value) ->
             IconToggleButton(
                 checked = textAlign == value,
-                onCheckedChange = { screenModel.preferences.novelTextAlign().set(value) },
+                onCheckedChange = { screenModel.preferences.novelTextAlign.set(value) },
                 colors = IconButtonDefaults.iconToggleButtonColors(
                     checkedContainerColor = MaterialTheme.colorScheme.primaryContainer,
                     checkedContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -226,14 +226,14 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     // Font Size
     StepperItem(
         label = stringResource(TDMR.strings.pref_font_size),
-        pref = screenModel.preferences.novelFontSize(),
+        pref = screenModel.preferences.novelFontSize,
         valueRange = 10..40,
     )
 
     // Line Height
     StepperItem(
         label = stringResource(TDMR.strings.pref_novel_line_height),
-        pref = screenModel.preferences.novelLineHeight(),
+        pref = screenModel.preferences.novelLineHeight,
         valueRange = 10..30,
         multiplier = 10,
     )
@@ -241,7 +241,7 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     // Paragraph Indentation
     StepperItem(
         label = stringResource(TDMR.strings.pref_novel_paragraph_indent),
-        pref = screenModel.preferences.novelParagraphIndent(),
+        pref = screenModel.preferences.novelParagraphIndent,
         valueRange = 0..100,
         multiplier = 10,
     )
@@ -249,7 +249,7 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     // Paragraph Spacing
     StepperItem(
         label = stringResource(TDMR.strings.pref_novel_paragraph_spacing),
-        pref = screenModel.preferences.novelParagraphSpacing(),
+        pref = screenModel.preferences.novelParagraphSpacing,
         valueRange = 0..30,
         multiplier = 10,
     )
@@ -257,22 +257,22 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     // Margins
     StepperItem(
         label = stringResource(TDMR.strings.pref_novel_margin_left),
-        pref = screenModel.preferences.novelMarginLeft(),
+        pref = screenModel.preferences.novelMarginLeft,
         valueRange = 0..100,
     )
     StepperItem(
         label = stringResource(TDMR.strings.pref_novel_margin_right),
-        pref = screenModel.preferences.novelMarginRight(),
+        pref = screenModel.preferences.novelMarginRight,
         valueRange = 0..100,
     )
     StepperItem(
         label = stringResource(TDMR.strings.pref_novel_margin_top),
-        pref = screenModel.preferences.novelMarginTop(),
+        pref = screenModel.preferences.novelMarginTop,
         valueRange = 0..300,
     )
     StepperItem(
         label = stringResource(TDMR.strings.pref_novel_margin_bottom),
-        pref = screenModel.preferences.novelMarginBottom(),
+        pref = screenModel.preferences.novelMarginBottom,
         valueRange = 0..300,
     )
 
@@ -281,7 +281,7 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     // Auto-split paragraphs
     CheckboxItem(
         label = stringResource(TDMR.strings.novel_auto_split),
-        pref = screenModel.preferences.novelAutoSplitText(),
+        pref = screenModel.preferences.novelAutoSplitText,
     )
 
     // Word count threshold (only shown when enabled)
@@ -290,16 +290,16 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
             label = stringResource(TDMR.strings.novel_split_word_count),
             value = autoSplitWordCount / 50,
             valueRange = 1..40,
-            onChange = { screenModel.preferences.novelAutoSplitWordCount().set(it * 50) },
+            onChange = { screenModel.preferences.novelAutoSplitWordCount.set(it * 50) },
         )
     }
 }
 
 @Composable
 internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenModel, renderingMode: String) {
-    val theme by screenModel.preferences.novelTheme().collectAsState()
-    val fontColor by screenModel.preferences.novelFontColor().collectAsState()
-    val backgroundColor by screenModel.preferences.novelBackgroundColor().collectAsState()
+    val theme by screenModel.preferences.novelTheme.collectAsState()
+    val fontColor by screenModel.preferences.novelFontColor.collectAsState()
+    val backgroundColor by screenModel.preferences.novelBackgroundColor.collectAsState()
     var showFontColorPicker by remember { mutableStateOf(false) }
     var showBgColorPicker by remember { mutableStateOf(false) }
 
@@ -310,7 +310,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
             initialColor = if (fontColor != 0) fontColor else 0xFF000000.toInt(),
             onDismiss = { showFontColorPicker = false },
             onConfirm = { color ->
-                screenModel.preferences.novelFontColor().set(color)
+                screenModel.preferences.novelFontColor.set(color)
                 showFontColorPicker = false
             },
         )
@@ -322,8 +322,8 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
             initialColor = if (backgroundColor != 0) backgroundColor else 0xFFFFFFFF.toInt(),
             onDismiss = { showBgColorPicker = false },
             onConfirm = { color ->
-                screenModel.preferences.novelBackgroundColor().set(color)
-                screenModel.preferences.novelTheme().set("custom")
+                screenModel.preferences.novelBackgroundColor.set(color)
+                screenModel.preferences.novelTheme.set("custom")
                 showBgColorPicker = false
             },
         )
@@ -334,7 +334,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
         novelThemes.map { (labelRes, value) ->
             FilterChip(
                 selected = theme == value,
-                onClick = { screenModel.preferences.novelTheme().set(value) },
+                onClick = { screenModel.preferences.novelTheme.set(value) },
                 label = { Text(stringResource(labelRes)) },
             )
         }
@@ -355,7 +355,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
                     if (isCustom) {
                         showFontColorPicker = true
                     } else {
-                        screenModel.preferences.novelFontColor().set(colorValue)
+                        screenModel.preferences.novelFontColor.set(colorValue)
                     }
                 },
                 label = {
@@ -414,9 +414,9 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
                     if (isCustom) {
                         showBgColorPicker = true
                     } else {
-                        screenModel.preferences.novelBackgroundColor().set(colorValue)
+                        screenModel.preferences.novelBackgroundColor.set(colorValue)
                         if (colorValue != 0) {
-                            screenModel.preferences.novelTheme().set("custom")
+                            screenModel.preferences.novelTheme.set("custom")
                         }
                     }
                 },
@@ -464,17 +464,17 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
     // Hide Chapter Title in Content
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_hide_chapter_title),
-        pref = screenModel.preferences.novelHideChapterTitle(),
+        pref = screenModel.preferences.novelHideChapterTitle,
     )
 
     // Force Lowercase Text
     CheckboxItem(
         label = stringResource(TDMR.strings.novel_force_lowercase),
-        pref = screenModel.preferences.novelForceTextLowercase(),
+        pref = screenModel.preferences.novelForceTextLowercase,
     )
 
     // Chapter Title Display Format
-    val chapterTitleDisplay by screenModel.preferences.novelChapterTitleDisplay().collectAsState()
+    val chapterTitleDisplay by screenModel.preferences.novelChapterTitleDisplay.collectAsState()
     val titleDisplayOptions = listOf(
         stringResource(MR.strings.name) to 0,
         stringResource(TDMR.strings.novel_chapter_display_number) to 1,
@@ -484,108 +484,108 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
         titleDisplayOptions.map { (label, value) ->
             FilterChip(
                 selected = chapterTitleDisplay == value,
-                onClick = { screenModel.preferences.novelChapterTitleDisplay().set(value) },
+                onClick = { screenModel.preferences.novelChapterTitleDisplay.set(value) },
                 label = { Text(label) },
             )
         }
     }
 
     // Custom Brightness
-    val novelCustomBrightness by screenModel.preferences.novelCustomBrightness().collectAsState()
+    val novelCustomBrightness by screenModel.preferences.novelCustomBrightness.collectAsState()
     CheckboxItem(
         label = stringResource(MR.strings.pref_custom_brightness),
-        pref = screenModel.preferences.novelCustomBrightness(),
+        pref = screenModel.preferences.novelCustomBrightness,
     )
 
     if (novelCustomBrightness) {
-        val novelCustomBrightnessValue by screenModel.preferences.novelCustomBrightnessValue().collectAsState()
+        val novelCustomBrightnessValue by screenModel.preferences.novelCustomBrightnessValue.collectAsState()
         SliderItem(
             value = novelCustomBrightnessValue,
             valueRange = -75..100,
             steps = 0,
             label = stringResource(MR.strings.pref_custom_brightness),
-            onChange = { screenModel.preferences.novelCustomBrightnessValue().set(it) },
+            onChange = { screenModel.preferences.novelCustomBrightnessValue.set(it) },
         )
     }
 
     // Keep Screen On
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_keep_screen_on),
-        pref = screenModel.preferences.novelKeepScreenOn(),
+        pref = screenModel.preferences.novelKeepScreenOn,
     )
 
     // Block Media (images, videos, audio)
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_block_media),
-        pref = screenModel.preferences.novelBlockMedia(),
+        pref = screenModel.preferences.novelBlockMedia,
     )
 
     // Show Raw HTML (TextView only) - for debugging
     if (renderingMode == "default") {
         CheckboxItem(
             label = stringResource(TDMR.strings.pref_novel_show_raw_html),
-            pref = screenModel.preferences.novelShowRawHtml(),
+            pref = screenModel.preferences.novelShowRawHtml,
         )
     }
 }
 
 @Composable
 internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel, renderingMode: String) {
-    val autoScrollSpeed by screenModel.preferences.novelAutoScrollSpeed().collectAsState()
-    val chapterSortOrder by screenModel.preferences.novelChapterSortOrder().collectAsState()
+    val autoScrollSpeed by screenModel.preferences.novelAutoScrollSpeed.collectAsState()
+    val chapterSortOrder by screenModel.preferences.novelChapterSortOrder.collectAsState()
 
     // Auto Scroll Speed
     SliderItem(
         label = stringResource(TDMR.strings.pref_novel_auto_scroll_speed),
         value = autoScrollSpeed,
         valueRange = 1..10,
-        onChange = { screenModel.preferences.novelAutoScrollSpeed().set(it) },
+        onChange = { screenModel.preferences.novelAutoScrollSpeed.set(it) },
     )
 
     // Volume Keys to Scroll
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_volume_keys_scroll),
-        pref = screenModel.preferences.novelVolumeKeysScroll(),
+        pref = screenModel.preferences.novelVolumeKeysScroll,
     )
 
     // Tap to Scroll
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_tap_to_scroll),
-        pref = screenModel.preferences.novelTapToScroll(),
+        pref = screenModel.preferences.novelTapToScroll,
     )
 
     // Swipe Navigation
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_swipe_navigation),
-        pref = screenModel.preferences.novelSwipeNavigation(),
+        pref = screenModel.preferences.novelSwipeNavigation,
     )
 
     // Text Selection
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_text_selectable),
-        pref = screenModel.preferences.novelTextSelectable(),
+        pref = screenModel.preferences.novelTextSelectable,
     )
 
     // Progress Slider
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_progress_slider),
-        pref = screenModel.preferences.novelShowProgressSlider(),
+        pref = screenModel.preferences.novelShowProgressSlider,
     )
 
     // Infinite Scroll
-    val infiniteScrollEnabled by screenModel.preferences.novelInfiniteScroll().collectAsState()
+    val infiniteScrollEnabled by screenModel.preferences.novelInfiniteScroll.collectAsState()
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_infinite_scroll),
         checked = infiniteScrollEnabled,
-        onClick = { screenModel.preferences.novelInfiniteScroll().set(!infiniteScrollEnabled) },
+        onClick = { screenModel.preferences.novelInfiniteScroll.set(!infiniteScrollEnabled) },
     )
 
     // Auto-load next chapter at percentage (only relevant when infinite scroll is enabled)
-    val autoLoadAt by screenModel.preferences.novelAutoLoadNextChapterAt().collectAsState()
+    val autoLoadAt by screenModel.preferences.novelAutoLoadNextChapterAt.collectAsState()
     LaunchedEffect(autoLoadAt) {
         // Older installs may have persisted 0; treat it as legacy/unset and normalize to default.
         if (autoLoadAt <= 0) {
-            screenModel.preferences.novelAutoLoadNextChapterAt().set(95)
+            screenModel.preferences.novelAutoLoadNextChapterAt.set(95)
         }
     }
     if (infiniteScrollEnabled) {
@@ -595,7 +595,7 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
             value = effectiveAutoLoadAt,
             valueRange = 1..99,
             valueString = "$effectiveAutoLoadAt%",
-            onChange = { screenModel.preferences.novelAutoLoadNextChapterAt().set(it) },
+            onChange = { screenModel.preferences.novelAutoLoadNextChapterAt.set(it) },
         )
     }
 
@@ -608,7 +608,7 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         sortOrderOptions.map { (label, value) ->
             FilterChip(
                 selected = chapterSortOrder == value,
-                onClick = { screenModel.preferences.novelChapterSortOrder().set(value) },
+                onClick = { screenModel.preferences.novelChapterSortOrder.set(value) },
                 label = { Text(label) },
             )
         }
@@ -657,17 +657,17 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
     if (isEpub) {
         CheckboxItem(
             label = "Enable EPUB CSS",
-            pref = screenModel.preferences.enableEpubStyles(),
+            pref = screenModel.preferences.enableEpubStyles,
         )
 
         CheckboxItem(
             label = "Enable EPUB JS",
-            pref = screenModel.preferences.enableEpubJs(),
+            pref = screenModel.preferences.enableEpubJs,
         )
     }
 
-    val cssSnippetsJson by screenModel.preferences.novelCustomCssSnippets().collectAsState()
-    val jsSnippetsJson by screenModel.preferences.novelCustomJsSnippets().collectAsState()
+    val cssSnippetsJson by screenModel.preferences.novelCustomCssSnippets.collectAsState()
+    val jsSnippetsJson by screenModel.preferences.novelCustomJsSnippets.collectAsState()
 
     var showCssDialog by remember { mutableStateOf(false) }
     var showJsDialog by remember { mutableStateOf(false) }
@@ -698,13 +698,13 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
         onEditClick = { index, snippet -> editingCssSnippet = index to snippet },
         onDeleteClick = { index ->
             val updated = cssSnippets.toMutableList().apply { removeAt(index) }
-            screenModel.preferences.novelCustomCssSnippets().set(Json.encodeToString(updated))
+            screenModel.preferences.novelCustomCssSnippets.set(Json.encodeToString(updated))
         },
         onToggleClick = { index ->
             val updated = cssSnippets.toMutableList().apply {
                 this[index] = this[index].copy(enabled = !this[index].enabled)
             }
-            screenModel.preferences.novelCustomCssSnippets().set(Json.encodeToString(updated))
+            screenModel.preferences.novelCustomCssSnippets.set(Json.encodeToString(updated))
         },
     )
 
@@ -716,13 +716,13 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
         onEditClick = { index, snippet -> editingJsSnippet = index to snippet },
         onDeleteClick = { index ->
             val updated = jsSnippets.toMutableList().apply { removeAt(index) }
-            screenModel.preferences.novelCustomJsSnippets().set(Json.encodeToString(updated))
+            screenModel.preferences.novelCustomJsSnippets.set(Json.encodeToString(updated))
         },
         onToggleClick = { index ->
             val updated = jsSnippets.toMutableList().apply {
                 this[index] = this[index].copy(enabled = !this[index].enabled)
             }
-            screenModel.preferences.novelCustomJsSnippets().set(Json.encodeToString(updated))
+            screenModel.preferences.novelCustomJsSnippets.set(Json.encodeToString(updated))
         },
     )
 
@@ -746,7 +746,7 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
                 } else {
                     updated.add(snippet)
                 }
-                screenModel.preferences.novelCustomCssSnippets().set(Json.encodeToString(updated))
+                screenModel.preferences.novelCustomCssSnippets.set(Json.encodeToString(updated))
                 showCssDialog = false
                 editingCssSnippet = null
             },
@@ -773,7 +773,7 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
                 } else {
                     updated.add(snippet)
                 }
-                screenModel.preferences.novelCustomJsSnippets().set(Json.encodeToString(updated))
+                screenModel.preferences.novelCustomJsSnippets.set(Json.encodeToString(updated))
                 showJsDialog = false
                 editingJsSnippet = null
             },
@@ -837,7 +837,13 @@ private fun SnippetSection(
                             },
                         )
                         Text(
-                            text = if (snippet.enabled) stringResource(TDMR.strings.novel_enabled) else stringResource(TDMR.strings.novel_disabled),
+                            text = if (snippet.enabled) {
+                                stringResource(
+                                    TDMR.strings.novel_enabled,
+                                )
+                            } else {
+                                stringResource(TDMR.strings.novel_disabled)
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = if (snippet.enabled) {
                                 MaterialTheme.colorScheme.primary
@@ -932,7 +938,7 @@ private fun SnippetEditDialog(
  */
 @Composable
 private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScreenModel) {
-    val regexJson by screenModel.preferences.novelRegexReplacements().collectAsState()
+    val regexJson by screenModel.preferences.novelRegexReplacements.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<Pair<Int, RegexReplacement>?>(null) }
@@ -976,7 +982,7 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                         val updated = rules.toMutableList().apply {
                             this[index] = this[index].copy(enabled = !this[index].enabled)
                         }
-                        screenModel.preferences.novelRegexReplacements().set(Json.encodeToString(updated))
+                        screenModel.preferences.novelRegexReplacements.set(Json.encodeToString(updated))
                     },
             ) {
                 Row(
@@ -1023,7 +1029,7 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                         }
                         IconButton(onClick = {
                             val updated = rules.toMutableList().apply { removeAt(index) }
-                            screenModel.preferences.novelRegexReplacements().set(Json.encodeToString(updated))
+                            screenModel.preferences.novelRegexReplacements.set(Json.encodeToString(updated))
                         }) {
                             Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.strings.action_delete))
                         }
@@ -1056,7 +1062,7 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                 } else {
                     updated.add(rule)
                 }
-                screenModel.preferences.novelRegexReplacements().set(Json.encodeToString(updated))
+                screenModel.preferences.novelRegexReplacements.set(Json.encodeToString(updated))
                 showAddDialog = false
                 editingRule = null
             },
@@ -1086,7 +1092,15 @@ private fun RegexEditDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(if (initialRule != null) stringResource(TDMR.strings.novel_edit_rule) else stringResource(TDMR.strings.novel_add_rule_title))
+            Text(
+                if (initialRule !=
+                    null
+                ) {
+                    stringResource(TDMR.strings.novel_edit_rule)
+                } else {
+                    stringResource(TDMR.strings.novel_add_rule_title)
+                },
+            )
         },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
@@ -1104,7 +1118,17 @@ private fun RegexEditDialog(
                         testOutput = null
                         testError = null
                     },
-                    label = { Text(if (isRegex) stringResource(TDMR.strings.novel_regex_pattern) else stringResource(TDMR.strings.novel_find_text)) },
+                    label = {
+                        Text(
+                            if (isRegex) {
+                                stringResource(
+                                    TDMR.strings.novel_regex_pattern,
+                                )
+                            } else {
+                                stringResource(TDMR.strings.novel_find_text)
+                            },
+                        )
+                    },
                     singleLine = false,
                     maxLines = 3,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -1227,9 +1251,9 @@ private fun RegexEditDialog(
 @Composable
 private fun ColumnScope.TtsSettingsSection(screenModel: ReaderSettingsScreenModel) {
     val context = LocalContext.current
-    val ttsSpeed by screenModel.preferences.novelTtsSpeed().collectAsState()
-    val ttsPitch by screenModel.preferences.novelTtsPitch().collectAsState()
-    val ttsVoice by screenModel.preferences.novelTtsVoice().collectAsState()
+    val ttsSpeed by screenModel.preferences.novelTtsSpeed.collectAsState()
+    val ttsPitch by screenModel.preferences.novelTtsPitch.collectAsState()
+    val ttsVoice by screenModel.preferences.novelTtsVoice.collectAsState()
 
     // Load available voices using TTS
     val availableVoices = remember { mutableStateListOf<Pair<String, String>>() }
@@ -1299,7 +1323,7 @@ private fun ColumnScope.TtsSettingsSection(screenModel: ReaderSettingsScreenMode
                         DropdownMenuItem(
                             text = { Text(displayName) },
                             onClick = {
-                                screenModel.preferences.novelTtsVoice().set(voiceName)
+                                screenModel.preferences.novelTtsVoice.set(voiceName)
                                 expanded = false
                             },
                         )
@@ -1314,7 +1338,7 @@ private fun ColumnScope.TtsSettingsSection(screenModel: ReaderSettingsScreenMode
         label = stringResource(TDMR.strings.pref_novel_tts_speed),
         value = (ttsSpeed * 10).toInt(),
         valueRange = 5..20,
-        onChange = { screenModel.preferences.novelTtsSpeed().set(it / 10f) },
+        onChange = { screenModel.preferences.novelTtsSpeed.set(it / 10f) },
         valueString = String.format("%.1fx", ttsSpeed),
     )
 
@@ -1323,14 +1347,14 @@ private fun ColumnScope.TtsSettingsSection(screenModel: ReaderSettingsScreenMode
         label = stringResource(TDMR.strings.pref_novel_tts_pitch),
         value = (ttsPitch * 10).toInt(),
         valueRange = 5..20,
-        onChange = { screenModel.preferences.novelTtsPitch().set(it / 10f) },
+        onChange = { screenModel.preferences.novelTtsPitch.set(it / 10f) },
         valueString = String.format("%.1fx", ttsPitch),
     )
 
     // Auto-play next chapter
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_tts_auto_next),
-        pref = screenModel.preferences.novelTtsAutoNextChapter(),
+        pref = screenModel.preferences.novelTtsAutoNextChapter,
     )
 }
 

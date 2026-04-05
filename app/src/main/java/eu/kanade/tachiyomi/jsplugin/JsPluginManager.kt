@@ -247,9 +247,9 @@ class JsPluginManager(
             // Auto-enable the plugin's language so the source appears in Novel Sources tab
             val langCode = plugin.langCode()
             if (langCode.isNotEmpty()) {
-                val currentLangs = sourcePreferences.enabledLanguages().get()
+                val currentLangs = sourcePreferences.enabledLanguages.get()
                 if (langCode !in currentLangs) {
-                    sourcePreferences.enabledLanguages().set(currentLangs + langCode)
+                    sourcePreferences.enabledLanguages.set(currentLangs + langCode)
                     logcat(LogPriority.INFO) { "Auto-enabled language '$langCode' for plugin ${plugin.name}" }
                 }
             }
@@ -338,9 +338,9 @@ class JsPluginManager(
 
             val langCode = plugin.langCode()
             if (langCode.isNotEmpty()) {
-                val currentLangs = sourcePreferences.enabledLanguages().get()
+                val currentLangs = sourcePreferences.enabledLanguages.get()
                 if (langCode !in currentLangs) {
-                    sourcePreferences.enabledLanguages().set(currentLangs + langCode)
+                    sourcePreferences.enabledLanguages.set(currentLangs + langCode)
                 }
             }
 
@@ -621,7 +621,7 @@ class JsPluginManager(
      */
     private fun loadRepositoriesFromPrefs() {
         try {
-            val json2 = sourcePreferences.jsRepositoriesBackup().get()
+            val json2 = sourcePreferences.jsRepositoriesBackup.get()
             if (json2.isNotBlank()) {
                 val repos = json.decodeFromString<List<JsPluginRepository>>(json2)
                 _repositories.value = repos.distinctBy { it.url }
@@ -637,7 +637,7 @@ class JsPluginManager(
     private fun saveRepositories() {
         try {
             val jsonContent = json.encodeToString(_repositories.value)
-            sourcePreferences.jsRepositoriesBackup().set(jsonContent)
+            sourcePreferences.jsRepositoriesBackup.set(jsonContent)
             logcat(LogPriority.DEBUG) { "Saved ${_repositories.value.size} repositories to SharedPreferences" }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to save repositories to SharedPreferences" }

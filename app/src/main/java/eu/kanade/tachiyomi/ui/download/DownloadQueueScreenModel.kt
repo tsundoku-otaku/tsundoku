@@ -76,8 +76,8 @@ class DownloadQueueScreenModel(
     // Track the initial total for each manga to show accurate progress
     private val initialTotals = mutableMapOf<Long, Int>()
 
-    val titleMaxLines = libraryPreferences.titleMaxLines().changes()
-        .stateIn(screenModelScope, SharingStarted.Lazily, libraryPreferences.titleMaxLines().get())
+    val titleMaxLines = libraryPreferences.titleMaxLines.changes()
+        .stateIn(screenModelScope, SharingStarted.Lazily, libraryPreferences.titleMaxLines.get())
 
     lateinit var controllerBinding: DownloadListBinding
 

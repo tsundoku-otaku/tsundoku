@@ -158,7 +158,9 @@ private fun ExtensionContent(
     FastScrollLazyColumn(
         contentPadding = contentPadding + topSmallPaddingValues,
     ) {
-        if (!installGranted && state.installer?.requiresSystemPermission == true && state.items.any { (_, items) -> items.any { it.extension is Extension.Available } }) {
+        if (!installGranted && state.installer?.requiresSystemPermission == true &&
+            state.items.any { (_, items) -> items.any { it.extension is Extension.Available } }
+        ) {
             item(key = "extension-permissions-warning") {
                 WarningBanner(
                     textRes = MR.strings.ext_permission_install_apps_warning,
@@ -210,11 +212,19 @@ private fun ExtensionContent(
                 items = items,
                 contentType = { "item" },
                 key = { item ->
-                    when (item.extension) {
-                        is Extension.Untrusted -> "extension-untrusted-${item.hashCode()}"
-                        is Extension.Installed -> "extension-installed-${item.hashCode()}"
-                        is Extension.Available -> "extension-available-${item.hashCode()}"
-                        is Extension.JsPlugin -> "extension-js-${item.hashCode()}"
+                    when (val extension = item.extension) {
+                        is Extension.Untrusted -> {
+                            "extension-untrusted-${extension.pkgName}-${extension.versionCode}-${extension.signatureHash}"
+                        }
+                        is Extension.Installed -> {
+                            "extension-installed-${extension.pkgName}-${extension.versionCode}-${extension.hasUpdate}-${extension.isObsolete}"
+                        }
+                        is Extension.Available -> {
+                            "extension-available-${extension.pkgName}-${extension.versionCode}-${extension.repoUrl}"
+                        }
+                        is Extension.JsPlugin -> {
+                            "extension-js-${extension.pkgName}-${extension.versionCode}-${extension.repoUrl}-${extension.isInstalled}-${extension.hasUpdate}"
+                        }
                     }
                 },
             ) { item ->

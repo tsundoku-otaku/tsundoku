@@ -456,7 +456,15 @@ fun ElementSelectorScreen(
                     )
                 },
                 text = {
-                    Text(if (selectionModeEnabled) stringResource(TDMR.strings.selector_selection_on) else stringResource(TDMR.strings.selector_select_element))
+                    Text(
+                        if (selectionModeEnabled) {
+                            stringResource(
+                                TDMR.strings.selector_selection_on,
+                            )
+                        } else {
+                            stringResource(TDMR.strings.selector_select_element)
+                        },
+                    )
                 },
             )
         },
@@ -741,7 +749,10 @@ private fun StepInstructionCard(
                 Row {
                     if (onSkipStep != null) {
                         TextButton(onClick = onSkipStep) {
-                            Text(stringResource(TDMR.strings.custom_selector_skip), color = MaterialTheme.colorScheme.tertiary)
+                            Text(
+                                stringResource(TDMR.strings.custom_selector_skip),
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
                         }
                     }
                     if (selectedCount > 0) {
@@ -883,7 +894,11 @@ private fun SelectedElementsPanel(
                     }
                     Row {
                         IconButton(onClick = { onHighlight(element) }) {
-                            Icon(Icons.Filled.TouchApp, stringResource(TDMR.strings.selector_select_element), Modifier.height(20.dp))
+                            Icon(
+                                Icons.Filled.TouchApp,
+                                stringResource(TDMR.strings.selector_select_element),
+                                Modifier.height(20.dp),
+                            )
                         }
                         IconButton(onClick = { onRemove(element) }) {
                             Icon(Icons.Filled.Delete, stringResource(MR.strings.action_delete), Modifier.height(20.dp))
@@ -1039,7 +1054,13 @@ private fun SelectorConfirmDialog(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (showHtml) stringResource(TDMR.strings.selector_hide_html) else stringResource(TDMR.strings.selector_show_html),
+                        text = if (showHtml) {
+                            stringResource(
+                                TDMR.strings.selector_hide_html,
+                            )
+                        } else {
+                            stringResource(TDMR.strings.selector_show_html)
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1309,7 +1330,10 @@ private fun PatternLibraryDialog(
                     )
                 } else {
                     Text(
-                        text = stringResource(TDMR.strings.selector_suggested_format, stringResource(currentStep.titleRes)),
+                        text = stringResource(
+                            TDMR.strings.selector_suggested_format,
+                            stringResource(currentStep.titleRes),
+                        ),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                     )

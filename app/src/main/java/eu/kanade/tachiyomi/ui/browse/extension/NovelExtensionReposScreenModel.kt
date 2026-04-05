@@ -46,7 +46,7 @@ class NovelExtensionReposScreenModel(
             combine(
                 jsPluginManager.repositories,
                 getExtensionRepo.subscribeAll(),
-                sourcePreferences.disabledExtensionRepos().changes(),
+                sourcePreferences.disabledExtensionRepos.changes(),
             ) { jsRepos, kotlinRepos, disabledKotlinRepos ->
                 NovelRepoScreenState.Success(
                     jsRepos = jsRepos.toImmutableList(),
@@ -108,8 +108,8 @@ class NovelExtensionReposScreenModel(
     fun deleteKotlinRepo(baseUrl: String) {
         screenModelScope.launchIO {
             deleteExtensionRepo.await(baseUrl)
-            sourcePreferences.disabledExtensionRepos().set(
-                sourcePreferences.disabledExtensionRepos().get() - baseUrl,
+            sourcePreferences.disabledExtensionRepos.set(
+                sourcePreferences.disabledExtensionRepos.get() - baseUrl,
             )
             extensionManager.findAvailableExtensions()
             dismissDialog()
@@ -121,8 +121,8 @@ class NovelExtensionReposScreenModel(
     }
 
     fun setKotlinRepoEnabled(baseUrl: String, enabled: Boolean) {
-        sourcePreferences.disabledExtensionRepos().set(
-            sourcePreferences.disabledExtensionRepos().get().let { disabledRepos ->
+        sourcePreferences.disabledExtensionRepos.set(
+            sourcePreferences.disabledExtensionRepos.get().let { disabledRepos ->
                 if (enabled) disabledRepos - baseUrl else disabledRepos + baseUrl
             },
         )
@@ -131,7 +131,7 @@ class NovelExtensionReposScreenModel(
     fun refreshRepos() {
         screenModelScope.launchIO {
             jsPluginManager.refreshAvailablePlugins(forceRefresh = true)
-            val disabledRepos = sourcePreferences.disabledExtensionRepos().get()
+            val disabledRepos = sourcePreferences.disabledExtensionRepos.get()
             val enabledRepos = getExtensionRepo.getAll().filterNot { it.baseUrl in disabledRepos }
             updateExtensionRepo.awaitAll(enabledRepos)
         }

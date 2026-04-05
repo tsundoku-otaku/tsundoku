@@ -46,27 +46,27 @@ object SettingsBrowseScreen : SearchableSettings {
                 title = stringResource(MR.strings.label_sources),
                 preferenceItems = persistentListOf(
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = sourcePreferences.hideInLibraryItems(),
+                        preference = sourcePreferences.hideInLibraryItems,
                         title = stringResource(MR.strings.pref_hide_in_library_items),
                     ),
                     Preference.PreferenceItem.ListPreference(
-                        preference = sourcePreferences.pageLoadDelay(),
+                        preference = sourcePreferences.pageLoadDelay,
                         title = "Page load delay",
                         subtitle = "Delay between loading pages (helps with rate limits)",
                         entries = (0..15).associate { it to "${it}s" }.toImmutableMap(),
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = sourcePreferences.showPageNumber(),
+                        preference = sourcePreferences.showPageNumber,
                         title = "Show page number",
                         subtitle = "Display current page number with jump navigation",
                     ),
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = sourcePreferences.skipCoverLoading(),
+                        preference = sourcePreferences.skipCoverLoading,
                         title = "Skip cover loading",
                         subtitle = "Don't load cover images in browse to save bandwidth",
                     ),
                     Preference.PreferenceItem.ListPreference(
-                        preference = sourcePreferences.confirmBackAfterPages(),
+                        preference = sourcePreferences.confirmBackAfterPages,
                         title = "Confirm back after pages",
                         subtitle = "Show confirmation dialog when going back after loading many pages",
                         entries = mapOf(
@@ -90,7 +90,7 @@ object SettingsBrowseScreen : SearchableSettings {
                 title = stringResource(MR.strings.pref_category_nsfw_content),
                 preferenceItems = persistentListOf(
                     Preference.PreferenceItem.SwitchPreference(
-                        preference = sourcePreferences.showNsfwSource(),
+                        preference = sourcePreferences.showNsfwSource,
                         title = stringResource(MR.strings.pref_show_nsfw_source),
                         subtitle = stringResource(MR.strings.requires_app_restart),
                         onValueChanged = {

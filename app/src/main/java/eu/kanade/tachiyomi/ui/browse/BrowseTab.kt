@@ -69,8 +69,8 @@ data object BrowseTab : Tab {
         val context = LocalContext.current
         val basePreferences = remember { Injekt.get<BasePreferences>() }
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
-        val hideMangaUi by basePreferences.hideMangaUi().collectAsState()
-        val isJoined by libraryPreferences.joinedLibrary().collectAsState()
+        val hideMangaUi by basePreferences.hideMangaUi.collectAsState()
+        val isJoined by libraryPreferences.joinedLibrary.collectAsState()
         val hideMangaBrowseTabs = hideMangaUi || isJoined
 
         // Hoisted for extensions tab's search bar

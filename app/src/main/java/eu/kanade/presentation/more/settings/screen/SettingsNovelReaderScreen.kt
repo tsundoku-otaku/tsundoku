@@ -24,18 +24,18 @@ object SettingsNovelReaderScreen : SearchableSettings {
     override fun getAdditionalResetPreferences(): List<tachiyomi.core.common.preference.Preference<*>> {
         val readerPref = remember { Injekt.get<ReaderPreferences>() }
         return listOf(
-            readerPref.novelFontSize(),
-            readerPref.novelLineHeight(),
-            readerPref.novelAutoScrollSpeed(),
-            readerPref.novelParagraphIndent(),
-            readerPref.novelParagraphSpacing(),
-            readerPref.novelMarginLeft(),
-            readerPref.novelMarginRight(),
-            readerPref.novelMarginTop(),
-            readerPref.novelMarginBottom(),
-            readerPref.novelAutoLoadNextChapterAt(),
-            readerPref.novelTtsSpeed(),
-            readerPref.novelTtsPitch(),
+            readerPref.novelFontSize,
+            readerPref.novelLineHeight,
+            readerPref.novelAutoScrollSpeed,
+            readerPref.novelParagraphIndent,
+            readerPref.novelParagraphSpacing,
+            readerPref.novelMarginLeft,
+            readerPref.novelMarginRight,
+            readerPref.novelMarginTop,
+            readerPref.novelMarginBottom,
+            readerPref.novelAutoLoadNextChapterAt,
+            readerPref.novelTtsSpeed,
+            readerPref.novelTtsPitch,
         )
     }
 
@@ -65,7 +65,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
             title = stringResource(MR.strings.pref_category_display),
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.ListPreference(
-                    preference = readerPreferences.novelTheme(),
+                    preference = readerPreferences.novelTheme,
                     entries = mapOf(
                         "light" to "Light",
                         "dark" to "Dark",
@@ -76,7 +76,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     title = stringResource(TDMR.strings.pref_novel_theme),
                 ),
                 Preference.PreferenceItem.ListPreference(
-                    preference = readerPreferences.novelRenderingMode(),
+                    preference = readerPreferences.novelRenderingMode,
                     entries = mapOf(
                         "default" to "Native (TextView)",
                         "webview" to "WebView",
@@ -84,23 +84,23 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     title = "Rendering mode",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.fullscreen(),
+                    preference = readerPreferences.fullscreen,
                     title = stringResource(MR.strings.pref_fullscreen),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.showPageNumber(),
+                    preference = readerPreferences.showPageNumber,
                     title = stringResource(MR.strings.pref_show_page_number),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelShowProgressSlider(),
+                    preference = readerPreferences.novelShowProgressSlider,
                     title = "Show progress slider",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelKeepScreenOn(),
+                    preference = readerPreferences.novelKeepScreenOn,
                     title = "Keep screen on",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelCustomBrightness(),
+                    preference = readerPreferences.novelCustomBrightness,
                     title = "Custom brightness",
                 ),
             ),
@@ -112,8 +112,8 @@ object SettingsNovelReaderScreen : SearchableSettings {
         readerPreferences: ReaderPreferences,
         navigator: cafe.adriel.voyager.navigator.Navigator,
     ): Preference.PreferenceGroup {
-        val fontSize = readerPreferences.novelFontSize().collectAsState().value
-        val lineHeight = readerPreferences.novelLineHeight().collectAsState().value
+        val fontSize = readerPreferences.novelFontSize.collectAsState().value
+        val lineHeight = readerPreferences.novelLineHeight.collectAsState().value
 
         return Preference.PreferenceGroup(
             title = "Text",
@@ -124,11 +124,11 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     title = stringResource(TDMR.strings.pref_font_size),
                     valueString = "${fontSize}px",
                     onValueChanged = {
-                        readerPreferences.novelFontSize().set(it)
+                        readerPreferences.novelFontSize.set(it)
                     },
                 ),
                 Preference.PreferenceItem.ListPreference(
-                    preference = readerPreferences.novelFontFamily(),
+                    preference = readerPreferences.novelFontFamily,
                     entries = mapOf(
                         "sans-serif" to "Sans Serif",
                         "serif" to "Serif",
@@ -150,11 +150,11 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     title = stringResource(TDMR.strings.pref_novel_line_height),
                     valueString = "${lineHeight}x",
                     onValueChanged = {
-                        readerPreferences.novelLineHeight().set(it / 10f)
+                        readerPreferences.novelLineHeight.set(it / 10f)
                     },
                 ),
                 Preference.PreferenceItem.ListPreference(
-                    preference = readerPreferences.novelTextAlign(),
+                    preference = readerPreferences.novelTextAlign,
                     entries = mapOf(
                         "left" to "Left",
                         "center" to "Center",
@@ -164,12 +164,12 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     title = stringResource(TDMR.strings.pref_novel_text_align),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelForceTextLowercase(),
+                    preference = readerPreferences.novelForceTextLowercase,
                     title = "Force lowercase",
                     subtitle = "Convert all text to lowercase",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelUseOriginalFonts(),
+                    preference = readerPreferences.novelUseOriginalFonts,
                     title = "Use original fonts (WebView only)",
                     subtitle = "Preserve fonts from the source website",
                 ),
@@ -183,15 +183,15 @@ object SettingsNovelReaderScreen : SearchableSettings {
             title = stringResource(MR.strings.pref_reader_navigation),
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelVolumeKeysScroll(),
+                    preference = readerPreferences.novelVolumeKeysScroll,
                     title = stringResource(TDMR.strings.pref_novel_volume_keys_scroll),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelTapToScroll(),
+                    preference = readerPreferences.novelTapToScroll,
                     title = stringResource(TDMR.strings.pref_novel_tap_to_scroll),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelSwipeNavigation(),
+                    preference = readerPreferences.novelSwipeNavigation,
                     title = "Swipe navigation",
                     subtitle = "Swipe left/right to change chapters",
                 ),
@@ -201,7 +201,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
     @Composable
     private fun getAutoScrollGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
-        val autoScrollSpeed = readerPreferences.novelAutoScrollSpeed().collectAsState().value
+        val autoScrollSpeed = readerPreferences.novelAutoScrollSpeed.collectAsState().value
 
         return Preference.PreferenceGroup(
             title = stringResource(TDMR.strings.pref_novel_auto_scroll),
@@ -212,7 +212,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     title = stringResource(TDMR.strings.pref_novel_auto_scroll_speed),
                     valueString = "${autoScrollSpeed}s per screen",
                     onValueChanged = {
-                        readerPreferences.novelAutoScrollSpeed().set(it)
+                        readerPreferences.novelAutoScrollSpeed.set(it)
                     },
                 ),
             ),
@@ -221,12 +221,12 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
     @Composable
     private fun getFormattingGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
-        val paragraphIndent = readerPreferences.novelParagraphIndent().collectAsState().value
-        val paragraphSpacing = readerPreferences.novelParagraphSpacing().collectAsState().value
-        val marginLeft = readerPreferences.novelMarginLeft().collectAsState().value
-        val marginRight = readerPreferences.novelMarginRight().collectAsState().value
-        val marginTop = readerPreferences.novelMarginTop().collectAsState().value
-        val marginBottom = readerPreferences.novelMarginBottom().collectAsState().value
+        val paragraphIndent = readerPreferences.novelParagraphIndent.collectAsState().value
+        val paragraphSpacing = readerPreferences.novelParagraphSpacing.collectAsState().value
+        val marginLeft = readerPreferences.novelMarginLeft.collectAsState().value
+        val marginRight = readerPreferences.novelMarginRight.collectAsState().value
+        val marginTop = readerPreferences.novelMarginTop.collectAsState().value
+        val marginBottom = readerPreferences.novelMarginBottom.collectAsState().value
 
         return Preference.PreferenceGroup(
             title = "Formatting",
@@ -236,42 +236,42 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     valueRange = 0..50,
                     title = "Paragraph indent",
                     valueString = "${paragraphIndent}em",
-                    onValueChanged = { readerPreferences.novelParagraphIndent().set(it / 10f) },
+                    onValueChanged = { readerPreferences.novelParagraphIndent.set(it / 10f) },
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = (paragraphSpacing * 10).toInt(),
                     valueRange = 0..30,
                     title = "Paragraph spacing",
                     valueString = "${paragraphSpacing}em",
-                    onValueChanged = { readerPreferences.novelParagraphSpacing().set(it / 10f) },
+                    onValueChanged = { readerPreferences.novelParagraphSpacing.set(it / 10f) },
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = marginLeft,
                     valueRange = 0..64,
                     title = "Margin left",
                     valueString = "${marginLeft}dp",
-                    onValueChanged = { readerPreferences.novelMarginLeft().set(it) },
+                    onValueChanged = { readerPreferences.novelMarginLeft.set(it) },
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = marginRight,
                     valueRange = 0..64,
                     title = "Margin right",
                     valueString = "${marginRight}dp",
-                    onValueChanged = { readerPreferences.novelMarginRight().set(it) },
+                    onValueChanged = { readerPreferences.novelMarginRight.set(it) },
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = marginTop,
                     valueRange = 0..64,
                     title = "Margin top",
                     valueString = "${marginTop}dp",
-                    onValueChanged = { readerPreferences.novelMarginTop().set(it) },
+                    onValueChanged = { readerPreferences.novelMarginTop.set(it) },
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = marginBottom,
                     valueRange = 0..64,
                     title = "Margin bottom",
                     valueString = "${marginBottom}dp",
-                    onValueChanged = { readerPreferences.novelMarginBottom().set(it) },
+                    onValueChanged = { readerPreferences.novelMarginBottom.set(it) },
                 ),
             ),
         )
@@ -279,14 +279,14 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
     @Composable
     private fun getContentGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
-        val autoLoadNextAt = readerPreferences.novelAutoLoadNextChapterAt().collectAsState().value
-        val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold().collectAsState().value
+        val autoLoadNextAt = readerPreferences.novelAutoLoadNextChapterAt.collectAsState().value
+        val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.collectAsState().value
 
         return Preference.PreferenceGroup(
             title = "Content",
             preferenceItems = persistentListOf(
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelInfiniteScroll(),
+                    preference = readerPreferences.novelInfiniteScroll,
                     title = "Infinite scroll",
                     subtitle = "Load next chapter automatically while scrolling",
                 ),
@@ -295,32 +295,32 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     valueRange = 50..100,
                     title = "Auto-load next chapter at",
                     valueString = "$autoLoadNextAt%",
-                    onValueChanged = { readerPreferences.novelAutoLoadNextChapterAt().set(it) },
+                    onValueChanged = { readerPreferences.novelAutoLoadNextChapterAt.set(it) },
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = markAsReadThreshold,
                     valueRange = 50..100,
                     title = "Mark chapter as read at",
                     valueString = "$markAsReadThreshold%",
-                    onValueChanged = { readerPreferences.novelMarkAsReadThreshold().set(it) },
+                    onValueChanged = { readerPreferences.novelMarkAsReadThreshold.set(it) },
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelHideChapterTitle(),
+                    preference = readerPreferences.novelHideChapterTitle,
                     title = "Hide chapter title",
                     subtitle = "Strip chapter title from content",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelBlockMedia(),
+                    preference = readerPreferences.novelBlockMedia,
                     title = "Block media",
                     subtitle = "Block images and media loading in both readers",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelTextSelectable(),
+                    preference = readerPreferences.novelTextSelectable,
                     title = "Text selectable (WebView)",
                     subtitle = "Allow selecting and copying text in the WebView reader",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelShowRawHtml(),
+                    preference = readerPreferences.novelShowRawHtml,
                     title = "Show raw HTML",
                     subtitle = "Display HTML source instead of rendered content",
                 ),
@@ -330,8 +330,8 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
     @Composable
     private fun getTtsGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
-        val ttsSpeed = readerPreferences.novelTtsSpeed().collectAsState().value
-        val ttsPitch = readerPreferences.novelTtsPitch().collectAsState().value
+        val ttsSpeed = readerPreferences.novelTtsSpeed.collectAsState().value
+        val ttsPitch = readerPreferences.novelTtsPitch.collectAsState().value
 
         return Preference.PreferenceGroup(
             title = "Text-to-Speech",
@@ -341,17 +341,17 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     valueRange = 1..30,
                     title = "TTS speed",
                     valueString = "${ttsSpeed}x",
-                    onValueChanged = { readerPreferences.novelTtsSpeed().set(it / 10f) },
+                    onValueChanged = { readerPreferences.novelTtsSpeed.set(it / 10f) },
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = (ttsPitch * 10).toInt(),
                     valueRange = 1..30,
                     title = "TTS pitch",
                     valueString = "${ttsPitch}x",
-                    onValueChanged = { readerPreferences.novelTtsPitch().set(it / 10f) },
+                    onValueChanged = { readerPreferences.novelTtsPitch.set(it / 10f) },
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelTtsAutoNextChapter(),
+                    preference = readerPreferences.novelTtsAutoNextChapter,
                     title = "TTS auto-next chapter",
                     subtitle = "Automatically continue to next chapter when TTS finishes",
                 ),

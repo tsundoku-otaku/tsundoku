@@ -110,7 +110,10 @@ data class LibraryItem(
             constraint.split(",").map { it.trim() }.all { subconstraint ->
                 checkNegatableConstraint(subconstraint) {
                     matchString(sourceName, it, useRegex, regexCache) ||
-                        (libraryManga.manga.genre?.any { genre -> matchString(genre, it, useRegex, regexCache) } ?: false)
+                        (
+                            libraryManga.manga.genre?.any { genre -> matchString(genre, it, useRegex, regexCache) }
+                                ?: false
+                            )
                 }
             }
 

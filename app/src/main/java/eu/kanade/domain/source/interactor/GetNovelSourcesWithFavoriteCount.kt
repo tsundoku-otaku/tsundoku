@@ -18,8 +18,8 @@ class GetNovelSourcesWithFavoriteCount(
 
     fun subscribe(): Flow<List<Pair<Source, Long>>> {
         return combine(
-            preferences.migrationSortingDirection().changes(),
-            preferences.migrationSortingMode().changes(),
+            preferences.migrationSortingDirection.changes(),
+            preferences.migrationSortingMode.changes(),
             repository.getSourcesWithFavoriteCount(),
         ) { direction, mode, list ->
             list

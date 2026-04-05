@@ -506,7 +506,7 @@ private fun MangaScreenSmallImpl(
                         contentType = MangaScreenItem.DESCRIPTION_WITH_TAG,
                     ) {
                         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
-                        val sortMangaTags by libraryPreferences.sortMangaTags().changes().collectAsState(
+                        val sortMangaTags by libraryPreferences.sortMangaTags.changes().collectAsState(
                             initial = false,
                         )
                         ExpandableMangaDescription(
@@ -797,7 +797,7 @@ fun MangaScreenLargeImpl(
                             onEditCategory = onEditCategoryClicked,
                         )
                         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
-                        val sortMangaTags by libraryPreferences.sortMangaTags().changes().collectAsState(
+                        val sortMangaTags by libraryPreferences.sortMangaTags.changes().collectAsState(
                             initial = false,
                         )
                         ExpandableMangaDescription(

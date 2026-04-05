@@ -32,7 +32,7 @@ class LocalNovelPageLoader(
         }
     }
 
-    override suspend fun getPageDataStream(url: String): java.io.InputStream? { 
+    override suspend fun getPageDataStream(url: String): java.io.InputStream? {
         val sChapter = chapter.chapter
         return (source as? tachiyomi.source.local.LocalNovelSource)?.getChapterImage(sChapter, url)
     }
@@ -45,8 +45,8 @@ class LocalNovelPageLoader(
             if (source is NovelSource) {
                 var text = source.fetchPageText(Page(page.index, page.url, page.imageUrl))
                 // Apply auto-split if enabled
-                if (readerPreferences.novelAutoSplitText().get()) {
-                    val wordCount = readerPreferences.novelAutoSplitWordCount().get()
+                if (readerPreferences.novelAutoSplitText.get()) {
+                    val wordCount = readerPreferences.novelAutoSplitWordCount.get()
                     if (wordCount > 0) {
                         text = TextSplitter.splitText(text, wordCount)
                     }

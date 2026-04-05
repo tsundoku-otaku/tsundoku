@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.util.chapter
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Base64
+import coil3.imageLoader
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -16,7 +17,6 @@ import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
 import java.net.URL
 import java.util.regex.Pattern
-import coil3.imageLoader
 
 /**
  * Utility class for extracting image URLs from HTML and embedding them as base64.
@@ -52,7 +52,11 @@ class ChapterImageEmbedder(
      * @param baseUrl The base URL of the chapter for resolving relative URLs
      * @return Processed HTML with embedded images
      */
-    suspend fun processHtml(html: String, baseUrl: String?, tmpDir: com.hippo.unifile.UniFile? = null): String = withContext(Dispatchers.IO) {
+    suspend fun processHtml(
+        html: String,
+        baseUrl: String?,
+        tmpDir: com.hippo.unifile.UniFile? = null,
+    ): String = withContext(Dispatchers.IO) {
         if (!novelDownloadPreferences.downloadChapterImages().get()) {
             return@withContext html
         }
@@ -65,7 +69,9 @@ class ChapterImageEmbedder(
         var imageCounter = 0
         for (imageUrl in imageUrls) {
             // Already local or data URI, do not process
-            if (imageUrl.startsWith("tsundoku-novel-image://") || imageUrl.startsWith("file://") || imageUrl.startsWith("data:")) {
+            if (imageUrl.startsWith("tsundoku-novel-image://") || imageUrl.startsWith("file://") ||
+                imageUrl.startsWith("data:")
+            ) {
                 continue
             }
             try {
@@ -88,7 +94,7 @@ class ChapterImageEmbedder(
                         do {
                             filename = "image_${imageCounter++}.$extension"
                         } while (tmpDir.findFile(filename) != null)
-                        
+
                         tmpDir.createFile(filename)?.openOutputStream()?.use { it.write(imageBytes) }
                         "tsundoku-novel-image://$filename"
                     } else {
@@ -197,15 +203,18 @@ class ChapterImageEmbedder(
                                 bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() -> "image/png"
                                 bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() -> "image/gif"
                                 bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> "image/jpeg"
-                                bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() && bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() -> "image/webp"
+                                bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() && bytes[8] == 0x57.toByte() &&
+                                    bytes[9] == 0x45.toByte() -> "image/webp"
                                 else -> "image/jpeg"
                             }
                         }
                         logcat { "ChapterImageEmbedder: Loaded image from Coil cache: $url" }
                     }
                 }
-            } catch(e: Exception) {
-                logcat(LogPriority.DEBUG) { "ChapterImageEmbedder: Not found in Coil cache or error reading, fetching from network..." }
+            } catch (e: Exception) {
+                logcat(LogPriority.DEBUG) {
+                    "ChapterImageEmbedder: Not found in Coil cache or error reading, fetching from network..."
+                }
             }
 
             if (imageBytes == null) {

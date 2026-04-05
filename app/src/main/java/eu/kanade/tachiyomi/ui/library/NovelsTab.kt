@@ -79,7 +79,7 @@ data object NovelsTab : Tab {
             val isSelected = LocalTabNavigator.current.current.key == key
             val image = AnimatedImageVector.animatedVectorResource(R.drawable.anim_library_enter)
             val libraryPreferences = remember { Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>() }
-            val isJoined by libraryPreferences.joinedLibrary().collectAsState()
+            val isJoined by libraryPreferences.joinedLibrary.collectAsState()
             return TabOptions(
                 index = 0u,
                 title = if (isJoined) stringResource(MR.strings.label_library) else "Novels",
@@ -99,17 +99,17 @@ data object NovelsTab : Tab {
         val haptic = LocalHapticFeedback.current
 
         val libraryPreferences = remember { Injekt.get<tachiyomi.domain.library.service.LibraryPreferences>() }
-        val isJoined by libraryPreferences.joinedLibrary().collectAsState()
+        val isJoined by libraryPreferences.joinedLibrary.collectAsState()
         val libraryType = if (isJoined) LibraryScreenModel.LibraryType.All else LibraryScreenModel.LibraryType.Novel
         val screenModel = rememberScreenModel { LibraryScreenModel(type = libraryType) }
         val settingsScreenModel =
             rememberScreenModel { LibrarySettingsScreenModel(type = libraryType) }
         val state by screenModel.state.collectAsState()
-        val titleMaxLines by settingsScreenModel.libraryPreferences.titleMaxLines().changes().collectAsState(
-            settingsScreenModel.libraryPreferences.titleMaxLines().get(),
+        val titleMaxLines by settingsScreenModel.libraryPreferences.titleMaxLines.changes().collectAsState(
+            settingsScreenModel.libraryPreferences.titleMaxLines.get(),
         )
-        val showUrlInList by settingsScreenModel.libraryPreferences.showUrlInList().changes().collectAsState(
-            settingsScreenModel.libraryPreferences.showUrlInList().get(),
+        val showUrlInList by settingsScreenModel.libraryPreferences.showUrlInList.changes().collectAsState(
+            settingsScreenModel.libraryPreferences.showUrlInList.get(),
         )
 
         val snackbarHostState = remember { SnackbarHostState() }
@@ -310,7 +310,15 @@ data object NovelsTab : Tab {
                 DeleteLibraryMangaDialog(
                     containsLocalManga = dialog.manga.any(Manga::isLocal),
                     onDismissRequest = onDismissRequest,
-                    onConfirm = { deleteManga, deleteChapter, clearChaptersFromDb, deleteTranslations, clearCovers, clearDescriptions, clearTags ->
+                    onConfirm = {
+                            deleteManga,
+                            deleteChapter,
+                            clearChaptersFromDb,
+                            deleteTranslations,
+                            clearCovers,
+                            clearDescriptions,
+                            clearTags,
+                        ->
                         screenModel.removeMangas(
                             dialog.manga,
                             deleteManga,

@@ -332,7 +332,10 @@ class TranslationService(
 
         // Check if already translated (skip unless forceRetranslate)
         if (!task.forceRetranslate) {
-            val existingTranslation = translatedChapterRepository.getTranslatedChapter(task.chapterId, task.targetLanguage)
+            val existingTranslation = translatedChapterRepository.getTranslatedChapter(
+                task.chapterId,
+                task.targetLanguage,
+            )
             if (existingTranslation != null) {
                 logcat(LogPriority.DEBUG) { "Chapter ${chapter.name} already translated, skipping" }
                 return@withContext
@@ -461,7 +464,8 @@ class TranslationService(
                 }
                 _progressState.update { current ->
                     current.copy(
-                        currentChapterProgress = PROGRESS_TRANSLATE_START + PROGRESS_TRANSLATE_RANGE * (chunkIndex + 1f) / chunks.size,
+                        currentChapterProgress =
+                        PROGRESS_TRANSLATE_START + PROGRESS_TRANSLATE_RANGE * (chunkIndex + 1f) / chunks.size,
                         currentChunkIndex = chunkIndex + 1,
                     )
                 }
@@ -474,7 +478,9 @@ class TranslationService(
                 throw CancellationException("Translation cancelled by user")
             }
 
-            logcat(LogPriority.DEBUG) { "Sending chunk ${chunkIndex + 1}/${chunks.size} for translation (${chunk.length} chars)" }
+            logcat(LogPriority.DEBUG) {
+                "Sending chunk ${chunkIndex + 1}/${chunks.size} for translation (${chunk.length} chars)"
+            }
 
             // Build the text to send, optionally wrapping with context for LLM engines
             val textToSend = if (useAnchoring && chunkIndex > 0 && previousRawParagraphs.isNotEmpty()) {
@@ -509,7 +515,9 @@ class TranslationService(
                             chunkSuccess = true
                         }
                         is TranslationResult.Error -> {
-                            logcat(LogPriority.ERROR) { "Translation error chunk ${chunkIndex + 1}/${chunks.size} (attempt $attempt): ${result.message}" }
+                            logcat(LogPriority.ERROR) {
+                                "Translation error chunk ${chunkIndex + 1}/${chunks.size} (attempt $attempt): ${result.message}"
+                            }
                             if (attempt < MAX_CHUNK_RETRIES) {
                                 delay(RETRY_DELAY_MS)
                                 continue
@@ -521,7 +529,9 @@ class TranslationService(
                     savePartialTranslation(task, engine.id.toString(), allTranslated, translatedTitle)
                     throw e
                 } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e) { "Translation exception chunk ${chunkIndex + 1}/${chunks.size} (attempt $attempt)" }
+                    logcat(LogPriority.ERROR, e) {
+                        "Translation exception chunk ${chunkIndex + 1}/${chunks.size} (attempt $attempt)"
+                    }
                     if (attempt < MAX_CHUNK_RETRIES) {
                         delay(RETRY_DELAY_MS)
                         continue
@@ -539,7 +549,8 @@ class TranslationService(
             // Update sub-progress
             _progressState.update { current ->
                 current.copy(
-                    currentChapterProgress = PROGRESS_TRANSLATE_START + PROGRESS_TRANSLATE_RANGE * (chunkIndex + 1f) / chunks.size,
+                    currentChapterProgress =
+                    PROGRESS_TRANSLATE_START + PROGRESS_TRANSLATE_RANGE * (chunkIndex + 1f) / chunks.size,
                     currentChunkIndex = chunkIndex + 1,
                 )
             }
@@ -555,7 +566,9 @@ class TranslationService(
             // Save partial translation as .tmp for resume
             if (allTranslated.isNotEmpty()) {
                 savePartialTranslation(task, engine.id.toString(), allTranslated, translatedTitle)
-                logcat(LogPriority.WARN) { "Saved partial translation (${allTranslated.size} paragraphs) for chapter ${chapter.name}" }
+                logcat(LogPriority.WARN) {
+                    "Saved partial translation (${allTranslated.size} paragraphs) for chapter ${chapter.name}"
+                }
             }
             throw Exception(
                 "Translation incomplete: failed at chunk ${failedChunkIndex + 1}/${chunks.size}. " +
@@ -661,7 +674,9 @@ class TranslationService(
             skipCache = false,
         )
         if (isDownloaded) {
-            logcat(LogPriority.WARN) { "Download cache says chapter is downloaded but no content found: ${chapter.name}" }
+            logcat(LogPriority.WARN) {
+                "Download cache says chapter is downloaded but no content found: ${chapter.name}"
+            }
         }
 
         // Fall back to fetching from source

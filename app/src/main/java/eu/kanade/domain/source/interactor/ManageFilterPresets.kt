@@ -101,11 +101,11 @@ class ManageFilterPresets(
     }
 
     fun getAutoApplyEnabled(): Boolean {
-        return preferences.autoApplyFilterPresets().get()
+        return preferences.autoApplyFilterPresets.get()
     }
 
     fun setAutoApplyEnabled(enabled: Boolean) {
-        preferences.autoApplyFilterPresets().set(enabled)
+        preferences.autoApplyFilterPresets.set(enabled)
         logcat(LogPriority.INFO) { "FilterPresets: Auto-apply presets set to $enabled" }
     }
 

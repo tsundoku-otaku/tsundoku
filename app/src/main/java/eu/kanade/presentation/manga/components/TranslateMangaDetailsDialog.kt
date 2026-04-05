@@ -82,7 +82,11 @@ fun TranslateMangaDetailsDialog(
             val targetLang = translationPreferences.targetLanguage().get()
 
             // Translate title
-            val titleResult = engine.translateSingle(manga.title, sourceLanguage = sourceLang, targetLanguage = targetLang)
+            val titleResult = engine.translateSingle(
+                manga.title,
+                sourceLanguage = sourceLang,
+                targetLanguage = targetLang,
+            )
             when (titleResult) {
                 is TranslationResult.Success -> {
                     translatedTitle = titleResult.translatedTexts.firstOrNull()
@@ -96,7 +100,11 @@ fun TranslateMangaDetailsDialog(
             // Translate description if present
             manga.description?.let { desc ->
                 if (desc.isNotBlank()) {
-                    val descResult = engine.translateSingle(desc, sourceLanguage = sourceLang, targetLanguage = targetLang)
+                    val descResult = engine.translateSingle(
+                        desc,
+                        sourceLanguage = sourceLang,
+                        targetLanguage = targetLang,
+                    )
                     when (descResult) {
                         is TranslationResult.Success -> {
                             translatedDescription = descResult.translatedTexts.firstOrNull()
@@ -329,7 +337,9 @@ fun TranslateMangaDetailsDialog(
                         ),
                     )
                 },
-                enabled = !isTranslating && (translatedTitle != null || translatedDescription != null || translatedGenres != null),
+                enabled =
+                !isTranslating &&
+                    (translatedTitle != null || translatedDescription != null || translatedGenres != null),
             ) {
                 Text("Save")
             }

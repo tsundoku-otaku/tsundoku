@@ -685,4 +685,14 @@
     <string name="action_discard">Discard</string>
     <string name="error_saving_edits">Failed to save edited chapter</string>
     <string name="error_decoding_edits">Failed to decode edited content</string>
+    <string name="action_quotes">Quotes</string>
+    <string name="action_remember">Remember</string>
+    <string name="quotes_empty">No quotes saved for this novel</string>
+    <string name="quotes_delete_confirm">Delete this quote?</string>
+    <string name="quotes_saved">Quote saved</string>
+    <string name="quotes_deleted">Quote deleted</string>
+    <string name="quotes_edit_title">Edit Quote</string>
+    <string name="quotes_add_title">Add Quote</string>
+    <string name="quotes_content_label">Quote content</string>
+    <string name="quotes_copy">Copy</string>
 </resources>

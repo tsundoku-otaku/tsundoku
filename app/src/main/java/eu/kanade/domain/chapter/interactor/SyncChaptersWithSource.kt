@@ -61,7 +61,7 @@ class SyncChaptersWithSource(
         val nowMillis = now.toInstant().toEpochMilli()
 
         // Check if this source should have reversed chapter list
-        val reversedSources = libraryPreferences.reversedChapterSources().get()
+        val reversedSources = libraryPreferences.reversedChapterSources.get()
         val shouldReverse = source.id.toString() in reversedSources
 
         // Apply reversal if configured for this source
@@ -178,7 +178,7 @@ class SyncChaptersWithSource(
         val deletedChapterNumberDateFetchMap = removedChapters.sortedByDescending { it.dateFetch }
             .associate { it.chapterNumber to it.dateFetch }
 
-        val markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead().get()
+        val markDuplicateAsRead = libraryPreferences.markDuplicateReadChapterAsRead.get()
             .contains(LibraryPreferences.MARK_DUPLICATE_CHAPTER_READ_NEW)
 
         // Date fetch is set in such a way that the upper ones will have bigger value than the lower ones

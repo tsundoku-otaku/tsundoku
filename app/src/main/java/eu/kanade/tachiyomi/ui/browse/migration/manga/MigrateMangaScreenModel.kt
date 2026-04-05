@@ -160,13 +160,16 @@ class MigrateMangaScreenModel(
 
                 if (migratedIds.isNotEmpty() && !categoryName.isNullOrBlank()) {
                     var categoryId: Long? = null
-                    val existingCategory = getCategories.await().find { it.name.equals(categoryName, ignoreCase = true) }
+                    val existingCategory = getCategories.await().find {
+                        it.name.equals(categoryName, ignoreCase = true)
+                    }
                     if (existingCategory != null) {
                         categoryId = existingCategory.id
                     } else {
                         val result = createCategoryWithName.await(categoryName)
                         if (result is tachiyomi.domain.category.interactor.CreateCategoryWithName.Result.Success) {
-                            categoryId = getCategories.await().find { it.name.equals(categoryName, ignoreCase = true) }?.id
+                            categoryId =
+                                getCategories.await().find { it.name.equals(categoryName, ignoreCase = true) }?.id
                         }
                     }
                     if (categoryId != null) {

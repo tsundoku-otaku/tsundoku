@@ -62,6 +62,7 @@ import eu.kanade.presentation.reader.TranslationLanguageSelectDialog
 import eu.kanade.presentation.reader.appbars.BottomBarEditorSheet
 import eu.kanade.presentation.reader.appbars.DefaultBottomBarItems
 import eu.kanade.presentation.reader.appbars.NovelReaderAppBars
+import eu.kanade.presentation.reader.appbars.QuotesSheet
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
 import eu.kanade.presentation.reader.appbars.bottomBarItemInfo
 import eu.kanade.presentation.reader.settings.ReaderSettingsDialog
@@ -79,6 +80,7 @@ import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Success
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import eu.kanade.tachiyomi.ui.reader.quote.Quote
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
@@ -152,6 +154,9 @@ class ReaderActivity : BaseActivity() {
     var isScrollingThroughPages = false
         private set
 
+    // Quotes functionality
+    private var showQuotesSheet by mutableStateOf(false)
+
     /**
      * Called when the activity is created. Initializes the presenter and configuration.
      */
@@ -204,7 +209,7 @@ class ReaderActivity : BaseActivity() {
         setMenuVisibility(viewModel.state.value.menuVisible)
 
         // Finish when incognito mode is disabled
-        preferences.incognitoMode().changes()
+        preferences.incognitoMode.changes()
             .drop(1)
             .onEach { if (!it) finish() }
             .launchIn(lifecycleScope)
@@ -216,7 +221,7 @@ class ReaderActivity : BaseActivity() {
                 // Skip loading dialog for infinite scroll - the viewer handles inline indicators
                 val isNovelViewer = viewModel.state.value.viewer is NovelViewer ||
                     viewModel.state.value.viewer is NovelWebViewViewer
-                val infiniteScrollEnabled = readerPreferences.novelInfiniteScroll().get()
+                val infiniteScrollEnabled = readerPreferences.novelInfiniteScroll.get()
                 if (isNovelViewer && infiniteScrollEnabled) {
                     // Don't show popup for infinite scroll - viewer shows inline indicators
                     return@onEach
@@ -274,8 +279,8 @@ class ReaderActivity : BaseActivity() {
 
     private fun ReaderActivityBinding.setComposeOverlay(): Unit = composeOverlay.setComposeContent {
         val state by viewModel.state.collectAsState()
-        val showPageNumber by readerPreferences.showPageNumber().collectAsState()
-        val autoTranslateEnabled by readerPreferences.autoTranslate().collectAsState()
+        val showPageNumber by readerPreferences.showPageNumber.collectAsState()
+        val autoTranslateEnabled by readerPreferences.autoTranslate.collectAsState()
         val settingsScreenModel = remember {
             ReaderSettingsScreenModel(
                 readerState = viewModel.state,
@@ -333,7 +338,7 @@ class ReaderActivity : BaseActivity() {
                     screenModel = settingsScreenModel,
                     onChange = { stringRes ->
                         menuToggleToast?.cancel()
-                        if (!readerPreferences.showReadingMode().get()) {
+                        if (!readerPreferences.showReadingMode.get()) {
                             menuToggleToast = toast(stringRes)
                         }
                     },
@@ -355,7 +360,7 @@ class ReaderActivity : BaseActivity() {
                     currentLanguage = viewModel.getTargetTranslationLanguage(),
                     autoTranslateEnabled = autoTranslateEnabled,
                     onToggleAutoTranslate = { enabled ->
-                        readerPreferences.autoTranslate().set(enabled)
+                        readerPreferences.autoTranslate.set(enabled)
                     },
                     onSelectLanguage = { languageCode ->
                         viewModel.setTargetTranslationLanguage(languageCode)
@@ -379,6 +384,54 @@ class ReaderActivity : BaseActivity() {
                 )
             }
             null -> {}
+        }
+
+        // Quotes sheet
+        val quotesState = remember { mutableStateOf(viewModel.getQuotes()) }
+        val showQuotesState = remember { mutableStateOf(false) }
+
+        LaunchedEffect(showQuotesSheet) {
+            showQuotesState.value = showQuotesSheet
+            if (showQuotesSheet) {
+                quotesState.value = viewModel.getQuotes()
+            }
+        }
+
+        // Handle back button when quotes sheet is open
+        androidx.activity.compose.BackHandler(enabled = showQuotesSheet) {
+            showQuotesSheet = false
+        }
+
+        if (showQuotesState.value) {
+            QuotesSheet(
+                quotes = quotesState.value,
+                onDismiss = {
+                    showQuotesSheet = false
+                },
+                onQuoteClick = { quote ->
+                    logcat(LogPriority.DEBUG) { "Quote clicked: ${quote.content.take(50)}..." }
+                },
+                onQuoteDelete = { quote ->
+                    logcat(LogPriority.DEBUG) { "Quote deleted: ${quote.content.take(50)}..." }
+                    viewModel.deleteQuote(quote)
+                    quotesState.value = viewModel.getQuotes()
+                },
+                onQuoteUpdate = { quote ->
+                    logcat(LogPriority.DEBUG) { "Quote updated: ${quote.content.take(50)}..." }
+                    viewModel.updateQuote(quote)
+                    quotesState.value = viewModel.getQuotes()
+                },
+                onQuoteAdd = { content ->
+                    logcat(LogPriority.DEBUG) { "Quote added: ${content.take(50)}..." }
+                    viewModel.saveQuote(content, "")
+                    quotesState.value = viewModel.getQuotes()
+                },
+                onQuoteReorder = { reorderedQuotes ->
+                    logcat(LogPriority.DEBUG) { "Quotes reordered: ${reorderedQuotes.size} quotes" }
+                    viewModel.reorderQuotes(reorderedQuotes)
+                    quotesState.value = viewModel.getQuotes()
+                },
+            )
         }
     }
 
@@ -475,11 +528,11 @@ class ReaderActivity : BaseActivity() {
 
     @Composable
     private fun ContentOverlay(state: ReaderViewModel.State) {
-        val flashOnPageChange by readerPreferences.flashOnPageChange().collectAsState()
+        val flashOnPageChange by readerPreferences.flashOnPageChange.collectAsState()
 
-        val colorOverlayEnabled by readerPreferences.colorFilter().collectAsState()
-        val colorOverlay by readerPreferences.colorFilterValue().collectAsState()
-        val colorOverlayMode by readerPreferences.colorFilterMode().collectAsState()
+        val colorOverlayEnabled by readerPreferences.colorFilter.collectAsState()
+        val colorOverlay by readerPreferences.colorFilterValue.collectAsState()
+        val colorOverlayMode by readerPreferences.colorFilterMode.collectAsState()
         val colorOverlayBlendMode = remember(colorOverlayMode) {
             ReaderPreferences.ColorFilterMode.getOrNull(colorOverlayMode)?.second
         }
@@ -528,7 +581,7 @@ class ReaderActivity : BaseActivity() {
             }
 
             // Get novel progress for slider - use state from ViewModel for real-time updates
-            val showProgressSlider by readerPreferences.novelShowProgressSlider().collectAsState()
+            val showProgressSlider by readerPreferences.novelShowProgressSlider.collectAsState()
 
             // Use state.novelProgressPercent for slider value, which is updated via onNovelProgressChanged callback
             val novelProgressFromState = state.novelProgressPercent
@@ -560,7 +613,7 @@ class ReaderActivity : BaseActivity() {
             }
 
             // Format chapter title based on preference
-            val chapterTitleDisplay by readerPreferences.novelChapterTitleDisplay().collectAsState()
+            val chapterTitleDisplay by readerPreferences.novelChapterTitleDisplay.collectAsState()
             val formattedChapterTitle = remember(state.currentChapter, state.novelVisibleChapter, chapterTitleDisplay) {
                 val chapter = state.novelVisibleChapter ?: state.currentChapter?.chapter
                 if (chapter == null) {
@@ -738,6 +791,7 @@ class ReaderActivity : BaseActivity() {
 
                 isWebView = state.viewer is NovelWebViewViewer,
                 bottomBarItems = bottomBarItems,
+                onQuotes = ::onQuotesClicked,
             )
 
             androidx.activity.compose.BackHandler(enabled = isEditing && state.hasUnsavedChanges) {
@@ -747,8 +801,20 @@ class ReaderActivity : BaseActivity() {
             if (showEditSaveDialog) {
                 AlertDialog(
                     onDismissRequest = { showEditSaveDialog = false },
-                    title = { Text(tachiyomi.presentation.core.i18n.stringResource(tachiyomi.i18n.novel.TDMR.strings.prompt_save_changes)) },
-                    text = { Text(tachiyomi.presentation.core.i18n.stringResource(tachiyomi.i18n.novel.TDMR.strings.prompt_save_changes_message)) },
+                    title = {
+                        Text(
+                            tachiyomi.presentation.core.i18n.stringResource(
+                                tachiyomi.i18n.novel.TDMR.strings.prompt_save_changes,
+                            ),
+                        )
+                    },
+                    text = {
+                        Text(
+                            tachiyomi.presentation.core.i18n.stringResource(
+                                tachiyomi.i18n.novel.TDMR.strings.prompt_save_changes_message,
+                            ),
+                        )
+                    },
                     confirmButton = {
                         androidx.compose.material3.TextButton(onClick = {
                             showEditSaveDialog = false
@@ -764,7 +830,11 @@ class ReaderActivity : BaseActivity() {
                             isEditing = false
                             (state.viewer as? NovelWebViewViewer)?.toggleEditMode(isEditing = false, save = false)
                         }) {
-                            Text(tachiyomi.presentation.core.i18n.stringResource(tachiyomi.i18n.novel.TDMR.strings.action_discard))
+                            Text(
+                                tachiyomi.presentation.core.i18n.stringResource(
+                                    tachiyomi.i18n.novel.TDMR.strings.action_discard,
+                                ),
+                            )
                         }
                     },
                 )
@@ -789,8 +859,8 @@ class ReaderActivity : BaseActivity() {
                 )
             }
         } else {
-            val cropBorderPaged by readerPreferences.cropBorders().collectAsState()
-            val cropBorderWebtoon by readerPreferences.cropBordersWebtoon().collectAsState()
+            val cropBorderPaged by readerPreferences.cropBorders.collectAsState()
+            val cropBorderWebtoon by readerPreferences.cropBordersWebtoon.collectAsState()
             val isPagerType = ReadingMode.isPagerType(viewModel.getMangaReadingMode())
             val cropEnabled = if (isPagerType) cropBorderPaged else cropBorderWebtoon
 
@@ -845,7 +915,7 @@ class ReaderActivity : BaseActivity() {
         viewModel.showMenus(visible)
         if (visible) {
             windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
-        } else if (readerPreferences.fullscreen().get()) {
+        } else if (readerPreferences.fullscreen.get()) {
             windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
@@ -872,10 +942,10 @@ class ReaderActivity : BaseActivity() {
             binding.viewerContainer.removeAllViews()
         }
         viewModel.onViewerLoaded(newViewer)
-        updateViewerInset(readerPreferences.fullscreen().get(), readerPreferences.drawUnderCutout().get())
+        updateViewerInset(readerPreferences.fullscreen.get(), readerPreferences.drawUnderCutout.get())
         binding.viewerContainer.addView(newViewer.getView())
 
-        if (readerPreferences.showReadingMode().get()) {
+        if (readerPreferences.showReadingMode.get()) {
             showReadingModeToast(viewModel.getMangaReadingMode())
         }
 
@@ -992,7 +1062,7 @@ class ReaderActivity : BaseActivity() {
             // Only reset to page 0 if NOT using infinite scroll for novel viewers
             val isNovelViewer = viewModel.state.value.viewer is NovelViewer ||
                 viewModel.state.value.viewer is NovelWebViewViewer
-            val infiniteScrollEnabled = readerPreferences.novelInfiniteScroll().get()
+            val infiniteScrollEnabled = readerPreferences.novelInfiniteScroll.get()
             if (!(isNovelViewer && infiniteScrollEnabled)) {
                 moveToPageIndex(0)
             }
@@ -1009,7 +1079,7 @@ class ReaderActivity : BaseActivity() {
             // Only reset to page 0 if NOT using infinite scroll for novel viewers
             val isNovelViewer = viewModel.state.value.viewer is NovelViewer ||
                 viewModel.state.value.viewer is NovelWebViewViewer
-            val infiniteScrollEnabled = readerPreferences.novelInfiniteScroll().get()
+            val infiniteScrollEnabled = readerPreferences.novelInfiniteScroll.get()
             if (!(isNovelViewer && infiniteScrollEnabled)) {
                 moveToPageIndex(0)
             }
@@ -1177,6 +1247,42 @@ class ReaderActivity : BaseActivity() {
     }
 
     /**
+     * Called when the quotes button is clicked.
+     */
+    fun onQuotesClicked() {
+        showQuotesSheet = true
+    }
+
+    /**
+     * Called when the "Remember" action is triggered.
+     * Gets selected text from the current viewer and adds it as a quote.
+     */
+    fun onRememberSelectedText() {
+        val selectedText = when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.getSelectedText()
+            is NovelWebViewViewer -> viewer.pendingSelectedText ?: viewer.getSelectedText()
+            else -> null
+        }
+        val chapterName = when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.getCurrentChapterName()
+            is NovelWebViewViewer -> viewer.getCurrentChapterName()
+            else -> null
+        }
+
+        if (selectedText != null && chapterName != null) {
+            viewModel.saveQuote(selectedText, chapterName)
+            // Clear selection after adding quote
+            when (val viewer = viewModel.state.value.viewer) {
+                is NovelViewer -> viewer.clearTextSelection()
+                is NovelWebViewViewer -> viewer.clearTextSelection()
+            }
+            toast("Quote saved!")
+        } else {
+            toast("No text selected")
+        }
+    }
+
+    /**
      * Forces the user preferred [orientation] on the activity.
      */
     private fun setOrientation(orientation: Int) {
@@ -1250,7 +1356,7 @@ class ReaderActivity : BaseActivity() {
          * Initializes the reader subscriptions.
          */
         init {
-            readerPreferences.readerTheme().changes()
+            readerPreferences.readerTheme.changes()
                 .onEach { theme ->
                     binding.readerContainer.setBackgroundColor(
                         when (theme) {
@@ -1263,20 +1369,20 @@ class ReaderActivity : BaseActivity() {
                 }
                 .launchIn(lifecycleScope)
 
-            preferences.displayProfile().changes()
+            preferences.displayProfile.changes()
                 .onEach { setDisplayProfile(it) }
                 .launchIn(lifecycleScope)
 
-            readerPreferences.keepScreenOn().changes()
+            readerPreferences.keepScreenOn.changes()
                 .onEach(::setKeepScreenOn)
                 .launchIn(lifecycleScope)
 
-            readerPreferences.customBrightness().changes()
+            readerPreferences.customBrightness.changes()
                 .onEach(::setCustomBrightness)
                 .launchIn(lifecycleScope)
 
             // Novel-specific brightness
-            readerPreferences.novelCustomBrightness().changes()
+            readerPreferences.novelCustomBrightness.changes()
                 .onEach(::setNovelCustomBrightness)
                 .launchIn(lifecycleScope)
 
@@ -1287,14 +1393,14 @@ class ReaderActivity : BaseActivity() {
                 .filterNotNull()
                 .onEach { viewer ->
                     if (viewer is NovelViewer || viewer is NovelWebViewViewer) {
-                        setNovelCustomBrightness(readerPreferences.novelCustomBrightness().get())
+                        setNovelCustomBrightness(readerPreferences.novelCustomBrightness.get())
                     }
                 }
                 .launchIn(lifecycleScope)
 
             combine(
-                readerPreferences.grayscale().changes(),
-                readerPreferences.invertedColors().changes(),
+                readerPreferences.grayscale.changes(),
+                readerPreferences.invertedColors.changes(),
             ) { grayscale, invertedColors -> grayscale to invertedColors }
                 .onEach { (grayscale, invertedColors) ->
                     setLayerPaint(grayscale, invertedColors)
@@ -1302,8 +1408,8 @@ class ReaderActivity : BaseActivity() {
                 .launchIn(lifecycleScope)
 
             combine(
-                readerPreferences.fullscreen().changes(),
-                readerPreferences.drawUnderCutout().changes(),
+                readerPreferences.fullscreen.changes(),
+                readerPreferences.drawUnderCutout.changes(),
             ) { fullscreen, drawUnderCutout -> fullscreen to drawUnderCutout }
                 .onEach { (fullscreen, drawUnderCutout) ->
                     updateViewerInset(fullscreen, drawUnderCutout)
@@ -1311,7 +1417,7 @@ class ReaderActivity : BaseActivity() {
                 .launchIn(lifecycleScope)
 
             // Re-create viewer when novel rendering mode changes
-            readerPreferences.novelRenderingMode().changes()
+            readerPreferences.novelRenderingMode.changes()
                 .drop(1) // Skip initial value
                 .onEach {
                     val currentViewer = viewModel.state.value.viewer
@@ -1322,7 +1428,7 @@ class ReaderActivity : BaseActivity() {
                             setChapters(chapters)
                         }
                         // Re-apply brightness for novel viewers
-                        setNovelCustomBrightness(readerPreferences.novelCustomBrightness().get())
+                        setNovelCustomBrightness(readerPreferences.novelCustomBrightness.get())
                     }
                 }
                 .launchIn(lifecycleScope)
@@ -1379,7 +1485,7 @@ class ReaderActivity : BaseActivity() {
                 return
             }
             if (enabled) {
-                readerPreferences.customBrightnessValue().changes()
+                readerPreferences.customBrightnessValue.changes()
                     .sample(100)
                     .onEach(::setCustomBrightnessValue)
                     .launchIn(lifecycleScope)
@@ -1398,7 +1504,7 @@ class ReaderActivity : BaseActivity() {
                 return
             }
             if (enabled) {
-                readerPreferences.novelCustomBrightnessValue().changes()
+                readerPreferences.novelCustomBrightnessValue.changes()
                     .sample(100)
                     .onEach(::setCustomBrightnessValue)
                     .launchIn(lifecycleScope)

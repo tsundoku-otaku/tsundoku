@@ -192,7 +192,9 @@ fun MangaBottomActionMenu(
                     )
                 }
                 // Overflow menu with additional actions
-                if (onDeleteRangeClicked != null || onDeleteTranslationClicked != null || onTranslateClicked != null || onRetranslateClicked != null) {
+                if (onDeleteRangeClicked != null || onDeleteTranslationClicked != null || onTranslateClicked != null ||
+                    onRetranslateClicked != null
+                ) {
                     var overflowMenuOpen by remember { mutableStateOf(false) }
                     Button(
                         title = stringResource(MR.strings.label_more),

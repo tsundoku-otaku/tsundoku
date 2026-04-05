@@ -78,7 +78,7 @@ internal class DownloadPageLoader(
             val uriString = page.uri?.toString() ?: ""
             logcat { "DownloadPageLoader: Processing page ${page.index}, uri=$uriString" }
 
-            var textContent = if (uriString.endsWith(".html")) {
+            var textContent = if (uriString.isHtmlContentPath()) {
                 logcat { "DownloadPageLoader: Reading HTML content from $uriString" }
                 context.contentResolver.openInputStream(page.uri!!)?.use {
                     it.bufferedReader().readText()
@@ -87,8 +87,8 @@ internal class DownloadPageLoader(
                 null
             }
             // Apply auto-split if enabled
-            if (textContent != null && readerPreferences.novelAutoSplitText().get()) {
-                val wordCount = readerPreferences.novelAutoSplitWordCount().get()
+            if (textContent != null && readerPreferences.novelAutoSplitText.get()) {
+                val wordCount = readerPreferences.novelAutoSplitWordCount.get()
                 if (wordCount > 0) {
                     textContent = TextSplitter.splitText(textContent, wordCount)
                 }
@@ -104,7 +104,7 @@ internal class DownloadPageLoader(
         }
     }
 
-override suspend fun getPageDataStream(url: String): java.io.InputStream? {
+    override suspend fun getPageDataStream(url: String): java.io.InputStream? {
         // 1. Try archive (for normal downloaded CBZ)
         archivePageLoader?.getPageDataStream(url)?.let { return it }
 
@@ -130,5 +130,10 @@ override suspend fun getPageDataStream(url: String): java.io.InputStream? {
 
     override suspend fun loadPage(page: ReaderPage) {
         archivePageLoader?.loadPage(page)
+    }
+
+    private fun String.isHtmlContentPath(): Boolean {
+        val normalized = lowercase()
+        return normalized.endsWith(".html") || normalized.endsWith(".htm") || normalized.endsWith(".xhtml")
     }
 }

@@ -87,7 +87,7 @@ enum class ReadingMode(
                 WEBTOON -> WebtoonViewer(activity)
                 CONTINUOUS_VERTICAL -> WebtoonViewer(activity, isContinuous = false)
                 NOVEL -> {
-                    val renderingMode = readerPreferences.novelRenderingMode().get()
+                    val renderingMode = readerPreferences.novelRenderingMode.get()
                     if (renderingMode == "webview") {
                         NovelWebViewViewer(activity)
                     } else {

@@ -206,8 +206,8 @@ internal class HttpPageLoader(
                 // For novels, fetch text content instead of images
                 page.status = Page.State.LoadPage
                 var text = source.fetchNovelPageText(page)
-                if (readerPreferences.novelAutoSplitText().get()) {
-                    val wordCount = readerPreferences.novelAutoSplitWordCount().get()
+                if (readerPreferences.novelAutoSplitText.get()) {
+                    val wordCount = readerPreferences.novelAutoSplitWordCount.get()
                     if (wordCount > 0) {
                         text = TextSplitter.splitText(text, wordCount)
                     }

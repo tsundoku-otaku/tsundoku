@@ -86,7 +86,7 @@ object SettingsMainScreen : Screen() {
         val navigator = LocalNavigator.currentOrThrow
         val backPress = LocalBackPress.currentOrThrow
         val basePreferences = remember { Injekt.get<BasePreferences>() }
-        val hideMangaUi by basePreferences.hideMangaUi().collectAsState()
+        val hideMangaUi by basePreferences.hideMangaUi.collectAsState()
         val containerColor = if (twoPane) getPalerSurface() else MaterialTheme.colorScheme.surface
         val topBarState = rememberTopAppBarState()
         val visibleItems = remember(hideMangaUi) {

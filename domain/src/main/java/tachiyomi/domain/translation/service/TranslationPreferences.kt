@@ -67,7 +67,7 @@ class TranslationPreferences(
 
     /**
      * Smart auto-translate: skip translation if detected language matches target.
-     * Consolidated from ReaderPreferences.autoTranslate() (pref_auto_translate).
+     * Consolidated from ReaderPreferences.autoTranslate (pref_auto_translate).
      */
     fun smartAutoTranslate() = preferenceStore.getBoolean(
         "pref_auto_translate",

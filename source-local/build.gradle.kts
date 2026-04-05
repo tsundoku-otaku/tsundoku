@@ -1,22 +1,26 @@
 import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 
 plugins {
-    id("mihon.library")
-    kotlin("multiplatform")
+    alias(mihonx.plugins.kotlin.multiplatform)
+    alias(mihonx.plugins.spotless)
 }
 
 kotlin {
-    androidTarget()
+    android {
+        namespace = "tachiyomi.source.local"
+    }
+
+    @OptIn(ExperimentalKotlinGradlePluginApi::class)
+    @Suppress("UnstableApiUsage")
+    dependencies {
+        implementation(projects.sourceApi)
+        api(projects.i18n)
+        api(projects.i18nNovel)
+        implementation(libs.unifile)
+    }
+
     sourceSets {
-        val commonMain by getting {
-            dependencies {
-                implementation(projects.sourceApi)
-                api(projects.i18n)
-                api(projects.i18nNovel)
-                implementation(libs.unifile)
-            }
-        }
-        val androidMain by getting {
+        androidMain {
             dependencies {
                 implementation(projects.core.archive)
                 implementation(projects.core.common)
@@ -25,7 +29,7 @@ kotlin {
                 // Move ChapterRecognition to separate module?
                 implementation(projects.domain)
 
-                implementation(kotlinx.bundles.serialization)
+                implementation(libs.bundles.serialization)
             }
         }
     }
@@ -36,14 +40,5 @@ kotlin {
             "-Xexpect-actual-classes",
             "-opt-in=kotlinx.serialization.ExperimentalSerializationApi",
         )
-    }
-}
-
-android {
-    namespace = "tachiyomi.source.local"
-
-    defaultConfig {
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
     }
 }

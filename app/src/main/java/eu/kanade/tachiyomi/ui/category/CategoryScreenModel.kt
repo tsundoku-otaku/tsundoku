@@ -17,6 +17,8 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.category.repository.CategoryRepository
+import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -27,6 +29,8 @@ class CategoryScreenModel(
     private val deleteCategory: DeleteCategory = Injekt.get(),
     private val reorderCategory: ReorderCategory = Injekt.get(),
     private val renameCategory: RenameCategory = Injekt.get(),
+    private val getLibraryManga: GetLibraryManga = Injekt.get(),
+    private val categoryRepository: CategoryRepository = Injekt.get(),
 ) : StateScreenModel<CategoryScreenState>(CategoryScreenState.Loading) {
 
     private val _events: Channel<CategoryEvent> = Channel()
@@ -58,9 +62,25 @@ class CategoryScreenModel(
 
     fun deleteCategory(categoryId: Long) {
         screenModelScope.launch {
+            // Get all manga-category pairs to find manga IDs for this category
+            val allPairs = categoryRepository.getAllMangaCategoryPairs()
+            val mangaIds = allPairs
+                .filter { it.second == categoryId }
+                .map { it.first }
+                .distinct()
+
             when (deleteCategory.await(categoryId = categoryId)) {
                 is DeleteCategory.Result.InternalError -> _events.send(CategoryEvent.InternalError)
-                else -> {}
+                else -> {
+                    // Refresh the manga that were in this category to update their category lists
+                    if (mangaIds.isNotEmpty()) {
+                        getLibraryManga.applyCategoryUpdates(
+                            mangaIds = mangaIds,
+                            addCategories = emptyList(),
+                            removeCategories = listOf(categoryId),
+                        )
+                    }
+                }
             }
         }
     }

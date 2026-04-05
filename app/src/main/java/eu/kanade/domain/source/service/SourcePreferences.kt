@@ -13,82 +13,98 @@ import tachiyomi.core.common.preference.getLongArray
 import tachiyomi.domain.library.model.LibraryDisplayMode
 
 class SourcePreferences(
-    private val preferenceStore: PreferenceStore,
+    preferenceStore: PreferenceStore,
 ) {
+    private val preferenceStore = preferenceStore
 
-    fun sourceDisplayMode() = preferenceStore.getObjectFromString(
+    val sourceDisplayMode: Preference<LibraryDisplayMode> = preferenceStore.getObjectFromString(
         "pref_display_mode_catalogue",
         LibraryDisplayMode.default,
         LibraryDisplayMode.Serializer::serialize,
         LibraryDisplayMode.Serializer::deserialize,
     )
 
-    fun enabledLanguages() = preferenceStore.getStringSet("source_languages", LocaleHelper.getDefaultEnabledLanguages())
+    val enabledLanguages: Preference<Set<String>> = preferenceStore.getStringSet(
+        "source_languages",
+        LocaleHelper.getDefaultEnabledLanguages(),
+    )
 
-    fun disabledSources() = preferenceStore.getStringSet("hidden_catalogues", emptySet())
+    val disabledSources: Preference<Set<String>> = preferenceStore.getStringSet("hidden_catalogues", emptySet())
 
-    fun incognitoExtensions() = preferenceStore.getStringSet("incognito_extensions", emptySet())
+    val incognitoExtensions: Preference<Set<String>> = preferenceStore.getStringSet("incognito_extensions", emptySet())
 
-    fun pinnedSources() = preferenceStore.getStringSet("pinned_catalogues", emptySet())
+    val pinnedSources: Preference<Set<String>> = preferenceStore.getStringSet("pinned_catalogues", emptySet())
 
-    fun lastUsedSource() = preferenceStore.getLong(
+    val lastUsedSource: Preference<Long> = preferenceStore.getLong(
         Preference.appStateKey("last_catalogue_source"),
         -1,
     )
 
-    fun showNsfwSource() = preferenceStore.getBoolean("show_nsfw_source", true)
+    val showNsfwSource: Preference<Boolean> = preferenceStore.getBoolean("show_nsfw_source", true)
 
-    fun migrationSortingMode() = preferenceStore.getEnum("pref_migration_sorting", SetMigrateSorting.Mode.ALPHABETICAL)
+    val migrationSortingMode: Preference<SetMigrateSorting.Mode> = preferenceStore.getEnum(
+        "pref_migration_sorting",
+        SetMigrateSorting.Mode.ALPHABETICAL,
+    )
 
-    fun migrationSortingDirection() = preferenceStore.getEnum(
+    val migrationSortingDirection: Preference<SetMigrateSorting.Direction> = preferenceStore.getEnum(
         "pref_migration_direction",
         SetMigrateSorting.Direction.ASCENDING,
     )
 
-    fun hideInLibraryItems() = preferenceStore.getBoolean("browse_hide_in_library_items", false)
+    val hideInLibraryItems: Preference<Boolean> = preferenceStore.getBoolean("browse_hide_in_library_items", false)
 
-    fun extensionRepos() = preferenceStore.getStringSet("extension_repos", emptySet())
+    val extensionRepos: Preference<Set<String>> = preferenceStore.getStringSet("extension_repos", emptySet())
 
-    fun disabledExtensionRepos() = preferenceStore.getStringSet("disabled_extension_repos", emptySet())
+    val disabledExtensionRepos: Preference<Set<String>> = preferenceStore.getStringSet(
+        "disabled_extension_repos",
+        emptySet(),
+    )
 
-    fun extensionUpdatesCount() = preferenceStore.getInt("ext_updates_count", 0)
+    val extensionUpdatesCount: Preference<Int> = preferenceStore.getInt("ext_updates_count", 0)
 
-    fun jsRepositoriesBackup() = preferenceStore.getString("js_plugin_repositories_backup", "")
+    val jsRepositoriesBackup: Preference<String> = preferenceStore.getString("js_plugin_repositories_backup", "")
 
-    fun trustedExtensions() = preferenceStore.getStringSet(
+    val trustedExtensions: Preference<Set<String>> = preferenceStore.getStringSet(
         Preference.appStateKey("trusted_extensions"),
         emptySet(),
     )
 
-    fun globalSearchFilterState() = preferenceStore.getBoolean(
+    val globalSearchFilterState: Preference<Boolean> = preferenceStore.getBoolean(
         Preference.appStateKey("has_filters_toggle_state"),
         false,
     )
 
-    fun migrationSources() = preferenceStore.getLongArray("migration_sources", emptyList())
+    val migrationSources: Preference<List<Long>> = preferenceStore.getLongArray("migration_sources", emptyList())
 
-    fun migrationFlags() = preferenceStore.getObjectFromInt(
+    val migrationFlags: Preference<Set<MigrationFlag>> = preferenceStore.getObjectFromInt(
         key = "migration_flags",
         defaultValue = MigrationFlag.entries.toSet(),
         serializer = { MigrationFlag.toBit(it) },
         deserializer = { value: Int -> MigrationFlag.fromBit(value) },
     )
 
-    fun migrationDeepSearchMode() = preferenceStore.getBoolean("migration_deep_search", false)
+    val migrationDeepSearchMode: Preference<Boolean> = preferenceStore.getBoolean("migration_deep_search", false)
 
-    fun migrationPrioritizeByChapters() = preferenceStore.getBoolean("migration_prioritize_by_chapters", false)
+    val migrationPrioritizeByChapters: Preference<Boolean> = preferenceStore.getBoolean(
+        "migration_prioritize_by_chapters",
+        false,
+    )
 
-    fun migrationHideUnmatched() = preferenceStore.getBoolean("migration_hide_unmatched", false)
+    val migrationHideUnmatched: Preference<Boolean> = preferenceStore.getBoolean("migration_hide_unmatched", false)
 
-    fun migrationHideWithoutUpdates() = preferenceStore.getBoolean("migration_hide_without_updates", false)
+    val migrationHideWithoutUpdates: Preference<Boolean> = preferenceStore.getBoolean(
+        "migration_hide_without_updates",
+        false,
+    )
 
-    fun pageLoadDelay() = preferenceStore.getInt("page_load_delay", 0)
+    val pageLoadDelay: Preference<Int> = preferenceStore.getInt("page_load_delay", 0)
 
-    fun showPageNumber() = preferenceStore.getBoolean("show_page_number", false)
+    val showPageNumber: Preference<Boolean> = preferenceStore.getBoolean("show_page_number", false)
 
-    fun skipCoverLoading() = preferenceStore.getBoolean("skip_cover_loading", false)
+    val skipCoverLoading: Preference<Boolean> = preferenceStore.getBoolean("skip_cover_loading", false)
 
-    fun confirmBackAfterPages() = preferenceStore.getInt("confirm_back_after_pages", 0)
+    val confirmBackAfterPages: Preference<Int> = preferenceStore.getInt("confirm_back_after_pages", 0)
 
     fun filterPresets(sourceId: Long) = preferenceStore.getObjectFromString(
         "filter_presets_$sourceId",
@@ -97,5 +113,5 @@ class SourcePreferences(
         { Json.decodeFromString(it) },
     )
 
-    fun autoApplyFilterPresets() = preferenceStore.getBoolean("auto_apply_filter_presets", true)
+    val autoApplyFilterPresets: Preference<Boolean> = preferenceStore.getBoolean("auto_apply_filter_presets", true)
 }

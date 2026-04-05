@@ -38,7 +38,7 @@ class DuplicateDetectionScreenModel(
 ) : StateScreenModel<DuplicateDetectionScreenModel.State>(State()) {
 
     private val pinnedSourceIds: Set<Long> by lazy {
-        sourcePreferences.pinnedSources().get().mapNotNull { it.toLongOrNull() }.toSet()
+        sourcePreferences.pinnedSources.get().mapNotNull { it.toLongOrNull() }.toSet()
     }
 
     override fun onDispose() {
@@ -118,7 +118,9 @@ class DuplicateDetectionScreenModel(
                             val groupMatches = novels.any { novel ->
                                 val novelCategories = mangaCategories[novel.manga.id] ?: emptyList()
                                 val categoryIds = novelCategories.map { it.id }.toSet().ifEmpty { setOf(0L) }
-                                val passesInclude = selectedCategoryFilters.isEmpty() || categoryIds.any { it in selectedCategoryFilters }
+                                val passesInclude =
+                                    selectedCategoryFilters.isEmpty() ||
+                                        categoryIds.any { it in selectedCategoryFilters }
                                 passesInclude
                             }
                             val groupExcluded = excludedCategoryFilters.isNotEmpty() && novels.any { novel ->
@@ -237,7 +239,7 @@ class DuplicateDetectionScreenModel(
 
     private fun loadPrioritiesFromPreferences() {
         // Load source type priorities
-        val typeRaw = libraryPreferences.sourceTypePriorities().get()
+        val typeRaw = libraryPreferences.sourceTypePriorities.get()
         if (typeRaw.isNotBlank()) {
             val typeMap = typeRaw.split(";").filter { it.isNotBlank() }.mapNotNull { entry ->
                 val parts = entry.split(":")
@@ -259,7 +261,7 @@ class DuplicateDetectionScreenModel(
         }
 
         // Load specific source priorities
-        val specificRaw = libraryPreferences.specificSourcePriorities().get()
+        val specificRaw = libraryPreferences.specificSourcePriorities.get()
         if (specificRaw.isNotBlank()) {
             val specificMap = specificRaw.split(";").filter { it.isNotBlank() }.mapNotNull { entry ->
                 val parts = entry.split(":")
@@ -551,7 +553,7 @@ class DuplicateDetectionScreenModel(
         val serialized = newMap.entries
             .filter { it.value != 0 }
             .joinToString(";") { "${it.key.name}:${it.value}" }
-        libraryPreferences.sourceTypePriorities().set(serialized)
+        libraryPreferences.sourceTypePriorities.set(serialized)
     }
 
     /**

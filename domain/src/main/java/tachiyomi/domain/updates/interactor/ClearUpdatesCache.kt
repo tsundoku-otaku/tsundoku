@@ -7,6 +7,6 @@ class ClearUpdatesCache(
     private val libraryPreferences: LibraryPreferences,
 ) {
     suspend fun clearAll() {
-        libraryPreferences.lastUpdatesClearedTimestamp().set(Instant.now().toEpochMilli())
+        libraryPreferences.lastUpdatesClearedTimestamp.set(Instant.now().toEpochMilli())
     }
 }

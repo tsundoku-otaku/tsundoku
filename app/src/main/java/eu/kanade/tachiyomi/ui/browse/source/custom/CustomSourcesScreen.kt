@@ -112,14 +112,26 @@ class CustomSourcesScreen : Screen {
                         val result = screenModel.importSource(json)
                         result.fold(
                             onSuccess = {
-                                snackbarHostState.showSnackbar(context.stringResource(TDMR.strings.custom_source_imported))
+                                snackbarHostState.showSnackbar(
+                                    context.stringResource(TDMR.strings.custom_source_imported),
+                                )
                             },
                             onFailure = { e ->
-                                snackbarHostState.showSnackbar(context.stringResource(TDMR.strings.custom_source_import_failed, e.message ?: ""))
+                                snackbarHostState.showSnackbar(
+                                    context.stringResource(
+                                        TDMR.strings.custom_source_import_failed,
+                                        e.message ?: "",
+                                    ),
+                                )
                             },
                         )
                     } catch (e: Exception) {
-                        snackbarHostState.showSnackbar(context.stringResource(TDMR.strings.custom_source_read_error, e.message ?: ""))
+                        snackbarHostState.showSnackbar(
+                            context.stringResource(
+                                TDMR.strings.custom_source_read_error,
+                                e.message ?: "",
+                            ),
+                        )
                     }
                 }
             }
@@ -131,20 +143,29 @@ class CustomSourcesScreen : Screen {
                     title = { Text(stringResource(TDMR.strings.custom_sources_title)) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(MR.strings.action_webview_back))
+                            Icon(
+                                Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(MR.strings.action_webview_back),
+                            )
                         }
                     },
                     actions = {
                         // Import button
                         IconButton(onClick = { importLauncher.launch("application/json") }) {
-                            Icon(Icons.Outlined.FileUpload, contentDescription = stringResource(TDMR.strings.custom_sources_import_source))
+                            Icon(
+                                Icons.Outlined.FileUpload,
+                                contentDescription = stringResource(TDMR.strings.custom_sources_import_source),
+                            )
                         }
                     },
                 )
             },
             floatingActionButton = {
                 FloatingActionButton(onClick = { showCreateDialog = true }) {
-                    Icon(Icons.Outlined.Add, contentDescription = stringResource(TDMR.strings.custom_sources_add_source))
+                    Icon(
+                        Icons.Outlined.Add,
+                        contentDescription = stringResource(TDMR.strings.custom_sources_add_source),
+                    )
                 }
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -198,16 +219,34 @@ class CustomSourcesScreen : Screen {
                                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                                 type = "application/json"
                                                 putExtra(Intent.EXTRA_STREAM, uri)
-                                                putExtra(Intent.EXTRA_SUBJECT, context.stringResource(TDMR.strings.custom_source_export_subject, source.name))
+                                                putExtra(
+                                                    Intent.EXTRA_SUBJECT,
+                                                    context.stringResource(
+                                                        TDMR.strings.custom_source_export_subject,
+                                                        source.name,
+                                                    ),
+                                                )
                                                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                             }
 
-                                            context.startActivity(Intent.createChooser(shareIntent, context.stringResource(TDMR.strings.custom_source_export_title)))
+                                            context.startActivity(
+                                                Intent.createChooser(
+                                                    shareIntent,
+                                                    context.stringResource(TDMR.strings.custom_source_export_title),
+                                                ),
+                                            )
                                         } catch (e: Exception) {
-                                            snackbarHostState.showSnackbar(context.stringResource(TDMR.strings.custom_source_export_failed, e.message ?: ""))
+                                            snackbarHostState.showSnackbar(
+                                                context.stringResource(
+                                                    TDMR.strings.custom_source_export_failed,
+                                                    e.message ?: "",
+                                                ),
+                                            )
                                         }
                                     } else {
-                                        snackbarHostState.showSnackbar(context.stringResource(TDMR.strings.custom_source_export_error))
+                                        snackbarHostState.showSnackbar(
+                                            context.stringResource(TDMR.strings.custom_source_export_error),
+                                        )
                                     }
                                 }
                             },
@@ -358,7 +397,10 @@ private fun CustomSourceCard(
                 horizontalArrangement = Arrangement.End,
             ) {
                 IconButton(onClick = onTest) {
-                    Icon(Icons.Outlined.PlayArrow, contentDescription = stringResource(TDMR.strings.custom_sources_test))
+                    Icon(
+                        Icons.Outlined.PlayArrow,
+                        contentDescription = stringResource(TDMR.strings.custom_sources_test),
+                    )
                 }
                 IconButton(onClick = onEdit) {
                     Icon(Icons.Outlined.Edit, contentDescription = stringResource(MR.strings.action_edit))
@@ -527,7 +569,10 @@ class CustomSourceTestScreen(
                     title = { Text(stringResource(TDMR.strings.custom_source_test_title)) },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(MR.strings.action_webview_back))
+                            Icon(
+                                Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(MR.strings.action_webview_back),
+                            )
                         }
                     },
                 )
@@ -583,7 +628,13 @@ private fun TestResultView(result: SourceTestResult) {
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = if (result.overallSuccess) stringResource(TDMR.strings.custom_source_all_tests_passed) else stringResource(TDMR.strings.custom_source_some_tests_failed),
+            text = if (result.overallSuccess) {
+                stringResource(
+                    TDMR.strings.custom_source_all_tests_passed,
+                )
+            } else {
+                stringResource(TDMR.strings.custom_source_some_tests_failed)
+            },
             color = if (result.overallSuccess) {
                 MaterialTheme.colorScheme.primary
             } else {
@@ -727,10 +778,23 @@ class CustomSourceEditorScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(if (sourceId != null) stringResource(TDMR.strings.custom_source_edit_title) else stringResource(TDMR.strings.custom_source_create_source)) },
+                    title = {
+                        Text(
+                            if (sourceId !=
+                                null
+                            ) {
+                                stringResource(TDMR.strings.custom_source_edit_title)
+                            } else {
+                                stringResource(TDMR.strings.custom_source_create_source)
+                            },
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = { navigator.pop() }) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = stringResource(MR.strings.action_webview_back))
+                            Icon(
+                                Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(MR.strings.action_webview_back),
+                            )
                         }
                     },
                 )
@@ -835,7 +899,10 @@ class CustomSourceEditorScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(stringResource(TDMR.strings.custom_source_use_cloudflare), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            stringResource(TDMR.strings.custom_source_use_cloudflare),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                         Text(
                             stringResource(TDMR.strings.custom_source_use_cloudflare_desc),
                             style = MaterialTheme.typography.bodySmall,
@@ -857,7 +924,10 @@ class CustomSourceEditorScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(stringResource(TDMR.strings.custom_source_reverse_chapters), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            stringResource(TDMR.strings.custom_source_reverse_chapters),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                         Text(
                             stringResource(TDMR.strings.custom_source_reverse_chapters_desc),
                             style = MaterialTheme.typography.bodySmall,
@@ -879,7 +949,10 @@ class CustomSourceEditorScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(stringResource(TDMR.strings.custom_source_post_search), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            stringResource(TDMR.strings.custom_source_post_search),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                         Text(
                             stringResource(TDMR.strings.custom_source_post_search_desc),
                             style = MaterialTheme.typography.bodySmall,
@@ -901,7 +974,10 @@ class CustomSourceEditorScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
-                        Text(stringResource(TDMR.strings.custom_source_novel_source), style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            stringResource(TDMR.strings.custom_source_novel_source),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                         Text(
                             stringResource(TDMR.strings.custom_source_novel_source_desc),
                             style = MaterialTheme.typography.bodySmall,
@@ -1160,7 +1236,13 @@ private fun ExtensionSourcePickerDialog(
     val jsSources by jsPluginManager.jsSources.collectAsState()
 
     // Collect novel extension sources: extension name → list of (Source, ExtensionName)
-    data class SourceEntry(val sourceId: Long, val sourceName: String, val baseUrl: String, val extensionName: String, val lang: String)
+    data class SourceEntry(
+        val sourceId: Long,
+        val sourceName: String,
+        val baseUrl: String,
+        val extensionName: String,
+        val lang: String,
+    )
 
     val novelSources = remember(installedExtensions, jsSources) {
         val apkSources = installedExtensions

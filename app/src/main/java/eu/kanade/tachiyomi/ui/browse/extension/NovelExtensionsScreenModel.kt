@@ -100,7 +100,7 @@ class NovelExtensionsScreenModel(
             ) { query, downloads, (_updates, _installed, _available, _untrusted), jsAvailable, jsInstalled ->
                 val searchQuery = query ?: ""
                 // Respect language filter for JS plugins (same as KT extensions)
-                val enabledLanguages = preferences.enabledLanguages().get()
+                val enabledLanguages = preferences.enabledLanguages.get()
 
                 buildMap {
 
@@ -218,11 +218,11 @@ class NovelExtensionsScreenModel(
 
         screenModelScope.launchIO { findAvailableExtensions() }
 
-        preferences.extensionUpdatesCount().changes()
+        preferences.extensionUpdatesCount.changes()
             .onEach { mutableState.update { state -> state.copy(updates = it) } }
             .launchIn(screenModelScope)
 
-        basePreferences.extensionInstaller().changes()
+        basePreferences.extensionInstaller.changes()
             .onEach { mutableState.update { state -> state.copy(installer = it) } }
             .launchIn(screenModelScope)
     }

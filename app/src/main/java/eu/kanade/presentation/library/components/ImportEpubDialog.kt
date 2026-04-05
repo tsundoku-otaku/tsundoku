@@ -584,7 +584,9 @@ private suspend fun importEpubFiles(
 
                 // Write details.json if metadata exists
                 val combinedDescription = files.mapNotNull { it.description }.firstOrNull { it.isNotBlank() }
-                val combinedGenres = files.mapNotNull { it.genres }.flatMap { it.split(",") }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+                val combinedGenres = files.mapNotNull {
+                    it.genres
+                }.flatMap { it.split(",") }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
                 val author = files.firstOrNull()?.author
                 if (combinedDescription != null || combinedGenres.isNotEmpty() || author != null) {
                     try {
@@ -593,9 +595,22 @@ private suspend fun importEpubFiles(
                             append("{")
                             append("\"title\":\"${novelTitle.replace("\"", "\\\"")}\"")
                             if (author != null) append(",\"author\":\"${author.replace("\"", "\\\"")}\"")
-                            if (combinedDescription != null) append(",\"description\":\"${combinedDescription.replace("\"", "\\\"").replace("\n", "\\n")}\"")
+                            if (combinedDescription !=
+                                null
+                            ) {
+                                append(
+                                    ",\"description\":\"${combinedDescription.replace(
+                                        "\"",
+                                        "\\\"",
+                                    ).replace("\n", "\\n")}\"",
+                                )
+                            }
                             if (combinedGenres.isNotEmpty()) {
-                                append(",\"genre\":[${combinedGenres.joinToString(",") { "\"${it.replace("\"", "\\\"")}\"" }}]")
+                                append(
+                                    ",\"genre\":[${combinedGenres.joinToString(",") {
+                                        "\"${it.replace("\"", "\\\"")}\""
+                                    }}]",
+                                )
                             }
                             append("}")
                         }
@@ -662,7 +677,8 @@ private suspend fun importEpubFiles(
 
                         // Write metadata
                         val description = file.description
-                        val genres = file.genres?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+                        val genres =
+                            file.genres?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
                         val author = file.author
                         if (!description.isNullOrBlank() || genres.isNotEmpty() || !author.isNullOrBlank()) {
                             try {
@@ -670,10 +686,25 @@ private suspend fun importEpubFiles(
                                 val jsonStr = buildString {
                                     append("{")
                                     append("\"title\":\"${novelTitle.replace("\"", "\\\"")}\"")
-                                    if (!author.isNullOrBlank()) append(",\"author\":\"${author!!.replace("\"", "\\\"")}\"")
-                                    if (!description.isNullOrBlank()) append(",\"description\":\"${description!!.replace("\"", "\\\"").replace("\n", "\\n")}\"")
+                                    if (!author.isNullOrBlank()) {
+                                        append(
+                                            ",\"author\":\"${author!!.replace("\"", "\\\"")}\"",
+                                        )
+                                    }
+                                    if (!description.isNullOrBlank()) {
+                                        append(
+                                            ",\"description\":\"${description!!.replace(
+                                                "\"",
+                                                "\\\"",
+                                            ).replace("\n", "\\n")}\"",
+                                        )
+                                    }
                                     if (genres.isNotEmpty()) {
-                                        append(",\"genre\":[${genres.joinToString(",") { "\"${it.replace("\"", "\\\"")}\"" }}]")
+                                        append(
+                                            ",\"genre\":[${genres.joinToString(",") {
+                                                "\"${it.replace("\"", "\\\"")}\""
+                                            }}]",
+                                        )
                                     }
                                     append("}")
                                 }

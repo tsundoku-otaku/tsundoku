@@ -857,7 +857,10 @@ class JsSource(
         }
 
         // Relative dates: "X hours/days/weeks/months/years ago"
-        val relativeMatch = Regex("""(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago""", RegexOption.IGNORE_CASE)
+        val relativeMatch = Regex(
+            """(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago""",
+            RegexOption.IGNORE_CASE,
+        )
             .find(trimmed)
         if (relativeMatch != null) {
             val amount = relativeMatch.groupValues[1].toLongOrNull() ?: return 0L

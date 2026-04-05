@@ -541,7 +541,7 @@ class FontManagerScreenModel(
         kotlinx.coroutines.MainScope().launch {
             val systemFonts = fontManager.getSystemFonts()
             val customFonts = fontManager.getInstalledFonts()
-            val currentFont = readerPreferences.novelFontFamily().get()
+            val currentFont = readerPreferences.novelFontFamily.get()
 
             mutableState.update {
                 it.copy(
@@ -555,7 +555,7 @@ class FontManagerScreenModel(
     }
 
     fun selectFont(font: FontInfo) {
-        readerPreferences.novelFontFamily().set(font.path)
+        readerPreferences.novelFontFamily.set(font.path)
         mutableState.update { it.copy(selectedFontPath = font.path) }
     }
 
@@ -581,7 +581,7 @@ class FontManagerScreenModel(
                 loadFonts()
                 // Reset to default font if deleted font was selected
                 if (font.path == state.value.selectedFontPath) {
-                    readerPreferences.novelFontFamily().set("sans-serif")
+                    readerPreferences.novelFontFamily.set("sans-serif")
                     mutableState.update { it.copy(selectedFontPath = "sans-serif") }
                 }
                 mutableState.update { it.copy(message = "Font \"${font.name}\" deleted") }

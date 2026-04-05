@@ -71,7 +71,9 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
         val includeChapterRange = inputData.getBoolean(KEY_INCLUDE_CHAPTER_RANGE, false)
         val includeStatus = inputData.getBoolean(KEY_INCLUDE_STATUS, false)
 
-        logcat(LogPriority.INFO) { "EPUB Export starting: ${mangaIds.size} novels, downloadedOnly=$downloadedOnly, translationMode=$translationMode" }
+        logcat(LogPriority.INFO) {
+            "EPUB Export starting: ${mangaIds.size} novels, downloadedOnly=$downloadedOnly, translationMode=$translationMode"
+        }
 
         try {
             setForegroundSafely()
@@ -124,7 +126,9 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
         includeChapterRange: Boolean,
         includeStatus: Boolean,
     ) {
-        logcat(LogPriority.INFO) { "performExport called with ${mangaIds.size} manga IDs, outputUri=$outputUri, translationMode=$translationMode" }
+        logcat(LogPriority.INFO) {
+            "performExport called with ${mangaIds.size} manga IDs, outputUri=$outputUri, translationMode=$translationMode"
+        }
 
         val mangaList = mangaIds.mapNotNull { mangaRepository.getMangaById(it) }
         if (mangaList.isEmpty()) {
@@ -193,13 +197,17 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                         val hasTranslation = chapter.id in translatedChapterIds
 
                         if (chapterIndex == 0) {
-                            logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: isDownloaded=$isDownloaded, hasTranslation=$hasTranslation" }
+                            logcat(LogPriority.DEBUG) {
+                                "${manga.title} ch ${chapter.name}: isDownloaded=$isDownloaded, hasTranslation=$hasTranslation"
+                            }
                         }
 
                         // Skip undownloaded chapters if downloadedOnly and no translation available
                         if (downloadedOnly && !isDownloaded && !hasTranslation) {
                             if (chapterIndex < 3) {
-                                logcat(LogPriority.DEBUG) { "${manga.title} ch ${chapter.name}: skipping - not downloaded and downloadedOnly=true" }
+                                logcat(LogPriority.DEBUG) {
+                                    "${manga.title} ch ${chapter.name}: skipping - not downloaded and downloadedOnly=true"
+                                }
                             }
                             continue
                         }
@@ -244,12 +252,16 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                     }
 
                     if (chapterContents.isEmpty()) {
-                        logcat(LogPriority.WARN) { "${manga.title}: No chapters could be exported (chapters=${chapters.size}, downloadedOnly=$downloadedOnly, translationMode=$translationMode)" }
+                        logcat(LogPriority.WARN) {
+                            "${manga.title}: No chapters could be exported (chapters=${chapters.size}, downloadedOnly=$downloadedOnly, translationMode=$translationMode)"
+                        }
                         skippedCount++
                         continue
                     }
 
-                    logcat(LogPriority.INFO) { "${manga.title}: Exporting ${chapterContents.size} chapters (mode=$translationMode)" }
+                    logcat(LogPriority.INFO) {
+                        "${manga.title}: Exporting ${chapterContents.size} chapters (mode=$translationMode)"
+                    }
 
                     // Get cover image
                     val coverImage = try {
@@ -320,7 +332,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                         cover: ByteArray?,
                     ) {
                         val tempFile = File(tempDir, filename)
-                        val deflateLevel = downloadPreferences.epubCompressionLevel().get()
+                        val deflateLevel = downloadPreferences.epubCompressionLevel.get()
                         tempFile.outputStream().use { outputStream ->
                             EpubWriter(deflateLevel).write(
                                 outputStream = outputStream,
@@ -373,7 +385,12 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                                 val translatedMetadata = metadata.copy(
                                     title = "${manga.title} [Translated]",
                                 )
-                                writeEpub(buildFilename("Translated"), translatedMetadata, translatedChapters, coverImage)
+                                writeEpub(
+                                    buildFilename("Translated"),
+                                    translatedMetadata,
+                                    translatedChapters,
+                                    coverImage,
+                                )
                             }
                         }
                     }
@@ -389,7 +406,9 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
             // Write to output
             val tempFiles = tempDir.listFiles()?.filter { it.name.endsWith(".epub") } ?: emptyList()
 
-            logcat(LogPriority.INFO) { "Export complete: ${tempFiles.size} EPUB files in temp dir, successCount=$successCount, skippedCount=$skippedCount" }
+            logcat(LogPriority.INFO) {
+                "Export complete: ${tempFiles.size} EPUB files in temp dir, successCount=$successCount, skippedCount=$skippedCount"
+            }
 
             if (tempFiles.isEmpty()) {
                 logcat(LogPriority.ERROR) { "No EPUB files were created in temp dir" }
@@ -418,7 +437,9 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                 }
             } else if (tempFiles.isNotEmpty()) {
                 // Single file, copy directly
-                logcat(LogPriority.INFO) { "Writing single EPUB to $outputUri (size=${tempFiles.first().length()} bytes)" }
+                logcat(LogPriority.INFO) {
+                    "Writing single EPUB to $outputUri (size=${tempFiles.first().length()} bytes)"
+                }
                 context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
                     tempFiles.first().inputStream().use { input ->
                         input.copyTo(outputStream)

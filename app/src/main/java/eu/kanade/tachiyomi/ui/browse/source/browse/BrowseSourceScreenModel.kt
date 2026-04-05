@@ -95,9 +95,9 @@ class BrowseSourceScreenModel(
     private val translationPreferences: TranslationPreferences = Injekt.get(),
 ) : StateScreenModel<BrowseSourceScreenModel.State>(State(Listing.valueOf(listingQuery))) {
 
-    var displayMode by sourcePreferences.sourceDisplayMode().asState(screenModelScope)
+    var displayMode by sourcePreferences.sourceDisplayMode.asState(screenModelScope)
 
-    val titleMaxLines by libraryPreferences.titleMaxLines().asState(screenModelScope)
+    val titleMaxLines by libraryPreferences.titleMaxLines.asState(screenModelScope)
 
     val source = sourceManager.getOrStub(sourceId)
 
@@ -152,9 +152,9 @@ class BrowseSourceScreenModel(
     private var lastSelectedCategoryIds: List<Long> = emptyList()
 
     // Auto-apply filter presets as a StateFlow that updates when preference changes
-    val autoApplyFilterPresets: StateFlow<Boolean> = sourcePreferences.autoApplyFilterPresets()
+    val autoApplyFilterPresets: StateFlow<Boolean> = sourcePreferences.autoApplyFilterPresets
         .changes()
-        .stateIn(screenModelScope, SharingStarted.Lazily, sourcePreferences.autoApplyFilterPresets().get())
+        .stateIn(screenModelScope, SharingStarted.Lazily, sourcePreferences.autoApplyFilterPresets.get())
 
     init {
         // Load filter presets from storage
@@ -170,7 +170,7 @@ class BrowseSourceScreenModel(
 
         // Sync page load delay preference with paging source
         screenModelScope.launch {
-            sourcePreferences.pageLoadDelay().changes().collect { delaySeconds ->
+            sourcePreferences.pageLoadDelay.changes().collect { delaySeconds ->
                 tachiyomi.data.source.BaseSourcePagingSource.pageLoadDelayMs = delaySeconds * 1000L
             }
         }
@@ -207,7 +207,7 @@ class BrowseSourceScreenModel(
         }
 
         if (!getIncognitoState.await(source.id)) {
-            sourcePreferences.lastUsedSource().set(source.id)
+            sourcePreferences.lastUsedSource.set(source.id)
         }
     }
 
@@ -221,7 +221,7 @@ class BrowseSourceScreenModel(
      * Note: We use hashCode for comparison because FilterList.equals() always returns false
      * to force recomposition, but we only want new Pagers when filters actually change.
      */
-    private val hideInLibraryItems = sourcePreferences.hideInLibraryItems().get()
+    private val hideInLibraryItems = sourcePreferences.hideInLibraryItems.get()
     private fun normalizeUrl(url: String): String = url.trimEnd('/').substringBefore('#')
 
     // Cached library manga for this source - single subscription instead of per-item
@@ -269,9 +269,9 @@ class BrowseSourceScreenModel(
     fun getColumnsPreference(orientation: Int): GridCells {
         val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
         val columns = if (isLandscape) {
-            libraryPreferences.landscapeColumns()
+            libraryPreferences.landscapeColumns
         } else {
-            libraryPreferences.portraitColumns()
+            libraryPreferences.portraitColumns
         }.get()
         return if (columns == 0) GridCells.Adaptive(128.dp) else GridCells.Fixed(columns)
     }
@@ -497,7 +497,7 @@ class BrowseSourceScreenModel(
                 it.contentType == contentType || it.contentType == Category.CONTENT_TYPE_ALL
             }
 
-            val defaultCategoryId = libraryPreferences.defaultCategory().get()
+            val defaultCategoryId = libraryPreferences.defaultCategory.get()
             val defaultCategory = categories.find { it.id == defaultCategoryId.toLong() }
 
             when {

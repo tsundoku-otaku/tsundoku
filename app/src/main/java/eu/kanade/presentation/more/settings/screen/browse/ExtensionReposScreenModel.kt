@@ -41,7 +41,7 @@ class ExtensionReposScreenModel(
         screenModelScope.launchIO {
             combine(
                 getExtensionRepo.subscribeAll(),
-                sourcePreferences.disabledExtensionRepos().changes(),
+                sourcePreferences.disabledExtensionRepos.changes(),
             ) { repos, disabledRepos ->
                 RepoScreenState.Success(
                     repos = repos.toImmutableSet(),
@@ -100,8 +100,8 @@ class ExtensionReposScreenModel(
     }
 
     fun setRepoEnabled(baseUrl: String, enabled: Boolean) {
-        sourcePreferences.disabledExtensionRepos().set(
-            sourcePreferences.disabledExtensionRepos().get().let { disabledRepos ->
+        sourcePreferences.disabledExtensionRepos.set(
+            sourcePreferences.disabledExtensionRepos.get().let { disabledRepos ->
                 if (enabled) disabledRepos - baseUrl else disabledRepos + baseUrl
             },
         )
@@ -113,8 +113,8 @@ class ExtensionReposScreenModel(
     fun deleteRepo(baseUrl: String) {
         screenModelScope.launchIO {
             deleteExtensionRepo.await(baseUrl)
-            sourcePreferences.disabledExtensionRepos().set(
-                sourcePreferences.disabledExtensionRepos().get() - baseUrl,
+            sourcePreferences.disabledExtensionRepos.set(
+                sourcePreferences.disabledExtensionRepos.get() - baseUrl,
             )
             extensionManager.findAvailableExtensions()
         }

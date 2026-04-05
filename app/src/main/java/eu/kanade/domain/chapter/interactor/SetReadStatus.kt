@@ -54,7 +54,7 @@ class SetReadStatus(
             }
         }
 
-        if (read && downloadPreferences.removeAfterMarkedAsRead().get()) {
+        if (read && downloadPreferences.removeAfterMarkedAsRead.get()) {
             chaptersToUpdate
                 .groupBy { it.mangaId }
                 .forEach { (mangaId, chapters) ->

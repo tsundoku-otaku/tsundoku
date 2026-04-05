@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text
 
-import android.annotation.SuppressLint
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.Paint
@@ -9,7 +8,6 @@ import android.graphics.drawable.Drawable
 import android.graphics.text.LineBreaker
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.text.Editable
 import android.text.Html
 import android.text.Layout
 import android.text.Spanned
@@ -18,6 +16,8 @@ import android.text.style.LineHeightSpan
 import android.view.GestureDetector
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.Menu
+import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -30,7 +30,6 @@ import androidx.core.widget.NestedScrollView
 import coil3.asDrawable
 import coil3.imageLoader
 import coil3.request.ImageRequest
-import eu.kanade.presentation.reader.settings.RegexReplacement
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -38,6 +37,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,15 +48,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -142,7 +141,7 @@ private class CoilImageGetter(
 
     override fun getDrawable(source: String?): Drawable {
         val wrapper = DrawableWrapper()
-        
+
         val contentWidth = textView.width - textView.paddingLeft - textView.paddingRight
         val maxWidth = if (contentWidth > 0) {
             contentWidth
@@ -153,7 +152,7 @@ private class CoilImageGetter(
         // Add a temporary loading placeholder taking full width to prevent inline stacking
         val placeholder = android.graphics.drawable.ColorDrawable(android.graphics.Color.LTGRAY)
         val placeholderHeight = (200 * activity.resources.displayMetrics.density).toInt()
-        
+
         // Use maxWidth to force the placeholder onto its own line and prevent images stacking side-by-side
         placeholder.setBounds(0, 0, maxWidth, placeholderHeight)
         wrapper.innerDrawable = placeholder
@@ -429,7 +428,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 velocityX: Float,
                 velocityY: Float,
             ): Boolean {
-                if (!preferences.novelSwipeNavigation().get()) return false
+                if (!preferences.novelSwipeNavigation.get()) return false
                 if (e1 == null) return false
 
                 val diffX = e2.x - e1.x
@@ -476,7 +475,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 }
 
                 // Handle tap-to-scroll if enabled
-                if (preferences.novelTapToScroll().get()) {
+                if (preferences.novelTapToScroll.get()) {
                     // Top zone - scroll up
                     if (y < centerYStart) {
                         scrollView.smoothScrollBy(0, -250)
@@ -573,8 +572,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
             }
 
             // Check for infinite scroll
-            if (!inGracePeriod && preferences.novelInfiniteScroll().get()) {
-                val autoLoadAt = preferences.novelAutoLoadNextChapterAt().get()
+            if (!inGracePeriod && preferences.novelInfiniteScroll.get()) {
+                val autoLoadAt = preferences.novelAutoLoadNextChapterAt.get()
                 val effectiveThreshold = if (autoLoadAt > 0) autoLoadAt / 100f else 0.95f
 
                 val onLastLoaded = currentChapterIndex == (loadedChapters.size - 1).coerceAtLeast(0)
@@ -900,17 +899,17 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         // Observe preference changes and refresh content
         scope.launch {
             merge(
-                preferences.novelFontSize().changes(),
-                preferences.novelFontFamily().changes(),
-                preferences.novelTheme().changes(),
-                preferences.novelLineHeight().changes(),
-                preferences.novelTextAlign().changes(),
-                preferences.novelMarginLeft().changes(),
-                preferences.novelMarginRight().changes(),
-                preferences.novelMarginTop().changes(),
-                preferences.novelMarginBottom().changes(),
-                preferences.novelFontColor().changes(),
-                preferences.novelBackgroundColor().changes(),
+                preferences.novelFontSize.changes(),
+                preferences.novelFontFamily.changes(),
+                preferences.novelTheme.changes(),
+                preferences.novelLineHeight.changes(),
+                preferences.novelTextAlign.changes(),
+                preferences.novelMarginLeft.changes(),
+                preferences.novelMarginRight.changes(),
+                preferences.novelMarginTop.changes(),
+                preferences.novelMarginBottom.changes(),
+                preferences.novelFontColor.changes(),
+                preferences.novelBackgroundColor.changes(),
             ).drop(11) // Drop initial emissions from all 11 preferences
                 .collect {
                     // Re-display text when preferences change
@@ -920,13 +919,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
         scope.launch {
             merge(
-                preferences.novelParagraphIndent().changes(),
-                preferences.novelParagraphSpacing().changes(),
-                preferences.novelShowRawHtml().changes(),
-                preferences.novelRegexReplacements().changes(),
-                preferences.novelAutoSplitText().changes(),
-                preferences.novelAutoSplitWordCount().changes(),
-                preferences.novelBlockMedia().changes(),
+                preferences.novelParagraphIndent.changes(),
+                preferences.novelParagraphSpacing.changes(),
+                preferences.novelShowRawHtml.changes(),
+                preferences.novelRegexReplacements.changes(),
+                preferences.novelAutoSplitText.changes(),
+                preferences.novelAutoSplitWordCount.changes(),
+                preferences.novelBlockMedia.changes(),
             ).drop(7)
                 .collect {
                     // Reload content to apply new formatting
@@ -937,8 +936,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         // Observe force lowercase preference - reload content to reapply transformation
         scope.launch {
             merge(
-                preferences.novelForceTextLowercase().changes(),
-                preferences.novelHideChapterTitle().changes(),
+                preferences.novelForceTextLowercase.changes(),
+                preferences.novelHideChapterTitle.changes(),
             ).drop(2) // Drop initial emissions from both preferences
                 .collectLatest {
                     reloadContent()
@@ -947,7 +946,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
         // Observe infinite scroll toggle - add/remove next chapter button
         scope.launch {
-            preferences.novelInfiniteScroll().changes()
+            preferences.novelInfiniteScroll.changes()
                 .drop(1)
                 .collectLatest { infiniteEnabled ->
                     activity.runOnUiThread {
@@ -965,7 +964,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         }
 
         scope.launch {
-            preferences.novelTextSelectable().changes()
+            preferences.novelTextSelectable.changes()
                 .drop(1)
                 .collectLatest {
                     reloadContent()
@@ -980,11 +979,43 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 LinearLayout.LayoutParams.WRAP_CONTENT,
             )
             applyTextSelectionPreference(this)
+
+            // Set custom action mode callback for text selection
+            if (preferences.novelTextSelectable.get()) {
+                customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
+                    override fun onCreateActionMode(mode: android.view.ActionMode, menu: Menu): Boolean {
+                        // Add "Remember" action
+                        val rememberItem = menu.add(Menu.NONE, 1, Menu.NONE, activity.stringResource(TDMR.strings.action_remember))
+                        rememberItem.setIcon(android.R.drawable.ic_menu_save)
+                        rememberItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+                        return true
+                    }
+
+                    override fun onPrepareActionMode(mode: android.view.ActionMode, menu: Menu): Boolean {
+                        return false
+                    }
+
+                    override fun onActionItemClicked(mode: android.view.ActionMode, item: MenuItem): Boolean {
+                        return when (item.itemId) {
+                            1 -> { // Remember action
+                                onRememberSelectedText()
+                                mode.finish()
+                                true
+                            }
+                            else -> false
+                        }
+                    }
+
+                    override fun onDestroyActionMode(mode: android.view.ActionMode) {
+                        // Action mode finished, selection cleared
+                    }
+                }
+            }
         }
     }
 
     private fun applyTextSelectionPreference(textView: TextView) {
-        val selectable = preferences.novelTextSelectable().get()
+        val selectable = preferences.novelTextSelectable.get()
         textView.setTextIsSelectable(selectable)
         textView.linksClickable = false
         if (!selectable) {
@@ -1039,7 +1070,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 val isLastChunk = finishedIndex >= ttsChunks.size - 1
 
                 // Check if this was the last chunk and auto-play is enabled
-                if (isLastChunk && isTtsAutoPlay && preferences.novelTtsAutoNextChapter().get()) {
+                if (isLastChunk && isTtsAutoPlay && preferences.novelTtsAutoNextChapter.get()) {
                     // Check if we've finished all chunks for current chapter
                     activity.runOnUiThread {
                         // Small delay to ensure speech is fully done
@@ -1080,7 +1111,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     private fun applyTtsSettings() {
         tts?.let { textToSpeech ->
             // Set voice/locale
-            val voicePref = preferences.novelTtsVoice().get()
+            val voicePref = preferences.novelTtsVoice.get()
             if (voicePref.isNotEmpty()) {
                 // Try to find matching voice by name
                 val voices = textToSpeech.voices
@@ -1101,11 +1132,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
             }
 
             // Set speech rate (speed)
-            val speed = preferences.novelTtsSpeed().get()
+            val speed = preferences.novelTtsSpeed.get()
             textToSpeech.setSpeechRate(speed)
 
             // Set pitch
-            val pitch = preferences.novelTtsPitch().get()
+            val pitch = preferences.novelTtsPitch.get()
             textToSpeech.setPitch(pitch)
         }
     }
@@ -1250,7 +1281,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
      * Get the current TTS voice name
      */
     fun getCurrentVoiceName(): String {
-        return tts?.voice?.name ?: preferences.novelTtsVoice().get()
+        return tts?.voice?.name ?: preferences.novelTtsVoice.get()
     }
 
     override fun destroy() {
@@ -1315,12 +1346,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == chapters.currChapter.chapter.id }
 
         // If already loaded in infinite scroll mode, nothing to do.
-        if (preferences.novelInfiniteScroll().get() && loadedChapters.isNotEmpty() && isAlreadyLoaded) {
+        if (preferences.novelInfiniteScroll.get() && loadedChapters.isNotEmpty() && isAlreadyLoaded) {
             return
         }
 
         // Clear for manual navigation or initial load; preserve in infinite-scroll if already present.
-        if (!preferences.novelInfiniteScroll().get() || !isAlreadyLoaded) {
+        if (!preferences.novelInfiniteScroll.get() || !isAlreadyLoaded) {
             contentContainer.removeAllViews()
             loadedChapters.clear()
             currentChapterIndex = 0
@@ -1376,12 +1407,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         }
 
         // Optionally strip chapter title from content
-        if (preferences.novelHideChapterTitle().get()) {
+        if (preferences.novelHideChapterTitle.get()) {
             content = stripChapterTitle(content, chapter.chapter.name)
         }
 
         // Optionally force lowercase
-        if (preferences.novelForceTextLowercase().get()) {
+        if (preferences.novelForceTextLowercase.get()) {
             content = content.lowercase()
         }
 
@@ -1396,7 +1427,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         }
 
         logcat(LogPriority.DEBUG) {
-            "NovelViewer: Displaying chapter ${chapter.chapter.id}, infinite scroll enabled: ${preferences.novelInfiniteScroll().get()}, loaded count: ${loadedChapters.size}"
+            "NovelViewer: Displaying chapter ${chapter.chapter.id}, infinite scroll enabled: ${preferences.novelInfiniteScroll.get()}, loaded count: ${loadedChapters.size}"
         }
 
         // Create header for chapter (for infinite scroll mode)
@@ -1423,7 +1454,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         )
 
         // Check if this is an append (infinite scroll) or new chapter (manual nav)
-        val isAppend = loadedChapters.isNotEmpty() && preferences.novelInfiniteScroll().get()
+        val isAppend = loadedChapters.isNotEmpty() && preferences.novelInfiniteScroll.get()
         val previousIndex = currentChapterIndex
 
         // Add to end for infinite scroll
@@ -1465,7 +1496,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         val finalContent = content
         // Always show content immediately; translation (if enabled) replaces it asynchronously.
         setTextViewContent(textView, finalContent)
-        if (activity.isTranslationEnabled() && !preferences.novelShowRawHtml().get()) {
+        if (activity.isTranslationEnabled() && !preferences.novelShowRawHtml.get()) {
             scope.launch {
                 val translatedContent = activity.translateContentIfEnabled(finalContent)
                 withContext(Dispatchers.Main) {
@@ -1476,7 +1507,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
         applyBackgroundColor()
 
-        if (!preferences.novelInfiniteScroll().get()) {
+        if (!preferences.novelInfiniteScroll.get()) {
             addNextChapterButton()
         }
 
@@ -1589,7 +1620,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         val shouldRestore = if (!isRead) {
             savedProgress > 0 && savedProgress <= 100
         } else {
-            libraryPreferences.novelReadProgress100().get() && savedProgress > 0 && savedProgress <= 100
+            libraryPreferences.novelReadProgress100.get() && savedProgress > 0 && savedProgress <= 100
         }
         if (shouldRestore) {
             val progress = savedProgress / 100f
@@ -1633,16 +1664,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     }
 
     private fun applyTextViewStyles(textView: TextView) {
-        val fontSize = preferences.novelFontSize().get()
-        val lineHeight = preferences.novelLineHeight().get()
-        val marginLeft = preferences.novelMarginLeft().get()
-        val marginRight = preferences.novelMarginRight().get()
-        val marginTop = preferences.novelMarginTop().get()
-        val marginBottom = preferences.novelMarginBottom().get()
-        val fontColor = preferences.novelFontColor().get()
-        val theme = preferences.novelTheme().get()
-        val textAlign = preferences.novelTextAlign().get()
-        val fontFamily = preferences.novelFontFamily().get()
+        val fontSize = preferences.novelFontSize.get()
+        val lineHeight = preferences.novelLineHeight.get()
+        val marginLeft = preferences.novelMarginLeft.get()
+        val marginRight = preferences.novelMarginRight.get()
+        val marginTop = preferences.novelMarginTop.get()
+        val marginBottom = preferences.novelMarginBottom.get()
+        val fontColor = preferences.novelFontColor.get()
+        val theme = preferences.novelTheme.get()
+        val textAlign = preferences.novelTextAlign.get()
+        val fontFamily = preferences.novelFontFamily.get()
 
         val density = activity.resources.displayMetrics.density
         val leftPx = (marginLeft * density).toInt()
@@ -1707,8 +1738,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     }
 
     private fun applyBackgroundColor() {
-        val theme = preferences.novelTheme().get()
-        val backgroundColor = preferences.novelBackgroundColor().get()
+        val theme = preferences.novelTheme.get()
+        val backgroundColor = preferences.novelBackgroundColor.get()
 
         val (themeBgColor, _) = getThemeColors(theme)
         // 0 = default (use theme color)
@@ -1721,7 +1752,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
     private fun setTextViewContent(textView: TextView, content: String) {
         // Check if raw HTML mode is enabled (for debugging)
-        val showRawHtml = preferences.novelShowRawHtml().get()
+        val showRawHtml = preferences.novelShowRawHtml.get()
         if (showRawHtml) {
             // Display raw HTML tags without parsing
             if (!textView.isAttachedToWindow) return
@@ -1745,7 +1776,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         processedContent = applyRegexReplacements(processedContent)
 
         // Optionally strip media tags entirely when blocking media
-        if (preferences.novelBlockMedia().get()) {
+        if (preferences.novelBlockMedia.get()) {
             processedContent = processedContent
                 .replace(Regex("<img[^>]*>", RegexOption.IGNORE_CASE), "")
                 .replace(Regex("<image[^>]*>", RegexOption.IGNORE_CASE), "")
@@ -1770,15 +1801,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         }
 
         // Get paragraph spacing preference (em units, default 0.5)
-        val paragraphSpacing = preferences.novelParagraphSpacing().get()
+        val paragraphSpacing = preferences.novelParagraphSpacing.get()
         // Get paragraph indent preference (em units, default 0)
-        val paragraphIndent = preferences.novelParagraphIndent().get()
-        val fontSize = preferences.novelFontSize().get()
+        val paragraphIndent = preferences.novelParagraphIndent.get()
+        val fontSize = preferences.novelFontSize.get()
         val density = activity.resources.displayMetrics.density
 
         scope.launch {
             // Create image getter if media is not blocked
-            val blockMedia = preferences.novelBlockMedia().get()
+            val blockMedia = preferences.novelBlockMedia.get()
             val imageGetter = if (!blockMedia) {
                 CoilImageGetter(textView, activity, scope)
             } else {
@@ -1955,7 +1986,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     }
 
     fun startAutoScroll() {
-        val speed = preferences.novelAutoScrollSpeed().get().coerceIn(1, 10)
+        val speed = preferences.novelAutoScrollSpeed.get().coerceIn(1, 10)
         isAutoScrolling = true
 
         autoScrollJob?.cancel()
@@ -2019,7 +2050,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
      */
     fun getProgressPercent(): Int {
         val scrollY = scrollView.scrollY
-        if (loadedChapters.size > 1 && preferences.novelInfiniteScroll().get()) {
+        if (loadedChapters.size > 1 && preferences.novelInfiniteScroll.get()) {
             val progress = calculateCurrentChapterProgress(scrollY)
             val percent = if (progress >= 0.98f) 100 else (progress * 100).toInt()
             return percent.coerceIn(0, 100)
@@ -2038,7 +2069,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
      */
     fun setScrollProgress(progress: Float) {
         // For single chapter or no infinite scroll, use overall scroll
-        if (loadedChapters.size <= 1 || !preferences.novelInfiniteScroll().get()) {
+        if (loadedChapters.size <= 1 || !preferences.novelInfiniteScroll.get()) {
             val child = scrollView.getChildAt(0) ?: return
             val totalHeight = child.height - scrollView.height
             val scrollY = (totalHeight * progress).toInt()
@@ -2084,14 +2115,14 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 return true
             }
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (preferences.novelVolumeKeysScroll().get()) {
+                if (preferences.novelVolumeKeysScroll.get()) {
                     if (!isUp) scrollView.pageScroll(View.FOCUS_DOWN)
                     return true
                 }
                 return false
             }
             KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (preferences.novelVolumeKeysScroll().get()) {
+                if (preferences.novelVolumeKeysScroll.get()) {
                     if (!isUp) scrollView.pageScroll(View.FOCUS_UP)
                     return true
                 }
@@ -2129,5 +2160,64 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
     override fun handleGenericMotionEvent(event: MotionEvent): Boolean {
         return false
+    }
+
+    /**
+     * Get the currently selected text from the active chapter's TextView
+     */
+    fun getSelectedText(): String? {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return null
+        val textView = loaded.textView
+        if (!textView.hasSelection()) return null
+
+        val start = textView.selectionStart
+        val end = textView.selectionEnd
+        if (start < 0 || end < 0 || start >= end) return null
+
+        val text = textView.text.toString()
+        return text.substring(start, end)
+    }
+
+    /**
+     * Get the current chapter name for quote context
+     */
+    fun getCurrentChapterName(): String? {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return null
+        return loaded.chapter.chapter.name
+    }
+
+    /**
+     * Check if text is currently selected
+     */
+    fun hasTextSelection(): Boolean {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return false
+        return loaded.textView.hasSelection()
+    }
+
+    /**
+     * Clear text selection
+     */
+    fun clearTextSelection() {
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return
+        val textView = loaded.textView
+        if (textView.hasSelection()) {
+            textView.clearFocus()
+        }
+    }
+
+    /**
+     * Handle the "Remember" action from text selection menu
+     */
+    private fun onRememberSelectedText() {
+        val selectedText = getSelectedText()
+        val chapterName = getCurrentChapterName()
+
+        if (selectedText != null && chapterName != null) {
+            activity.onRememberSelectedText()
+            // Clear selection after adding quote
+            clearTextSelection()
+        } else {
+            activity.toast("No text selected")
+        }
     }
 }

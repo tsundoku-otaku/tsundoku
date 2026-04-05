@@ -59,7 +59,10 @@ class TranslationJob(context: Context, workerParams: WorkerParameters) : Corouti
                     // Update notification with progress
                     val notification = applicationContext.notificationBuilder(Notifications.CHANNEL_TRANSLATION) {
                         setContentTitle(applicationContext.stringResource(TDMR.strings.translation_job_translating))
-                        setContentText(progress.currentChapterName ?: applicationContext.stringResource(TDMR.strings.translation_job_processing))
+                        setContentText(
+                            progress.currentChapterName
+                                ?: applicationContext.stringResource(TDMR.strings.translation_job_processing),
+                        )
                         setProgress(progress.totalChapters, progress.completedChapters, false)
                         setSmallIcon(android.R.drawable.stat_sys_download)
                         setOngoing(true)

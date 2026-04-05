@@ -34,42 +34,60 @@ class TrackPreferences(
 
     fun trackToken(tracker: Tracker) = preferenceStore.getString(Preference.privateKey("track_token_${tracker.id}"), "")
 
-    fun anilistScoreType() = preferenceStore.getString("anilist_score_type", Anilist.POINT_10)
+    val anilistScoreType: Preference<String> = preferenceStore.getString("anilist_score_type", Anilist.POINT_10)
 
-    fun autoUpdateTrack() = preferenceStore.getBoolean("pref_auto_update_manga_sync_key", true)
+    val autoUpdateTrack: Preference<Boolean> = preferenceStore.getBoolean("pref_auto_update_manga_sync_key", true)
 
-    fun autoUpdateTrackOnMarkRead() = preferenceStore.getEnum(
+    val autoUpdateTrackOnMarkRead: Preference<AutoTrackState> = preferenceStore.getEnum(
         "pref_auto_update_manga_on_mark_read",
         AutoTrackState.ALWAYS,
     )
 
     // NovelUpdates Settings
-    fun novelUpdatesMarkChaptersAsRead() = preferenceStore.getBoolean("novelupdates_mark_chapters_read", true)
+    val novelUpdatesMarkChaptersAsRead: Preference<Boolean> = preferenceStore.getBoolean(
+        "novelupdates_mark_chapters_read",
+        true,
+    )
 
-    fun novelUpdatesSyncReadingList() = preferenceStore.getBoolean("novelupdates_sync_reading_list", true)
+    val novelUpdatesSyncReadingList: Preference<Boolean> = preferenceStore.getBoolean(
+        "novelupdates_sync_reading_list",
+        true,
+    )
 
     // NovelUpdates Custom List Mapping
-    fun novelUpdatesUseCustomListMapping() = preferenceStore.getBoolean("novelupdates_use_custom_list_mapping", false)
+    val novelUpdatesUseCustomListMapping: Preference<Boolean> = preferenceStore.getBoolean(
+        "novelupdates_use_custom_list_mapping",
+        false,
+    )
 
-    fun novelUpdatesCustomListMapping() = preferenceStore.getString(
+    val novelUpdatesCustomListMapping: Preference<String> = preferenceStore.getString(
         "novelupdates_custom_list_mapping",
         "{}",
     )
 
-    fun novelUpdatesCachedLists() = preferenceStore.getString(
+    val novelUpdatesCachedLists: Preference<String> = preferenceStore.getString(
         "novelupdates_cached_lists",
         "[]",
     )
 
-    fun novelUpdatesLastListRefresh() = preferenceStore.getLong("novelupdates_last_list_refresh", 0L)
+    val novelUpdatesLastListRefresh: Preference<Long> = preferenceStore.getLong("novelupdates_last_list_refresh", 0L)
 
     // NovelList Settings
-    fun novelListMarkChaptersAsRead() = preferenceStore.getBoolean("novellist_mark_chapters_read", true)
+    val novelListMarkChaptersAsRead: Preference<Boolean> = preferenceStore.getBoolean(
+        "novellist_mark_chapters_read",
+        true,
+    )
 
-    fun novelListSyncReadingList() = preferenceStore.getBoolean("novellist_sync_reading_list", true)
+    val novelListSyncReadingList: Preference<Boolean> = preferenceStore.getBoolean("novellist_sync_reading_list", true)
 
     // Minimum chapters before tracking
-    fun minChaptersBeforeTrackingManga() = preferenceStore.getString("min_chapters_before_tracking_manga", "0")
+    val minChaptersBeforeTrackingManga: Preference<String> = preferenceStore.getString(
+        "min_chapters_before_tracking_manga",
+        "0",
+    )
 
-    fun minChaptersBeforeTrackingNovel() = preferenceStore.getString("min_chapters_before_tracking_novel", "0")
+    val minChaptersBeforeTrackingNovel: Preference<String> = preferenceStore.getString(
+        "min_chapters_before_tracking_novel",
+        "0",
+    )
 }

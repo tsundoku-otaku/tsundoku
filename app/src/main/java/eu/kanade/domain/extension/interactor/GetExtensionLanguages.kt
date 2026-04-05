@@ -14,7 +14,7 @@ class GetExtensionLanguages(
 ) {
     fun subscribe(): Flow<List<String>> {
         return combine(
-            preferences.enabledLanguages().changes(),
+            preferences.enabledLanguages.changes(),
             extensionManager.availableExtensionsFlow,
             jsPluginManager.installedPlugins,
             jsPluginManager.availablePlugins,

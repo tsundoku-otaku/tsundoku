@@ -141,7 +141,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         val randomDelay = prefs.randomDelayRange().collectAsState().value
         val parallelDownloads = prefs.parallelNovelDownloads().collectAsState().value
         val compressionLevel = prefs.zipCompressionLevel().collectAsState().value
-        val epubCompressionLevel = downloadPreferences.epubCompressionLevel().collectAsState().value
+        val epubCompressionLevel = downloadPreferences.epubCompressionLevel.collectAsState().value
         val resumeOnNew = prefs.resumeQueueOnNewChapters().collectAsState().value
 
         val lowDelayWarning = if (downloadDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
@@ -238,7 +238,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     } else {
                         "$epubCompressionLevel"
                     },
-                    onValueChanged = { downloadPreferences.epubCompressionLevel().set(it - 1) },
+                    onValueChanged = { downloadPreferences.epubCompressionLevel.set(it - 1) },
                 ),
             ),
         )

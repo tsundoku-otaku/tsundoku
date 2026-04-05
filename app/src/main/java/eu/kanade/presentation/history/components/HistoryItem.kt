@@ -72,7 +72,14 @@ fun HistoryItem(
             val progress = history.lastPageRead
             val progressSuffix = when {
                 history.chapterRead -> " - 100%"
-                progress > 0 -> if (history.isNovel) " - $progress%" else " - ${stringResource(MR.strings.chapter_progress, progress + 1)}"
+                progress > 0 -> if (history.isNovel) {
+                    " - $progress%"
+                } else {
+                    " - ${stringResource(
+                        MR.strings.chapter_progress,
+                        progress + 1,
+                    )}"
+                }
                 else -> ""
             }
             Text(

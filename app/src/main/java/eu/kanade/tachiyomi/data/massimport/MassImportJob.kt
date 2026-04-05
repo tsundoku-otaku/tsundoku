@@ -652,7 +652,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val maxMem = runtime.maxMemory()
         val usedMem = runtime.totalMemory() - runtime.freeMemory()
         if (usedMem.toDouble() / maxMem > MEMORY_PRESSURE_THRESHOLD) {
-            logcat(LogPriority.WARN) { "MassImport: Memory pressure ${usedMem / 1024 / 1024}MB / ${maxMem / 1024 / 1024}MB, pausing..." }
+            logcat(LogPriority.WARN) {
+                "MassImport: Memory pressure ${usedMem / 1024 / 1024}MB / ${maxMem / 1024 / 1024}MB, pausing..."
+            }
             System.gc()
             delay(2000)
         }

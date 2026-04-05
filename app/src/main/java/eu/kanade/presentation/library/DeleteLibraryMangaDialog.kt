@@ -71,11 +71,29 @@ fun DeleteLibraryMangaDialog(
             if (!containsLocalManga) {
                 add(CheckboxItem(MR.strings.downloaded_chapters, deleteDownloads, { deleteDownloads = it }))
             }
-            add(CheckboxItem(TDMR.strings.chapters_from_database, clearChaptersFromDb || removeFromLibrary, { clearChaptersFromDb = it }, enabled = !removeFromLibrary))
+            add(
+                CheckboxItem(TDMR.strings.chapters_from_database, clearChaptersFromDb || removeFromLibrary, {
+                    clearChaptersFromDb =
+                        it
+                }, enabled = !removeFromLibrary),
+            )
             add(CheckboxItem(TDMR.strings.translated_chapters, deleteTranslations, { deleteTranslations = it }))
-            add(CheckboxItem(TDMR.strings.action_clear_covers, clearCovers || removeFromLibrary, { clearCovers = it }, enabled = !removeFromLibrary))
-            add(CheckboxItem(TDMR.strings.action_clear_descriptions, clearDescriptions || removeFromLibrary, { clearDescriptions = it }, enabled = !removeFromLibrary))
-            add(CheckboxItem(TDMR.strings.action_clear_tags, clearTags || removeFromLibrary, { clearTags = it }, enabled = !removeFromLibrary))
+            add(
+                CheckboxItem(TDMR.strings.action_clear_covers, clearCovers || removeFromLibrary, {
+                    clearCovers = it
+                }, enabled = !removeFromLibrary),
+            )
+            add(
+                CheckboxItem(TDMR.strings.action_clear_descriptions, clearDescriptions || removeFromLibrary, {
+                    clearDescriptions =
+                        it
+                }, enabled = !removeFromLibrary),
+            )
+            add(
+                CheckboxItem(TDMR.strings.action_clear_tags, clearTags || removeFromLibrary, {
+                    clearTags = it
+                }, enabled = !removeFromLibrary),
+            )
         }
     }
 

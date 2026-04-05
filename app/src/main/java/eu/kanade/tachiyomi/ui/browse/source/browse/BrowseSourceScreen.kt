@@ -102,9 +102,9 @@ data class BrowseSourceScreen(
 
         // Back confirmation state
         val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
-        val confirmBackAfterPages by sourcePreferences.confirmBackAfterPages().changes().collectAsState(initial = 0)
-        val showPageNumber by sourcePreferences.showPageNumber().changes().collectAsState(initial = false)
-        val skipCoverLoading by sourcePreferences.skipCoverLoading().changes().collectAsState(initial = false)
+        val confirmBackAfterPages by sourcePreferences.confirmBackAfterPages.changes().collectAsState(initial = 0)
+        val showPageNumber by sourcePreferences.showPageNumber.changes().collectAsState(initial = false)
+        val skipCoverLoading by sourcePreferences.skipCoverLoading.changes().collectAsState(initial = false)
         val currentPage by screenModel.currentPage.collectAsState()
         var showBackConfirmDialog by remember { mutableStateOf(false) }
 

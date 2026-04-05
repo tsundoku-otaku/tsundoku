@@ -127,15 +127,29 @@ object TranslationQueueScreen : Screen() {
                         Column(modifier = Modifier.padding(16.dp)) {
                             val statusText = when {
                                 progress.isCancelling -> stringResource(MR.strings.pref_translation_status_cancelling)
-                                isPaused -> stringResource(MR.strings.pref_translation_status_paused, progress.completedChapters, progress.totalChapters)
+                                isPaused -> stringResource(
+                                    MR.strings.pref_translation_status_paused,
+                                    progress.completedChapters,
+                                    progress.totalChapters,
+                                )
                                 else -> {
                                     val current = progress.currentChapterName ?: "..."
                                     val chunkInfo = if (progress.totalChunks > 1) {
-                                        stringResource(MR.strings.pref_translation_status_chunk_info, progress.currentChunkIndex, progress.totalChunks)
+                                        stringResource(
+                                            MR.strings.pref_translation_status_chunk_info,
+                                            progress.currentChunkIndex,
+                                            progress.totalChunks,
+                                        )
                                     } else {
                                         ""
                                     }
-                                    stringResource(MR.strings.pref_translation_status_translating, current, chunkInfo, progress.completedChapters, progress.totalChapters)
+                                    stringResource(
+                                        MR.strings.pref_translation_status_translating,
+                                        current,
+                                        chunkInfo,
+                                        progress.completedChapters,
+                                        progress.totalChapters,
+                                    )
                                 }
                             }
                             Text(
