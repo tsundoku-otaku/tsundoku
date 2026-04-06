@@ -19,8 +19,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import logcat.LogPriority
-import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.source.service.SourceManager
@@ -62,9 +60,6 @@ class AndroidSourceManager(
                 customSourceManager.customSources,
                 jsPluginManager.jsSources,
             ) { extensions, customSources, jsSources ->
-                logcat(LogPriority.INFO) {
-                    "AndroidSourceManager: combine() triggered - extensions=${extensions.size}, customSources=${customSources.size}, jsSources=${jsSources.size}"
-                }
                 val mutableMap = ConcurrentHashMap<Long, Source>(
                     mapOf(
                         LocalSource.ID to LocalSource(
@@ -94,20 +89,10 @@ class AndroidSourceManager(
                 // Add JS plugin sources
                 jsSources.forEach { jsSource ->
                     mutableMap[jsSource.id] = jsSource
-                    // Store the full display name with "(JS)" marker for proper identification
-                    registerStubSource(StubSource.fromWithDisplayName(jsSource, "${jsSource.name} (JS)"))
-                    logcat(LogPriority.DEBUG) {
-                        "AndroidSourceManager: Added JsSource id=${jsSource.id}, name=${jsSource.name}"
-                    }
-                }
-                logcat(LogPriority.INFO) {
-                    "AndroidSourceManager: combine() returning map with ${mutableMap.size} sources"
+                    registerStubSource(StubSource.from(jsSource))
                 }
                 mutableMap
             }.collectLatest { sources ->
-                logcat(LogPriority.INFO) {
-                    "AndroidSourceManager: collectLatest() updating sourcesMapFlow with ${sources.size} sources"
-                }
                 sourcesMapFlow.value = sources
                 // Wait for extension manager to finish loading before marking initialized.
                 // Without this, the first combine emission (empty extensions) would set
