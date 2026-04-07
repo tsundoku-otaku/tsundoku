@@ -113,5 +113,5 @@ if ($All -or $ExtensionsOnly) {
         Write-Host "Extensions directory not found: $extensionsDir"
     }
 }
-
+//
 Write-Host "Installation complete for $($devices.Count) device(s)!"
