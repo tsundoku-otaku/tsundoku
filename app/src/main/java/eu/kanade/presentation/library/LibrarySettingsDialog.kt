@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
@@ -792,7 +793,12 @@ private fun ColumnScope.ExtensionsPage(
                 }
             }
             Spacer(Modifier.width(4.dp))
-            Text(if (showRefreshCompleted) "Refreshed" else "Refresh")
+            Text(
+                text = if (showRefreshCompleted) "Refreshed" else "Refresh",
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
 
         TextButton(
@@ -801,7 +807,12 @@ private fun ColumnScope.ExtensionsPage(
         ) {
             Icon(Icons.Default.Check, contentDescription = "Check all")
             Spacer(Modifier.width(4.dp))
-            Text("Check All")
+            Text(
+                text = "All",
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
 
         TextButton(
@@ -810,7 +821,12 @@ private fun ColumnScope.ExtensionsPage(
         ) {
             Icon(Icons.Default.Clear, contentDescription = "Uncheck all")
             Spacer(Modifier.width(4.dp))
-            Text("Uncheck All")
+            Text(
+                text = "None",
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 

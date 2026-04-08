@@ -94,6 +94,7 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.translation.service.TranslationPreferences
 import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -783,6 +784,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private fun downloadNextChapters() {
         if (downloadAheadAmount == 0) return
         val manga = manga ?: return
+        if (manga.isLocalNovel()) return
 
         // Only download ahead if current + next chapter is already downloaded too to avoid jank
         if (!manga.isNovel && getCurrentChapter()?.pageLoader !is DownloadPageLoader) return

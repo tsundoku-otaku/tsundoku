@@ -31,6 +31,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
+import eu.kanade.tachiyomi.util.lang.normalizeHtmlDescription
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
@@ -719,7 +720,7 @@ class JsSource(
                 title = obj["name"]?.jsonPrimitive?.content?.decodeEntities() ?: existing.title
                 author = obj["author"]?.jsonPrimitive?.content?.decodeEntities() ?: existing.author
                 artist = obj["artist"]?.jsonPrimitive?.content?.decodeEntities()
-                description = obj["summary"]?.jsonPrimitive?.content?.decodeEntities()
+                description = normalizeHtmlDescription(obj["summary"]?.jsonPrimitive?.content)
                 genre = obj["genres"]?.jsonPrimitive?.content?.decodeEntities()
                 // Parse alternative names if available
                 val altNames = obj["alternativeNames"]?.jsonPrimitive?.content?.decodeEntities()
