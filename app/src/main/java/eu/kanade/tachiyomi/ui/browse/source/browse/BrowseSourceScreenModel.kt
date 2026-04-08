@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.paging.Pager
@@ -24,6 +25,8 @@ import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.awaitSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.util.removeCovers
@@ -74,7 +77,7 @@ import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
 class BrowseSourceScreenModel(
     private val sourceId: Long,
     listingQuery: String?,
-    sourceManager: SourceManager = Injekt.get(),
+    private val sourceManager: SourceManager = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
@@ -99,7 +102,8 @@ class BrowseSourceScreenModel(
 
     val titleMaxLines by libraryPreferences.titleMaxLines.asState(screenModelScope)
 
-    val source = sourceManager.getOrStub(sourceId)
+    var source: Source by mutableStateOf(sourceManager.getOrStub(sourceId))
+        private set
 
     // Current page number from paging source
     val currentPage: StateFlow<Int> = tachiyomi.data.source.BaseSourcePagingSource.currentPage
@@ -175,9 +179,24 @@ class BrowseSourceScreenModel(
             }
         }
 
-        if (source is CatalogueSource) {
+        screenModelScope.launchIO {
+            sourceManager.awaitSource(sourceId)?.let { resolved ->
+                if (resolved !is tachiyomi.domain.source.model.StubSource && source is tachiyomi.domain.source.model.StubSource) {
+                    source = resolved
+                    initializeSourceState()
+                }
+            }
+        }
+
+        initializeSourceState()
+    }
+
+    private fun initializeSourceState() {
+        val currentSource = source
+
+        if (currentSource is CatalogueSource) {
             // Get initial filters from source
-            var initialFilters = source.getFilterList()
+            var initialFilters = currentSource.getFilterList()
 
             // Apply default preset synchronously if enabled
             if (manageFilterPresets.getAutoApplyEnabled()) {
@@ -206,8 +225,8 @@ class BrowseSourceScreenModel(
             }
         }
 
-        if (!getIncognitoState.await(source.id)) {
-            sourcePreferences.lastUsedSource.set(source.id)
+        if (!getIncognitoState.await(currentSource.id)) {
+            sourcePreferences.lastUsedSource.set(currentSource.id)
         }
     }
 
