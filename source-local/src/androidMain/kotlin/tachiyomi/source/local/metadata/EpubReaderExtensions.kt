@@ -2,8 +2,8 @@ package tachiyomi.source.local.metadata
 
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.util.lang.normalizeHtmlDescription
 import mihon.core.archive.EpubReader
-import org.jsoup.Jsoup
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -28,6 +28,7 @@ fun EpubReader.fillMetadata(manga: SManga, chapter: SChapter) {
     if (description.isNullOrBlank()) {
         description = doc.select("dc\\:description").firstOrNull()?.text()
     }
+    val normalizedDescription = normalizeHtmlDescription(description)
 
     val subjects = doc.getElementsByTag("dc:subject").map { it.text() }
     val mappedSubjects = if (subjects.isEmpty()) {
@@ -51,7 +52,7 @@ fun EpubReader.fillMetadata(manga: SManga, chapter: SChapter) {
     }
 
     creator?.text()?.let { manga.author = it }
-    description?.let { if (it.isNotBlank()) manga.description = it }
+    normalizedDescription?.let { manga.description = it }
 
     if (mappedSubjects.isNotEmpty()) {
         val currentGenres = manga.genre?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()

@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.util.lang
 
 import androidx.core.text.parseAsHtml
 import net.greypanther.natsort.CaseInsensitiveSimpleNaturalComparator
+import org.jsoup.Jsoup
+import org.jsoup.nodes.TextNode
 import java.nio.charset.StandardCharsets
 import kotlin.math.floor
 
@@ -64,4 +66,34 @@ fun String.takeBytes(n: Int): String {
  */
 fun String.htmlDecode(): String {
     return this.parseAsHtml().toString()
+}
+
+/**
+ * Normalize HTML-ish description content into clean plain text.
+ *
+ * Intended for metadata fields (EPUB/XML/JS plugin summaries) that may contain tags,
+ * entities, and inconsistent whitespace.
+ */
+fun normalizeHtmlDescription(rawDescription: String?): String? {
+    if (rawDescription.isNullOrBlank()) return null
+
+    val doc = Jsoup.parse(rawDescription)
+    doc.outputSettings().prettyPrint(false)
+
+    // Preserve explicit <br> breaks as single newlines.
+    doc.select("br").forEach { it.replaceWith(TextNode("\n")) }
+
+    // Treat block boundaries as paragraph separators.
+    doc.select("p, div, li, blockquote, h1, h2, h3, h4, h5, h6").forEach { it.appendText("\n\n") }
+
+    val normalized = doc.body().wholeText()
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .lines()
+        .map { it.trim() }
+        .joinToString("\n")
+        .replace(Regex("\\n{3,}"), "\n\n")
+        .trim()
+
+    return normalized.ifBlank { null }
 }
