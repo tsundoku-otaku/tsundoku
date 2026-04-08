@@ -39,39 +39,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.hippo.unifile.UniFile
-import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.domain.manga.interactor.ImportEpub
+import eu.kanade.domain.manga.interactor.ParseEpubPreview
 import eu.kanade.presentation.category.visualName
-import eu.kanade.tachiyomi.source.model.SChapter
-import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import logcat.LogPriority
-import mihon.core.archive.EpubReader
-import mihon.core.archive.archiveReader
-import mihon.domain.manga.model.toDomainManga
-import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
-import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.manga.interactor.GetLibraryManga
-import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
-import tachiyomi.domain.manga.interactor.NetworkToLocalManga
-import tachiyomi.domain.manga.model.MangaUpdate
-import tachiyomi.domain.manga.repository.MangaRepository
-import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
-import tachiyomi.source.local.LocalNovelSource
-import tachiyomi.source.local.metadata.fillMetadata
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.io.ByteArrayInputStream
-import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 
 data class EpubFileInfo(
     val uri: Uri,
@@ -115,10 +95,10 @@ fun ImportEpubDialog(
 
     var importProgress by remember { mutableStateOf<ImportProgress?>(null) }
     var importResult by remember { mutableStateOf<ImportResult?>(null) }
-    var isLoadingFiles by remember { mutableStateOf(false) }
 
-    val storageManager = remember { Injekt.get<StorageManager>() }
     val getCategories = remember { Injekt.get<GetCategories>() }
+    val importEpub = remember { ImportEpub() }
+    val parseEpubPreview = remember { ParseEpubPreview() }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         categories = withContext(Dispatchers.IO) {
@@ -136,120 +116,31 @@ fun ImportEpubDialog(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris ->
         if (uris.isNotEmpty()) {
-            isLoadingFiles = true
             scope.launch {
-                val fileInfos = withContext(Dispatchers.IO) {
-                    uris.mapNotNull { uri ->
-                        try {
-                            val inputStream = context.contentResolver.openInputStream(uri) ?: return@mapNotNull null
-                            val fileName = getFileNameFromUri(context, uri) ?: "unknown.epub"
-
-                            // Create a temporary file to read EPUB metadata
-                            val tempFile = File.createTempFile("epub_import_", ".epub", context.cacheDir)
-                            tempFile.outputStream().use { out ->
-                                inputStream.copyTo(out)
-                            }
-                            inputStream.close()
-
-                            val uniFile = UniFile.fromFile(tempFile)
-                            val epubReader = EpubReader(uniFile!!.archiveReader(context))
-
-                            val manga = SManga.create()
-                            val chapter = SChapter.create()
-                            epubReader.fillMetadata(manga, chapter)
-
-                            // Extract title from chapter (fillMetadata puts it there) or use filename
-                            val title = if (chapter.name.isNotBlank()) chapter.name else fileName.removeSuffix(".epub")
-                            // Set manga title from chapter name for consistency
-                            manga.title = title
-
-                            // Extract cover image from EPUB
-                            var coverUri: Uri? = null
-                            try {
-                                val coverHref = manga.thumbnail_url
-                                val coverExt = coverHref
-                                    ?.substringBefore('?')
-                                    ?.substringAfterLast('.', "png")
-                                    ?.takeIf { it.length <= 4 }
-                                    ?: "png"
-                                val coverStream = if (!coverHref.isNullOrBlank()) {
-                                    if (coverHref.startsWith("http://") || coverHref.startsWith("https://")) {
-                                        try {
-                                            val connection = URL(coverHref).openConnection() as HttpURLConnection
-                                            connection.connectTimeout = 10_000
-                                            connection.readTimeout = 10_000
-                                            val bytes = connection.inputStream.use { it.readBytes() }
-                                            ByteArrayInputStream(bytes)
-                                        } catch (_: Exception) {
-                                            null
-                                        }
-                                    } else {
-                                        epubReader.getInputStream(coverHref)
-                                    }
-                                } else {
-                                    // Fallback: try common cover filenames
-                                    val commonNames = listOf(
-                                        "cover.jpg", "cover.jpeg", "cover.png",
-                                        "OEBPS/cover.jpg", "OEBPS/cover.jpeg", "OEBPS/cover.png",
-                                        "Images/cover.jpg", "Images/cover.jpeg", "Images/cover.png",
-                                    )
-                                    var stream: java.io.InputStream? = null
-                                    for (name in commonNames) {
-                                        stream = epubReader.getInputStream(name)
-                                        if (stream != null) break
-                                    }
-                                    stream
-                                }
-
-                                coverStream?.use { stream ->
-                                    val coverFile = File.createTempFile("epub_cover_", ".$coverExt", context.cacheDir)
-                                    coverFile.outputStream().use { out ->
-                                        stream.copyTo(out)
-                                    }
-                                    coverUri = UniFile.fromFile(coverFile)?.uri
-                                }
-                            } catch (e: Exception) {
-                                logcat(LogPriority.DEBUG, e) { "Could not extract cover from EPUB" }
-                            }
-
-                            epubReader.close()
-
-                            tempFile.delete()
-
-                            EpubFileInfo(
-                                uri = uri,
-                                fileName = fileName,
-                                title = title,
-                                author = manga.author,
-                                description = manga.description,
-                                coverUri = coverUri,
-                                collection = runCatching { manga.title }.getOrNull()?.takeIf { it.isNotBlank() },
-                                genres = manga.genre,
-                            )
-                        } catch (e: Exception) {
-                            logcat(LogPriority.ERROR, e) { "Failed to parse EPUB: $uri" }
-                            withContext<Unit>(Dispatchers.Main) {
-                                context.toast("Failed to parse EPUB: ${e.message}")
-                            }
-                            null
-                        }
-                    }
+                val parsed = withContext(Dispatchers.IO) {
+                    parseEpubPreview.parseSelected(context, uris)
                 }
+                parsed.errors.forEach {
+                    android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+                }
+
+                val fileInfos = parsed.files.map {
+                    EpubFileInfo(
+                        uri = it.uri,
+                        fileName = it.fileName,
+                        title = it.title,
+                        author = it.author,
+                        description = it.description,
+                        coverUri = it.coverUri,
+                        collection = it.collection,
+                        genres = it.genres,
+                    )
+                }
+
                 selectedFiles.clear()
                 selectedFiles.addAll(fileInfos)
-                if (fileInfos.size == 1) {
-                    customTitle = fileInfos.first().title
-                } else if (fileInfos.size > 1) {
-                    // Check if they share the same collection
-                    val commonCollection = fileInfos.mapNotNull { it.collection }.distinct()
-                    if (commonCollection.size == 1) {
-                        customTitle = commonCollection.first()
-                    } else {
-                        // For combine mode, default title to first selected epub filename (without extension).
-                        customTitle = fileInfos.first().fileName.substringBeforeLast('.', fileInfos.first().fileName)
-                    }
-                }
-                isLoadingFiles = false
+
+                customTitle = parseEpubPreview.defaultCustomTitle(parsed.files)
             }
         }
     }
@@ -416,20 +307,33 @@ fun ImportEpubDialog(
                             if (selectedFiles.isNotEmpty()) {
                                 scope.launch {
                                     importProgress = ImportProgress(0, selectedFiles.size, "", true)
-                                    val result = importEpubFiles(
+                                    val result = importEpub.execute(
                                         context = context,
-                                        files = selectedFiles.toList(),
+                                        files = selectedFiles.map {
+                                            ImportEpub.ImportFile(
+                                                uri = it.uri,
+                                                fileName = it.fileName,
+                                                title = it.title,
+                                                author = it.author,
+                                                description = it.description,
+                                                coverUri = it.coverUri,
+                                                genres = it.genres,
+                                            )
+                                        },
                                         customTitle = customTitle.ifBlank { null },
                                         combineAsOne = combineAsOneNovel,
                                         autoAddToLibrary = autoAddToLibrary,
                                         categoryId = selectedCategoryId,
-                                        storageManager = storageManager,
                                         onProgress = { current, total, fileName ->
                                             importProgress = ImportProgress(current, total, fileName, true)
                                         },
                                     )
                                     importProgress = null
-                                    importResult = result
+                                    importResult = ImportResult(
+                                        successCount = result.successCount,
+                                        errorCount = result.errorCount,
+                                        errors = result.errors,
+                                    )
                                     onImportComplete(result.successCount, result.errorCount)
                                 }
                             }
@@ -504,303 +408,4 @@ private fun ImportResultView(result: ImportResult) {
             }
         }
     }
-}
-
-private fun getFileNameFromUri(context: android.content.Context, uri: Uri): String? {
-    return context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-        if (cursor.moveToFirst() && nameIndex >= 0) {
-            cursor.getString(nameIndex)
-        } else {
-            null
-        }
-    }
-}
-
-private suspend fun importEpubFiles(
-    context: android.content.Context,
-    files: List<EpubFileInfo>,
-    customTitle: String?,
-    combineAsOne: Boolean,
-    autoAddToLibrary: Boolean,
-    categoryId: Long?,
-    storageManager: StorageManager,
-    onProgress: (current: Int, total: Int, fileName: String) -> Unit,
-): ImportResult = withContext(Dispatchers.IO) {
-    val errors = mutableListOf<String>()
-    var successCount = 0
-    val importedNovelUrls = mutableListOf<String>()
-
-    val localNovelsDir = storageManager.getLocalNovelSourceDirectory()
-    if (localNovelsDir == null) {
-        return@withContext ImportResult(0, files.size, listOf("Local novels directory not found"))
-    }
-
-    if (combineAsOne && files.size > 1) {
-        // Combine all files into one novel folder
-        onProgress(1, 1, customTitle ?: files.first().title)
-
-        try {
-            val firstFileBaseName = files.first().fileName.substringBeforeLast('.', files.first().fileName)
-            val novelTitle = customTitle ?: firstFileBaseName
-            val sanitizedTitle = sanitizeFileName(novelTitle)
-
-            // Create novel folder
-            val novelDir = localNovelsDir.createDirectory(sanitizedTitle)
-            if (novelDir == null) {
-                errors.add("Failed to create directory for: $novelTitle")
-            } else {
-                importedNovelUrls.add(sanitizedTitle)
-                // Copy each file as a chapter
-                files.forEachIndexed { index, file ->
-                    val chapterFileName = "Chapter ${index + 1} - ${file.fileName}"
-                    val destFile = novelDir.createFile(chapterFileName)
-                    if (destFile != null) {
-                        context.contentResolver.openInputStream(file.uri)?.use { input ->
-                            destFile.openOutputStream()?.use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-                    }
-                }
-
-                // Copy cover from first file if available
-                val firstCoverUri = files.firstOrNull()?.coverUri
-                if (firstCoverUri != null) {
-                    try {
-                        val coverFileName = "cover.png"
-                        val coverDestFile = novelDir.createFile(coverFileName)
-                        if (coverDestFile != null) {
-                            context.contentResolver.openInputStream(firstCoverUri)?.use { input ->
-                                coverDestFile.openOutputStream()?.use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        logcat(LogPriority.DEBUG, e) { "Failed to copy cover for combined novel" }
-                    }
-                }
-
-                // Write details.json if metadata exists
-                val combinedDescription = files.mapNotNull { it.description }.firstOrNull { it.isNotBlank() }
-                val combinedGenres = files.mapNotNull {
-                    it.genres
-                }.flatMap { it.split(",") }.map { it.trim() }.filter { it.isNotBlank() }.distinct()
-                val author = files.firstOrNull()?.author
-                if (combinedDescription != null || combinedGenres.isNotEmpty() || author != null) {
-                    try {
-                        val detailsFile = novelDir.createFile("details.json")
-                        val jsonStr = buildString {
-                            append("{")
-                            append("\"title\":\"${novelTitle.replace("\"", "\\\"")}\"")
-                            if (author != null) append(",\"author\":\"${author.replace("\"", "\\\"")}\"")
-                            if (combinedDescription !=
-                                null
-                            ) {
-                                append(
-                                    ",\"description\":\"${combinedDescription.replace(
-                                        "\"",
-                                        "\\\"",
-                                    ).replace("\n", "\\n")}\"",
-                                )
-                            }
-                            if (combinedGenres.isNotEmpty()) {
-                                append(
-                                    ",\"genre\":[${combinedGenres.joinToString(",") {
-                                        "\"${it.replace("\"", "\\\"")}\""
-                                    }}]",
-                                )
-                            }
-                            append("}")
-                        }
-                        detailsFile?.openOutputStream()?.use { it.write(jsonStr.toByteArray()) }
-                    } catch (e: Exception) {
-                        logcat(LogPriority.DEBUG, e) { "Failed to write details.json" }
-                    }
-                }
-
-                successCount = 1
-            }
-        } catch (e: Exception) {
-            errors.add("Failed to combine files: ${e.message}")
-        }
-    } else {
-        // Import each file as a separate novel
-        files.forEachIndexed { index, file ->
-            onProgress(index + 1, files.size, file.fileName)
-
-            try {
-                val novelTitle = if (files.size == 1 && customTitle != null) {
-                    customTitle
-                } else {
-                    file.title
-                }
-                val sanitizedTitle = sanitizeFileName(novelTitle)
-
-                // Create novel folder
-                var novelDir = localNovelsDir.findFile(sanitizedTitle)
-                if (novelDir == null) {
-                    novelDir = localNovelsDir.createDirectory(sanitizedTitle)
-                }
-
-                if (novelDir == null) {
-                    errors.add("Failed to create directory for: ${file.fileName}")
-                } else {
-                    importedNovelUrls.add(sanitizedTitle)
-                    // Copy the epub file
-                    val destFile = novelDir.createFile(file.fileName)
-                    if (destFile != null) {
-                        context.contentResolver.openInputStream(file.uri)?.use { input ->
-                            destFile.openOutputStream()?.use { output ->
-                                input.copyTo(output)
-                            }
-                        }
-
-                        // Copy cover if available
-                        val coverUri = file.coverUri
-                        if (coverUri != null) {
-                            try {
-                                val coverFileName = "cover.png"
-                                val coverDestFile = novelDir.createFile(coverFileName)
-                                if (coverDestFile != null) {
-                                    context.contentResolver.openInputStream(coverUri)?.use { input ->
-                                        coverDestFile.openOutputStream()?.use { output ->
-                                            input.copyTo(output)
-                                        }
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                logcat(LogPriority.DEBUG, e) { "Failed to copy cover for: ${file.fileName}" }
-                            }
-                        }
-
-                        // Write metadata
-                        val description = file.description
-                        val genres =
-                            file.genres?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
-                        val author = file.author
-                        if (!description.isNullOrBlank() || genres.isNotEmpty() || !author.isNullOrBlank()) {
-                            try {
-                                val detailsFile = novelDir.createFile("details.json")
-                                val jsonStr = buildString {
-                                    append("{")
-                                    append("\"title\":\"${novelTitle.replace("\"", "\\\"")}\"")
-                                    if (!author.isNullOrBlank()) {
-                                        append(
-                                            ",\"author\":\"${author!!.replace("\"", "\\\"")}\"",
-                                        )
-                                    }
-                                    if (!description.isNullOrBlank()) {
-                                        append(
-                                            ",\"description\":\"${description!!.replace(
-                                                "\"",
-                                                "\\\"",
-                                            ).replace("\n", "\\n")}\"",
-                                        )
-                                    }
-                                    if (genres.isNotEmpty()) {
-                                        append(
-                                            ",\"genre\":[${genres.joinToString(",") {
-                                                "\"${it.replace("\"", "\\\"")}\""
-                                            }}]",
-                                        )
-                                    }
-                                    append("}")
-                                }
-                                detailsFile?.openOutputStream()?.use { it.write(jsonStr.toByteArray()) }
-                            } catch (e: Exception) {
-                                logcat(LogPriority.DEBUG, e) { "Failed to write details.json for: ${file.fileName}" }
-                            }
-                        }
-
-                        successCount++
-                    } else {
-                        errors.add("Failed to create file: ${file.fileName}")
-                    }
-                }
-            } catch (e: Exception) {
-                errors.add("${file.fileName}: ${e.message}")
-            }
-        }
-    }
-
-    if (autoAddToLibrary) {
-        val registrationErrors = registerImportedLocalNovels(
-            importedNovelUrls = importedNovelUrls.distinct(),
-            categoryId = categoryId,
-        )
-        errors.addAll(registrationErrors)
-    }
-
-    ImportResult(successCount, errors.size, errors)
-}
-
-private suspend fun registerImportedLocalNovels(
-    importedNovelUrls: List<String>,
-    categoryId: Long?,
-): List<String> {
-    if (importedNovelUrls.isEmpty()) return emptyList()
-
-    val networkToLocalManga = Injekt.get<NetworkToLocalManga>()
-    val getMangaByUrlAndSourceId = Injekt.get<GetMangaByUrlAndSourceId>()
-    val getLibraryManga = Injekt.get<GetLibraryManga>()
-    val mangaRepository = Injekt.get<MangaRepository>()
-    val setMangaCategories = Injekt.get<SetMangaCategories>()
-    val sourceManager = Injekt.get<tachiyomi.domain.source.service.SourceManager>()
-    val updateManga = Injekt.get<eu.kanade.domain.manga.interactor.UpdateManga>()
-    val syncChaptersWithSource = Injekt.get<eu.kanade.domain.chapter.interactor.SyncChaptersWithSource>()
-
-    val errors = mutableListOf<String>()
-    val source = sourceManager.get(LocalNovelSource.ID) ?: run {
-        return listOf("Local novel source not found")
-    }
-
-    importedNovelUrls.forEach { localUrl ->
-        try {
-            val existing = getMangaByUrlAndSourceId.await(localUrl, LocalNovelSource.ID)
-            val manga = existing ?: run {
-                val placeholder = SManga.create().apply {
-                    title = localUrl
-                    url = localUrl
-                }
-                networkToLocalManga(placeholder.toDomainManga(LocalNovelSource.ID, isNovel = true))
-            }
-
-            // Mark as favorite before fetching so the library shows it
-            mangaRepository.update(
-                MangaUpdate(
-                    id = manga.id,
-                    favorite = true,
-                    dateAdded = System.currentTimeMillis(),
-                    isNovel = true,
-                ),
-            )
-
-            // Fetch details — this reads details.json and cover from disk
-            val networkManga = source.getMangaDetails(manga.toSManga())
-            updateManga.awaitUpdateFromSource(manga, networkManga, manualFetch = true)
-
-            // Sync chapters from disk
-            val chapters = source.getChapterList(manga.toSManga())
-            syncChaptersWithSource.await(chapters, manga, source, manualFetch = true)
-
-            // Re-fetch the updated manga from DB so the library cache has fresh data including cover
-            val updatedManga = mangaRepository.getMangaById(manga.id)
-            getLibraryManga.addToLibrary(updatedManga.id)
-            getLibraryManga.applyMangaDetailUpdate(updatedManga.id) { updatedManga }
-
-            if (categoryId != null && categoryId != 0L) {
-                setMangaCategories.await(manga.id, listOf(categoryId))
-            }
-        } catch (e: Exception) {
-            errors.add("$localUrl: ${e.message}")
-        }
-    }
-
-    return errors
-}
-
-private fun sanitizeFileName(name: String): String {
-    return name.replace(Regex("[\\\\/:*?\"<>|]"), "_").take(200)
 }

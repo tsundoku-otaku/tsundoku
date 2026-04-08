@@ -20,9 +20,14 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Add Edit mode to edit chapters, fixes to images to make this work [@mrissaoussama](https://github.com/mrissaoussama) [#82](https://github.com/tsundoku-otaku/tsundoku/pull/82)
 - Added Excerpt Notes/In-Reader Quotes. Save arbitrary/highlighted text, associated to certain chapters, and allow editing and reordering. Saved to a json file in `quotes`  [@Rojikku](https://github.com/Rojikku) [#96](https://github.com/tsundoku-otaku/tsundoku/pull/96) Improved UI in [#136](https://github.com/tsundoku-otaku/tsundoku/pull/136)
 
+### Improved
+- EPUB imports should have their descriptions properly parsed. [@mrissaoussama](https://github.com/mrissaoussama) [#137](https://github.com/tsundoku-otaku/tsundoku/pull/137)
+
 ### Fixed 
 - Improve HTML file detection which should fix some issues with downloaded content. [@mrissaoussama](https://github.com/mrissaoussama) [#133](https://github.com/tsundoku-otaku/tsundoku/pull/133)
+- Don't download next on local novels/epubs [@mrissaoussama](https://github.com/mrissaoussama) [#139](https://github.com/tsundoku-otaku/tsundoku/pull/139)
 - Fixed bottom bar resizing [@Rojikku](https://github.com/Rojikku) [#96](https://github.com/tsundoku-otaku/tsundoku/pull/96)
+- Fixed extension filter option formatting [@mrissaoussama](https://github.com/mrissaoussama) [#138](https://github.com/tsundoku-otaku/tsundoku/pull/138)
 - Refresh library when deleting a category [@Rojikku](https://github.com/Rojikku)  [#134](https://github.com/tsundoku-otaku/tsundoku/pull/134)
 - Fixed ttf font importing [@Rojikku](https://github.com/Rojikku)  [#135](https://github.com/tsundoku-otaku/tsundoku/pull/135)
 
