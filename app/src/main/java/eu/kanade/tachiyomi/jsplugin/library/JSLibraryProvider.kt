@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.jsplugin.library
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Base64
+import android.webkit.CookieManager
 import com.dokar.quickjs.QuickJs
 import com.dokar.quickjs.binding.asyncFunction
 import com.dokar.quickjs.binding.function
@@ -22,7 +24,12 @@ import org.jsoup.select.Elements
 import tachiyomi.core.common.util.system.logcat
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Cipher
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.SecretKeySpec
 
 /**
  * Provides JavaScript libraries and APIs to plugins.
@@ -60,6 +67,7 @@ class JSLibraryProvider(
     suspend fun setup(runtime: QuickJs) {
         setupLogging(runtime)
         setupFetch(runtime)
+        setupCrypto(runtime)
         setupCheerio(runtime)
         setupStorage(runtime)
         setupCacheManagement(runtime)
@@ -116,6 +124,41 @@ class JSLibraryProvider(
         }
     }
 
+    // ============ Crypto API ============
+
+    private suspend fun setupCrypto(runtime: QuickJs) {
+        runtime.function("__aesGcmDecrypt") { args ->
+            val keyB64 = args.getOrNull(0)?.toString().orEmpty()
+            val ivB64 = args.getOrNull(1)?.toString().orEmpty()
+            val cipherB64 = args.getOrNull(2)?.toString().orEmpty()
+
+            if (keyB64.isBlank() || ivB64.isBlank() || cipherB64.isBlank()) {
+                return@function ""
+            }
+
+            try {
+                val keyRaw = Base64.decode(keyB64, Base64.DEFAULT)
+                val iv = Base64.decode(ivB64, Base64.DEFAULT)
+                val cipherBytes = Base64.decode(cipherB64, Base64.DEFAULT)
+
+                val keyBytes = ByteArray(32)
+                val copyLength = minOf(keyRaw.size, keyBytes.size)
+                System.arraycopy(keyRaw, 0, keyBytes, 0, copyLength)
+
+                val keySpec = SecretKeySpec(keyBytes, "AES")
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                val gcmSpec = GCMParameterSpec(128, iv)
+                cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
+
+                val plainBytes = cipher.doFinal(cipherBytes)
+                Base64.encodeToString(plainBytes, Base64.NO_WRAP)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "[$pluginId] AES-GCM decrypt failed" }
+                ""
+            }
+        }
+    }
+
     @kotlinx.serialization.Serializable
     private data class FetchResponse(
         val ok: Boolean,
@@ -133,7 +176,42 @@ class JSLibraryProvider(
                 logcat(LogPriority.DEBUG) { "[$pluginId] Fetching: $url" }
 
                 val method = (init?.get("method") as? String)?.uppercase() ?: "GET"
-                val headersMap = extractHeaders(init)
+                val headersMap = extractHeaders(init).toMutableMap()
+
+                // Bridge cookies solved in WebView challenges into JS plugin fetch requests.
+                if (headersMap.keys.none { it.equals("cookie", ignoreCase = true) }) {
+                    try {
+                        val webViewCookies = CookieManager.getInstance().getCookie(url)
+                        if (!webViewCookies.isNullOrBlank()) {
+                            headersMap["Cookie"] = webViewCookies
+
+                            // Browser-like behavior for Laravel/Inertia stacks:
+                            // if X-XSRF-TOKEN isn't explicitly provided, derive it from XSRF-TOKEN cookie.
+                            if (headersMap.keys.none { it.equals("x-xsrf-token", ignoreCase = true) }) {
+                                val xsrfToken = webViewCookies
+                                    .split(';')
+                                    .asSequence()
+                                    .map { it.trim() }
+                                    .firstOrNull { it.startsWith("XSRF-TOKEN=") }
+                                    ?.substringAfter('=')
+                                    ?.let { token ->
+                                        try {
+                                            URLDecoder.decode(token, StandardCharsets.UTF_8.name())
+                                        } catch (_: Exception) {
+                                            token
+                                        }
+                                    }
+
+                                if (!xsrfToken.isNullOrBlank()) {
+                                    headersMap["X-XSRF-TOKEN"] = xsrfToken
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // Ignore CookieManager failures and continue without WebView cookies.
+                    }
+                }
+
                 val body = extractBody(init, headersMap)
 
                 val requestBuilder = Request.Builder().url(url)
@@ -158,6 +236,17 @@ class JSLibraryProvider(
                 val response = client.newCall(requestBuilder.build()).execute()
                 response.use { resp ->
                     val responseBody = resp.body?.string() ?: ""
+
+                    // Keep WebView cookie store in sync with OkHttp responses.
+                    try {
+                        val cookieManager = CookieManager.getInstance()
+                        resp.headers.values("Set-Cookie").forEach { setCookie ->
+                            cookieManager.setCookie(resp.request.url.toString(), setCookie)
+                        }
+                        cookieManager.flush()
+                    } catch (_: Exception) {
+                        // Non-fatal: plugin fetch should still proceed if cookie sync fails.
+                    }
 
                     // Build response headers map
                     val responseHeaders = mutableMapOf<String, String>()
@@ -330,18 +419,17 @@ class JSLibraryProvider(
             val handle = args.getOrNull(0)?.toString()?.toIntOrNull() ?: -1
             // Handle both string selectors and potential function/object arguments
             val selectorArg = args.getOrNull(1)
-            val selector = when {
-                selectorArg == null -> ""
-                selectorArg is String -> selectorArg
-                // If it's a JsObject or function, we can't use it as CSS selector
-                // Return the original handle unchanged since filter functions aren't supported
+            when {
+                selectorArg == null -> cheerioFilter(handle, "")
+                selectorArg is String -> cheerioFilter(handle, selectorArg)
+                // If it's a JsObject or function, we can't use it as CSS selector.
+                // Return the original handle unchanged since filter functions aren't supported.
                 selectorArg.toString().startsWith("com.dokar.quickjs.binding.JsObject") -> {
                     logcat(LogPriority.WARN) { "[$pluginId] cheerioFilter: function/object filters not supported, returning original handle" }
-                    return@function handle
+                    handle
                 }
-                else -> selectorArg.toString()
+                else -> cheerioFilter(handle, selectorArg.toString())
             }
-            cheerioFilter(handle, selector)
         }
 
         // Is
@@ -415,17 +503,20 @@ class JSLibraryProvider(
     private fun cheerioSelect(parentHandle: Int, selector: String): Int {
         if (selector.isBlank()) return parentHandle // No selector = return parent itself
         val parent = elementCache[parentHandle] ?: return -1
+        val normalizedSelector = normalizeSelectorForJsoup(selector)
         val elements = try {
             when (parent) {
-                is Document -> parent.select(selector)
-                is Element -> parent.select(selector)
+                is Document -> parent.select(normalizedSelector)
+                is Element -> parent.select(normalizedSelector)
                 is Elements -> Elements().also { results ->
-                    parent.forEach { results.addAll(it.select(selector)) }
+                    parent.forEach { results.addAll(it.select(normalizedSelector)) }
                 }
                 else -> Elements()
             }
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "[$pluginId] cheerioSelect: invalid selector '$selector'" }
+            logcat(LogPriority.ERROR, e) {
+                "[$pluginId] cheerioSelect: invalid selector '$selector' (normalized='$normalizedSelector')"
+            }
             Elements()
         }
         val handle = ++handleCounter
@@ -772,15 +863,41 @@ class JSLibraryProvider(
 
     private fun cheerioHasClass(handle: Int, className: String): Boolean = when (val el = elementCache[handle]) {
         is Element -> el.hasClass(className)
-        is Elements -> el.firstOrNull()?.hasClass(className) ?: false
+        is Elements -> el.any { it.hasClass(className) }
         else -> false
     }
 
+    private fun normalizeSelectorForJsoup(selector: String): String {
+        if (selector.isBlank()) return selector
+
+        // jQuery allows :contains("text") / :contains('text'), while Jsoup expects :contains(text).
+        var normalized = selector
+            .replace(Regex(":contains\\(\"([^\"]*)\"\\)")) { matchResult ->
+                ":contains(${matchResult.groupValues[1]})"
+            }
+            .replace(Regex(":contains\\('([^']*)'\\)")) { matchResult ->
+                ":contains(${matchResult.groupValues[1]})"
+            }
+
+        // Same normalization for :containsOwn(...)
+        normalized = normalized
+            .replace(Regex(":containsOwn\\(\"([^\"]*)\"\\)")) { matchResult ->
+                ":containsOwn(${matchResult.groupValues[1]})"
+            }
+            .replace(Regex(":containsOwn\\('([^']*)'\\)")) { matchResult ->
+                ":containsOwn(${matchResult.groupValues[1]})"
+            }
+
+        return normalized
+    }
+
+
     private fun cheerioFilter(handle: Int, selector: String): Int {
+        val normalizedSelector = normalizeSelectorForJsoup(selector)
         val el = elementCache[handle]
         val filtered = when (el) {
-            is Elements -> Elements(el.filter { it.`is`(selector) })
-            is Element -> if (el.`is`(selector)) Elements(listOf(el)) else Elements()
+            is Elements -> Elements(el.filter { it.`is`(normalizedSelector) })
+            is Element -> if (el.`is`(normalizedSelector)) Elements(listOf(el)) else Elements()
             else -> Elements()
         }
         val newHandle = ++handleCounter
@@ -788,10 +905,13 @@ class JSLibraryProvider(
         return newHandle
     }
 
-    private fun cheerioIs(handle: Int, selector: String): Boolean = when (val el = elementCache[handle]) {
-        is Element -> el.`is`(selector)
-        is Elements -> el.any { it.`is`(selector) }
-        else -> false
+    private fun cheerioIs(handle: Int, selector: String): Boolean {
+        val normalizedSelector = normalizeSelectorForJsoup(selector)
+        return when (val el = elementCache[handle]) {
+            is Element -> el.`is`(normalizedSelector)
+            is Elements -> el.any { it.`is`(normalizedSelector) }
+            else -> false
+        }
     }
 
     // ============ Storage API ============
@@ -1172,8 +1292,23 @@ class JSLibraryProvider(
         // Helper to convert array of cheerio objects back to cheerio-like object
         function __arrayToCheerio(arr) {
             if (!arr || arr.length === 0) return __emptySelection();
+            function __collect(sel) {
+                var out = [];
+                if (!sel || typeof sel.length !== 'number') return out;
+                for (var i = 0; i < sel.length; i++) {
+                    if (typeof sel.get === 'function') {
+                        var item = sel.get(i);
+                        if (item) out.push(item);
+                    } else if (typeof sel.eq === 'function') {
+                        var eqItem = sel.eq(i);
+                        if (eqItem) out.push(eqItem);
+                    }
+                }
+                return out;
+            }
             var obj = {
                 _arr: arr,
+                _prev: null,
                 get length() { return arr.length; },
                 eq: function(i) { return arr[i] || __emptySelection(); },
                 first: function() { return arr[0] || __emptySelection(); },
@@ -1182,16 +1317,113 @@ class JSLibraryProvider(
                 map: function(cb) { return arr.map(function(el, i) { return cb.call(el, i, el); }); },
                 toArray: function() { return arr.slice(); },
                 get: function(i) { return typeof i === 'undefined' ? arr.slice() : arr[i]; },
+                parent: function() {
+                    var out = [];
+                    arr.forEach(function(el) { if (el && el.parent) out = out.concat(__collect(el.parent())); });
+                    var next = __arrayToCheerio(out);
+                    next._prev = this;
+                    return next;
+                },
+                children: function(s) {
+                    var out = [];
+                    arr.forEach(function(el) { if (el && el.children) out = out.concat(__collect(el.children(s || ''))); });
+                    var next = __arrayToCheerio(out);
+                    next._prev = this;
+                    return next;
+                },
+                next: function() {
+                    var out = [];
+                    arr.forEach(function(el) { if (el && el.next) out = out.concat(__collect(el.next())); });
+                    var next = __arrayToCheerio(out);
+                    next._prev = this;
+                    return next;
+                },
+                prev: function() {
+                    var out = [];
+                    arr.forEach(function(el) { if (el && el.prev) out = out.concat(__collect(el.prev())); });
+                    var next = __arrayToCheerio(out);
+                    next._prev = this;
+                    return next;
+                },
                 find: function(s) {
                     var results = [];
-                    arr.forEach(function(el) { results = results.concat(el.find(s).toArray()); });
-                    return __arrayToCheerio(results);
+                    arr.forEach(function(el) { if (el && el.find) results = results.concat(__collect(el.find(s))); });
+                    var next = __arrayToCheerio(results);
+                    next._prev = this;
+                    return next;
                 },
-                text: function() { return arr.map(function(el) { return el.text(); }).join(''); },
+                text: function() {
+                    return arr.map(function(el) {
+                        if (!el) return '';
+                        if (typeof el.text === 'function') return el.text();
+                        if (typeof el.toString === 'function') return el.toString();
+                        return '';
+                    }).join('');
+                },
                 html: function() { return arr.length > 0 ? arr[0].html() : ''; },
                 attr: function(n) { return arr.length > 0 ? arr[0].attr(n) : undefined; },
-                filter: function(s) { return __arrayToCheerio(arr.filter(function(el) { return el.is(s); })); },
-                not: function(s) { return __arrayToCheerio(arr.filter(function(el) { return !el.is(s); })); }
+                data: function(n) { return arr.length > 0 && arr[0].data ? arr[0].data(n) : undefined; },
+                prop: function(n) { return arr.length > 0 && arr[0].prop ? arr[0].prop(n) : undefined; },
+                val: function() { return arr.length > 0 && arr[0].val ? arr[0].val() : undefined; },
+                hasClass: function(c) { return arr.length > 0 && arr[0].hasClass ? arr[0].hasClass(c) : false; },
+                is: function(s) { return arr.length > 0 && arr[0].is ? arr[0].is(s) : false; },
+                trim: function() { return (this.text() || '').trim(); },
+                filter: function(s) {
+                    var filtered;
+                    if (typeof s === 'function') {
+                        filtered = arr.filter(function(el, i) { return !!s.call(el, i, el); });
+                    } else {
+                        filtered = arr.filter(function(el) { return el.is(s); });
+                    }
+                    var next = __arrayToCheerio(filtered);
+                    next._prev = this;
+                    return next;
+                },
+                not: function(s) {
+                    var filtered;
+                    if (typeof s === 'function') {
+                        filtered = arr.filter(function(el, i) { return !s.call(el, i, el); });
+                    } else {
+                        filtered = arr.filter(function(el) { return !el.is(s); });
+                    }
+                    var next = __arrayToCheerio(filtered);
+                    next._prev = this;
+                    return next;
+                },
+                remove: function() { arr.forEach(function(el) { if (el && el.remove) el.remove(); }); return this; },
+                replaceWith: function(content) {
+                    arr.forEach(function(el) { if (el && el.replaceWith) el.replaceWith(content); });
+                    return this;
+                },
+                contents: function() { return this.children(''); },
+                siblings: function(s) {
+                    var out = [];
+                    arr.forEach(function(el) {
+                        if (!el || !el.parent || !el._h) return;
+                        var sib = s ? el.parent().children(s) : el.parent().children();
+                        out = out.concat(__collect(sib).filter(function(x) { return x && x._h !== el._h; }));
+                    });
+                    var next = __arrayToCheerio(out);
+                    next._prev = this;
+                    return next;
+                },
+                closest: function(s) { return arr.length > 0 && arr[0].closest ? arr[0].closest(s) : __emptySelection(); },
+                addBack: function() { return this; },
+                end: function() { return this._prev || this; },
+                slice: function(start, end) {
+                    var next = __arrayToCheerio(arr.slice(start, end));
+                    next._prev = this;
+                    return next;
+                },
+                index: function() { return arr.length > 0 && arr[0].index ? arr[0].index() : -1; },
+                clone: function() { return this; },
+                addClass: function() { return this; },
+                removeClass: function() { return this; },
+                append: function(content) { arr.forEach(function(el) { if (el && el.append) el.append(content); }); return this; },
+                prepend: function(content) { arr.forEach(function(el) { if (el && el.prepend) el.prepend(content); }); return this; },
+                before: function(content) { arr.forEach(function(el) { if (el && el.before) el.before(content); }); return this; },
+                after: function(content) { arr.forEach(function(el) { if (el && el.after) el.after(content); }); return this; },
+                empty: function() { arr.forEach(function(el) { if (el && el.empty) el.empty(); }); return this; }
             };
             return obj;
         }
@@ -1364,6 +1596,40 @@ class JSLibraryProvider(
                     return { FilterTypes: { TextInput: 'Text', Picker: 'Picker', CheckboxGroup: 'Checkbox', Switch: 'Switch', ExcludableCheckboxGroup: 'XCheckbox' } };
                 case '@libs/defaultCover':
                     return { defaultCover: '' };
+                case '@libs/aes':
+                    return {
+                        gcm: function(keyBytes, ivBytes) {
+                            function toB64(u8) {
+                                if (!u8 || u8.length === 0) return '';
+                                var bin = '';
+                                for (var i = 0; i < u8.length; i++) {
+                                    bin += String.fromCharCode(u8[i] & 255);
+                                }
+                                return btoa(bin);
+                            }
+                            function fromB64(b64) {
+                                if (!b64) return new Uint8Array(0);
+                                var bin = atob(b64);
+                                var out = new Uint8Array(bin.length);
+                                for (var i = 0; i < bin.length; i++) {
+                                    out[i] = bin.charCodeAt(i) & 255;
+                                }
+                                return out;
+                            }
+                            return {
+                                decrypt: function(cipherBytes) {
+                                    var keyB64 = toB64(keyBytes);
+                                    var ivB64 = toB64(ivBytes);
+                                    var cipherB64 = toB64(cipherBytes);
+                                    var plainB64 = __aesGcmDecrypt(keyB64, ivB64, cipherB64);
+                                    if (!plainB64) {
+                                        throw new Error('AES-GCM decrypt failed');
+                                    }
+                                    return fromB64(plainB64);
+                                }
+                            };
+                        }
+                    };
                 case '@libs/isAbsoluteUrl':
                     return { isUrlAbsolute: function(u) { return u && (u.startsWith('http://') || u.startsWith('https://')); } };
                 case '@libs/storage':
