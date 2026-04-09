@@ -23,6 +23,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - EPUB imports should have their descriptions properly parsed. [@mrissaoussama](https://github.com/mrissaoussama) [#137](https://github.com/tsundoku-otaku/tsundoku/pull/137)
 - MassImport will now also work with Manga [@mrissaoussama](https://github.com/mrissaoussama) [#142](https://github.com/tsundoku-otaku/tsundoku/pull/142)
+- Regex improved to faster versions [@Palloxin] [#147](https://github.com/tsundoku-otaku/tsundoku/pull/147)
 
 ### Fixed 
 - Fixed tapping novel name opening a manga search instead of novel [@mrissaoussama](https://github.com/mrissaoussama) [#143](https://github.com/tsundoku-otaku/tsundoku/pull/143)
