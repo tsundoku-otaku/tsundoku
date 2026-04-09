@@ -126,8 +126,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         setForegroundSafely()
 
         return withIOContext {
+            var shouldDeleteRecoveryFile = false
             try {
-                performImport(urls, categoryId, addToLibrary, fetchDetails, fetchChapters, batchId)
+                val result = performImport(urls, categoryId, addToLibrary, fetchDetails, fetchChapters, batchId)
+                shouldDeleteRecoveryFile = result.errored == 0
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) {
@@ -139,8 +141,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             } finally {
                 context.cancelNotification(Notifications.ID_MASS_IMPORT_PROGRESS)
                 inputData.getString(KEY_URLS_FILE)?.let { path -> runCatching { File(path).delete() } }
-                // Clear recovery queue file on completion
-                runCatching { recoveryFile?.delete() }
+                // Keep recovery file on error/cancellation so pending queue can be recovered after app/process death.
+                if (shouldDeleteRecoveryFile) {
+                    runCatching { recoveryFile?.delete() }
+                }
             }
         }
     }
@@ -164,14 +168,14 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         fetchDetails: Boolean,
         fetchChapters: Boolean,
         batchId: String,
-    ) {
+    ): ImportResult {
         updateBatchStatus(batchId, BatchStatus.Running)
 
-        val novelSources = getNovelSources()
-        if (novelSources.isEmpty()) {
-            showCompletionNotification(0, 0, urls.size, "No novel sources installed")
+        val importSources = getImportSources()
+        if (importSources.isEmpty()) {
+            showCompletionNotification(0, 0, urls.size, "No compatible sources installed")
             updateBatchStatus(batchId, BatchStatus.Completed)
-            return
+            return ImportResult(added = 0, skipped = 0, errored = urls.size)
         }
 
         val libraryUrlIndex = try {
@@ -187,7 +191,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val validUrls = urls.filter { url ->
             url.startsWith("http://") || url.startsWith("https://")
         }.filter { url ->
-            val source = findMatchingSource(url, novelSources) ?: return@filter false
+            val source = findMatchingSource(url, importSources) ?: return@filter false
             val path = normalizeUrl(extractPathFromUrl(url, getSourceBaseUrl(source)))
             !libraryUrlIndex.contains(source.id to path)
         }
@@ -195,7 +199,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         if (validUrls.isEmpty()) {
             showCompletionNotification(0, urls.size - validUrls.size, 0, "All novels already in library")
             updateBatchStatus(batchId, BatchStatus.Completed)
-            return
+            return ImportResult(added = 0, skipped = urls.size - validUrls.size, errored = 0)
         }
 
         // Update batch total to reflect actual work items (validUrls, not all urls)
@@ -240,7 +244,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         // Group URLs by source for smarter scheduling
         val urlsWithSource = validUrls.mapNotNull { url ->
-            val source = findMatchingSource(url, novelSources) ?: return@mapNotNull null
+            val source = findMatchingSource(url, importSources) ?: return@mapNotNull null
             url to source
         }
 
@@ -367,19 +371,22 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             .collect()
 
         // Update shared state for UI
+        val finalResult = ImportResult(
+            added = addedCount.get(),
+            skipped = skippedCount.get(),
+            errored = erroredCount.get(),
+            skippedUrls = skippedUrls.toList(),
+            erroredUrls = erroredUrls.toList(),
+        )
+
         _sharedResult.update {
-            ImportResult(
-                added = addedCount.get(),
-                skipped = skippedCount.get(),
-                errored = erroredCount.get(),
-                skippedUrls = skippedUrls.toList(),
-                erroredUrls = erroredUrls.toList(),
-            )
+            finalResult
         }
 
         updateBatchStatus(batchId, BatchStatus.Completed)
 
         showCompletionNotification(addedCount.get(), skippedCount.get(), erroredCount.get(), null)
+        return finalResult
     }
 
     private fun updateBatchStatus(batchId: String, status: BatchStatus) {
@@ -419,18 +426,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 }
             }
         }
-    }
-
-    private suspend fun processUrl(
-        url: String,
-        novelSources: List<CatalogueSource>,
-        addToLibrary: Boolean,
-        fetchDetails: Boolean,
-        categoryId: Long,
-        fetchChapters: Boolean,
-    ): Boolean {
-        val source = findMatchingSource(url, novelSources) ?: return false
-        return processUrlWithSource(url, source, addToLibrary, fetchDetails, categoryId, fetchChapters)
     }
 
     private suspend fun processUrlWithSource(
@@ -637,10 +632,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
     }
 
-    private fun getNovelSources(): List<CatalogueSource> {
+    private fun getImportSources(): List<CatalogueSource> {
         return sourceManager.getCatalogueSources()
             .filter { it is HttpSource || it is JsSource }
-            .filter { it.isNovelSource() }
     }
 
     /**

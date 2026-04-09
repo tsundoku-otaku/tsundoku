@@ -22,6 +22,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Improved
 - EPUB imports should have their descriptions properly parsed. [@mrissaoussama](https://github.com/mrissaoussama) [#137](https://github.com/tsundoku-otaku/tsundoku/pull/137)
+- MassImport will now also work with Manga [@mrissaoussama](https://github.com/mrissaoussama) [#142](https://github.com/tsundoku-otaku/tsundoku/pull/142)
 
 ### Fixed 
 - Improve HTML file detection which should fix some issues with downloaded content. [@mrissaoussama](https://github.com/mrissaoussama) [#133](https://github.com/tsundoku-otaku/tsundoku/pull/133)
