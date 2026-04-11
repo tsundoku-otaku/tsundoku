@@ -37,7 +37,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.zip.ZipInputStream
-import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
@@ -709,7 +708,7 @@ class LNReaderBackupImporter(
                     url = ch.path,
                     name = ch.name,
                     scanlator = null,
-                    read = ch.readTime != null && ch.unread == 0,
+                    read = ch.unread == 0,
                     bookmark = ch.bookmark != 0,
                     lastPageRead = ch.progress?.toLong() ?: 0L,
                     dateFetch = 0L,
