@@ -14,6 +14,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Fixed
 - Fixed issue where some chapters wouldn't be marked read [@mrissaoussama](https://github.com/mrissaoussama) [#148](https://github.com/tsundoku-otaku/tsundoku/pull/148)
+- Fixed jsource library updates, links. Improved massimport and browse pagination. [@mrissaoussama](https://github.com/mrissaoussama) [#149](https://github.com/tsundoku-otaku/tsundoku/pull/149)
 
 
 ## [v0.1.3] - 2026-04-10
