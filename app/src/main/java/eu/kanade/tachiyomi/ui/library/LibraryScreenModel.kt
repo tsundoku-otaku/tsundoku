@@ -33,6 +33,7 @@ import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.collections.immutable.ImmutableList
@@ -1085,13 +1086,11 @@ class LibraryScreenModel(
      */
     fun getSelectedMangaUrls(): List<String> {
         return state.value.selectedManga.mapNotNull { manga ->
-            val source = sourceManager.get(manga.source) as? HttpSource
-            source?.let {
-                try {
-                    it.getMangaUrl(manga.toSManga())
-                } catch (e: Exception) {
-                    null
-                }
+            val source = sourceManager.get(manga.source) ?: return@mapNotNull null
+            try {
+                source.getMangaUrlOrNull(manga.toSManga()) ?: manga.url
+            } catch (_: Exception) {
+                null
             }
         }
     }

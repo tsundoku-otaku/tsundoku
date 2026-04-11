@@ -43,6 +43,7 @@ import cafe.adriel.voyager.core.model.rememberScreenModel
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.BrowseSourceContent
 import eu.kanade.presentation.browse.MissingSourceScreen
@@ -61,6 +62,7 @@ import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreenModel.Listi
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -97,6 +99,7 @@ data class BrowseSourceScreen(
 
         val screenModel = rememberScreenModel { BrowseSourceScreenModel(sourceId, listingQuery) }
         val state by screenModel.state.collectAsState()
+        val source = screenModel.source
 
         val navigator = LocalNavigator.currentOrThrow
 
@@ -124,10 +127,9 @@ data class BrowseSourceScreen(
             navigateUp()
         }
 
-        val currentSource = screenModel.source
-        if (currentSource is StubSource) {
+        if (source is StubSource) {
             MissingSourceScreen(
-                source = currentSource,
+                source = source,
                 navigateUp = navigateUp,
             )
             return
@@ -179,7 +181,6 @@ data class BrowseSourceScreen(
 
         val onHelpClick = { uriHandler.openUri(LocalSource.HELP_URL) }
         val onWebViewClick = f@{
-            val source = screenModel.source
             val url: String
             val name: String
             val id: Long
@@ -207,8 +208,8 @@ data class BrowseSourceScreen(
             )
         }
 
-        LaunchedEffect(screenModel.source) {
-            assistUrl = (screenModel.source as? HttpSource)?.baseUrl
+        LaunchedEffect(source) {
+            assistUrl = (source as? HttpSource)?.baseUrl
         }
 
         Scaffold(
@@ -519,8 +520,7 @@ data class BrowseSourceScreen(
             // Prefill dialog with selected novels' URLs (one per line)
             val selected = screenModel.state.value.selection
             val initialText = selected.joinToString("\n") { manga ->
-                val url = manga.url
-                if (url.startsWith("http")) url else ((screenModel.source as? HttpSource)?.baseUrl ?: "") + url
+                screenModel.source.getMangaUrlOrNull(manga.toSManga()) ?: manga.url
             }
 
             MassImportDialog(

@@ -63,6 +63,7 @@ fun BrowseSourceToolbar(
     val title = source?.name
     val isLocalSource = source is LocalSource
     val isConfigurableSource = source is ConfigurableSource
+    val canOpenPageDialog = onPageJump != null || onPageRangeLoad != null
 
     var selectingDisplayMode by remember { mutableStateOf(false) }
     var showPageJumpDialog by remember { mutableStateOf(false) }
@@ -76,7 +77,7 @@ fun BrowseSourceToolbar(
         onClickCloseSearch = navigateUp,
         actions = {
             // Page number indicator (clickable to jump to page)
-            if (showPageNumber && onPageJump != null) {
+            if (showPageNumber && canOpenPageDialog) {
                 TextButton(
                     onClick = { showPageJumpDialog = true },
                 ) {
@@ -158,9 +159,9 @@ fun BrowseSourceToolbar(
         scrollBehavior = scrollBehavior,
     )
 
-    if (showPageJumpDialog && onPageJump != null) {
-        var pageInput by remember { mutableStateOf(currentPage.toString()) }
-        var endPageInput by remember { mutableStateOf("") }
+    if (showPageJumpDialog && canOpenPageDialog) {
+        var pageInput by remember(showPageJumpDialog, currentPage) { mutableStateOf(currentPage.toString()) }
+        var endPageInput by remember(showPageJumpDialog) { mutableStateOf("") }
         var showRangeMode by remember { mutableStateOf(false) }
 
         // Get current delay from preferences
@@ -172,6 +173,12 @@ fun BrowseSourceToolbar(
             title = { Text(if (showRangeMode) "Load Page Range" else "Jump to Page") },
             text = {
                 Column {
+                    Text(
+                        text = "Loaded up to page: $currentPage",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     OutlinedTextField(
                         value = pageInput,
                         onValueChange = { pageInput = it.filter { char -> char.isDigit() } },
@@ -185,7 +192,7 @@ fun BrowseSourceToolbar(
                                 if (!showRangeMode) {
                                     pageInput.toIntOrNull()?.let { page ->
                                         if (page > 0) {
-                                            onPageJump(page)
+                                            onPageJump?.invoke(page) ?: onPageRangeLoad?.invoke(page, page)
                                             showPageJumpDialog = false
                                         }
                                     }
@@ -214,7 +221,7 @@ fun BrowseSourceToolbar(
                                         if (onPageRangeLoad != null) {
                                             onPageRangeLoad(startPage, endPage)
                                         } else {
-                                            onPageJump(startPage)
+                                            onPageJump?.invoke(startPage)
                                         }
                                         showPageJumpDialog = false
                                     }
@@ -263,14 +270,14 @@ fun BrowseSourceToolbar(
                                 if (onPageRangeLoad != null) {
                                     onPageRangeLoad(startPage, endPage)
                                 } else {
-                                    onPageJump(startPage)
+                                    onPageJump?.invoke(startPage)
                                 }
                                 showPageJumpDialog = false
                             }
                         } else {
                             pageInput.toIntOrNull()?.let { page ->
                                 if (page > 0) {
-                                    onPageJump(page)
+                                    onPageJump?.invoke(page) ?: onPageRangeLoad?.invoke(page, page)
                                     showPageJumpDialog = false
                                 }
                             }

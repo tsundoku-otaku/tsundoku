@@ -92,24 +92,29 @@ fun MassImportDialog(
     var pendingUrls by remember { mutableStateOf(initialText) }
     var urlText by remember { mutableStateOf("") }
 
-    // File picker launcher for reading URLs from files
+    // File picker launcher for reading URLs from multiple files
     val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-        onResult = { uri ->
-            uri?.let {
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+        onResult = { uris ->
+            if (uris.isNotEmpty()) {
+                var totalAdded = 0
                 try {
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    val content = inputStream?.bufferedReader()?.use { it.readText() } ?: return@let
+                    val combinedContent = uris.joinToString("\n") { uri ->
+                        val inputStream = context.contentResolver.openInputStream(uri)
+                        val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+                        totalAdded += content.lines().count { it.isNotBlank() }
+                        content
+                    }
 
                     // Add file content to pending URLs
                     pendingUrls = if (pendingUrls.isBlank()) {
-                        content
+                        combinedContent
                     } else {
-                        "$pendingUrls\n$content"
+                        "$pendingUrls\n$combinedContent"
                     }
-                    context.toast("Added ${content.lines().filter { it.isNotBlank() }.size} URLs from file")
+                    context.toast("Added $totalAdded URLs from file(s)")
                 } catch (e: Exception) {
-                    context.toast("Error reading file: ${e.message}")
+                    context.toast("Error reading file(s): ${e.message}")
                 }
             }
         },
@@ -177,6 +182,10 @@ fun MassImportDialog(
     val massImportNovels = remember { Injekt.get<MassImport>() }
 
     val queue by MassImportJob.sharedQueue.collectAsState()
+
+    LaunchedEffect(Unit) {
+        MassImportJob.restoreQueueFromWorkManager(context)
+    }
 
     val getCategories = remember { Injekt.get<GetCategories>() }
     // Filter categories by content type (manga vs novel)

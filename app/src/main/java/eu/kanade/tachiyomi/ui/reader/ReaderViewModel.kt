@@ -27,8 +27,8 @@ import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
 import eu.kanade.tachiyomi.data.translation.TranslationService
+import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.awaitSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -50,6 +50,7 @@ import eu.kanade.tachiyomi.util.chapter.filterDownloaded
 import eu.kanade.tachiyomi.util.chapter.removeDuplicates
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.lang.byteSize
+import eu.kanade.tachiyomi.util.source.getChapterUrlOrNull
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import eu.kanade.tachiyomi.util.system.toast
@@ -351,7 +352,7 @@ class ReaderViewModel @JvmOverloads constructor(
                     if (chapterId == -1L) chapterId = initialChapterId
 
                     val context = Injekt.get<Application>()
-                    val source = sourceManager.awaitSource(manga.source) ?: sourceManager.getOrStub(manga.source)
+                    val source = sourceManager.getOrStub(manga.source)
                     loader = ChapterLoader(context, downloadManager, downloadProvider, manga, source)
 
                     loadChapter(loader!!, chapterList.first { chapterId == it.chapter.id })
@@ -970,14 +971,17 @@ class ReaderViewModel @JvmOverloads constructor(
         return state.value.currentChapter
     }
 
-    fun getSource() = manga?.source?.let { sourceManager.getOrStub(it) } as? HttpSource
+    fun getSource() = manga?.source?.let { sourceManager.getOrStub(it) }
 
     fun getChapterUrl(): String? {
         val sChapter = getCurrentChapter()?.chapter ?: return null
         val source = getSource() ?: return null
 
         return try {
-            source.getChapterUrl(sChapter)
+            when (source) {
+                is HttpSource, is JsSource -> source.getChapterUrlOrNull(sChapter)
+                else -> sChapter.url.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             null

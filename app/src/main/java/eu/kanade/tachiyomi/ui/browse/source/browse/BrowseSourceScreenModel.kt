@@ -4,7 +4,6 @@ import android.content.res.Configuration
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
 import androidx.paging.Pager
@@ -25,8 +24,6 @@ import eu.kanade.presentation.util.ioCoroutineScope
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.awaitSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.util.removeCovers
@@ -77,7 +74,7 @@ import eu.kanade.tachiyomi.source.model.Filter as SourceModelFilter
 class BrowseSourceScreenModel(
     private val sourceId: Long,
     listingQuery: String?,
-    private val sourceManager: SourceManager = Injekt.get(),
+    sourceManager: SourceManager = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
@@ -102,8 +99,7 @@ class BrowseSourceScreenModel(
 
     val titleMaxLines by libraryPreferences.titleMaxLines.asState(screenModelScope)
 
-    var source: Source by mutableStateOf(sourceManager.getOrStub(sourceId))
-        private set
+    val source = sourceManager.getOrStub(sourceId)
 
     // Current page number from paging source
     val currentPage: StateFlow<Int> = tachiyomi.data.source.BaseSourcePagingSource.currentPage
@@ -122,7 +118,6 @@ class BrowseSourceScreenModel(
      */
     fun jumpToPage(page: Int) {
         if (page > 0) {
-            tachiyomi.data.source.BaseSourcePagingSource.setInitialPage(page)
             _initialPage.value = page.toLong()
         }
     }
@@ -179,24 +174,9 @@ class BrowseSourceScreenModel(
             }
         }
 
-        screenModelScope.launchIO {
-            sourceManager.awaitSource(sourceId)?.let { resolved ->
-                if (resolved !is tachiyomi.domain.source.model.StubSource && source is tachiyomi.domain.source.model.StubSource) {
-                    source = resolved
-                    initializeSourceState()
-                }
-            }
-        }
-
-        initializeSourceState()
-    }
-
-    private fun initializeSourceState() {
-        val currentSource = source
-
-        if (currentSource is CatalogueSource) {
+        if (source is CatalogueSource) {
             // Get initial filters from source
-            var initialFilters = currentSource.getFilterList()
+            var initialFilters = source.getFilterList()
 
             // Apply default preset synchronously if enabled
             if (manageFilterPresets.getAutoApplyEnabled()) {
@@ -225,8 +205,8 @@ class BrowseSourceScreenModel(
             }
         }
 
-        if (!getIncognitoState.await(currentSource.id)) {
-            sourcePreferences.lastUsedSource.set(currentSource.id)
+        if (!getIncognitoState.await(source.id)) {
+            sourcePreferences.lastUsedSource.set(source.id)
         }
     }
 
@@ -256,8 +236,8 @@ class BrowseSourceScreenModel(
         _initialPage,
     ) { (query, filters, _), startPage ->
         logcat(LogPriority.DEBUG) { "Creating new Pager for query='$query', filters=${filters.hashCode()}, startPage=$startPage" }
-        // Reset page counter when creating a new pager
-        tachiyomi.data.source.BaseSourcePagingSource.resetPageCounter()
+        // Set both generation and displayed current page to this pager's start page.
+        tachiyomi.data.source.BaseSourcePagingSource.setInitialPage(startPage.toInt())
         Pager(
             PagingConfig(pageSize = 25),
             initialKey = startPage,
@@ -296,10 +276,10 @@ class BrowseSourceScreenModel(
     }
 
     fun resetFilters() {
-        val catalogueSource = source as? CatalogueSource ?: return
+        if (source !is CatalogueSource) return
 
         // Get fresh filter list from source
-        val freshFilters = catalogueSource.getFilterList()
+        val freshFilters = source.getFilterList()
 
         // Apply default preset if auto-apply is enabled
         if (manageFilterPresets.getAutoApplyEnabled()) {
@@ -336,9 +316,9 @@ class BrowseSourceScreenModel(
      * Creates a fresh FilterList with copied state to avoid reference sharing issues.
      */
     fun openFilterDialog() {
-        val catalogueSource = source as? CatalogueSource ?: return
+        if (source !is CatalogueSource) return
         // Get fresh filters to avoid reference sharing
-        val freshFilters = catalogueSource.getFilterList()
+        val freshFilters = source.getFilterList()
         // Copy state from current filters to fresh filters
         copyFilterState(state.value.filters, freshFilters)
 
@@ -396,11 +376,11 @@ class BrowseSourceScreenModel(
     }
 
     fun search(query: String? = null, filters: FilterList? = null) {
-        val catalogueSource = source as? CatalogueSource ?: return
+        if (source !is CatalogueSource) return
         logcat(LogPriority.DEBUG) { "search called: query='$query', filters=${filters?.hashCode()}" }
 
         val input = state.value.listing as? Listing.Search
-            ?: Listing.Search(query = null, filters = catalogueSource.getFilterList())
+            ?: Listing.Search(query = null, filters = source.getFilterList())
 
         val newFilters = filters ?: input.filters
 
@@ -421,9 +401,9 @@ class BrowseSourceScreenModel(
     }
 
     fun searchGenre(genreName: String) {
-        val catalogueSource = source as? CatalogueSource ?: return
+        if (source !is CatalogueSource) return
 
-        val defaultFilters = catalogueSource.getFilterList()
+        val defaultFilters = source.getFilterList()
         var genreExists = false
 
         filter@ for (sourceFilter in defaultFilters) {
@@ -628,13 +608,13 @@ class BrowseSourceScreenModel(
     }
 
     fun loadFilterPreset(presetId: Long) {
-        val catalogueSource = source as? CatalogueSource ?: return
+        if (source !is CatalogueSource) return
 
         logcat(LogPriority.DEBUG) { "BrowseSource: loadFilterPreset presetId=$presetId, sourceId=$sourceId" }
         val presetState = manageFilterPresets.loadPresetState(sourceId, presetId)
         if (presetState != null) {
             logcat(LogPriority.DEBUG) { "BrowseSource: Loaded preset state, applying..." }
-            val filters = catalogueSource.getFilterList()
+            val filters = source.getFilterList()
             ManageFilterPresets.applyPresetState(filters, presetState)
             // Update pendingFilters directly and open filter dialog
             mutableState.update {
@@ -675,14 +655,14 @@ class BrowseSourceScreenModel(
     }
 
     private fun applyDefaultPresetIfEnabled() {
-        val catalogueSource = source as? CatalogueSource ?: return
+        if (source !is CatalogueSource) return
         if (!manageFilterPresets.getAutoApplyEnabled()) return
 
         logcat(LogPriority.DEBUG) { "BrowseSource: applyDefaultPresetIfEnabled sourceId=$sourceId" }
         val presetState = manageFilterPresets.getDefaultPresetState(sourceId)
         if (presetState != null) {
             logcat(LogPriority.DEBUG) { "BrowseSource: Found default preset, applying..." }
-            val filters = catalogueSource.getFilterList()
+            val filters = source.getFilterList()
             ManageFilterPresets.applyPresetState(filters, presetState)
             mutableState.update { it.copy(filters = filters) }
             // Force a search with the new filters if we are in a search listing

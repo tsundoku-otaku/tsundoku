@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.data.massimport
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
-import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
@@ -21,15 +20,11 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
-import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asFlow
@@ -48,10 +43,8 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.domain.library.interactor.RefreshLibraryCache
-import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
-import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
@@ -126,10 +119,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         setForegroundSafely()
 
         return withIOContext {
-            var shouldDeleteRecoveryFile = false
             try {
-                val result = performImport(urls, categoryId, addToLibrary, fetchDetails, fetchChapters, batchId)
-                shouldDeleteRecoveryFile = result.errored == 0
+                performImport(urls, categoryId, addToLibrary, fetchDetails, fetchChapters, batchId)
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) {
@@ -141,10 +132,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             } finally {
                 context.cancelNotification(Notifications.ID_MASS_IMPORT_PROGRESS)
                 inputData.getString(KEY_URLS_FILE)?.let { path -> runCatching { File(path).delete() } }
-                // Keep recovery file on error/cancellation so pending queue can be recovered after app/process death.
-                if (shouldDeleteRecoveryFile) {
-                    runCatching { recoveryFile?.delete() }
-                }
+                // Clear recovery queue file on completion
+                runCatching { recoveryFile?.delete() }
             }
         }
     }
@@ -820,9 +809,76 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         private val _sharedQueue = MutableStateFlow<List<Batch>>(emptyList())
         val sharedQueue = _sharedQueue.asStateFlow()
 
+        private data class RecoveryBatchData(
+            val categoryId: Long,
+            val urls: List<String>,
+        )
+
         fun clearResult() {
             _sharedResult.value = null
             _sharedProgress.value = null
+        }
+
+        fun restoreQueueFromWorkManager(context: Context) {
+            val workInfos: List<WorkInfo> = runCatching {
+                context.workManager.getWorkInfosByTag(TAG).get()
+            }.getOrDefault(emptyList())
+
+            if (workInfos.isEmpty()) return
+
+            _sharedQueue.update { current ->
+                val batches = current.associateBy { it.id }.toMutableMap()
+
+                workInfos.forEach { info: WorkInfo ->
+                    if (info.state == WorkInfo.State.SUCCEEDED || info.state == WorkInfo.State.FAILED) return@forEach
+
+                    val batchId = info.tags.firstOrNull { it.startsWith("batch_") }?.removePrefix("batch_")
+                        ?: return@forEach
+
+                    val recoveryBatch = readRecoveryBatch(batchId)
+                    val urls: List<String> = recoveryBatch?.urls.orEmpty()
+
+                    if (urls.isEmpty()) return@forEach
+
+                    val status = when (info.state) {
+                        WorkInfo.State.RUNNING -> BatchStatus.Running
+                        WorkInfo.State.CANCELLED -> BatchStatus.Cancelled
+                        else -> BatchStatus.Pending
+                    }
+
+                    val existing = batches[batchId]
+                    batches[batchId] = if (existing != null) {
+                        existing.copy(status = status)
+                    } else {
+                        Batch(
+                            id = batchId,
+                            urls = urls,
+                            categoryId = recoveryBatch?.categoryId ?: 0L,
+                            addToLibrary = true,
+                            fetchChapters = false,
+                            status = status,
+                            total = urls.size,
+                        )
+                    }
+                }
+
+                batches.values.toList()
+            }
+        }
+
+        private fun readRecoveryBatch(batchId: String): RecoveryBatchData? {
+            return try {
+                val storageManager: StorageManager = Injekt.get()
+                val dir = storageManager.getMassImportDirectory() ?: return null
+                val file = dir.findFile("queue_$batchId.txt") ?: return null
+                val lines = file.openInputStream().bufferedReader().use { it.readLines() }
+                // Recovery format: first line is category ID, remaining lines are URLs.
+                val categoryId = lines.firstOrNull()?.toLongOrNull() ?: 0L
+                val urls = lines.drop(1).filter { it.isNotBlank() }
+                RecoveryBatchData(categoryId = categoryId, urls = urls)
+            } catch (_: Exception) {
+                null
+            }
         }
 
         fun isRunning(context: Context): Boolean {
