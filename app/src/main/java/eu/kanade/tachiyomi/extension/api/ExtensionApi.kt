@@ -4,7 +4,6 @@ import android.content.Context
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
-import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
@@ -91,9 +90,7 @@ internal class ExtensionApi {
             findExtensions().also { lastExtCheck.set(Instant.now().toEpochMilli()) }
         }
 
-        val installedExtensions = ExtensionLoader.loadExtensions(context)
-            .filterIsInstance<LoadResult.Success>()
-            .map { it.extension }
+        val installedExtensions = extensionManager.installedExtensionsFlow.value
 
         val extensionsWithUpdate = mutableListOf<Extension.Installed>()
         for (installedExt in installedExtensions) {

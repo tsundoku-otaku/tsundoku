@@ -28,7 +28,7 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
-import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
 import eu.kanade.tachiyomi.util.system.isConnectedToWifi
@@ -560,10 +560,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                 out.write("    - ${manga.title}\n")
                                 // Get full URL if possible
                                 val fullUrl = try {
-                                    when (source) {
-                                        is HttpSource -> source.getMangaUrl(manga.toSManga())
-                                        else -> manga.url
-                                    }
+                                    source.getMangaUrlOrNull(manga.toSManga()) ?: manga.url
                                 } catch (_: Exception) {
                                     manga.url
                                 }
@@ -577,10 +574,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                     errors.forEach { (manga, _) ->
                         val source = sourceManager.getOrStub(manga.source)
                         val fullUrl = try {
-                            when (source) {
-                                is HttpSource -> source.getMangaUrl(manga.toSManga())
-                                else -> manga.url
-                            }
+                            source.getMangaUrlOrNull(manga.toSManga()) ?: manga.url
                         } catch (_: Exception) {
                             manga.url
                         }

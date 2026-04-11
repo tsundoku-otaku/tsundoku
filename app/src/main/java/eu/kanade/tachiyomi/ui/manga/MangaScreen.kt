@@ -48,7 +48,6 @@ import eu.kanade.tachiyomi.source.isLocalOrStub
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
-import eu.kanade.tachiyomi.ui.browse.source.globalsearch.NovelGlobalSearchScreen
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.home.HomeScreen
 import eu.kanade.tachiyomi.ui.manga.notes.MangaNotesScreen
@@ -56,6 +55,7 @@ import eu.kanade.tachiyomi.ui.manga.track.TrackInfoDialogHomeScreen
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
@@ -162,7 +162,7 @@ class MangaScreen(
                     if (!global && source != null && query == source.getNameForMangaInfo()) {
                         navigator.push(BrowseSourceScreen(source.id, null))
                     } else {
-                        performSearch(navigator, query, global, source)
+                        performSearch(navigator, query, global)
                     }
                 }
             },
@@ -401,20 +401,7 @@ class MangaScreen(
         val source = source_ ?: return null
 
         return try {
-            when (source) {
-                is HttpSource -> source.getMangaUrl(manga.toSManga())
-                is JsSource -> {
-                    val path = manga.url
-                    if (path.startsWith("http://") || path.startsWith("https://")) {
-                        path // Already a full URL
-                    } else if (path.startsWith("/")) {
-                        source.baseUrl + path // baseUrl has no trailing slash, path has leading slash
-                    } else {
-                        source.baseUrl + "/" + path // Need to add slash between them
-                    }
-                }
-                else -> null
-            }
+            source.getMangaUrlOrNull(manga.toSManga())
         } catch (e: Exception) {
             null
         }
@@ -448,13 +435,9 @@ class MangaScreen(
      *
      * @param query the search query to the parent controller
      */
-    private suspend fun performSearch(navigator: Navigator, query: String, global: Boolean, source: Source? = null) {
+    private suspend fun performSearch(navigator: Navigator, query: String, global: Boolean) {
         if (global) {
-            if (source?.isNovelSource == true) {
-                navigator.push(NovelGlobalSearchScreen(query))
-            } else {
-                navigator.push(GlobalSearchScreen(query))
-            }
+            navigator.push(GlobalSearchScreen(query))
             return
         }
 
@@ -489,7 +472,7 @@ class MangaScreen(
             navigator.pop()
             previousController.searchGenre(genreName)
         } else {
-            performSearch(navigator, genreName, global = false, source = source)
+            performSearch(navigator, genreName, global = false)
         }
     }
 
@@ -497,9 +480,7 @@ class MangaScreen(
      * Copy Manga URL to Clipboard
      */
     private fun copyMangaUrl(context: Context, manga_: Manga?, source_: Source?) {
-        val manga = manga_ ?: return
-        val source = source_ as? HttpSource ?: return
-        val url = source.getMangaUrl(manga.toSManga())
+        val url = getMangaUrl(manga_, source_) ?: return
         context.copyToClipboard(url, url)
     }
 }

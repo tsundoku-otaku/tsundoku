@@ -71,6 +71,7 @@ import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
+import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.ui.main.MainActivity
@@ -554,7 +555,8 @@ class ReaderActivity : BaseActivity() {
             return
         }
 
-        val isHttpSource = viewModel.getSource() is HttpSource
+        val source = viewModel.getSource()
+        val hasWebViewSupport = source is HttpSource || source is JsSource
         val isNovelViewer = state.viewer is NovelViewer || state.viewer is NovelWebViewViewer
 
         if (isNovelViewer) {
@@ -664,9 +666,9 @@ class ReaderActivity : BaseActivity() {
                 onClickTopAppBar = ::openMangaScreen,
                 bookmarked = state.bookmarked,
                 onToggleBookmarked = viewModel::toggleChapterBookmark,
-                onOpenInWebView = ::openChapterInWebView.takeIf { isHttpSource },
-                onOpenInBrowser = ::openChapterInBrowser.takeIf { isHttpSource },
-                onShare = ::shareChapter.takeIf { isHttpSource },
+                onOpenInWebView = ::openChapterInWebView.takeIf { hasWebViewSupport },
+                onOpenInBrowser = ::openChapterInBrowser.takeIf { hasWebViewSupport },
+                onShare = ::shareChapter.takeIf { hasWebViewSupport },
                 onReloadLocal = { viewModel.reloadChapter(fromSource = false) },
                 onReloadSource = { viewModel.reloadChapter(fromSource = true) },
                 onEditBottomBar = { showBottomBarEditor = true },
@@ -873,9 +875,9 @@ class ReaderActivity : BaseActivity() {
                 onClickTopAppBar = ::openMangaScreen,
                 bookmarked = state.bookmarked,
                 onToggleBookmarked = viewModel::toggleChapterBookmark,
-                onOpenInWebView = ::openChapterInWebView.takeIf { isHttpSource },
-                onOpenInBrowser = ::openChapterInBrowser.takeIf { isHttpSource },
-                onShare = ::shareChapter.takeIf { isHttpSource },
+                onOpenInWebView = ::openChapterInWebView.takeIf { hasWebViewSupport },
+                onOpenInBrowser = ::openChapterInBrowser.takeIf { hasWebViewSupport },
+                onShare = ::shareChapter.takeIf { hasWebViewSupport },
 
                 viewer = state.viewer,
                 onNextChapter = ::loadNextChapter,
@@ -969,9 +971,8 @@ class ReaderActivity : BaseActivity() {
 
     private fun openChapterInWebView() {
         val manga = viewModel.manga ?: return
-        val source = viewModel.getSource() ?: return
         assistUrl?.let {
-            val intent = WebViewActivity.newIntent(this@ReaderActivity, it, source.id, manga.title)
+            val intent = WebViewActivity.newIntent(this@ReaderActivity, it, viewModel.getSource()?.id, manga.title)
             startActivity(intent)
         }
     }

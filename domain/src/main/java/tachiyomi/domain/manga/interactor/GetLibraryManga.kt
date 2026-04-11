@@ -358,11 +358,6 @@ class GetLibraryManga(
             }
 
             _isLoading.value = true
-            val stackTrace = Thread.currentThread().stackTrace
-                .drop(2).take(10)
-                .joinToString("\n    ") {
-                    "${it.className.substringAfterLast('.')}.${it.methodName}(${it.fileName}:${it.lineNumber})"
-                }
 
             if (force) {
                 logcat(LogPriority.INFO) { "GetLibraryManga: Rebuilding library_cache table (forced)" }
