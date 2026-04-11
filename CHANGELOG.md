@@ -11,10 +11,12 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+
+
+## [v0.1.3] - 2026-04-10
 ### Changed
 - Set default of "download chapter images" to true  [@Rojikku](https://github.com/Rojikku) [eee423d](https://github.com/tsundoku-otaku/tsundoku/commit/eee423d14a29ca71e8816350cd4b97a210be1330)
 - Removed some defaults from the bottom reader bar  [@Rojikku](https://github.com/Rojikku) [#96](https://github.com/tsundoku-otaku/tsundoku/pull/96)
-
 
 ### Added
 - Add Edit mode to edit chapters, fixes to images to make this work [@mrissaoussama](https://github.com/mrissaoussama) [#82](https://github.com/tsundoku-otaku/tsundoku/pull/82)
@@ -121,7 +123,8 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - **Browse Screen Enhancements**: Jump-to-page, page range loading, back confirmation
 
 
-[Unreleased]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.2...main
+[Unreleased]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.3...main
+[v0.1.3]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.2...v0.1.3
 [v0.1.2]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.1...v0.1.2
 [v0.1.1]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.0...v0.1.1
 [v0.1.0]: https://github.com/tsundoku-otaku/tsundoku/compare/5b88f88...v0.1.0
