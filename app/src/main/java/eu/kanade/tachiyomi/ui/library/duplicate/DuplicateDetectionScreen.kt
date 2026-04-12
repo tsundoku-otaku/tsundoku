@@ -91,6 +91,7 @@ import tachiyomi.domain.manga.interactor.DuplicateMatchMode
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
@@ -484,7 +485,7 @@ class DuplicateDetectionScreen : Screen {
                                 onCheckedChange = { screenModel.setFilterByGroupCategory(it) },
                             )
                             Text(
-                                "Filter by group strictly (at least one valid item)",
+                                stringResource(TDMR.strings.duplicate_flexible_group_matching),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(start = 8.dp),
                             )
@@ -627,6 +628,28 @@ class DuplicateDetectionScreen : Screen {
                                     Text(
                                         stringResource(MR.strings.duplicate_category_label),
                                         style = MaterialTheme.typography.labelMedium,
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    FilterChip(
+                                        selected = state.categoryIncludeMode ==
+                                            DuplicateDetectionScreenModel.CategoryIncludeMode.ANY,
+                                        onClick = {
+                                            screenModel.setCategoryIncludeMode(
+                                                DuplicateDetectionScreenModel.CategoryIncludeMode.ANY,
+                                            )
+                                        },
+                                        label = { Text(stringResource(TDMR.strings.duplicate_category_include_or)) },
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    FilterChip(
+                                        selected = state.categoryIncludeMode ==
+                                            DuplicateDetectionScreenModel.CategoryIncludeMode.ALL,
+                                        onClick = {
+                                            screenModel.setCategoryIncludeMode(
+                                                DuplicateDetectionScreenModel.CategoryIncludeMode.ALL,
+                                            )
+                                        },
+                                        label = { Text(stringResource(TDMR.strings.duplicate_category_include_and)) },
                                     )
                                     if (state.selectedCategoryFilters.isNotEmpty() ||
                                         state.excludedCategoryFilters.isNotEmpty()

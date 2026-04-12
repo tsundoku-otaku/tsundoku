@@ -35,6 +35,21 @@ class CategoryRepositoryImpl(
         }
     }
 
+    override suspend fun getCategoriesByMangaIds(mangaIds: List<Long>): Map<Long, List<Category>> {
+        if (mangaIds.isEmpty()) return emptyMap()
+
+        val resultMap = mutableMapOf<Long, MutableList<Category>>()
+        mangaIds.chunked(500).forEach { chunk ->
+            handler.awaitList {
+                categoriesQueries.getCategoriesByMangaIds(chunk) { mangaId, id, name, order, flags, contentType ->
+                    resultMap.getOrPut(mangaId) { mutableListOf() }
+                        .add(mapCategory(id, name, order, flags, contentType))
+                }
+            }
+        }
+        return resultMap
+    }
+
     override suspend fun getAllMangaCategoryPairs(): List<Pair<Long, Long>> {
         return handler.awaitList {
             mangas_categoriesQueries.getAllMangaCategoryPairs { mangaId, categoryId ->

@@ -28,6 +28,10 @@ class GetCategories(
         return categoryRepository.getCategoriesByMangaId(mangaId)
     }
 
+    suspend fun awaitForMangas(mangaIds: List<Long>): Map<Long, List<Category>> {
+        return categoryRepository.getCategoriesByMangaIds(mangaIds)
+    }
+
     suspend fun awaitByContentType(contentType: Int): List<Category> {
         return categoryRepository.getCategoriesByContentType(contentType)
     }

@@ -45,6 +45,21 @@ JOIN mangas_categories MC
 ON C._id = MC.category_id
 WHERE MC.manga_id = :mangaId;
 
+-- Batch fetch categories for multiple manga IDs - optimized for duplicate detection
+getCategoriesByMangaIds:
+SELECT
+MC.manga_id,
+C._id AS id,
+C.name,
+C.sort AS `order`,
+C.flags,
+C.content_type
+FROM categories C
+JOIN mangas_categories MC
+ON C._id = MC.category_id
+WHERE MC.manga_id IN :mangaIds
+ORDER BY MC.manga_id, C.sort;
+
 getCategoriesByContentType:
 SELECT
 _id AS id,

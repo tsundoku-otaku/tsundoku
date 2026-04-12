@@ -299,7 +299,7 @@ ORDER BY totalCount DESC;
 -- Uses same columns to keep SQLDelight column adapters working
 getMangaWithCountsLight:
 SELECT
-    M._id, M.source, M.url, M.artist, M.author, M.description, M.genre, M.title, M.alternative_titles, M.status, M.thumbnail_url, M.favorite, M.last_update, M.next_update, M.initialized, M.viewer, M.chapter_flags, M.cover_last_modified, M.date_added, M.update_strategy, M.calculate_interval, M.last_modified_at, M.favorite_modified_at, M.version, M.is_syncing, M.notes, M.is_novel,
+    M._id, M.source, M.url, M.artist, M.author, NULL AS description, NULL AS genre, M.title, NULL AS alternative_titles, M.status, M.thumbnail_url, M.favorite, M.last_update, M.next_update, M.initialized, M.viewer, M.chapter_flags, M.cover_last_modified, M.date_added, M.update_strategy, M.calculate_interval, M.last_modified_at, M.favorite_modified_at, M.version, M.is_syncing, '' AS notes, M.is_novel,
     COALESCE(CC.totalCount, 0) AS totalCount,
     COALESCE(CC.readCount, 0) AS readCount
 FROM mangas M

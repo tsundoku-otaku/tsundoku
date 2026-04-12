@@ -61,6 +61,11 @@ class DuplicateDetectionScreenModel(
         STUB,
     }
 
+    enum class CategoryIncludeMode {
+        ANY,
+        ALL,
+    }
+
     data class State(
         val isLoading: Boolean = false,
         val hasStartedAnalysis: Boolean = false,
@@ -72,11 +77,13 @@ class DuplicateDetectionScreenModel(
         val showMoveToCategoryDialog: Boolean = false,
         val categories: List<Category> = emptyList(),
         val selectedCategoryFilters: Set<Long> = emptySet(),
+        val categoryIncludeMode: CategoryIncludeMode = CategoryIncludeMode.ANY,
         val searchQuery: String = "",
         val excludedCategoryFilters: Set<Long> = emptySet(),
         val filterByGroupCategory: Boolean = false,
         val sortMode: SortMode = SortMode.NAME,
         val mangaCategories: Map<Long, List<Category>> = emptyMap(),
+        val mangaCategoryIdSets: Map<Long, Set<Long>> = emptyMap(),
         val showFullUrls: Boolean = false,
         val mangaDownloadCounts: Map<Long, Int> = emptyMap(),
         val mangaReadCounts: Map<Long, Int> = emptyMap(),
@@ -116,34 +123,31 @@ class DuplicateDetectionScreenModel(
                     if (filterByGroupCategory) {
                         contentFiltered.filter { (_, novels) ->
                             val groupMatches = novels.any { novel ->
-                                val novelCategories = mangaCategories[novel.manga.id] ?: emptyList()
-                                val categoryIds = novelCategories.map { it.id }.toSet().ifEmpty { setOf(0L) }
+                                val categoryIds = mangaCategoryIdSets[novel.manga.id] ?: setOf(0L)
                                 val passesInclude =
-                                    selectedCategoryFilters.isEmpty() ||
-                                        categoryIds.any { it in selectedCategoryFilters }
-                                passesInclude
-                            }
-                            val groupExcluded = excludedCategoryFilters.isNotEmpty() && novels.any { novel ->
-                                val novelCategories = mangaCategories[novel.manga.id] ?: emptyList()
-                                val categoryIds = novelCategories.map { it.id }.toSet().ifEmpty { setOf(0L) }
-                                categoryIds.any { it in excludedCategoryFilters }
-                            }
-                            groupMatches && !groupExcluded
-                        }
-                    } else {
-                        contentFiltered.mapValues { (_, novels) ->
-                            novels.filter { novel ->
-                                val novelCategories = mangaCategories[novel.manga.id] ?: emptyList()
-                                // Treat uncategorized manga as being in the default category (id=0)
-                                val categoryIds = novelCategories.map { it.id }.toSet()
-                                    .ifEmpty { setOf(0L) }
-                                val passesInclude = selectedCategoryFilters.isEmpty() ||
-                                    categoryIds.any { it in selectedCategoryFilters }
+                                    selectedCategoryFilters.isEmpty() || when (categoryIncludeMode) {
+                                        CategoryIncludeMode.ANY -> categoryIds.any { it in selectedCategoryFilters }
+                                        CategoryIncludeMode.ALL -> selectedCategoryFilters.all { it in categoryIds }
+                                    }
                                 val passesExclude = excludedCategoryFilters.isEmpty() ||
                                     categoryIds.none { it in excludedCategoryFilters }
                                 passesInclude && passesExclude
                             }
-                        }.filter { it.value.size > 1 }
+                            groupMatches
+                        }
+                    } else {
+                        contentFiltered.filter { (_, novels) ->
+                            novels.all { novel ->
+                                val categoryIds = mangaCategoryIdSets[novel.manga.id] ?: setOf(0L)
+                                val passesInclude = selectedCategoryFilters.isEmpty() || when (categoryIncludeMode) {
+                                    CategoryIncludeMode.ANY -> categoryIds.any { it in selectedCategoryFilters }
+                                    CategoryIncludeMode.ALL -> selectedCategoryFilters.all { it in categoryIds }
+                                }
+                                val passesExclude = excludedCategoryFilters.isEmpty() ||
+                                    categoryIds.none { it in excludedCategoryFilters }
+                                passesInclude && passesExclude
+                            }
+                        }
                     }
                 }
 
@@ -299,12 +303,11 @@ class DuplicateDetectionScreenModel(
                 val groups = findDuplicateNovels.findDuplicatesGrouped(state.value.matchMode)
 
                 val allMangaItems = groups.values.flatten()
-                val mangaCategoriesMap = mutableMapOf<Long, List<Category>>()
-                allMangaItems.map { it.manga.id }.distinct().chunked(500).forEach { chunk ->
-                    chunk.forEach { mangaId ->
-                        ensureActive()
-                        mangaCategoriesMap[mangaId] = getCategories.await(mangaId)
-                    }
+                val allMangaIds = allMangaItems.map { it.manga.id }.distinct()
+
+                val mangaCategoriesMap = getCategories.awaitForMangas(allMangaIds)
+                val mangaCategoryIdSets = mangaCategoriesMap.mapValues { (_, categories) ->
+                    categories.map { it.id }.toSet().ifEmpty { setOf(0L) }
                 }
 
                 // Build set of novel source IDs for content type filtering
@@ -313,26 +316,19 @@ class DuplicateDetectionScreenModel(
                     sourceManager.getOrStub(sourceId).isNovelSource()
                 }.toSet()
 
-                // Build source type map for priority-based selection
                 val sourceTypeMap = allSourceIds.associateWith { sourceId ->
                     classifySourceType(sourceId)
                 }
 
-                // Use readCount from getMangaWithCounts (already fetched), only compute download counts
-                val downloadCounts = mutableMapOf<Long, Int>()
-                val readCounts = mutableMapOf<Long, Int>()
+                val downloadCounts = downloadManager.getDownloadCounts(allMangaItems.map { it.manga })
 
-                allMangaItems.forEach { mangaWithCount ->
-                    ensureActive()
-                    downloadCounts[mangaWithCount.manga.id] = downloadManager.getDownloadCount(mangaWithCount.manga)
-                    // readCount is already available from the query
-                    readCounts[mangaWithCount.manga.id] = mangaWithCount.readCount.toInt()
-                }
+                val readCounts = allMangaItems.associate { it.manga.id to it.readCount.toInt() }
 
                 mutableState.update {
                     it.copy(
                         duplicateGroups = groups,
                         mangaCategories = mangaCategoriesMap,
+                        mangaCategoryIdSets = mangaCategoryIdSets,
                         novelSourceIds = novelSourceIds,
                         sourceTypeMap = sourceTypeMap,
                         mangaDownloadCounts = downloadCounts,
@@ -380,6 +376,10 @@ class DuplicateDetectionScreenModel(
 
     fun clearCategoryFilters() {
         mutableState.update { it.copy(selectedCategoryFilters = emptySet(), excludedCategoryFilters = emptySet()) }
+    }
+
+    fun setCategoryIncludeMode(mode: CategoryIncludeMode) {
+        mutableState.update { it.copy(categoryIncludeMode = mode) }
     }
 
     fun setFilterByGroupCategory(filter: Boolean) {

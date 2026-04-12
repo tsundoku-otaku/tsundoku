@@ -247,6 +247,17 @@ class DownloadManager(
         return cache.getDownloadCount(manga)
     }
 
+    /**
+     * Batch fetch download counts for multiple manga.
+     * More efficient than calling getDownloadCount() separately for each manga.
+     *
+     * @param mangaList the list of manga to check.
+     * @return a map of manga ID to download count.
+     */
+    fun getDownloadCounts(mangaList: List<Manga>): Map<Long, Int> {
+        return cache.getDownloadCounts(mangaList)
+    }
+
     fun cancelQueuedDownloads(downloads: List<Download>) {
         removeFromDownloadQueue(downloads.map { it.toDomainChapter() })
     }

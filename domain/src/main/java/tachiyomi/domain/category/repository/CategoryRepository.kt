@@ -17,6 +17,12 @@ interface CategoryRepository {
     fun getCategoriesByMangaIdAsFlow(mangaId: Long): Flow<List<Category>>
 
     /**
+     * Batch fetch categories for multiple manga IDs. Returns a map of mangaId -> List<Category>.
+     * Optimized for duplicate detection and bulk operations.
+     */
+    suspend fun getCategoriesByMangaIds(mangaIds: List<Long>): Map<Long, List<Category>>
+
+    /**
      * Lightweight bulk query: returns all (manga_id, category_id) pairs.
      */
     suspend fun getAllMangaCategoryPairs(): List<Pair<Long, Long>>

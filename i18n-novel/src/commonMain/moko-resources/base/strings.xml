@@ -41,6 +41,7 @@
     <string name="chapter_progress_novel">%1$d%%</string>
     <!-- Library -->
     <string name="chapters_from_database">Chapter entries from database</string>
+    <string name="delete_local_novel_files">Delete local EPUB/HTML?</string>
     <!-- Browse Source -->
     <string name="local_novel_source">Local novels</string>
     <!-- History -->
@@ -217,6 +218,11 @@
     <string name="epub_import_complete">Import Complete</string>
     <string name="epub_import_success_count">%d imported successfully</string>
     <string name="epub_import_error_count">%d failed</string>
+
+    <!-- Duplicate detection -->
+    <string name="duplicate_flexible_group_matching">Flexible group matching (allow at least one match)</string>
+    <string name="duplicate_category_include_or">OR</string>
+    <string name="duplicate_category_include_and">AND</string>
     <string name="epub_create_dir_failed">Failed to create directory for: %s</string>
     <string name="epub_novels_export_count">%d novel(s) will be exported.</string>
     <string name="epub_and_more">… and %d more</string>
