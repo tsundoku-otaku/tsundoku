@@ -12,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -336,9 +337,13 @@ class DownloadCache(
 
     fun invalidateCache() {
         lastRenew = 0L
-        renewalJob?.cancel()
+        val jobToCancel = renewalJob
+        renewalJob = null
         diskCacheFile.delete()
-        renewCache()
+        scope.launchIO {
+            jobToCancel?.cancelAndJoin()
+            renewCache()
+        }
     }
 
     /**
@@ -414,7 +419,11 @@ class DownloadCache(
                 if (exception != null && exception !is CancellationException) {
                     logcat(LogPriority.ERROR, exception) { "DownloadCache: failed to create cache" }
                 }
-                lastRenew = System.currentTimeMillis()
+                lastRenew = if (exception is CancellationException) {
+                    0L
+                } else {
+                    System.currentTimeMillis()
+                }
                 notifyChanges()
             }
         }
