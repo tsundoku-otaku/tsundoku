@@ -80,6 +80,10 @@ class JsPluginManager(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    // True once the first installed-plugin scan has completed (successfully or not).
+    private val _isInitialized = MutableStateFlow(false)
+    val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
+
     private val refreshMutex = Mutex()
 
     private val _jsSources = MutableStateFlow<List<CatalogueSource>>(emptyList())
@@ -417,45 +421,46 @@ class JsPluginManager(
 
     private fun loadInstalledPlugins() {
         scope.launch {
-            val dir = pluginsDir
-            if (dir == null) {
-                logcat(LogPriority.WARN) { "Plugins directory not available - storage may not be configured" }
-                return@launch
-            }
+            try {
+                val dir = pluginsDir
+                if (dir == null) {
+                    logcat(LogPriority.WARN) { "Plugins directory not available - storage may not be configured" }
+                    return@launch
+                }
 
-            logcat(LogPriority.DEBUG) { "Loading installed plugins from: ${dir.uri}" }
+                logcat(LogPriority.DEBUG) { "Loading installed plugins from: ${dir.uri}" }
 
-            val allFiles = dir.listFiles()?.toList() ?: emptyList()
-            val jsFiles = allFiles.filter { it.name?.endsWith(".js") == true }
-            val jsonFiles = allFiles.filter { it.name?.endsWith(".json") == true }
-            logcat(LogPriority.DEBUG) {
-                "Found ${jsFiles.size} .js files and ${jsonFiles.size} .json files in plugins directory"
-            }
-            jsonFiles.forEach { f -> logcat(LogPriority.DEBUG) { "  JSON file: ${f.name}" } }
+                val allFiles = dir.listFiles()?.toList() ?: emptyList()
+                val jsFiles = allFiles.filter { it.name?.endsWith(".js") == true }
+                val jsonFiles = allFiles.filter { it.name?.endsWith(".json") == true }
+                logcat(LogPriority.DEBUG) {
+                    "Found ${jsFiles.size} .js files and ${jsonFiles.size} .json files in plugins directory"
+                }
+                jsonFiles.forEach { f -> logcat(LogPriority.DEBUG) { "  JSON file: ${f.name}" } }
 
-            val plugins = jsFiles.mapNotNull { file ->
-                try {
-                    var code = file.readUtf8()
-                    if (code.isBlank()) {
-                        logcat(LogPriority.WARN) { "Plugin file ${file.name} is empty, skipping" }
-                        return@mapNotNull null
-                    }
-                    val nameWithoutExtension = file.name?.substringBeforeLast(".") ?: return@mapNotNull null
-                    val metadataFile = dir.findFile("$nameWithoutExtension.json")
-                    logcat(LogPriority.DEBUG) {
-                        "Looking for metadata: $nameWithoutExtension.json, found=${metadataFile != null}"
-                    }
-                    val plugin = if (metadataFile != null && metadataFile.exists()) {
-                        val metadataJson = metadataFile.openInputStream().bufferedReader().readText()
-                        logcat(LogPriority.DEBUG) {
-                            "Metadata content (len=${metadataJson.length}): ${metadataJson.take(100)}"
+                val plugins = jsFiles.mapNotNull { file ->
+                    try {
+                        var code = file.readUtf8()
+                        if (code.isBlank()) {
+                            logcat(LogPriority.WARN) { "Plugin file ${file.name} is empty, skipping" }
+                            return@mapNotNull null
                         }
-                        if (metadataJson.isNotBlank() && metadataJson.trim().startsWith("{")) {
-                            logcat(LogPriority.DEBUG) { "Loading metadata for $nameWithoutExtension" }
-                            json.decodeFromString<JsPlugin>(metadataJson)
-                        } else {
+                        val nameWithoutExtension = file.name?.substringBeforeLast(".") ?: return@mapNotNull null
+                        val metadataFile = dir.findFile("$nameWithoutExtension.json")
+                        logcat(LogPriority.DEBUG) {
+                            "Looking for metadata: $nameWithoutExtension.json, found=${metadataFile != null}"
+                        }
+                        val plugin = if (metadataFile != null && metadataFile.exists()) {
+                            val metadataJson = metadataFile.openInputStream().bufferedReader().readText()
                             logcat(LogPriority.DEBUG) {
-                                "Metadata file empty for $nameWithoutExtension, extracting from code"
+                                "Metadata content (len=${metadataJson.length}): ${metadataJson.take(100)}"
+                            }
+                            if (metadataJson.isNotBlank() && metadataJson.trim().startsWith("{")) {
+                                logcat(LogPriority.DEBUG) { "Loading metadata for $nameWithoutExtension" }
+                                json.decodeFromString<JsPlugin>(metadataJson)
+                            } else {
+                                logcat(LogPriority.DEBUG) {
+                                    "Metadata file empty for $nameWithoutExtension, extracting from code"
                             }
                             extractPluginInfo(code, nameWithoutExtension)
                         }
@@ -515,6 +520,9 @@ class JsPluginManager(
             rebuildSources()
 
             logcat(LogPriority.INFO) { "Loaded ${plugins.size} installed JS plugins" }
+        } finally {
+            // Unblock startup consumers waiting for the first JS source scan.
+            _isInitialized.value = true
         }
     }
 

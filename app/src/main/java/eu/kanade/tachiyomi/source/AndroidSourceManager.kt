@@ -62,16 +62,8 @@ class AndroidSourceManager(
             ) { extensions, customSources, jsSources ->
                 val mutableMap = ConcurrentHashMap<Long, Source>(
                     mapOf(
-                        LocalSource.ID to LocalSource(
-                            context,
-                            Injekt.get(),
-                            Injekt.get(),
-                        ),
-                        LocalNovelSource.ID to LocalNovelSource(
-                            context,
-                            Injekt.get(),
-                            Injekt.get(),
-                        ),
+                        0L to Injekt.get<LocalSource>(),
+                        1L to Injekt.get<LocalNovelSource>(),
                     ),
                 )
                 // Add extension sources
@@ -94,12 +86,10 @@ class AndroidSourceManager(
                 mutableMap
             }.collectLatest { sources ->
                 sourcesMapFlow.value = sources
-                // Wait for extension manager to finish loading before marking initialized.
-                // Without this, the first combine emission (empty extensions) would set
-                // isInitialized=true, causing consumers like ReaderViewModel to get StubSources
-                // when restoring after process death.
+                // Wait for all async source providers to finish first load before marking initialized.
                 if (!_isInitialized.value) {
                     extensionManager.isInitialized.first { it }
+                    jsPluginManager.isInitialized.first { it }
                 }
                 _isInitialized.value = true
             }
