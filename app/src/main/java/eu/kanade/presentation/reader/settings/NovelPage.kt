@@ -288,9 +288,9 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
     if (autoSplitEnabled) {
         SliderItem(
             label = stringResource(TDMR.strings.novel_split_word_count),
-            value = autoSplitWordCount / 50,
-            valueRange = 1..40,
-            onChange = { screenModel.preferences.novelAutoSplitWordCount.set(it * 50) },
+            value = autoSplitWordCount.coerceAtLeast(20),
+            valueRange = 20..2000,
+            onChange = { screenModel.preferences.novelAutoSplitWordCount.set(it.coerceAtLeast(20)) },
         )
     }
 }

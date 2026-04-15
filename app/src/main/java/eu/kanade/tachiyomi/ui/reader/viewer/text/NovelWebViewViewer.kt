@@ -1169,6 +1169,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             content = stripChapterTitle(content, chapter.chapter.name)
         }
 
+        // Keep preprocessing consistent with normal WebView loads.
+        content = applyRegexReplacements(content)
+
         // Optionally force lowercase
         if (preferences.novelForceTextLowercase.get()) {
             content = content.lowercase()
@@ -1280,6 +1283,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         evaluateJavascriptSafe(js, null)
 
+        // Re-run custom JS for newly prepended DOM so selector-based scripts apply consistently.
+        webView.postDelayed({ injectCustomScript() }, 120)
+
         logcat(LogPriority.DEBUG) {
             "NovelWebViewViewer: Prepended chapter $chapterId (${loadedChapterIds.size} total)"
         }
@@ -1327,6 +1333,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         """.trimIndent()
 
         evaluateJavascriptSafe(js, null)
+
+        // Re-run custom JS for newly appended DOM so selector-based scripts apply consistently.
+        webView.postDelayed({ injectCustomScript() }, 120)
 
         logcat(LogPriority.DEBUG) { "NovelWebViewViewer: Appended chapter $chapterId (${loadedChapterIds.size} total)" }
     }
