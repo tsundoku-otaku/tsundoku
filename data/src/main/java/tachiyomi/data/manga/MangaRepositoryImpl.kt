@@ -26,6 +26,25 @@ class MangaRepositoryImpl(
     private val handler: DatabaseHandler,
 ) : MangaRepository {
 
+    private data class UrlMaintenanceRow(
+        val id: Long,
+        val source: Long,
+        val url: String,
+        val title: String,
+        val favorite: Boolean,
+    )
+
+    private fun normalizeUrlForMaintenance(url: String, removeDoubleSlashes: Boolean): String {
+        var normalizedUrl = url.trimEnd('/').substringBefore('#')
+        if (removeDoubleSlashes) {
+            val placeholder = "###PROTOCOL###"
+            normalizedUrl = normalizedUrl.replace("://", placeholder)
+            normalizedUrl = normalizedUrl.replace("//", "/")
+            normalizedUrl = normalizedUrl.replace(placeholder, "://")
+        }
+        return normalizedUrl
+    }
+
     override suspend fun getMangaById(id: Long): Manga {
         return handler.awaitOne {
             mangasQueries.getMangaById(id) {
@@ -1500,20 +1519,24 @@ class MangaRepositoryImpl(
             val duplicates = mutableListOf<MangaRepository.DuplicateUrlInfo>()
             val seen = mutableSetOf<Pair<Long, String>>()
             handler.await(inTransaction = true) {
-                val allManga = mangasQueries.getAllManga(MangaMapper::mapMangaFull).executeAsList()
-                allManga.forEach { manga ->
-                    var normalizedUrl = manga.url.trimEnd('/').substringBefore('#')
+                val allManga = mangasQueries.getAllMangaUrlMaintenanceRows {
+                        id,
+                        source,
+                        url,
+                        title,
+                        favorite,
+                    ->
+                    UrlMaintenanceRow(
+                        id = id,
+                        source = source,
+                        url = url,
+                        title = title,
+                        favorite = favorite,
+                    )
+                }.executeAsList()
 
-                    // Remove double slashes if enabled (but preserve protocol ://)
-                    if (removeDoubleSlashes) {
-                        // First, temporarily replace :// with a placeholder
-                        val placeholder = "###PROTOCOL###"
-                        normalizedUrl = normalizedUrl.replace("://", placeholder)
-                        // Then remove double slashes
-                        normalizedUrl = normalizedUrl.replace("//", "/")
-                        // Restore protocol
-                        normalizedUrl = normalizedUrl.replace(placeholder, "://")
-                    }
+                allManga.forEach { manga ->
+                    val normalizedUrl = normalizeUrlForMaintenance(manga.url, removeDoubleSlashes)
 
                     if (normalizedUrl != manga.url) {
                         val key = manga.source to normalizedUrl
@@ -1576,18 +1599,25 @@ class MangaRepositoryImpl(
             val idsToDelete = mutableListOf<Long>()
 
             handler.await(inTransaction = true) {
-                val allManga = mangasQueries.getAllManga(MangaMapper::mapMangaFull).executeAsList()
+                val allManga = mangasQueries.getAllMangaUrlMaintenanceRows {
+                        id,
+                        source,
+                        url,
+                        title,
+                        favorite,
+                    ->
+                    UrlMaintenanceRow(
+                        id = id,
+                        source = source,
+                        url = url,
+                        title = title,
+                        favorite = favorite,
+                    )
+                }.executeAsList()
 
                 // First pass: identify which manga would be kept (first occurrence of each normalized URL)
                 allManga.forEach { manga ->
-                    var normalizedUrl = manga.url.trimEnd('/').substringBefore('#')
-
-                    if (removeDoubleSlashes) {
-                        val placeholder = "###PROTOCOL###"
-                        normalizedUrl = normalizedUrl.replace("://", placeholder)
-                        normalizedUrl = normalizedUrl.replace("//", "/")
-                        normalizedUrl = normalizedUrl.replace(placeholder, "://")
-                    }
+                    val normalizedUrl = normalizeUrlForMaintenance(manga.url, removeDoubleSlashes)
 
                     val key = manga.source to normalizedUrl
                     if (key !in seenNormalizedUrls) {
@@ -1599,14 +1629,7 @@ class MangaRepositoryImpl(
                 allManga.forEach { manga ->
                     if (!manga.favorite) return@forEach // Skip non-favorites
 
-                    var normalizedUrl = manga.url.trimEnd('/').substringBefore('#')
-
-                    if (removeDoubleSlashes) {
-                        val placeholder = "###PROTOCOL###"
-                        normalizedUrl = normalizedUrl.replace("://", placeholder)
-                        normalizedUrl = normalizedUrl.replace("//", "/")
-                        normalizedUrl = normalizedUrl.replace(placeholder, "://")
-                    }
+                    val normalizedUrl = normalizeUrlForMaintenance(manga.url, removeDoubleSlashes)
 
                     val key = manga.source to normalizedUrl
                     val firstOccurrenceId = seenNormalizedUrls[key]

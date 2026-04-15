@@ -757,3 +757,9 @@ getFavoriteIdAndTitle:
 SELECT _id, title
 FROM mangas
 WHERE favorite = 1;
+
+-- Lightweight row shape for URL maintenance operations
+-- (avoids decoding heavy text/list columns for large libraries)
+getAllMangaUrlMaintenanceRows:
+SELECT _id, source, url, title, favorite
+FROM mangas;

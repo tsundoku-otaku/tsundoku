@@ -534,26 +534,49 @@ object SettingsAdvancedScreen : SearchableSettings {
                         }
                     },
                     confirmButton = {
-                        TextButton(
-                            onClick = {
-                                scope.launch {
-                                    isRemoving = true
-                                    val result = Injekt.get<MangaRepository>()
-                                        .removePotentialDuplicates(removeDupDoubleSlashes)
-                                    isRemoving = false
-                                    if (result.first > 0) {
-                                        removedDuplicates = result.second
-                                        showRemovedList = true
-                                        context.toast("Removed ${result.first} duplicate entries")
-                                    } else {
-                                        context.toast("No duplicates found")
-                                        showRemoveDuplicatesDialog = false
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        isRemoving = true
+                                        val result = Injekt.get<MangaRepository>()
+                                            .normalizeAllUrlsAdvanced(removeDupDoubleSlashes)
+                                        isRemoving = false
+
+                                        duplicateUrls = result.second
+                                        if (duplicateUrls.isNotEmpty()) {
+                                            showMoveToCategoryDialog = true
+                                            showRemoveDuplicatesDialog = false
+                                        } else {
+                                            context.toast("No duplicates found")
+                                        }
                                     }
-                                }
-                            },
-                            enabled = !isRemoving,
-                        ) {
-                            Text(text = "Remove Duplicates")
+                                },
+                                enabled = !isRemoving,
+                            ) {
+                                Text(text = "Move to Category")
+                            }
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        isRemoving = true
+                                        val result = Injekt.get<MangaRepository>()
+                                            .removePotentialDuplicates(removeDupDoubleSlashes)
+                                        isRemoving = false
+                                        if (result.first > 0) {
+                                            removedDuplicates = result.second
+                                            showRemovedList = true
+                                            context.toast("Removed ${result.first} duplicate entries")
+                                        } else {
+                                            context.toast("No duplicates found")
+                                            showRemoveDuplicatesDialog = false
+                                        }
+                                    }
+                                },
+                                enabled = !isRemoving,
+                            ) {
+                                Text(text = "Remove Duplicates")
+                            }
                         }
                     },
                     dismissButton = {
