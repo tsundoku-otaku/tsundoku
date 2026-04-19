@@ -80,7 +80,7 @@ class JsPluginManager(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    // True once the first installed-plugin scan has completed (successfully or not).
+    // True once the first installed-plugin scan has completed.
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
 
@@ -461,68 +461,69 @@ class JsPluginManager(
                             } else {
                                 logcat(LogPriority.DEBUG) {
                                     "Metadata file empty for $nameWithoutExtension, extracting from code"
+                                }
+                                extractPluginInfo(code, nameWithoutExtension)
+                            }
+                        } else {
+                            logcat(LogPriority.DEBUG) {
+                                "No metadata found for $nameWithoutExtension, extracting from code"
                             }
                             extractPluginInfo(code, nameWithoutExtension)
                         }
-                    } else {
-                        logcat(LogPriority.DEBUG) {
-                            "No metadata found for $nameWithoutExtension, extracting from code"
-                        }
-                        extractPluginInfo(code, nameWithoutExtension)
-                    }
 
-                    // Auto-heal: if the plugin code looks truncated/incomplete, try re-download once.
-                    // A common symptom is missing the final `exports.default = ...` assignment.
-                    if (!code.contains("exports.default") && plugin.url.isNotBlank()) {
-                        logcat(LogPriority.WARN) {
-                            "Plugin '$nameWithoutExtension' code looks incomplete (len=${code.length}); re-downloading from ${plugin.url}"
-                        }
-                        try {
-                            val response = client.newCall(GET(plugin.url)).execute()
-                            response.use { resp ->
-                                if (resp.isSuccessful) {
-                                    val fresh = resp.body?.string().orEmpty()
-                                    if (fresh.isNotBlank() && fresh.contains("exports.default")) {
-                                        file.writeUtf8(fresh)
-                                        code = fresh
-                                        logcat(LogPriority.INFO) {
-                                            "Re-downloaded plugin '$nameWithoutExtension' successfully (len=${fresh.length})"
+                        // Auto-heal: if the plugin code looks truncated/incomplete, try re-download once.
+                        // A common symptom is missing the final `exports.default = ...` assignment.
+                        if (!code.contains("exports.default") && plugin.url.isNotBlank()) {
+                            logcat(LogPriority.WARN) {
+                                "Plugin '$nameWithoutExtension' code looks incomplete (len=${code.length}); re-downloading from ${plugin.url}"
+                            }
+                            try {
+                                val response = client.newCall(GET(plugin.url)).execute()
+                                response.use { resp ->
+                                    if (resp.isSuccessful) {
+                                        val fresh = resp.body?.string().orEmpty()
+                                        if (fresh.isNotBlank() && fresh.contains("exports.default")) {
+                                            file.writeUtf8(fresh)
+                                            code = fresh
+                                            logcat(LogPriority.INFO) {
+                                                "Re-downloaded plugin '$nameWithoutExtension' successfully (len=${fresh.length})"
+                                            }
+                                        } else {
+                                            logcat(LogPriority.WARN) {
+                                                "Re-download for '$nameWithoutExtension' returned unexpected content (len=${fresh.length})"
+                                            }
                                         }
                                     } else {
                                         logcat(LogPriority.WARN) {
-                                            "Re-download for '$nameWithoutExtension' returned unexpected content (len=${fresh.length})"
+                                            "Re-download failed for '$nameWithoutExtension': HTTP ${resp.code}"
                                         }
                                     }
-                                } else {
-                                    logcat(LogPriority.WARN) {
-                                        "Re-download failed for '$nameWithoutExtension': HTTP ${resp.code}"
-                                    }
                                 }
+                            } catch (e: Exception) {
+                                logcat(LogPriority.ERROR, e) { "Re-download failed for '$nameWithoutExtension'" }
                             }
-                        } catch (e: Exception) {
-                            logcat(LogPriority.ERROR, e) { "Re-download failed for '$nameWithoutExtension'" }
                         }
+
+                        InstalledJsPlugin(
+                            plugin = plugin,
+                            code = code,
+                            installedVersion = plugin.version,
+                            repositoryUrl = plugin.repositoryUrl ?: "",
+                        )
+                    } catch (e: Exception) {
+                        logcat(LogPriority.ERROR, e) { "Failed to load plugin: ${file.name}" }
+                        null
                     }
-
-                    InstalledJsPlugin(
-                        plugin = plugin,
-                        code = code,
-                        installedVersion = plugin.version,
-                        repositoryUrl = plugin.repositoryUrl ?: "",
-                    )
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e) { "Failed to load plugin: ${file.name}" }
-                    null
                 }
+
+                _installedPlugins.value = plugins
+                rebuildSources()
+
+                logcat(LogPriority.INFO) { "Loaded ${plugins.size} installed JS plugins" }
+            } finally {
+                // Unblock startup consumers waiting for the first JS source scan.
+                _isInitialized.value = true
             }
-
-            _installedPlugins.value = plugins
-            rebuildSources()
-
-            logcat(LogPriority.INFO) { "Loaded ${plugins.size} installed JS plugins" }
-        } finally {
-            // Unblock startup consumers waiting for the first JS source scan.
-            _isInitialized.value = true
         }
     }
 
