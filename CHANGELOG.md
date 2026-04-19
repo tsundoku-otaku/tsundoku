@@ -14,11 +14,13 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Improved
 - Visual feedback for tag/extension refreshes [@mrissaoussama](https://github.com/mrissaoussama) [#150](https://github.com/tsundoku-otaku/tsundoku/pull/150)
+- Paragraph auto-split [@mrissaoussama](https://github.com/mrissaoussama) [#162](https://github.com/tsundoku-otaku/tsundoku/pull/162)
 
 
 ### Fixed
 - Fixed issue where some chapters wouldn't be marked read [@mrissaoussama](https://github.com/mrissaoussama) [#148](https://github.com/tsundoku-otaku/tsundoku/pull/148)
 - JS Plugin entries now refresh with global updates [@mrissaoussama](https://github.com/mrissaoussama) [#151](https://github.com/tsundoku-otaku/tsundoku/pull/151)
+- JS when using infinite scroll now applies [@mrissaoussama](https://github.com/mrissaoussama) [#162](https://github.com/tsundoku-otaku/tsundoku/pull/162)
 - Fixed jsource library updates, links. Improved massimport and browse pagination. [@mrissaoussama](https://github.com/mrissaoussama) [#149](https://github.com/tsundoku-otaku/tsundoku/pull/149)
 
 
