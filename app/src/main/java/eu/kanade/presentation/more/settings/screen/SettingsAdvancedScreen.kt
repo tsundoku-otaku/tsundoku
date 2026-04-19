@@ -8,12 +8,16 @@ import android.webkit.WebStorage
 import android.webkit.WebView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Clear
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.FileOpen
@@ -32,7 +37,11 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -233,8 +242,8 @@ object SettingsAdvancedScreen : SearchableSettings {
         var showBulkRemovalDialog by remember { mutableStateOf(false) }
         var showResetSettingsDialog by remember { mutableStateOf(false) }
 
-        // Load categories when dialog is shown
-        if (showMoveToCategoryDialog && categories.isEmpty()) {
+        // Load categories when category-based dialogs are shown
+        if ((showMoveToCategoryDialog || showBulkRemovalDialog) && categories.isEmpty()) {
             scope.launch {
                 categories = Injekt.get<GetCategories>().await()
             }
@@ -591,7 +600,7 @@ object SettingsAdvancedScreen : SearchableSettings {
             }
         }
 
-        // Bulk removal dialog
+        // Bulk URL processing dialog
         if (showBulkRemovalDialog) {
             // Queue-based approach to handle large files without memory issues
             var pendingUrls by remember { mutableStateOf("") }
@@ -599,6 +608,9 @@ object SettingsAdvancedScreen : SearchableSettings {
             var isRemoving by remember { mutableStateOf(false) }
             var removedCount by remember { mutableStateOf(0) }
             var errorCount by remember { mutableStateOf(0) }
+            var moveToCategoryMode by remember { mutableStateOf(false) }
+            var selectedCategoryId by remember { mutableStateOf<Long?>(null) }
+            var categoryDropdownExpanded by remember { mutableStateOf(false) }
 
             val pendingUrlCount = remember(pendingUrls) {
                 if (pendingUrls.isBlank()) 0 else pendingUrls.lines().filter { it.isNotBlank() }.size
@@ -606,31 +618,171 @@ object SettingsAdvancedScreen : SearchableSettings {
 
             // File picker for URL list
             val filePickerLauncher = rememberLauncherForActivityResult(
-                contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
-                onResult = { uri ->
-                    uri?.let {
+                contract = androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments(),
+                onResult = { uris ->
+                    if (uris.isEmpty()) return@rememberLauncherForActivityResult
+
+                    var loadedFiles = 0
+                    val mergedBuilder = StringBuilder()
+                    uris.forEach { uri ->
                         try {
-                            val inputStream = context.contentResolver.openInputStream(uri)
-                            val content = inputStream?.bufferedReader()?.use { it.readText() } ?: return@let
+                            var fileHadContent = false
+                            context.contentResolver.openInputStream(uri)
+                                ?.bufferedReader()
+                                ?.useLines { lines ->
+                                    lines.forEach { rawLine ->
+                                        val line = rawLine.trim()
+                                        if (line.isNotBlank()) {
+                                            if (mergedBuilder.isNotEmpty()) {
+                                                mergedBuilder.append('\n')
+                                            }
+                                            mergedBuilder.append(line)
+                                            fileHadContent = true
+                                        }
+                                    }
+                                }
 
-                            // Add to pending queue instead of text field
-                            pendingUrls = if (pendingUrls.isBlank()) content else "$pendingUrls\n$content"
-
-                            val newCount = content.lines().filter { it.isNotBlank() }.size
-                            context.toast("Added $newCount URLs to queue (Total: $pendingUrlCount)")
+                            if (fileHadContent) {
+                                loadedFiles++
+                            }
                         } catch (e: Exception) {
-                            context.toast("Error reading file: ${e.message}")
+                            logcat(LogPriority.ERROR, e) { "Error reading file: $uri" }
                         }
+                    }
+
+                    if (mergedBuilder.isNotEmpty()) {
+                        val merged = mergedBuilder.toString()
+                        pendingUrls = if (pendingUrls.isBlank()) merged else "$pendingUrls\n$merged"
+                        val newCount = merged.lines().count { it.isNotBlank() }
+                        val totalCount = pendingUrls.lines().count { it.isNotBlank() }
+                        context.toast("Added $newCount URLs from $loadedFiles file(s) (Total: $totalCount)")
+                    } else {
+                        context.toast("No readable URLs found in selected files")
                     }
                 },
             )
 
+            val userCategories = remember(categories) {
+                categories
+                    .asSequence()
+                    .filterNot(Category::isSystemCategory)
+                    .filter { it.contentType != Category.CONTENT_TYPE_MANGA }
+                    .toList()
+            }
+            val selectedCategory = userCategories.firstOrNull { it.id == selectedCategoryId }
+            val defaultCategoryName = stringResource(MR.strings.default_category)
+            val selectedCategoryName = if (selectedCategoryId == null) {
+                defaultCategoryName
+            } else {
+                selectedCategory?.name ?: defaultCategoryName
+            }
+
             AlertDialog(
                 onDismissRequest = { if (!isRemoving) showBulkRemovalDialog = false },
-                title = { Text(text = "Bulk Remove by URL") },
+                title = {
+                    Text(
+                        text = if (moveToCategoryMode) {
+                            "Bulk Move to Category by URL"
+                        } else {
+                            "Bulk Remove by URL"
+                        },
+                    )
+                },
                 text = {
                     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                        Text(text = "Enter URLs to remove from library:")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            TextButton(
+                                onClick = { moveToCategoryMode = false },
+                                enabled = !isRemoving,
+                            ) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Remove")
+                            }
+                            TextButton(
+                                onClick = { moveToCategoryMode = true },
+                                enabled = !isRemoving,
+                            ) {
+                                Icon(Icons.Filled.DriveFileMove, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Move to Category")
+                            }
+                        }
+
+                        if (moveToCategoryMode) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(text = "Target category:")
+                            Spacer(modifier = Modifier.height(4.dp))
+                            if (userCategories.isEmpty()) {
+                                Text(
+                                    text = "No categories available.",
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            } else {
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    OutlinedTextField(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        readOnly = true,
+                                        enabled = false,
+                                        value = selectedCategoryName,
+                                        onValueChange = {},
+                                        label = { Text("Category") },
+                                        trailingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Outlined.ArrowDropDown,
+                                                contentDescription = null,
+                                            )
+                                        },
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                            disabledBorderColor = MaterialTheme.colorScheme.outline,
+                                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            disabledTrailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        ),
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable { categoryDropdownExpanded = true },
+                                    )
+
+                                    DropdownMenu(
+                                        expanded = categoryDropdownExpanded,
+                                        onDismissRequest = { categoryDropdownExpanded = false },
+                                        modifier = Modifier.heightIn(max = 260.dp),
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(defaultCategoryName) },
+                                            onClick = {
+                                                selectedCategoryId = null
+                                                categoryDropdownExpanded = false
+                                            },
+                                        )
+                                        userCategories.forEach { category ->
+                                            DropdownMenuItem(
+                                                text = { Text(category.name) },
+                                                onClick = {
+                                                    selectedCategoryId = category.id
+                                                    categoryDropdownExpanded = false
+                                                },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        Text(
+                            text = if (moveToCategoryMode) {
+                                "Enter URLs to move to selected category:"
+                            } else {
+                                "Enter URLs to remove from library:"
+                            },
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
 
                         // Text field for manual entry
@@ -671,7 +823,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                             ) {
                                 Icon(Icons.Outlined.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Load File")
+                                Text("Load Files")
                             }
                         }
 
@@ -733,21 +885,20 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 removedCount = 0
                                 errorCount = 0
                                 try {
-                                    val urls = pendingUrls.split("\n", ",", ";")
-                                        .map { it.trim() }
-                                        .filter { it.startsWith("http://") || it.startsWith("https://") }
-
-                                    if (urls.isEmpty()) {
-                                        context.toast("No valid URLs to process")
+                                    if (moveToCategoryMode && selectedCategoryId == null) {
+                                        context.toast("Select a target category first")
                                         isRemoving = false
                                         return@launch
                                     }
 
                                     val mangaRepo = Injekt.get<MangaRepository>()
+                                    val setMangaCategories = Injekt.get<SetMangaCategories>()
 
                                     val chunkSize = 50
                                     val favorites = mangaRepo.getFavoriteIdAndUrl()
-                                    for (urlChunk in urls.chunked(chunkSize)) {
+                                    val allMatchedIds = mutableSetOf<Long>()
+
+                                    fun processChunk(urlChunk: List<String>) {
                                         try {
                                             val toUnfavorite = mutableSetOf<Long>()
 
@@ -777,22 +928,65 @@ object SettingsAdvancedScreen : SearchableSettings {
                                                 }
                                             }
 
-                                            // Unfavorite in batch
-                                            if (toUnfavorite.isNotEmpty()) {
-                                                val updates = toUnfavorite.map { MangaUpdate(id = it, favorite = false) }
-                                                mangaRepo.updateAll(updates)
-                                                removedCount += toUnfavorite.size
-                                            }
+                                            allMatchedIds.addAll(toUnfavorite)
                                         } catch (e: Exception) {
                                             logcat(LogPriority.ERROR, e) { "Error processing chunk" }
                                             errorCount += urlChunk.size
                                         }
                                     }
 
+                                    var validUrlCount = 0
+                                    val buffer = ArrayList<String>(chunkSize)
+
+                                    pendingUrls
+                                        .lineSequence()
+                                        .forEach { rawLine ->
+                                            rawLine.split(',', ';')
+                                                .asSequence()
+                                                .map { it.trim() }
+                                                .filter { it.startsWith("http://") || it.startsWith("https://") }
+                                                .forEach { url ->
+                                                    validUrlCount++
+                                                    buffer.add(url)
+                                                    if (buffer.size >= chunkSize) {
+                                                        val chunk = buffer.toList()
+                                                        buffer.clear()
+                                                        processChunk(chunk)
+                                                    }
+                                                }
+                                        }
+
+                                    if (buffer.isNotEmpty()) {
+                                        processChunk(buffer.toList())
+                                        buffer.clear()
+                                    }
+
+                                    if (validUrlCount == 0) {
+                                        context.toast("No valid URLs to process")
+                                        isRemoving = false
+                                        return@launch
+                                    }
+
+                                    if (allMatchedIds.isNotEmpty()) {
+                                        if (moveToCategoryMode) {
+                                            setMangaCategories.add(allMatchedIds.toList(), listOf(selectedCategoryId!!))
+                                            removedCount = allMatchedIds.size
+                                        } else {
+                                            val updates = allMatchedIds.map { MangaUpdate(id = it, favorite = false) }
+                                            mangaRepo.updateAll(updates)
+                                            removedCount = allMatchedIds.size
+                                        }
+                                    }
+
                                     withUIContext {
                                         context.toast(
                                             buildString {
-                                                append("Removed $removedCount entries")
+                                                if (moveToCategoryMode) {
+                                                    val categoryName = selectedCategory?.name ?: "selected category"
+                                                    append("Moved $removedCount entries to $categoryName")
+                                                } else {
+                                                    append("Removed $removedCount entries")
+                                                }
                                                 if (errorCount > 0) append(" ($errorCount errors)")
                                             },
                                         )
@@ -810,12 +1004,18 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 }
                             }
                         },
-                        enabled = !isRemoving && pendingUrlCount > 0,
+                        enabled = !isRemoving && pendingUrlCount > 0 && (!moveToCategoryMode || selectedCategoryId != null),
                     ) {
                         if (isRemoving) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp))
                         } else {
-                            Text(text = "Remove ($pendingUrlCount)")
+                            Text(
+                                text = if (moveToCategoryMode) {
+                                    "Move ($pendingUrlCount)"
+                                } else {
+                                    "Remove ($pendingUrlCount)"
+                                },
+                            )
                         }
                     }
                 },

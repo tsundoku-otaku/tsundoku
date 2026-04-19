@@ -92,30 +92,53 @@ fun MassImportDialog(
     var pendingUrls by remember { mutableStateOf(initialText) }
     var urlText by remember { mutableStateOf("") }
 
-    // File picker launcher for reading URLs from multiple files
+    // File picker launcher for reading URLs from files
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
         onResult = { uris ->
-            if (uris.isNotEmpty()) {
-                var totalAdded = 0
-                try {
-                    val combinedContent = uris.joinToString("\n") { uri ->
-                        val inputStream = context.contentResolver.openInputStream(uri)
-                        val content = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
-                        totalAdded += content.lines().count { it.isNotBlank() }
-                        content
-                    }
+            if (uris.isEmpty()) return@rememberLauncherForActivityResult
 
-                    // Add file content to pending URLs
-                    pendingUrls = if (pendingUrls.isBlank()) {
-                        combinedContent
-                    } else {
-                        "$pendingUrls\n$combinedContent"
+            var loadedFiles = 0
+            val mergedBuilder = StringBuilder()
+
+            uris.forEach { uri ->
+                try {
+                    var fileHadContent = false
+                    context.contentResolver.openInputStream(uri)
+                        ?.bufferedReader()
+                        ?.useLines { lines ->
+                            lines.forEach { rawLine ->
+                                val line = rawLine.trim()
+                                if (line.isNotBlank()) {
+                                    if (mergedBuilder.isNotEmpty()) {
+                                        mergedBuilder.append('\n')
+                                    }
+                                    mergedBuilder.append(line)
+                                    fileHadContent = true
+                                }
+                            }
+                        }
+
+                    if (fileHadContent) {
+                        loadedFiles++
                     }
-                    context.toast("Added $totalAdded URLs from file(s)")
                 } catch (e: Exception) {
-                    context.toast("Error reading file(s): ${e.message}")
+                    context.toast("Error reading file: ${e.message}")
                 }
+            }
+
+            if (mergedBuilder.isNotEmpty()) {
+                val merged = mergedBuilder.toString()
+                pendingUrls = if (pendingUrls.isBlank()) {
+                    merged
+                } else {
+                    "$pendingUrls\n$merged"
+                }
+
+                val addedCount = merged.lines().count { it.isNotBlank() }
+                context.toast("Added $addedCount URLs from $loadedFiles file(s)")
+            } else {
+                context.toast("No readable URLs found in selected files")
             }
         },
     )
@@ -182,10 +205,6 @@ fun MassImportDialog(
     val massImportNovels = remember { Injekt.get<MassImport>() }
 
     val queue by MassImportJob.sharedQueue.collectAsState()
-
-    LaunchedEffect(Unit) {
-        MassImportJob.restoreQueueFromWorkManager(context)
-    }
 
     val getCategories = remember { Injekt.get<GetCategories>() }
     // Filter categories by content type (manga vs novel)
@@ -564,22 +583,24 @@ fun MassImportDialog(
             }
         },
         confirmButton = {
-            val allUrlsText = listOf(pendingUrls, urlText)
-                .filter { it.isNotBlank() }
-                .joinToString("\n")
-            val hasUrls = allUrlsText.isNotBlank()
+            val hasUrls = pendingUrls.isNotBlank() || urlText.isNotBlank()
 
             TextButton(
                 onClick = {
                     // Run URL parsing and job enqueue off main thread
                     dialogScope.launch(Dispatchers.Default) {
-                        val urls = massImportNovels.parseUrls(allUrlsText)
-                        // Deduplicate URLs before adding to queue
-                        val uniqueUrls = urls.toSet().toList()
+                        val uniqueUrls = LinkedHashSet<String>()
+                        if (pendingUrls.isNotBlank()) {
+                            uniqueUrls.addAll(massImportNovels.parseUrls(pendingUrls))
+                        }
+                        if (urlText.isNotBlank()) {
+                            uniqueUrls.addAll(massImportNovels.parseUrls(urlText))
+                        }
+
                         withContext(Dispatchers.Main) {
                             MassImportJob.start(
                                 context = context,
-                                urls = uniqueUrls,
+                                urls = uniqueUrls.toList(),
                                 addToLibrary = true,
                                 fetchDetails = fetchDetails,
                                 categoryId = selectedCategoryId ?: 0L,

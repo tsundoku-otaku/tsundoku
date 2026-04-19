@@ -1213,7 +1213,7 @@
     <string name="pref_db_maintenance">Database maintenance</string>
     <string name="pref_db_maintenance_subtitle">ANALYZE, REINDEX, and VACUUM. VACUUM temporarily needs free space equal to the database size.</string>
     <string name="pref_bulk_remove_url">Bulk remove by URL</string>
-    <string name="pref_bulk_remove_url_subtitle">Remove multiple entries from library by URL list</string>
+    <string name="pref_bulk_remove_url_subtitle">Remove or move multiple entries from library by URL list</string>
 
     <!-- Translation queue / batch -->
     <string name="translation_all_downloaded_already_translated">All downloaded chapters are already translated</string>
