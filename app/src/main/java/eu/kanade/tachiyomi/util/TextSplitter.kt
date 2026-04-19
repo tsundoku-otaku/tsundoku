@@ -18,14 +18,15 @@ object TextSplitter {
      */
     fun splitText(text: String, wordCount: Int): String {
         if (wordCount <= 0) return text
+        val effectiveWordCount = wordCount.coerceAtLeast(20)
 
         // Check if this is HTML content
-        val isHtml = text.contains("<p>") || text.contains("<br") || text.contains("<div")
+        val isHtml = Regex("<\\s*(p|div|br|body)\\b", RegexOption.IGNORE_CASE).containsMatchIn(text)
 
         return if (isHtml) {
-            splitHtmlText(text, wordCount)
+            splitHtmlText(text, effectiveWordCount)
         } else {
-            splitPlainText(text, wordCount)
+            splitPlainText(text, effectiveWordCount)
         }
     }
 
@@ -84,7 +85,11 @@ object TextSplitter {
                 // Check if it's a paragraph or break tag - reset counter
                 if (tag.lowercase().startsWith("<p>") ||
                     tag.lowercase().startsWith("<br") ||
-                    tag.lowercase().startsWith("</p>")
+                    tag.lowercase().startsWith("</p>") ||
+                    tag.lowercase().startsWith("<div") ||
+                    tag.lowercase().startsWith("</div") ||
+                    tag.lowercase().startsWith("<body") ||
+                    tag.lowercase().startsWith("</body")
                 ) {
                     wordsSincePunctuation = 0
                 }
@@ -114,7 +119,9 @@ object TextSplitter {
 
                     val endsWithPunctuation = word.lastOrNull()?.let { it in sentenceEndingPunctuation } == true
                     if (endsWithPunctuation && wordsSincePunctuation >= targetWordCount) {
-                        result.append("</p><p>")
+                        // Use line breaks instead of forcing paragraph tags.
+                        // This keeps splitting valid for <div>-based chapters and body-level plain HTML.
+                        result.append("<br><br>")
                         wordsSincePunctuation = 0
                     }
                 }

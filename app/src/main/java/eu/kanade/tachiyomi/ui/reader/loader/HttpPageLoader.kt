@@ -207,7 +207,7 @@ internal class HttpPageLoader(
                 page.status = Page.State.LoadPage
                 var text = source.fetchNovelPageText(page)
                 if (readerPreferences.novelAutoSplitText.get()) {
-                    val wordCount = readerPreferences.novelAutoSplitWordCount.get()
+                    val wordCount = readerPreferences.novelAutoSplitWordCount.get().coerceAtLeast(20)
                     if (wordCount > 0) {
                         text = TextSplitter.splitText(text, wordCount)
                     }
