@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.source
+﻿package eu.kanade.tachiyomi.source
 
 import android.content.Context
 import eu.kanade.tachiyomi.data.download.DownloadManager
@@ -54,7 +54,6 @@ class AndroidSourceManager(
 
     init {
         scope.launch {
-            // Combine extension sources, custom sources, and JS plugin sources
             combine(
                 extensionManager.installedExtensionsFlow,
                 customSourceManager.customSources,
@@ -74,32 +73,30 @@ class AndroidSourceManager(
                         ),
                     ),
                 )
-                // Add extension sources
+
                 extensions.forEach { extension ->
                     extension.sources.forEach {
                         mutableMap[it.id] = it
                         registerStubSource(StubSource.from(it))
                     }
                 }
-                // Add custom sources
+
                 customSources.forEach { customSource ->
                     mutableMap[customSource.id] = customSource
                     registerStubSource(StubSource.from(customSource))
                 }
-                // Add JS plugin sources
+
                 jsSources.forEach { jsSource ->
                     mutableMap[jsSource.id] = jsSource
                     registerStubSource(StubSource.from(jsSource))
                 }
+
                 mutableMap
             }.collectLatest { sources ->
                 sourcesMapFlow.value = sources
-                // Wait for extension manager to finish loading before marking initialized.
-                // Without this, the first combine emission (empty extensions) would set
-                // isInitialized=true, causing consumers like ReaderViewModel to get StubSources
-                // when restoring after process death.
                 if (!_isInitialized.value) {
                     extensionManager.isInitialized.first { it }
+                    jsPluginManager.isInitialized.first { it }
                 }
                 _isInitialized.value = true
             }
