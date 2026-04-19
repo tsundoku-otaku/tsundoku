@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.source
+﻿package eu.kanade.tachiyomi.source
 
 import android.content.Context
 import eu.kanade.tachiyomi.data.download.DownloadManager
@@ -54,7 +54,6 @@ class AndroidSourceManager(
 
     init {
         scope.launch {
-            // Combine extension sources, custom sources, and JS plugin sources
             combine(
                 extensionManager.installedExtensionsFlow,
                 customSourceManager.customSources,
@@ -62,31 +61,39 @@ class AndroidSourceManager(
             ) { extensions, customSources, jsSources ->
                 val mutableMap = ConcurrentHashMap<Long, Source>(
                     mapOf(
-                        0L to Injekt.get<LocalSource>(),
-                        1L to Injekt.get<LocalNovelSource>(),
+                        LocalSource.ID to LocalSource(
+                            context,
+                            Injekt.get(),
+                            Injekt.get(),
+                        ),
+                        LocalNovelSource.ID to LocalNovelSource(
+                            context,
+                            Injekt.get(),
+                            Injekt.get(),
+                        ),
                     ),
                 )
-                // Add extension sources
+
                 extensions.forEach { extension ->
                     extension.sources.forEach {
                         mutableMap[it.id] = it
                         registerStubSource(StubSource.from(it))
                     }
                 }
-                // Add custom sources
+
                 customSources.forEach { customSource ->
                     mutableMap[customSource.id] = customSource
                     registerStubSource(StubSource.from(customSource))
                 }
-                // Add JS plugin sources
+
                 jsSources.forEach { jsSource ->
                     mutableMap[jsSource.id] = jsSource
                     registerStubSource(StubSource.from(jsSource))
                 }
+
                 mutableMap
             }.collectLatest { sources ->
                 sourcesMapFlow.value = sources
-                // Wait for all async source providers to finish first load before marking initialized.
                 if (!_isInitialized.value) {
                     extensionManager.isInitialized.first { it }
                     jsPluginManager.isInitialized.first { it }
