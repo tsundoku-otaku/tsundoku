@@ -47,6 +47,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.system.toast
+import tachiyomi.domain.storage.service.StorageManager
 import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.async
@@ -97,6 +98,7 @@ import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.math.floor
@@ -131,6 +133,7 @@ class MangaScreenModel(
     private val getTracks: GetTracks = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
+    private val storageManager: StorageManager = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get(),
     private val translatedChapterRepository: TranslatedChapterRepository = Injekt.get(),
@@ -342,14 +345,37 @@ class MangaScreenModel(
         toggleFavorite(
             onRemoved = {
                 screenModelScope.launch {
-                    if (!hasDownloads()) return@launch
+                    val hasDownloads = hasDownloads()
+                    val hasLocalNovelFiles = hasLocalNovelFiles()
+
+                    if (!hasDownloads && !hasLocalNovelFiles) return@launch
+
+                    val message = when {
+                        hasDownloads && hasLocalNovelFiles -> {
+                            context.stringResource(TDMR.strings.delete_downloads_and_local_novel_files_for_manga)
+                        }
+
+                        hasDownloads -> {
+                            context.stringResource(MR.strings.delete_downloads_for_manga)
+                        }
+
+                        else -> {
+                            context.stringResource(TDMR.strings.delete_local_novel_files)
+                        }
+                    }
+
                     val result = snackbarHostState.showSnackbar(
-                        message = context.stringResource(MR.strings.delete_downloads_for_manga),
+                        message = message,
                         actionLabel = context.stringResource(MR.strings.action_delete),
                         withDismissAction = true,
                     )
                     if (result == SnackbarResult.ActionPerformed) {
-                        deleteDownloads()
+                        if (hasDownloads) {
+                            deleteDownloads()
+                        }
+                        if (hasLocalNovelFiles) {
+                            deleteLocalNovelFiles()
+                        }
                     }
                 }
             },
@@ -476,12 +502,36 @@ class MangaScreenModel(
         return downloadManager.getDownloadCount(manga) > 0
     }
 
+    private fun hasLocalNovelFiles(): Boolean {
+        val manga = successState?.manga ?: return false
+        if (!manga.isLocalNovel()) return false
+
+        return storageManager.getLocalNovelSourceDirectory()
+            ?.findFile(manga.url)
+            ?.exists() == true
+    }
+
     /**
      * Deletes all the downloads for the manga.
      */
     private fun deleteDownloads() {
         val state = successState ?: return
         downloadManager.deleteManga(state.manga, state.source)
+    }
+
+    private fun deleteLocalNovelFiles() {
+        val state = successState ?: return
+        val localNovelDir = storageManager.getLocalNovelSourceDirectory()
+        val deleted = localNovelDir
+            ?.findFile(state.manga.url)
+            ?.delete()
+            ?: false
+
+        if (!deleted) {
+            logcat(LogPriority.WARN) {
+                "Failed to delete local novel files for ${state.manga.title} (${state.manga.url})"
+            }
+        }
     }
 
     /**
