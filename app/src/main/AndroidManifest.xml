@@ -198,11 +198,20 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="tsundoku" />
+                <data android:scheme="mihon" />
 
                 <data android:host="anilist-auth" />
                 <data android:host="bangumi-auth" />
                 <data android:host="myanimelist-auth" />
                 <data android:host="shikimori-auth" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="myanimelist-auth" />
             </intent-filter>
         </activity>
 
