@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import mihon.core.archive.EpubReader
 import mihon.core.archive.epubReader
+import org.jsoup.nodes.Element
 import tachiyomi.source.local.metadata.fillMetadata
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -23,7 +24,14 @@ class ParseEpubPreview {
         val description: String?,
         val coverUri: Uri?,
         val collection: String?,
+        val collectionPosition: Int?,
         val genres: String?,
+        val tableOfContents: List<String>,
+    )
+
+    private data class CollectionMetadata(
+        val collection: String?,
+        val position: Int?,
     )
 
     data class TitleCandidate(
@@ -44,6 +52,12 @@ class ParseEpubPreview {
                 val inputStream = context.contentResolver.openInputStream(uri) ?: return@mapNotNull null
                 val fileName = getFileNameFromUri(context, uri) ?: "unknown.epub"
 
+                if (!fileName.endsWith(".epub", ignoreCase = true)) {
+                    errors += "Skipped non-EPUB file: $fileName"
+                    inputStream.close()
+                    return@mapNotNull null
+                }
+
                 val tempFile = File.createTempFile("epub_import_", ".epub", context.cacheDir)
                 tempFile.outputStream().use { out -> inputStream.copyTo(out) }
                 inputStream.close()
@@ -55,10 +69,20 @@ class ParseEpubPreview {
                 val chapter = SChapter.create()
                 epubReader.fillMetadata(manga, chapter)
 
-                val title = if (chapter.name.isNotBlank()) chapter.name else fileName.removeSuffix(".epub")
-                manga.title = title
+                val metadataTitle = manga.title.takeIf { it.isNotBlank() }
+                val title = metadataTitle
+                    ?: chapter.name.takeIf { it.isNotBlank() }
+                    ?: fileName.removeSuffix(".epub")
+
+                val collectionMetadata = extractCollectionMetadata(epubReader)
 
                 val coverUri = extractCoverUri(context, epubReader, manga)
+                val tableOfContents = runCatching {
+                    epubReader.getTableOfContents()
+                        .map { it.title.trim() }
+                        .filter { it.isNotEmpty() }
+                        .distinct()
+                }.getOrDefault(emptyList())
 
                 epubReader.close()
                 tempFile.delete()
@@ -70,8 +94,10 @@ class ParseEpubPreview {
                     author = manga.author,
                     description = manga.description,
                     coverUri = coverUri,
-                    collection = runCatching { manga.title }.getOrNull()?.takeIf { it.isNotBlank() },
+                    collection = collectionMetadata.collection ?: metadataTitle,
+                    collectionPosition = collectionMetadata.position,
                     genres = manga.genre,
+                    tableOfContents = tableOfContents,
                 )
             }.onFailure {
                 errors += "Failed to parse EPUB: ${it.message}"
@@ -91,6 +117,48 @@ class ParseEpubPreview {
                 )
             },
         )
+    }
+
+    private fun extractCollectionMetadata(epubReader: EpubReader): CollectionMetadata {
+        return runCatching {
+            val packageHref = epubReader.getPackageHref()
+            val packageDoc = epubReader.getPackageDocument(packageHref)
+            val metadata = packageDoc.selectFirst("metadata") ?: return CollectionMetadata(null, null)
+
+            val collectionMeta = metadata.selectFirst("meta[property=belongs-to-collection], meta[name=calibre:series]")
+
+            val collection = collectionMeta
+                ?.attr("content")
+                ?.takeIf { it.isNotBlank() }
+                ?: collectionMeta
+                    ?.text()
+                    ?.trim()
+                    ?.takeIf { it.isNotBlank() }
+
+            val refinedPosition = collectionMeta
+                ?.attr("id")
+                ?.takeIf { it.isNotBlank() }
+                ?.let { collectionId ->
+                    metadata.selectFirst(
+                        "meta[refines='#$collectionId'][property=group-position], " +
+                            "meta[refines='#$collectionId'][name=calibre:series_index]",
+                    )
+                }
+
+            val fallbackPosition = metadata.selectFirst("meta[property=group-position], meta[name=calibre:series_index]")
+            val position = parseCollectionPosition(refinedPosition) ?: parseCollectionPosition(fallbackPosition)
+
+            CollectionMetadata(collection, position)
+        }.getOrElse { CollectionMetadata(null, null) }
+    }
+
+    private fun parseCollectionPosition(element: Element?): Int? {
+        if (element == null) return null
+
+        val raw = element.attr("content").takeIf { it.isNotBlank() }
+            ?: element.text().trim()
+
+        return raw.toDoubleOrNull()?.toInt()
     }
 
     fun defaultCustomTitleFromCandidates(candidates: List<TitleCandidate>): String {

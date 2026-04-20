@@ -32,7 +32,6 @@ import eu.kanade.presentation.library.DeleteLibraryMangaDialog
 import eu.kanade.presentation.library.LibrarySettingsDialog
 import eu.kanade.presentation.library.MarkReadConfirmationDialog
 import eu.kanade.presentation.library.UpdateSelectedDialog
-import eu.kanade.presentation.library.components.ImportEpubDialog
 import eu.kanade.presentation.library.components.LibraryContent
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.MassImportDialog
@@ -172,7 +171,7 @@ data object NovelsTab : Tab {
                     // For scroll overlay when no tab
                     scrollBehavior = scrollBehavior.takeIf { !state.showCategoryTabs },
                     onClickMassImport = screenModel::openMassImportDialog,
-                    onClickImportEpub = screenModel::openImportEpubDialog,
+                    onClickImportEpub = { navigator.push(ImportEpubScreen()) },
                     onClickFindDuplicates = { navigator.push(DuplicateDetectionScreen()) },
                 )
             },
@@ -357,16 +356,8 @@ data object NovelsTab : Tab {
                 )
             }
             is LibraryScreenModel.Dialog.ImportEpub -> {
-                ImportEpubDialog(
-                    onDismissRequest = onDismissRequest,
-                    onImportComplete = { success, errors ->
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                "EPUB Import: $success imported, $errors errors",
-                            )
-                        }
-                    },
-                )
+                // EPUB import now uses full-screen navigation from the toolbar action.
+                onDismissRequest()
             }
             is LibraryScreenModel.Dialog.ExportEpub -> {
                 eu.kanade.presentation.library.components.BatchExportEpubDialog(

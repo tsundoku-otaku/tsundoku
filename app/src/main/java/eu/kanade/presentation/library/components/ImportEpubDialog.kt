@@ -61,7 +61,9 @@ data class EpubFileInfo(
     val description: String?,
     val coverUri: Uri? = null,
     val collection: String? = null,
+    val collectionPosition: Int? = null,
     val genres: String? = null,
+    val tableOfContents: List<String> = emptyList(),
 )
 
 data class ImportProgress(
@@ -133,7 +135,9 @@ fun ImportEpubDialog(
                         description = it.description,
                         coverUri = it.coverUri,
                         collection = it.collection,
+                        collectionPosition = it.collectionPosition,
                         genres = it.genres,
+                        tableOfContents = it.tableOfContents,
                     )
                 }
 

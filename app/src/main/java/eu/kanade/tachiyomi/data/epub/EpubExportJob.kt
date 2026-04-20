@@ -263,24 +263,24 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                         "${manga.title}: Exporting ${chapterContents.size} chapters (mode=$translationMode)"
                     }
 
+                    val statusLabel = mangaStatusLabel(manga.status)
+
                     // Get cover image
-                    val coverImage = try {
-                        manga.thumbnailUrl?.let { url ->
-                            val request = okhttp3.Request.Builder().url(url).build()
-                            networkHelper.client.newCall(request).execute().use { it.body.bytes() }
-                        }
-                    } catch (e: Exception) {
-                        null
-                    }
+                    val coverImage = readCoverImage(manga.thumbnailUrl)
 
                     // Create EPUB metadata
                     val metadata = EpubWriter.Metadata(
-                        title = manga.title,
-                        author = manga.author,
-                        description = manga.description,
+                        title = manga.title.trim().ifBlank { manga.url },
+                        author = manga.author?.trim()?.takeIf { it.isNotBlank() }
+                            ?: manga.artist?.trim()?.takeIf { it.isNotBlank() },
+                        description = buildMetadataDescription(
+                            baseDescription = manga.description,
+                            statusLabel = statusLabel,
+                            includeStatus = includeStatus,
+                        ),
                         language = source.lang.ifBlank { "en" },
-                        genres = manga.genre ?: emptyList(),
-                        publisher = source.name,
+                        genres = normalizeGenres(manga.genre),
+                        publisher = source.name.takeIf { it.isNotBlank() },
                     )
 
                     // ── Build EPUB file(s) based on translation mode ──
@@ -309,16 +309,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                             }
                         }
                         if (includeStatus) {
-                            val statusStr = when (manga.status) {
-                                SManga.ONGOING.toLong() -> "Ongoing"
-                                SManga.COMPLETED.toLong() -> "Completed"
-                                SManga.LICENSED.toLong() -> "Licensed"
-                                SManga.PUBLISHING_FINISHED.toLong() -> "Finished"
-                                SManga.CANCELLED.toLong() -> "Cancelled"
-                                SManga.ON_HIATUS.toLong() -> "Hiatus"
-                                else -> null
-                            }
-                            statusStr?.let { filenameBuilder.append(" [$it]") }
+                            statusLabel?.let { filenameBuilder.append(" [$it]") }
                         }
                         suffix?.let { filenameBuilder.append(" [$it]") }
                         filenameBuilder.append(".epub")
@@ -474,6 +465,67 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
             logcat(LogPriority.ERROR, e) { "Failed to read downloaded chapter: ${chapter.name}" }
             null
         }
+    }
+
+    private fun normalizeGenres(genres: List<String>?): List<String> {
+        val mergedGenres = linkedMapOf<String, String>()
+        genres.orEmpty().forEach { genre ->
+            val normalizedGenre = genre.trim()
+            if (normalizedGenre.isNotBlank()) {
+                mergedGenres.putIfAbsent(normalizedGenre.lowercase(), normalizedGenre)
+            }
+        }
+        return mergedGenres.values.toList()
+    }
+
+    private fun buildMetadataDescription(
+        baseDescription: String?,
+        statusLabel: String?,
+        includeStatus: Boolean,
+    ): String? {
+        val sections = mutableListOf<String>()
+
+        baseDescription
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let(sections::add)
+
+        if (includeStatus && !statusLabel.isNullOrBlank()) {
+            sections += "Status: $statusLabel"
+        }
+
+        return sections.joinToString("\n\n").takeIf { it.isNotBlank() }
+    }
+
+    private fun mangaStatusLabel(status: Long): String? {
+        return when (status) {
+            SManga.ONGOING.toLong() -> "Ongoing"
+            SManga.COMPLETED.toLong() -> "Completed"
+            SManga.LICENSED.toLong() -> "Licensed"
+            SManga.PUBLISHING_FINISHED.toLong() -> "Finished"
+            SManga.CANCELLED.toLong() -> "Cancelled"
+            SManga.ON_HIATUS.toLong() -> "Hiatus"
+            else -> null
+        }
+    }
+
+    private fun readCoverImage(thumbnailUrl: String?): ByteArray? {
+        val url = thumbnailUrl
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+
+        return runCatching {
+            if (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) {
+                val request = okhttp3.Request.Builder().url(url).build()
+                networkHelper.client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    response.body?.bytes()
+                }
+            } else {
+                context.contentResolver.openInputStream(Uri.parse(url))?.use { stream -> stream.readBytes() }
+            }
+        }.getOrNull()
     }
 
     private fun updateProgress(current: Int, total: Int, title: String) {
