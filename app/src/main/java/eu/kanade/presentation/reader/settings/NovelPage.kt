@@ -63,6 +63,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -735,6 +737,7 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
                 stringResource(TDMR.strings.novel_add_css_snippet)
             },
             initialSnippet = editingCssSnippet?.second,
+            focusCodeFieldByDefault = editingCssSnippet != null,
             onDismiss = {
                 showCssDialog = false
                 editingCssSnippet = null
@@ -762,6 +765,7 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
                 stringResource(TDMR.strings.novel_add_js_snippet)
             },
             initialSnippet = editingJsSnippet?.second,
+            focusCodeFieldByDefault = editingJsSnippet != null,
             onDismiss = {
                 showJsDialog = false
                 editingJsSnippet = null
@@ -885,11 +889,19 @@ private fun SnippetSection(
 private fun SnippetEditDialog(
     title: String,
     initialSnippet: CodeSnippet?,
+    focusCodeFieldByDefault: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (CodeSnippet) -> Unit,
 ) {
     var snippetTitle by remember { mutableStateOf(initialSnippet?.title ?: "") }
     var snippetCode by remember { mutableStateOf(initialSnippet?.code ?: "") }
+    val codeFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(focusCodeFieldByDefault) {
+        if (focusCodeFieldByDefault) {
+            codeFocusRequester.requestFocus()
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -909,7 +921,10 @@ private fun SnippetEditDialog(
                     label = { Text(stringResource(TDMR.strings.novel_snippet_code)) },
                     minLines = 5,
                     maxLines = 10,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .focusRequester(codeFocusRequester),
                 )
             }
         },
