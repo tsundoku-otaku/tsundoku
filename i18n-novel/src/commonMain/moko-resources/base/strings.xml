@@ -663,8 +663,8 @@
     <string name="library_clear_clearing_chapters">Clearing chapters</string>
     <string name="library_clear_clearing">Clearing</string>
     <string name="library_clear_complete_title">Clear Complete</string>
-    <string name="delete_local_novel_files">Delete local EPUB/HTML?</string>
-    <string name="delete_downloads_and_local_novel_files_for_manga">Delete downloaded chapters and local EPUB/HTML?</string>
+    <string name="delete_local_novel_files">Delete local novel files?</string>
+    <string name="delete_downloads_and_local_novel_files_for_manga">Delete downloaded chapters and local novel files?</string>
     <string name="library_clear_cleared_covers">Cleared covers for %d entries</string>
     <string name="library_clear_cleared_descriptions">Cleared descriptions for %d entries</string>
     <string name="library_clear_cleared_tags">Cleared tags for %d entries</string>
