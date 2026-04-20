@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -655,7 +656,7 @@ private fun VolumeGroupCard(
             }
 
             Text(
-                text = "${group.volumes.size} volume(s)",
+                text = "${group.volumes.size} volume(s) • ${groupTotalChapterCount(group)} chapter(s)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -780,6 +781,7 @@ private fun VolumeGroupCard(
                     }
 
                     if (isExpanded) {
+                        VolumeMetadataDetails(file = volume.file)
                         TocPreview(volume.file.tableOfContents)
                     }
                 }
@@ -812,6 +814,54 @@ private fun VolumeCoverThumbnail(
         modifier = modifier,
         shape = RoundedCornerShape(8.dp),
     )
+}
+
+@Composable
+private fun VolumeMetadataDetails(file: EpubFileInfo) {
+    val author = file.author?.trim()?.takeIf { it.isNotBlank() }
+    val tags = file.genres
+        ?.split(',', ';')
+        ?.map { it.trim() }
+        ?.filter { it.isNotBlank() }
+        .orEmpty()
+    val description = file.description?.trim()?.takeIf { it.isNotBlank() }
+
+    if (author == null && tags.isEmpty() && description == null) {
+        return
+    }
+
+    Column(
+        modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        author?.let {
+            Text(
+                text = "Author: $it",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        if (tags.isNotEmpty()) {
+            Text(
+                text = "Tags: ${tags.joinToString(", ")}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        description?.let {
+            Text(
+                text = "Description: $it",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 6,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 @Composable
@@ -1046,6 +1096,12 @@ private fun buildVolumeOrderLabel(orderIndex: Int, collectionPosition: Int?): St
         "Order $orderNumber (EPUB index $collectionPosition)"
     } else {
         "Order $orderNumber"
+    }
+}
+
+private fun groupTotalChapterCount(group: VolumeGroupState): Int {
+    return group.volumes.sumOf { volume ->
+        volume.file.tableOfContents.size.takeIf { it > 0 } ?: 1
     }
 }
 

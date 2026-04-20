@@ -300,6 +300,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
     /**
      * Parse EPUB 3 NAV document for TOC.
      * NAV hrefs are relative to the NAV file location.
+     * Keep hash fragments because many EPUBs map sub-sections using anchors in the same XHTML file.
      */
     private fun parseEpub3Nav(navPath: String, opfBasePath: String): List<EpubChapter> {
         val chapters = mutableListOf<EpubChapter>()
@@ -310,10 +311,17 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
             val navElement = doc.selectFirst("nav[*|type=toc], nav#toc, nav[epub\\:type=toc]")
             navElement?.select("li a")?.forEachIndexed { index, element ->
                 val title = element.text().trim()
-                val href = element.attr("href").substringBefore("#") // Remove fragment
+                val href = element.attr("href").trim()
                 if (title.isNotEmpty() && href.isNotEmpty()) {
-                    // NAV hrefs are relative to NAV file location
-                    val resolvedHref = resolveZipPath(navBasePath, href)
+                    // Resolve path and then restore fragment (if present).
+                    val pathPart = href.substringBefore("#")
+                    val fragment = href.substringAfter("#", "")
+                    val resolvedPath = resolveZipPath(navBasePath, pathPart)
+                    val resolvedHref = if (fragment.isNotEmpty()) {
+                        "$resolvedPath#$fragment"
+                    } else {
+                        resolvedPath
+                    }
                     chapters.add(EpubChapter(title, resolvedHref, index))
                 }
             }
@@ -324,6 +332,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
     /**
      * Parse EPUB 2 NCX document for TOC.
      * NCX src paths are relative to the OPF file location (per EPUB2 spec).
+     * Keep hash fragments because many EPUBs map sub-sections using anchors in the same XHTML file.
      */
     private fun parseEpub2Ncx(ncxPath: String, opfBasePath: String): List<EpubChapter> {
         val chapters = mutableListOf<EpubChapter>()
@@ -331,10 +340,17 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
             val doc = Jsoup.parse(inputStream, null, "", Parser.xmlParser())
             doc.select("navPoint").forEachIndexed { index, navPoint ->
                 val title = navPoint.selectFirst("navLabel > text")?.text()?.trim() ?: ""
-                val href = navPoint.selectFirst("content")?.attr("src")?.substringBefore("#") ?: ""
+                val href = navPoint.selectFirst("content")?.attr("src")?.trim() ?: ""
                 if (title.isNotEmpty() && href.isNotEmpty()) {
-                    // NCX src paths are relative to OPF location, not NCX location
-                    val resolvedHref = resolveZipPath(opfBasePath, href)
+                    // Resolve path and then restore fragment (if present).
+                    val pathPart = href.substringBefore("#")
+                    val fragment = href.substringAfter("#", "")
+                    val resolvedPath = resolveZipPath(opfBasePath, pathPart)
+                    val resolvedHref = if (fragment.isNotEmpty()) {
+                        "$resolvedPath#$fragment"
+                    } else {
+                        resolvedPath
+                    }
                     chapters.add(EpubChapter(title, resolvedHref, index))
                 }
             }

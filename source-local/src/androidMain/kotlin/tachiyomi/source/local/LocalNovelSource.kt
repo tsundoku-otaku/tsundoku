@@ -251,12 +251,27 @@ actual class LocalNovelSource(
 
                         // If EPUB has multiple TOC entries, create separate chapters
                         if (tocChapters.size > 1) {
-                            tocChapters.forEachIndexed { tocIndex, tocEntry ->
+                            var latestPrimaryTitle: String? = null
+
+                            tocChapters.forEach { tocEntry ->
                                 orderedTocChapterNumber += 1
+
+                                val rawTitle = tocEntry.title.trim()
+                                val isSubsection = SUBSECTION_TITLE_REGEX.matches(rawTitle)
+                                val resolvedTitle = when {
+                                    rawTitle.isBlank() -> "Chapter $orderedTocChapterNumber"
+                                    isSubsection && !latestPrimaryTitle.isNullOrBlank() -> "$latestPrimaryTitle - $rawTitle"
+                                    else -> rawTitle
+                                }
+
+                                if (!isSubsection && rawTitle.isNotBlank()) {
+                                    latestPrimaryTitle = rawTitle
+                                }
+
                                 val chapterDisplayName = if (hasMultipleEpubFiles) {
-                                    "${chapterFile.nameWithoutExtension.orEmpty()} - ${tocEntry.title}"
+                                    "${chapterFile.nameWithoutExtension.orEmpty()} - $resolvedTitle"
                                 } else {
-                                    tocEntry.title
+                                    resolvedTitle
                                 }
 
                                 allChapters.add(
@@ -465,7 +480,8 @@ actual class LocalNovelSource(
 
     fun getFormat(chapter: SChapter): Format {
         try {
-            val (novelDirName, chapterName) = chapter.url.split('/', limit = 2)
+            val filePath = chapter.url.substringBefore("#")
+            val (novelDirName, chapterName) = filePath.split('/', limit = 2)
             return fileSystem.getBaseDirectory()
                 ?.findFile(novelDirName)
                 ?.findFile(chapterName)
@@ -499,6 +515,9 @@ actual class LocalNovelSource(
             "htm",
             "xhtml",
         )
+
+        private val SUBSECTION_TITLE_REGEX =
+            Regex("(?i)^(part|section|episode|ep\\.?|act|book|volume|vol\\.?|chapter|ch\\.?)\\s*[0-9ivxlcdm]+\\b")
     }
 }
 

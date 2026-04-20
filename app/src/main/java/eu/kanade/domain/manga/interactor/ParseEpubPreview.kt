@@ -81,7 +81,6 @@ class ParseEpubPreview {
                     epubReader.getTableOfContents()
                         .map { it.title.trim() }
                         .filter { it.isNotEmpty() }
-                        .distinct()
                 }.getOrDefault(emptyList())
 
                 epubReader.close()
