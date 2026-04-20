@@ -88,6 +88,7 @@ import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.i18n.MR
 import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.random.Random
@@ -329,7 +330,7 @@ class LibraryScreenModel(
         val result = fastFilter {
             // Quick exit for some checks that are fast
             val downloadPasses = applyFilter(filterDownloaded) {
-                it.libraryManga.manga.isLocal() || it.downloadCount > 0
+                it.libraryManga.manga.isLocal() || it.libraryManga.manga.isLocalNovel() || it.downloadCount > 0
             }
             if (!downloadPasses) return@fastFilter false
 
