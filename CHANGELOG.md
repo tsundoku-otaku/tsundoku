@@ -11,8 +11,12 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+### Added
+- Move by URL [@mrissaoussama](https://github.com/mrissaoussama) [#163](https://github.com/tsundoku-otaku/tsundoku/pull/163)
+
 
 ### Improved
+- Duplicate screen and mass import [@mrissaoussama](https://github.com/mrissaoussama) [#163](https://github.com/tsundoku-otaku/tsundoku/pull/163)
 - Visual feedback for tag/extension refreshes [@mrissaoussama](https://github.com/mrissaoussama) [#150](https://github.com/tsundoku-otaku/tsundoku/pull/150)
 - Paragraph auto-split [@mrissaoussama](https://github.com/mrissaoussama) [#162](https://github.com/tsundoku-otaku/tsundoku/pull/162)
 
