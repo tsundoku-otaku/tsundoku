@@ -749,6 +749,21 @@ private fun ColumnScope.TagsPage(
                     selected = isIncluded || isExcluded,
                     onClick = { screenModel.toggleTagIncluded(tag) },
                     label = { Text("$tag ($count)") },
+                    leadingIcon = {
+                        when {
+                            isIncluded -> Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize),
+                            )
+
+                            isExcluded -> Icon(
+                                imageVector = Icons.Filled.Clear,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize),
+                            )
+                        }
+                    },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = if (isExcluded) {
                             MaterialTheme.colorScheme.errorContainer
