@@ -1721,7 +1721,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         if (!document.getElementById(styleId)) {
                             var style = document.createElement('style');
                             style.id = styleId;
-                            style.innerHTML = '.chapter-content, [data-tsundoku-editable="1"], body { -webkit-user-select: text !important; user-select: text !important; pointer-events: auto !important; -webkit-tap-highlight-color: transparent; outline: none; }';
+                            style.innerHTML = '.chapter-content, [data-tsundoku-editable="1"], body { -webkit-user-select: text !important; user-select: text !important; pointer-events: auto !important; -webkit-tap-highlight-color: transparent; outline: none; } ' +
+                                'body { padding-bottom: max(220px, 38vh) !important; }';
                             document.head.appendChild(style);
                         }
 
