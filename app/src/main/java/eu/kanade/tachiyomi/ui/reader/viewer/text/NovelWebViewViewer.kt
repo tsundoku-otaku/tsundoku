@@ -41,6 +41,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,6 +94,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var ttsInitialized = false
     private var pendingTtsText: String? = null
     private var isTtsAutoPlay = false // Track if TTS should auto-continue to next chapter
+
+    private data class CustomStylePayload(
+        val css: String,
+        val hideChapterTitle: Boolean,
+        val backgroundColor: Int,
+    )
 
     var pendingSelectedText: String? = null
 
@@ -399,7 +406,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     hideLoadingIndicator()
-                    injectCustomStyles()
                     injectCustomScript()
                     injectScrollTracking()
                     restoreScrollPosition()
@@ -438,25 +444,25 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun observePreferences() {
         scope.launch {
             merge(
-                preferences.novelFontSize.changes(),
-                preferences.novelFontFamily.changes(),
-                preferences.novelTheme.changes(),
-                preferences.novelLineHeight.changes(),
-                preferences.novelTextAlign.changes(),
-                preferences.novelMarginLeft.changes(),
-                preferences.novelMarginRight.changes(),
-                preferences.novelMarginTop.changes(),
-                preferences.novelMarginBottom.changes(),
-                preferences.novelFontColor.changes(),
-                preferences.novelBackgroundColor.changes(),
-                preferences.novelParagraphIndent.changes(),
-                preferences.novelParagraphSpacing.changes(),
-                preferences.novelCustomCss.changes(),
-                preferences.novelCustomCssSnippets.changes(),
-                preferences.novelUseOriginalFonts.changes(),
-                preferences.novelHideChapterTitle.changes(),
-                preferences.novelTextSelectable.changes(),
-            ).drop(20) // Drop initial emissions from all 20 preferences
+                preferences.novelFontSize.changes().drop(1),
+                preferences.novelFontFamily.changes().drop(1),
+                preferences.novelTheme.changes().drop(1),
+                preferences.novelLineHeight.changes().drop(1),
+                preferences.novelTextAlign.changes().drop(1),
+                preferences.novelMarginLeft.changes().drop(1),
+                preferences.novelMarginRight.changes().drop(1),
+                preferences.novelMarginTop.changes().drop(1),
+                preferences.novelMarginBottom.changes().drop(1),
+                preferences.novelFontColor.changes().drop(1),
+                preferences.novelBackgroundColor.changes().drop(1),
+                preferences.novelParagraphIndent.changes().drop(1),
+                preferences.novelParagraphSpacing.changes().drop(1),
+                preferences.novelCustomCss.changes().drop(1),
+                preferences.novelCustomCssSnippets.changes().drop(1),
+                preferences.novelUseOriginalFonts.changes().drop(1),
+                preferences.novelHideChapterTitle.changes().drop(1),
+                preferences.novelTextSelectable.changes().drop(1),
+            )
                 .collect {
                     injectCustomStyles()
                 }
@@ -465,9 +471,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         // Observe JS changes separately to re-inject scripts
         scope.launch {
             merge(
-                preferences.novelCustomJs.changes(),
-                preferences.novelCustomJsSnippets.changes(),
-            ).drop(2)
+                preferences.novelCustomJs.changes().drop(1),
+                preferences.novelCustomJsSnippets.changes().drop(1),
+            )
                 .collect {
                     injectCustomScript()
                 }
@@ -508,7 +514,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
     }
 
-    private fun injectCustomStyles() {
+    private fun buildCustomStylePayload(): CustomStylePayload {
         val fontSize = preferences.novelFontSize.get()
         val fontFamily = preferences.novelFontFamily.get()
         val lineHeight = preferences.novelLineHeight.get()
@@ -528,9 +534,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         // Use 0 as default marker (not -1, since white = -1 as signed int)
         val finalBgColor = if (theme == "custom" && backgroundColor != 0) backgroundColor else themeBgColor
         val finalTextColor = if (fontColor != 0) fontColor else themeTextColor
-
-        webView.setBackgroundColor(finalBgColor)
-        container.setBackgroundColor(finalBgColor)
 
         val bgColorHex = String.format("#%06X", 0xFFFFFF and finalBgColor)
         val textColorHex = String.format("#%06X", 0xFFFFFF and finalTextColor)
@@ -611,6 +614,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             $enabledSnippetsCss
         """.trimIndent().replace("\n", " ")
 
+        return CustomStylePayload(
+            css = css,
+            hideChapterTitle = hideChapterTitle,
+            backgroundColor = finalBgColor,
+        )
+    }
+
+    private fun injectCustomStyles() {
+        val payload = buildCustomStylePayload()
+        webView.setBackgroundColor(payload.backgroundColor)
+        container.setBackgroundColor(payload.backgroundColor)
+
         val js = """
             (function() {
                 var style = document.getElementById('tsundoku-custom-style');
@@ -619,10 +634,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     style.id = 'tsundoku-custom-style';
                     document.head.appendChild(style);
                 }
-                style.textContent = `$css`;
+                style.textContent = `${payload.css}`;
 
                 // Hide chapter title if enabled
-                if ($hideChapterTitle) {
+                if (${payload.hideChapterTitle}) {
                     var headings = document.querySelectorAll('h1, h2, h3, h4, h5, h6');
                     if (headings.length > 0) {
                         headings[0].style.display = 'none';
@@ -659,6 +674,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         val customJs = preferences.novelCustomJs.get()
         if (customJs.isNotBlank()) {
             evaluateJavascriptSafe(customJs, null)
+        }
+
+        val jsSnippetsJson = preferences.novelCustomJsSnippets.get()
+        val enabledSnippetsJs = try {
+            val snippets = Json.decodeFromString<List<CodeSnippet>>(jsSnippetsJson)
+            snippets.filter { it.enabled }.joinToString("\n") { it.code }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR) { "Failed to parse JS snippets: ${e.message}" }
+            ""
+        }
+        if (enabledSnippetsJs.isNotBlank()) {
+            evaluateJavascriptSafe(enabledSnippetsJs, null)
         }
     }
 
@@ -1356,10 +1383,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         // Apply user's regex find & replace rules
         cleanContent = applyRegexReplacements(cleanContent)
 
-        val theme = preferences.novelTheme.get()
-        val (themeBgColor, themeTextColor) = getThemeColors(theme)
-        val bgColorHex = String.format("#%06X", 0xFFFFFF and themeBgColor)
-        val textColorHex = String.format("#%06X", 0xFFFFFF and themeTextColor)
+        val stylePayload = buildCustomStylePayload()
+        webView.setBackgroundColor(stylePayload.backgroundColor)
+        container.setBackgroundColor(stylePayload.backgroundColor)
 
         // Clear loaded chapters for fresh start
         loadedChapterIds.clear()
@@ -1380,8 +1406,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         } else {
             ""
         }
-
-        val userSelectCss = if (preferences.novelTextSelectable.get()) "text" else "none"
 
         // Build global JS variables for custom scripts
         val chapterMetaScript = buildChapterMetaScript()
@@ -1416,6 +1440,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             }
         } catch (_: Exception) {}
 
+        val escapedInitialStyle = stylePayload.css
+            .replace("</style>", "<\\/style>")
+            .replace("</Style>", "<\\/Style>")
+            .replace("</STYLE>", "<\\/STYLE>")
+
+        val hideHeadingCss = if (stylePayload.hideChapterTitle) {
+            "h1:first-of-type, h2:first-of-type, h3:first-of-type, h4:first-of-type, h5:first-of-type, h6:first-of-type { display: none !important; }"
+        } else {
+            ""
+        }
+
         val html = """
             <!DOCTYPE html>
             <html>
@@ -1423,20 +1458,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body {
-                        margin: 0;
-                        padding: 16px;
-                        background-color: $bgColorHex;
-                        color: $textColorHex;
-                        -webkit-user-select: $userSelectCss;
-                        user-select: $userSelectCss;
-                    }
                     .chapter-divider {
                         height: 1px;
                         margin: 32px auto;
                         padding: 0;
                         border: none;
-                        border-top: 1px solid $textColorHex;
+                        border-top: 1px solid currentColor;
                         opacity: 0.4;
                         width: 60%;
                     }
@@ -1452,8 +1479,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         max-width: 100%;
                         height: auto;
                     }
+                    $hideHeadingCss
                     $mediaBlockCss
                 </style>
+                <style id="tsundoku-custom-style">$escapedInitialStyle</style>
                 $epubHead
                 <script>$chapterMetaScript</script>
             </head>
