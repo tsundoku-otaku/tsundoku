@@ -228,6 +228,7 @@
     <string name="epub_and_more">… and %d more</string>
     <string name="epub_content_options">Content Options</string>
     <string name="epub_downloaded_only">Downloaded chapters only</string>
+    <string name="epub_join_volumes">Join EPUB volumes into one file</string>
     <string name="epub_prefer_translated">Prefer translated chapters</string>
     <string name="epub_translation_mode">Translation</string>
     <string name="epub_translation_original">Original only</string>
@@ -239,10 +240,22 @@
     <string name="epub_include_chapter_count">Include chapter count (e.g. [50ch])</string>
     <string name="epub_include_chapter_range">Include chapter range (e.g. [ch1-50])</string>
     <string name="epub_include_status">Include status (e.g. [Completed])</string>
+    <string name="epub_include_volume_number">Include volume number (e.g. [v2])</string>
     <string name="epub_downloaded_only_info">Only downloaded chapters will be included.</string>
     <string name="epub_source_info">Downloaded chapters will be used. Undownloaded chapters will be fetched from source.</string>
     <string name="epub_translated_info"> Translated chapters will be used when available.</string>
     <string name="epub_action_import">Import</string>
+    <string name="epub_export_job_title">EPUB Export</string>
+    <string name="epub_export_job_starting">Starting…</string>
+    <string name="epub_export_job_progress">Exporting %1$d/%2$d: %3$s</string>
+    <string name="epub_export_job_complete_title">EPUB Export Complete</string>
+    <string name="epub_export_job_complete">Exported %1$d novel(s)</string>
+    <string name="epub_export_job_complete_with_skipped">Exported %1$d novel(s), %2$d skipped</string>
+    <string name="epub_export_job_failed_title">EPUB Export Failed</string>
+    <string name="epub_export_job_error_no_novels">No novels found to export</string>
+    <string name="epub_export_job_error_no_files">No novels could be exported. Check chapter availability (downloaded, local, or translated).</string>
+    <string name="epub_export_job_error_write_output">Failed to write to output file</string>
+    <string name="epub_export_job_error_unknown">Unknown error</string>
 
     <!-- Novel Reader Settings - NovelPage.kt -->
     <string name="novel_theme_app">App</string>

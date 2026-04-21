@@ -78,7 +78,7 @@ class ParseEpubPreview {
 
                 val coverUri = extractCoverUri(context, epubReader, manga)
                 val tableOfContents = runCatching {
-                    epubReader.getTableOfContents()
+                    epubReader.getNormalizedTableOfContents()
                         .map { it.title.trim() }
                         .filter { it.isNotEmpty() }
                 }.getOrDefault(emptyList())

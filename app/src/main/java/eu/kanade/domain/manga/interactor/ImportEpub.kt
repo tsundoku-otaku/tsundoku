@@ -49,6 +49,7 @@ class ImportEpub(
         val successCount: Int,
         val errorCount: Int,
         val errors: List<String>,
+        val importedUris: List<Uri>,
     )
 
     suspend fun execute(
@@ -64,9 +65,15 @@ class ImportEpub(
         val errors = mutableListOf<String>()
         var successCount = 0
         val importedNovelUrls = mutableListOf<String>()
+        val importedUris = mutableListOf<Uri>()
 
         val localNovelsDir = storageManager.getLocalNovelSourceDirectory()
-            ?: return@withContext Result(0, files.size, listOf("Local novels directory not found"))
+            ?: return@withContext Result(
+                successCount = 0,
+                errorCount = files.size,
+                errors = listOf("Local novels directory not found"),
+                importedUris = emptyList(),
+            )
 
         if (combineAsOne && files.size > 1) {
             onProgress(1, 1, customTitle ?: files.first().title)
@@ -83,16 +90,27 @@ class ImportEpub(
                 if (novelDir == null) {
                     errors.add("Failed to create directory for: $novelTitle")
                 } else {
-                    importedNovelUrls.add(novelFolderName)
+                    var copiedCount = 0
 
                     files.forEachIndexed { index, file ->
                         val chapterFileName = buildVolumeFileName(file, index)
-                        val destFile = novelDir.createFile(chapterFileName)
-                        if (destFile != null) {
-                            context.contentResolver.openInputStream(file.uri)?.use { input ->
-                                destFile.openOutputStream().use { output -> input.copyTo(output) }
-                            }
+                        val copied = copyImportFileToDirectory(
+                            context = context,
+                            sourceFile = file,
+                            novelDir = novelDir,
+                            destinationFileName = chapterFileName,
+                            createFileErrorLabel = chapterFileName,
+                            errors = errors,
+                        )
+
+                        if (copied) {
+                            copiedCount++
+                            importedUris += file.uri
                         }
+                    }
+
+                    if (copiedCount > 0) {
+                        importedNovelUrls.add(novelFolderName)
                     }
 
                     files.firstNotNullOfOrNull { it.coverUri }?.let {
@@ -111,7 +129,9 @@ class ImportEpub(
                         genres = combinedGenres,
                     )
 
-                    successCount = 1
+                    if (copiedCount > 0) {
+                        successCount = 1
+                    }
                 }
             } catch (e: Exception) {
                 errors.add("Failed to combine files: ${e.message}")
@@ -136,13 +156,19 @@ class ImportEpub(
                     if (novelDir == null) {
                         errors.add("Failed to create directory for: ${file.fileName}")
                     } else {
-                        importedNovelUrls.add(novelFolderName)
                         val targetFileName = buildVolumeFileName(file)
-                        val destFile = novelDir.createFile(targetFileName)
-                        if (destFile != null) {
-                            context.contentResolver.openInputStream(file.uri)?.use { input ->
-                                destFile.openOutputStream().use { output -> input.copyTo(output) }
-                            }
+                        val copied = copyImportFileToDirectory(
+                            context = context,
+                            sourceFile = file,
+                            novelDir = novelDir,
+                            destinationFileName = targetFileName,
+                            createFileErrorLabel = file.fileName,
+                            errors = errors,
+                        )
+
+                        if (copied) {
+                            importedNovelUrls.add(novelFolderName)
+                            importedUris += file.uri
 
                             file.coverUri?.let {
                                 copyCoverToNovelDir(context, novelDir, it)
@@ -161,8 +187,6 @@ class ImportEpub(
                             )
 
                             successCount++
-                        } else {
-                            errors.add("Failed to create file: ${file.fileName}")
                         }
                     }
                 } catch (e: Exception) {
@@ -175,7 +199,12 @@ class ImportEpub(
             errors += registerImportedLocalNovels(importedNovelUrls.distinct(), categoryId)
         }
 
-        Result(successCount, errors.size, errors)
+        Result(
+            successCount = successCount,
+            errorCount = errors.size,
+            errors = errors,
+            importedUris = importedUris.distinct(),
+        )
     }
 
     private suspend fun registerImportedLocalNovels(
@@ -340,5 +369,32 @@ class ImportEpub(
             append("}")
         }
         detailsFile.openOutputStream().use { it.write(payload.toByteArray()) }
+    }
+
+    private fun copyImportFileToDirectory(
+        context: Context,
+        sourceFile: ImportFile,
+        novelDir: UniFile,
+        destinationFileName: String,
+        createFileErrorLabel: String,
+        errors: MutableList<String>,
+    ): Boolean {
+        val destinationFile = novelDir.createFile(destinationFileName)
+        if (destinationFile == null) {
+            errors.add("Failed to create file: $createFileErrorLabel")
+            return false
+        }
+
+        val inputStream = context.contentResolver.openInputStream(sourceFile.uri)
+        if (inputStream == null) {
+            errors.add("Failed to read file: ${sourceFile.fileName}")
+            return false
+        }
+
+        inputStream.use { input ->
+            destinationFile.openOutputStream().use { output -> input.copyTo(output) }
+        }
+
+        return true
     }
 }

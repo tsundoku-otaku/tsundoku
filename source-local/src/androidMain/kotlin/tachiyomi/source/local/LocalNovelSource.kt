@@ -247,26 +247,14 @@ actual class LocalNovelSource(
                             }
                         }
 
-                        val tocChapters = epub.getTableOfContents()
+                        val tocChapters = epub.getNormalizedTableOfContents()
 
                         // If EPUB has multiple TOC entries, create separate chapters
                         if (tocChapters.size > 1) {
-                            var latestPrimaryTitle: String? = null
-
                             tocChapters.forEach { tocEntry ->
                                 orderedTocChapterNumber += 1
 
-                                val rawTitle = tocEntry.title.trim()
-                                val isSubsection = SUBSECTION_TITLE_REGEX.matches(rawTitle)
-                                val resolvedTitle = when {
-                                    rawTitle.isBlank() -> "Chapter $orderedTocChapterNumber"
-                                    isSubsection && !latestPrimaryTitle.isNullOrBlank() -> "$latestPrimaryTitle - $rawTitle"
-                                    else -> rawTitle
-                                }
-
-                                if (!isSubsection && rawTitle.isNotBlank()) {
-                                    latestPrimaryTitle = rawTitle
-                                }
+                                val resolvedTitle = tocEntry.title.trim().ifBlank { "Chapter $orderedTocChapterNumber" }
 
                                 val chapterDisplayName = if (hasMultipleEpubFiles) {
                                     "${chapterFile.nameWithoutExtension.orEmpty()} - $resolvedTitle"
@@ -516,8 +504,6 @@ actual class LocalNovelSource(
             "xhtml",
         )
 
-        private val SUBSECTION_TITLE_REGEX =
-            Regex("(?i)^(part|section|episode|ep\\.?|act|book|volume|vol\\.?|chapter|ch\\.?)\\s*[0-9ivxlcdm]+\\b")
     }
 }
 

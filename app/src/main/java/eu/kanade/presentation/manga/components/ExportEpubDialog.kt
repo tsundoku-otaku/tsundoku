@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.library.components.EpubExportOptions
+import eu.kanade.tachiyomi.util.epub.EpubExportNaming
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.translation.model.TranslationMode
@@ -39,15 +40,21 @@ fun ExportEpubDialog(
     onDismissRequest: () -> Unit,
     onExport: (Uri, EpubExportOptions) -> Unit,
 ) {
-    var filename by remember { mutableStateOf(sanitizeFilename(manga.title) + ".epub") }
+    var filename by remember { mutableStateOf(EpubExportNaming.sanitizeFilename(manga.title) + ".epub") }
     var downloadedOnly by remember { mutableStateOf(false) }
     var translationMode by remember { mutableStateOf(TranslationMode.ORIGINAL) }
+    var joinVolumes by remember { mutableStateOf(true) }
     var includeChapterCount by remember { mutableStateOf(false) }
     var includeChapterRange by remember { mutableStateOf(false) }
     var includeStatus by remember { mutableStateOf(false) }
+    var includeVolumeNumber by remember { mutableStateOf(false) }
 
     // "Both" mode produces two EPUB files → request a ZIP container
-    val mimeType = if (translationMode == TranslationMode.BOTH) "application/zip" else "application/epub+zip"
+    val mimeType = if (translationMode == TranslationMode.BOTH || !joinVolumes) {
+        "application/zip"
+    } else {
+        "application/epub+zip"
+    }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument(mimeType),
@@ -58,9 +65,11 @@ fun ExportEpubDialog(
                 EpubExportOptions(
                     downloadedOnly = downloadedOnly,
                     translationMode = translationMode,
+                    joinVolumes = joinVolumes,
                     includeChapterCount = includeChapterCount,
                     includeChapterRange = includeChapterRange,
                     includeStatus = includeStatus,
+                    includeVolumeNumber = includeVolumeNumber,
                 ),
             )
             onDismissRequest()
@@ -104,6 +113,12 @@ fun ExportEpubDialog(
                     label = stringResource(TDMR.strings.epub_downloaded_only),
                     checked = downloadedOnly,
                     onClick = { downloadedOnly = !downloadedOnly },
+                )
+
+                CheckboxItem(
+                    label = stringResource(TDMR.strings.epub_join_volumes),
+                    checked = joinVolumes,
+                    onClick = { joinVolumes = !joinVolumes },
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -158,6 +173,12 @@ fun ExportEpubDialog(
                     onClick = { includeStatus = !includeStatus },
                 )
 
+                CheckboxItem(
+                    label = stringResource(TDMR.strings.epub_include_volume_number),
+                    checked = includeVolumeNumber,
+                    onClick = { includeVolumeNumber = !includeVolumeNumber },
+                )
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
@@ -180,11 +201,15 @@ fun ExportEpubDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    val launchName = if (translationMode == TranslationMode.BOTH) {
-                        filename.removeSuffix(".epub") + ".zip"
-                    } else {
-                        filename
-                    }
+                    val launchName = buildExportDocumentName(
+                        inputName = filename,
+                        manga = manga,
+                        chapters = chapters,
+                        includeChapterCount = includeChapterCount,
+                        includeChapterRange = includeChapterRange,
+                        includeStatus = includeStatus,
+                        asZip = translationMode == TranslationMode.BOTH || !joinVolumes,
+                    )
                     launcher.launch(launchName)
                 },
             ) {
@@ -199,7 +224,39 @@ fun ExportEpubDialog(
     )
 }
 
-private fun sanitizeFilename(name: String): String {
-    return name.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-        .take(200) // Limit filename length
+private fun buildExportDocumentName(
+    inputName: String,
+    manga: Manga,
+    chapters: List<Chapter>,
+    includeChapterCount: Boolean,
+    includeChapterRange: Boolean,
+    includeStatus: Boolean,
+    asZip: Boolean,
+): String {
+    val fallbackName = EpubExportNaming.sanitizeFilename(manga.title)
+    val baseName = EpubExportNaming.sanitizeFilename(inputName)
+        .removeSuffix(".epub")
+        .removeSuffix(".zip")
+        .trim()
+        .ifBlank { fallbackName }
+
+    val filenameBuilder = StringBuilder(baseName)
+    EpubExportNaming.appendChapterCount(
+        filenameBuilder = filenameBuilder,
+        chapterCount = chapters.size,
+        includeChapterCount = includeChapterCount,
+    )
+    EpubExportNaming.appendChapterRange(
+        filenameBuilder = filenameBuilder,
+        chapterNumbers = chapters.map { it.chapterNumber },
+        includeChapterRange = includeChapterRange,
+    )
+    EpubExportNaming.appendStatusLabel(
+        filenameBuilder = filenameBuilder,
+        statusLabel = EpubExportNaming.mangaStatusLabel(manga.status),
+        includeStatus = includeStatus,
+    )
+
+    filenameBuilder.append(if (asZip) ".zip" else ".epub")
+    return filenameBuilder.toString()
 }

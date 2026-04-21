@@ -1,6 +1,9 @@
 package eu.kanade.tachiyomi.ui.library
 
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -20,17 +23,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.ArrowDropDown
-import androidx.compose.material.icons.outlined.DragHandle
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -43,6 +46,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,6 +62,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.documentfile.provider.DocumentFile
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import coil3.request.CachePolicy
@@ -114,6 +119,8 @@ class ImportEpubScreen : Screen() {
 
         var importProgress by remember { mutableStateOf<ImportProgress?>(null) }
         var importResult by remember { mutableStateOf<ImportResult?>(null) }
+        var successfullyImportedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+        var showDeleteImportedConfirm by remember { mutableStateOf(false) }
 
         LaunchedEffect(Unit) {
             categories = withContext(Dispatchers.IO) {
@@ -130,10 +137,12 @@ class ImportEpubScreen : Screen() {
             contract = ActivityResultContracts.OpenMultipleDocuments(),
         ) { uris ->
             if (uris.isEmpty()) return@rememberLauncherForActivityResult
+            persistImportUriPermissions(context, uris)
 
             scope.launch {
                 isParsing = true
                 importResult = null
+                successfullyImportedUris = emptyList()
 
                 val parsed = withContext(Dispatchers.IO) {
                     parseEpubPreview.parseSelected(context, uris)
@@ -182,6 +191,15 @@ class ImportEpubScreen : Screen() {
             val fromIndex = volumeGroups.indexOfFirst { it.id == groupId }
             if (fromIndex == -1) return
             volumeGroups.moveItem(fromIndex, fromIndex + offset)
+        }
+
+        fun removeGroup(groupId: String) {
+            val groupIndex = volumeGroups.indexOfFirst { it.id == groupId }
+            if (groupIndex == -1) return
+
+            val removedVolumeIds = volumeGroups[groupIndex].volumes.map { it.id }
+            removedVolumeIds.forEach { expandedTocByVolume.remove(it) }
+            volumeGroups.removeAt(groupIndex)
         }
 
         fun moveVolumeInsideGroup(groupId: String, volumeId: String, offset: Int) {
@@ -250,6 +268,22 @@ class ImportEpubScreen : Screen() {
             }
         }
 
+        fun removeVolumeFromGroup(groupId: String, volumeId: String) {
+            val groupIndex = volumeGroups.indexOfFirst { it.id == groupId }
+            if (groupIndex == -1) return
+
+            val group = volumeGroups[groupIndex]
+            val volumeIndex = group.volumes.indexOfFirst { it.id == volumeId }
+            if (volumeIndex == -1) return
+
+            group.volumes.removeAt(volumeIndex)
+            expandedTocByVolume.remove(volumeId)
+
+            if (group.volumes.isEmpty()) {
+                volumeGroups.removeAt(groupIndex)
+            }
+        }
+
         val canNavigateBack = importProgress?.isRunning != true
 
         Scaffold(
@@ -299,8 +333,62 @@ class ImportEpubScreen : Screen() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues),
+                        canDeleteImportedFiles = successfullyImportedUris.isNotEmpty(),
+                        onDeleteImportedFiles = { showDeleteImportedConfirm = true },
                         onDone = { navigator.pop() },
                     )
+
+                    if (showDeleteImportedConfirm) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteImportedConfirm = false },
+                            title = { Text("Delete imported EPUB files?") },
+                            text = {
+                                Text(
+                                    "This will permanently delete successfully imported source files from storage (if permitted).",
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        showDeleteImportedConfirm = false
+                                        val targetUris = successfullyImportedUris
+
+                                        scope.launch {
+                                            val deletedUris = withContext(Dispatchers.IO) {
+                                                targetUris.filter { uri -> deleteImportedDocument(context, uri) }
+                                            }
+
+                                            val deletedCount = deletedUris.size
+                                            val failedCount = targetUris.size - deletedCount
+
+                                            successfullyImportedUris = successfullyImportedUris - deletedUris.toSet()
+
+                                            when {
+                                                deletedCount == 0 -> {
+                                                    snackbarHostState.showSnackbar("No imported EPUB files were deleted")
+                                                }
+                                                failedCount == 0 -> {
+                                                    snackbarHostState.showSnackbar("Deleted $deletedCount imported EPUB file(s)")
+                                                }
+                                                else -> {
+                                                    snackbarHostState.showSnackbar(
+                                                        "Deleted $deletedCount file(s), failed to delete $failedCount",
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    },
+                                ) {
+                                    Text("Delete")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showDeleteImportedConfirm = false }) {
+                                    Text(stringResource(MR.strings.action_cancel))
+                                }
+                            },
+                        )
+                    }
                 }
                 importProgress != null -> {
                     ImportProgressContent(
@@ -330,11 +418,15 @@ class ImportEpubScreen : Screen() {
                         },
                         onMoveGroupUp = { groupId -> moveGroup(groupId, -1) },
                         onMoveGroupDown = { groupId -> moveGroup(groupId, 1) },
+                        onRemoveGroup = { groupId -> removeGroup(groupId) },
                         onMoveVolumeUp = { groupId, volumeId ->
                             moveVolumeInsideGroup(groupId, volumeId, -1)
                         },
                         onMoveVolumeDown = { groupId, volumeId ->
                             moveVolumeInsideGroup(groupId, volumeId, 1)
+                        },
+                        onRemoveVolume = { groupId, volumeId ->
+                            removeVolumeFromGroup(groupId, volumeId)
                         },
                         onMoveVolumeToExistingGroup = { sourceGroupId, volumeId, targetGroupId ->
                             moveVolumeToExistingGroup(sourceGroupId, volumeId, targetGroupId)
@@ -360,6 +452,7 @@ class ImportEpubScreen : Screen() {
                                 var completedUnits = 0
                                 var successCount = 0
                                 val errors = mutableListOf<String>()
+                                val importedUris = mutableListOf<Uri>()
 
                                 importProgress = ImportProgress(
                                     current = 0,
@@ -414,6 +507,7 @@ class ImportEpubScreen : Screen() {
 
                                         successCount += result.successCount
                                         errors += result.errors
+                                        importedUris += result.importedUris
                                     } catch (e: Exception) {
                                         errors += "${groupTitle.ifBlank { "Novel" }}: ${e.message.orEmpty()}"
                                     }
@@ -433,6 +527,7 @@ class ImportEpubScreen : Screen() {
                                     errorCount = errors.size,
                                     errors = errors,
                                 )
+                                successfullyImportedUris = importedUris.distinct()
                             }
                         },
                     )
@@ -458,8 +553,10 @@ private fun ImportSelectionContent(
     onPickFiles: () -> Unit,
     onMoveGroupUp: (groupId: String) -> Unit,
     onMoveGroupDown: (groupId: String) -> Unit,
+    onRemoveGroup: (groupId: String) -> Unit,
     onMoveVolumeUp: (groupId: String, volumeId: String) -> Unit,
     onMoveVolumeDown: (groupId: String, volumeId: String) -> Unit,
+    onRemoveVolume: (groupId: String, volumeId: String) -> Unit,
     onMoveVolumeToExistingGroup: (sourceGroupId: String, volumeId: String, targetGroupId: String) -> Unit,
     onMoveVolumeToNewGroup: (sourceGroupId: String, volumeId: String) -> Unit,
     onToggleVolumeExpanded: (volumeId: String) -> Unit,
@@ -485,12 +582,12 @@ private fun ImportSelectionContent(
 
         if (isParsing) {
             item {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    CircularProgressIndicator(modifier = Modifier.width(20.dp), strokeWidth = 2.dp)
                     Text("Parsing EPUB files...")
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
         }
@@ -515,8 +612,10 @@ private fun ImportSelectionContent(
                     expandedTocByVolume = expandedTocByVolume,
                     onMoveGroupUp = { onMoveGroupUp(group.id) },
                     onMoveGroupDown = { onMoveGroupDown(group.id) },
+                    onRemoveGroup = { onRemoveGroup(group.id) },
                     onMoveVolumeUp = { volumeId -> onMoveVolumeUp(group.id, volumeId) },
                     onMoveVolumeDown = { volumeId -> onMoveVolumeDown(group.id, volumeId) },
+                    onRemoveVolume = { volumeId -> onRemoveVolume(group.id, volumeId) },
                     onMoveVolumeToExistingGroup = { volumeId, targetGroupId ->
                         onMoveVolumeToExistingGroup(group.id, volumeId, targetGroupId)
                     },
@@ -606,8 +705,10 @@ private fun VolumeGroupCard(
     expandedTocByVolume: Map<String, Boolean>,
     onMoveGroupUp: () -> Unit,
     onMoveGroupDown: () -> Unit,
+    onRemoveGroup: () -> Unit,
     onMoveVolumeUp: (volumeId: String) -> Unit,
     onMoveVolumeDown: (volumeId: String) -> Unit,
+    onRemoveVolume: (volumeId: String) -> Unit,
     onMoveVolumeToExistingGroup: (volumeId: String, targetGroupId: String) -> Unit,
     onMoveVolumeToNewGroup: (volumeId: String) -> Unit,
     onToggleVolumeExpanded: (volumeId: String) -> Unit,
@@ -631,10 +732,6 @@ private fun VolumeGroupCard(
                     singleLine = true,
                 )
 
-                Icon(
-                    imageVector = Icons.Outlined.DragHandle,
-                    contentDescription = null,
-                )
                 IconButton(
                     onClick = onMoveGroupUp,
                     enabled = groupIndex > 0,
@@ -651,6 +748,13 @@ private fun VolumeGroupCard(
                     Icon(
                         imageVector = Icons.Outlined.KeyboardArrowDown,
                         contentDescription = "Move novel group down",
+                    )
+                }
+
+                IconButton(onClick = onRemoveGroup) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "Remove novel group",
                     )
                 }
             }
@@ -693,25 +797,30 @@ private fun VolumeGroupCard(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
 
-                            OutlinedTextField(
-                                value = volume.title,
-                                onValueChange = { volume.title = it },
+                            if (group.volumes.size > 1) {
+                                OutlinedTextField(
+                                    value = volume.title,
+                                    onValueChange = { volume.title = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    label = { Text("Volume title") },
+                                    singleLine = true,
+                                )
+                            }
+
+                            Text(
+                                text = volume.file.fileName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.fillMaxWidth(),
-                                label = { Text("Volume title") },
-                                singleLine = true,
                             )
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End,
                             ) {
-                                Text(
-                                    text = volume.file.fileName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.weight(1f),
-                                )
-
                                 IconButton(
                                     onClick = { onMoveVolumeUp(volume.id) },
                                     enabled = volumeIndex > 0,
@@ -774,6 +883,13 @@ private fun VolumeGroupCard(
                                     Icon(
                                         imageVector = if (isExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                                         contentDescription = if (isExpanded) "Collapse table of contents" else "Expand table of contents",
+                                    )
+                                }
+
+                                IconButton(onClick = { onRemoveVolume(volume.id) }) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Close,
+                                        contentDescription = "Remove volume",
                                     )
                                 }
                             }
@@ -847,8 +963,6 @@ private fun VolumeMetadataDetails(file: EpubFileInfo) {
                 text = "Tags: ${tags.joinToString(", ")}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
             )
         }
 
@@ -857,8 +971,6 @@ private fun VolumeMetadataDetails(file: EpubFileInfo) {
                 text = "Description: $it",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 6,
-                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -971,6 +1083,8 @@ private fun ImportProgressContent(
 private fun ImportResultContent(
     result: ImportResult,
     modifier: Modifier = Modifier,
+    canDeleteImportedFiles: Boolean,
+    onDeleteImportedFiles: () -> Unit,
     onDone: () -> Unit,
 ) {
     Box(
@@ -1016,6 +1130,15 @@ private fun ImportResultContent(
             }
 
             Spacer(Modifier.height(12.dp))
+            if (canDeleteImportedFiles) {
+                OutlinedButton(
+                    onClick = onDeleteImportedFiles,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Delete imported EPUB files")
+                }
+            }
+
             Button(
                 onClick = onDone,
                 modifier = Modifier.fillMaxWidth(),
@@ -1102,6 +1225,37 @@ private fun buildVolumeOrderLabel(orderIndex: Int, collectionPosition: Int?): St
 private fun groupTotalChapterCount(group: VolumeGroupState): Int {
     return group.volumes.sumOf { volume ->
         volume.file.tableOfContents.size.takeIf { it > 0 } ?: 1
+    }
+}
+
+private fun deleteImportedDocument(context: Context, uri: Uri): Boolean {
+    val resolver = context.contentResolver
+
+    val deletedViaDocumentFile = runCatching {
+        DocumentFile.fromSingleUri(context, uri)?.delete() == true
+    }.getOrDefault(false)
+    if (deletedViaDocumentFile) return true
+
+    val deletedViaDocumentsContract = runCatching {
+        DocumentsContract.deleteDocument(resolver, uri)
+    }.getOrDefault(false)
+    if (deletedViaDocumentsContract) return true
+
+    return runCatching {
+        resolver.delete(uri, null, null) > 0
+    }.getOrDefault(false)
+}
+
+private fun persistImportUriPermissions(context: Context, uris: List<Uri>) {
+    val resolver = context.contentResolver
+    val readWriteFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+
+    uris.forEach { uri ->
+        runCatching {
+            resolver.takePersistableUriPermission(uri, readWriteFlags)
+        }.recoverCatching {
+            resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
     }
 }
 

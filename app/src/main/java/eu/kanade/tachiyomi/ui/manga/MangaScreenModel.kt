@@ -1630,9 +1630,11 @@ class MangaScreenModel(
             outputUri = uri,
             downloadedOnly = options.downloadedOnly,
             translationMode = options.translationMode,
+            joinVolumes = options.joinVolumes,
             includeChapterCount = options.includeChapterCount,
             includeChapterRange = options.includeChapterRange,
             includeStatus = options.includeStatus,
+            includeVolumeNumber = options.includeVolumeNumber,
         )
 
         screenModelScope.launchIO {
