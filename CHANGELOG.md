@@ -13,6 +13,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ## [Unreleased]
 ### Added
 - Move by URL [@mrissaoussama](https://github.com/mrissaoussama) [#163](https://github.com/tsundoku-otaku/tsundoku/pull/163)
+- Ability to remove local novels via popup after removing from library [@mrissaoussama](https://github.com/mrissaoussama) [#164](https://github.com/tsundoku-otaku/tsundoku/pull/164)
 
 
 ### Improved
