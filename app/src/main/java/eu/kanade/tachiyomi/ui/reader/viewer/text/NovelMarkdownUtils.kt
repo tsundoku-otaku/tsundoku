@@ -1,9 +1,12 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text
 
+import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.html.HtmlGenerator
+import org.intellij.markdown.parser.MarkdownParser
+
 object NovelMarkdownUtils {
-    private val headingRegex = Regex("^(#{1,6})\\s+(.*)$")
-    private val horizontalRuleRegex = Regex("^(?:-{3,}|\\*{3,})\\s*$")
     private val frontmatterTitleRegex = Regex("^title\\s*:\\s*(.+)$", RegexOption.IGNORE_CASE)
+    private val markdownFlavour = GFMFlavourDescriptor()
 
     fun isMarkdownUrl(url: String): Boolean {
         if (url.isBlank()) return false
@@ -14,52 +17,23 @@ object NovelMarkdownUtils {
     fun toHtml(markdown: String): String {
         val normalized = markdown.replace("\r\n", "\n").replace("\r", "\n")
         val (frontmatterTitle, body) = extractFrontmatter(normalized)
-
-        val out = StringBuilder()
-        if (!frontmatterTitle.isNullOrBlank()) {
-            out.append("<h1>")
-                .append(escapeHtml(frontmatterTitle))
-                .append("</h1>\n")
+        val renderedBody = runCatching {
+            val tree = MarkdownParser(markdownFlavour).buildMarkdownTreeFromString(body)
+            HtmlGenerator(body, tree, markdownFlavour).generateHtml().trim()
+        }.getOrElse {
+            simpleFallbackHtml(body)
         }
 
-        val paragraphBuffer = mutableListOf<String>()
-        fun flushParagraph() {
-            if (paragraphBuffer.isEmpty()) return
-            val text = paragraphBuffer.joinToString(" ") { it.trim() }.trim()
-            if (text.isNotEmpty()) {
-                out.append("<p>")
-                    .append(applyInlineMarkdown(text))
-                    .append("</p>\n")
-            }
-            paragraphBuffer.clear()
+        if (frontmatterTitle.isNullOrBlank()) {
+            return renderedBody
         }
 
-        body.lines().forEach { rawLine ->
-            val trimmed = rawLine.trim()
-            when {
-                trimmed.isEmpty() -> flushParagraph()
-                horizontalRuleRegex.matches(trimmed) -> {
-                    flushParagraph()
-                    out.append("<hr />\n")
-                }
-                else -> {
-                    val heading = headingRegex.matchEntire(trimmed)
-                    if (heading != null) {
-                        flushParagraph()
-                        val level = heading.groupValues[1].length.coerceIn(1, 6)
-                        val headingText = applyInlineMarkdown(heading.groupValues[2].trim())
-                        out.append("<h$level>")
-                            .append(headingText)
-                            .append("</h$level>\n")
-                    } else {
-                        paragraphBuffer += rawLine
-                    }
-                }
-            }
-        }
-        flushParagraph()
-
-        return out.toString().trim()
+        return buildString {
+            append("<h1>")
+            append(escapeHtml(frontmatterTitle))
+            append("</h1>\n")
+            append(renderedBody)
+        }.trim()
     }
 
     private fun extractFrontmatter(markdown: String): Pair<String?, String> {
@@ -93,11 +67,16 @@ object NovelMarkdownUtils {
         return title to body
     }
 
-    private fun applyInlineMarkdown(text: String): String {
-        val escaped = escapeHtml(text)
+    private fun simpleFallbackHtml(markdown: String): String {
+        val escaped = escapeHtml(markdown).trim()
+        if (escaped.isEmpty()) return ""
+
         return escaped
-            .replace(Regex("\\*\\*(.+?)\\*\\*"), "<strong>$1</strong>")
-            .replace(Regex("\\*(.+?)\\*"), "<em>$1</em>")
+            .lines()
+            .joinToString(separator = "<br />\n") { line ->
+                if (line.isBlank()) "" else "<p>$line</p>"
+            }
+            .ifBlank { "<p>$escaped</p>" }
     }
 
     private fun escapeHtml(text: String): String {
