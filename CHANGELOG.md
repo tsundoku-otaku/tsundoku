@@ -25,6 +25,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Fixed issue where some chapters wouldn't be marked read [@mrissaoussama](https://github.com/mrissaoussama) [#148](https://github.com/tsundoku-otaku/tsundoku/pull/148)
 - JS Plugin entries now refresh with global updates [@mrissaoussama](https://github.com/mrissaoussama) [#151](https://github.com/tsundoku-otaku/tsundoku/pull/151)
 - JS when using infinite scroll now applies [@mrissaoussama](https://github.com/mrissaoussama) [#162](https://github.com/tsundoku-otaku/tsundoku/pull/162)
+- Centy empty-state subtitle text [@mrissaoussama](https://github.com/mrissaoussama) [#166](https://github.com/tsundoku-otaku/tsundoku/pull/166)
 - Fixed jsource library updates, links. Improved massimport and browse pagination. [@mrissaoussama](https://github.com/mrissaoussama) [#149](https://github.com/tsundoku-otaku/tsundoku/pull/149)
 
 
