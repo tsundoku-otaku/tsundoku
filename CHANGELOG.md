@@ -20,6 +20,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Duplicate screen and mass import [@mrissaoussama](https://github.com/mrissaoussama) [#163](https://github.com/tsundoku-otaku/tsundoku/pull/163)
 - Show include/exclude icon on tag chips [@mrissaoussama](https://github.com/mrissaoussama) [#168](https://github.com/tsundoku-otaku/tsundoku/pull/168)
 - Local novels now show under downloaded-only [@mrissaoussama](https://github.com/mrissaoussama) [#169](https://github.com/tsundoku-otaku/tsundoku/pull/169)
+- Avoid webview color flashes, and improve JS snippet handling [@mrissaoussama](https://github.com/mrissaoussama) [#170](https://github.com/tsundoku-otaku/tsundoku/pull/170)
 - Visual feedback for tag/extension refreshes [@mrissaoussama](https://github.com/mrissaoussama) [#150](https://github.com/tsundoku-otaku/tsundoku/pull/150)
 - Paragraph auto-split [@mrissaoussama](https://github.com/mrissaoussama) [#162](https://github.com/tsundoku-otaku/tsundoku/pull/162)
 
