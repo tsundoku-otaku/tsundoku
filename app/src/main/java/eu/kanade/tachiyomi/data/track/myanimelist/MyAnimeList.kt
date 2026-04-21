@@ -114,45 +114,35 @@ class MyAnimeList(id: Long) : BaseTracker(id, "MyAnimeList"), DeletableTracker {
     }
 
     override suspend fun search(query: String): List<TrackSearch> {
-        return searchByType(query, novelsOnly = false)
-    }
-
-    override suspend fun searchNovels(query: String): List<TrackSearch> {
-        return searchByType(query, novelsOnly = true)
-    }
-
-    private suspend fun searchByType(query: String, novelsOnly: Boolean): List<TrackSearch> {
         if (query.startsWith(SEARCH_ID_PREFIX)) {
             query.substringAfter(SEARCH_ID_PREFIX).toIntOrNull()?.let { id ->
-                return filterByType(listOf(api.getMangaDetails(id)), novelsOnly)
+                return listOf(api.getMangaDetails(id))
             }
         }
 
         if (query.startsWith(SEARCH_LIST_PREFIX)) {
             query.substringAfter(SEARCH_LIST_PREFIX).let { title ->
-                return filterByType(api.findListItems(title), novelsOnly)
+                return api.findListItems(title)
             }
         }
 
-        val results = if (novelsOnly) {
-            api.searchNovels(query)
-        } else {
-            api.search(query)
-        }
-
-        return filterByType(results, novelsOnly)
+        return api.search(query)
     }
 
-    private fun filterByType(results: List<TrackSearch>, novelsOnly: Boolean): List<TrackSearch> {
-        return if (novelsOnly) {
-            results.filter { it.isNovelType() }
-        } else {
-            results.filterNot { it.isNovelType() }
+    override suspend fun searchNovels(query: String): List<TrackSearch> {
+        if (query.startsWith(SEARCH_ID_PREFIX)) {
+            query.substringAfter(SEARCH_ID_PREFIX).toIntOrNull()?.let { id ->
+                return listOf(api.getMangaDetails(id))
+            }
         }
-    }
 
-    private fun TrackSearch.isNovelType(): Boolean {
-        return publishing_type.contains("novel", ignoreCase = true)
+        if (query.startsWith(SEARCH_LIST_PREFIX)) {
+            query.substringAfter(SEARCH_LIST_PREFIX).let { title ->
+                return api.findListItems(title)
+            }
+        }
+
+        return api.searchNovels(query)
     }
 
     override suspend fun refresh(track: Track): Track {
