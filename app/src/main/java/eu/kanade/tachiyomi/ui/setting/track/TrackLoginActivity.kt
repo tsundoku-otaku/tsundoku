@@ -6,21 +6,6 @@ import kotlinx.coroutines.launch
 
 class TrackLoginActivity : BaseOAuthLoginActivity() {
 
-    private fun resolveProvider(uri: Uri): String? {
-        val host = uri.host
-        if (!host.isNullOrBlank()) {
-            return when (host) {
-                "anilist-auth", "bangumi-auth", "myanimelist-auth", "shikimori-auth" -> host
-                else -> null
-            }
-        }
-
-        return when (uri.scheme) {
-            "anilist-auth", "bangumi-auth", "myanimelist-auth", "shikimori-auth" -> uri.scheme
-            else -> null
-        }
-    }
-
     override fun handleResult(uri: Uri) {
         val data = when {
             !uri.encodedQuery.isNullOrBlank() -> uri.encodedQuery
@@ -35,10 +20,8 @@ class TrackLoginActivity : BaseOAuthLoginActivity() {
             }
             .orEmpty()
 
-        val provider = resolveProvider(uri)
-
         lifecycleScope.launch {
-            when (provider) {
+            when (uri.host) {
                 "anilist-auth" -> handleAniList(data["access_token"])
                 "bangumi-auth" -> handleBangumi(data["code"])
                 "myanimelist-auth" -> handleMyAnimeList(data["code"])
