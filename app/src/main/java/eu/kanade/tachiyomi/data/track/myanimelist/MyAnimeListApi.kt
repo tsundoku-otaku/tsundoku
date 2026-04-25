@@ -46,6 +46,7 @@ class MyAnimeListApi(
                 .add("client_id", CLIENT_ID)
                 .add("code", authCode)
                 .add("code_verifier", codeVerifier)
+                .add("redirect_uri", REDIRECT_URL)
                 .add("grant_type", "authorization_code")
                 .build()
             with(json) {
@@ -280,10 +281,11 @@ class MyAnimeListApi(
     }
 
     companion object {
-        private const val CLIENT_ID = "c46c9e24640a64dad5be5ca7a1a53a0f"
+            private const val CLIENT_ID = "d0464a21fd4f1ee11cd033ed3b476946"
 
         private const val BASE_OAUTH_URL = "https://myanimelist.net/v1/oauth2"
         private const val BASE_API_URL = "https://api.myanimelist.net/v2"
+        private const val REDIRECT_URL = "tsundoku://myanimelist-auth"
 
         private const val SEARCH_FIELDS =
             "id,title,synopsis,num_chapters,mean,main_picture,status,media_type,start_date,authors{first_name,last_name}"
@@ -296,6 +298,7 @@ class MyAnimeListApi(
             .appendQueryParameter("client_id", CLIENT_ID)
             .appendQueryParameter("code_challenge", getPkceChallengeCode())
             .appendQueryParameter("response_type", "code")
+            .appendQueryParameter("redirect_uri", REDIRECT_URL)
             .build()
 
         fun mangaUrl(id: Long): Uri = "$BASE_API_URL/manga".toUri().buildUpon()
