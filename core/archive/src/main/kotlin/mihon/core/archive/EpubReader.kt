@@ -630,22 +630,41 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
     }
 
     private fun materializeFragmentElement(element: Element): String? {
+        findHeadingElement(element)?.let { heading ->
+            return extractHeadingSectionHtml(heading)
+        }
+
         if (isMeaningfulFragmentElement(element)) {
             return element.outerHtml()
         }
 
-        // Some EPUB TOCs point to empty anchors (e.g. <a id="..."></a>).
-        // Walk up to a meaningful container; otherwise return null and fall back
-        // to full body/document content.
-        var current: Element? = element.parent()
-        while (current != null && current.tagName() !in setOf("body", "html")) {
-            if (isMeaningfulFragmentElement(current)) {
-                return current.outerHtml()
+        return null
+    }
+
+    private fun findHeadingElement(element: Element): Element? {
+        return if (isHeadingTag(element.tagName())) {
+            element
+        } else {
+            element.parents().firstOrNull { isHeadingTag(it.tagName()) }
+        }
+    }
+
+    private fun extractHeadingSectionHtml(heading: Element): String? {
+        val headingLevel = heading.tagName().removePrefix("h").toIntOrNull() ?: return heading.outerHtml()
+        val section = Element("div")
+
+        var node: org.jsoup.nodes.Node? = heading
+        while (node != null) {
+            if (node !== heading && node is Element && isHeadingTag(node.tagName())) {
+                val siblingHeadingLevel = node.tagName().removePrefix("h").toIntOrNull() ?: Int.MAX_VALUE
+                if (siblingHeadingLevel <= headingLevel) break
             }
-            current = current.parent()
+
+            section.appendChild(node.clone())
+            node = node.nextSibling()
         }
 
-        return null
+        return section.html().ifBlank { heading.outerHtml() }
     }
 
     private fun isMeaningfulFragmentElement(element: Element): Boolean {
@@ -653,5 +672,9 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         if (text.length >= 80) return true
 
         return element.select("p, div, section, article, table, ul, ol, blockquote, pre, figure, img, svg").isNotEmpty()
+    }
+
+    private fun isHeadingTag(tagName: String): Boolean {
+        return tagName.length == 2 && tagName[0] == 'h' && tagName[1] in '1'..'6'
     }
 }
