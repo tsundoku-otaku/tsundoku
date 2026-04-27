@@ -337,6 +337,13 @@ class ReaderPreferences(
     val novelTtsPitch: Preference<Float> = preferenceStore.getFloat("pref_novel_tts_pitch", 1.0f)
     val novelTtsVoice: Preference<String> = preferenceStore.getString("pref_novel_tts_voice", "")
     val novelTtsAutoNextChapter: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_auto_next", true)
+    val novelTtsHighlightStyle: Preference<String> = preferenceStore.getString("pref_novel_tts_highlight_style", "background") // background, underline, outline
+    val novelTtsHighlightColor: Preference<Int> = preferenceStore.getInt("pref_novel_tts_highlight_color", 0xFFFFD54F.toInt())
+    val novelTtsHighlightTextColor: Preference<Int> = preferenceStore.getInt("pref_novel_tts_highlight_text_color", 0xFF1A1A1A.toInt())
+    val novelTtsEnableHighlight: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_enable_highlight", true)
+    val novelTtsKeepHighlightInView: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_keep_highlight_in_view", true)
+    val novelTtsBackgroundPlayback: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_background_playback", false)
+    val novelTtsLastReadParagraph: Preference<String> = preferenceStore.getString("pref_novel_tts_last_read_para", "{}") // JSON map of chapterId -> paragraphIndex
 
     val novelBottomBarItems: Preference<String> = preferenceStore.getString(
         "novel_bottom_bar_items",

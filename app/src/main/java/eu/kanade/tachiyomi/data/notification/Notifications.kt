@@ -92,6 +92,12 @@ object Notifications {
     const val ID_TRANSLATION_COMPLETE = -611
 
     /**
+     * Notification channel and ids used by reader TTS background playback.
+     */
+    const val CHANNEL_TTS_PLAYBACK = "tts_playback_channel"
+    const val ID_TTS_PLAYBACK = 612
+
+    /**
      * Notification channel and ids used by EPUB export.
      */
     const val CHANNEL_EPUB_EXPORT = "epub_export_channel"
@@ -216,6 +222,10 @@ object Notifications {
                 },
                 buildNotificationChannel(CHANNEL_TRANSLATION, IMPORTANCE_LOW) {
                     setName(context.stringResource(TDMR.strings.channel_translation))
+                    setShowBadge(false)
+                },
+                buildNotificationChannel(CHANNEL_TTS_PLAYBACK, IMPORTANCE_LOW) {
+                    setName("TTS Playback")
                     setShowBadge(false)
                 },
                 buildNotificationChannel(CHANNEL_EPUB_EXPORT, IMPORTANCE_LOW) {

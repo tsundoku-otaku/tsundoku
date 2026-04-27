@@ -8,6 +8,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.RecordVoiceOver
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Swipe
@@ -115,6 +116,7 @@ private fun NovelReaderSettingsDialog(
         TabTitle.Icon(imageVector = Icons.Outlined.TextFields), // Reading
         TabTitle.Icon(imageVector = Icons.Outlined.Palette), // Appearance
         TabTitle.Icon(imageVector = Icons.Outlined.Swipe), // Controls
+        TabTitle.Icon(imageVector = Icons.Outlined.RecordVoiceOver), // TTS
         TabTitle.Icon(imageVector = Icons.Outlined.Code), // Advanced
     )
     val pagerState = rememberPagerState { tabTitles.size }
@@ -138,7 +140,8 @@ private fun NovelReaderSettingsDialog(
                     0 -> NovelReadingTab(screenModel, renderingMode)
                     1 -> NovelAppearanceTab(screenModel, renderingMode)
                     2 -> NovelControlsTab(screenModel, renderingMode)
-                    3 -> NovelAdvancedTab(screenModel, renderingMode)
+                    3 -> NovelTtsTab(screenModel)
+                    4 -> NovelAdvancedTab(screenModel, renderingMode)
                 }
             }
         }

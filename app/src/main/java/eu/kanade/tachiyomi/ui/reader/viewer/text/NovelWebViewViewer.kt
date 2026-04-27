@@ -94,6 +94,22 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var ttsInitialized = false
     private var pendingTtsText: String? = null
     private var isTtsAutoPlay = false // Track if TTS should auto-continue to next chapter
+    private var ttsPaused = false
+    private var ttsChunks: List<String> = emptyList()
+    private var ttsChunkParagraphIndexes: List<Int> = emptyList()
+    private var ttsCurrentParagraphs: List<NovelViewerTextUtils.ParagraphInfo> = emptyList()
+
+    private enum class TtsStartRequest {
+        NORMAL,
+        VIEWPORT,
+    }
+
+    private var pendingTtsStartRequest: TtsStartRequest? = null
+
+    @Volatile private var ttsCurrentChunkIndex = 0
+    private var ttsResumeChunkIndex: Int = 0 // Track which chunk to resume from after pause
+    private var ttsViewportParagraphIndex: Int = 0
+    private var hasViewportStartOverride: Boolean = false
 
     private data class CustomStylePayload(
         val css: String,
@@ -200,10 +216,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             ttsInitialized = true
             applyTtsSettings()
             setupTtsListener()
-            // If there was pending text to speak, speak it now
-            pendingTtsText?.let { text ->
-                pendingTtsText = null
-                speak(text)
+            pendingTtsStartRequest?.let { request ->
+                pendingTtsStartRequest = null
+                activity.runOnUiThread {
+                    when (request) {
+                        TtsStartRequest.NORMAL -> startTts()
+                        TtsStartRequest.VIEWPORT -> startTtsFromViewport()
+                    }
+                }
             }
         } else {
             logcat(LogPriority.ERROR) { "TTS initialization failed with status: $status" }
@@ -213,18 +233,37 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     private fun setupTtsListener() {
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {}
+            override fun onStart(utteranceId: String?) {
+                // Track which chunk is currently speaking
+                utteranceId?.removePrefix("tts_utterance_")?.toIntOrNull()?.let { chunkIndex ->
+                    ttsCurrentChunkIndex = chunkIndex
+                    // Apply highlighting to current chunk if enabled
+                    if (preferences.novelTtsEnableHighlight.get()) {
+                        activity.runOnUiThread {
+                            applyTtsHighlight(chunkIndex)
+                        }
+                    }
+                }
+            }
 
             override fun onDone(utteranceId: String?) {
+                val finishedIndex = utteranceId?.removePrefix("tts_utterance_")?.toIntOrNull() ?: -1
+                val isLastChunk = finishedIndex >= ttsChunks.size - 1
+
                 // Check if this was the last chunk and auto-play is enabled
-                if (isTtsAutoPlay && preferences.novelTtsAutoNextChapter.get()) {
+                if (isLastChunk && isTtsAutoPlay && preferences.novelTtsAutoNextChapter.get()) {
                     activity.runOnUiThread {
                         scope.launch {
                             delay(500)
                             if (!isTtsSpeaking()) {
+                                saveTtsProgress()
                                 loadNextChapterForTts()
                             }
                         }
+                    }
+                } else if (isLastChunk) {
+                    activity.runOnUiThread {
+                        clearWebViewTtsHighlight()
                     }
                 }
             }
@@ -234,6 +273,87 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 logcat(LogPriority.ERROR) { "TTS error on utterance: $utteranceId" }
             }
         })
+    }
+
+    /**
+     * Applies visual highlighting to the chunk currently being read by TTS using JavaScript.
+     */
+    private fun applyTtsHighlight(chunkIndex: Int) {
+        if (chunkIndex < 0 || chunkIndex >= ttsChunks.size) return
+
+        val paragraphIndex = ttsChunkParagraphIndexes.getOrElse(chunkIndex) { chunkIndex }
+        val highlightColor = String.format("#%06X", 0xFFFFFF and preferences.novelTtsHighlightColor.get())
+        val highlightTextColor = String.format("#%06X", 0xFFFFFF and preferences.novelTtsHighlightTextColor.get())
+        val highlightStyle = preferences.novelTtsHighlightStyle.get()
+        val keepInView = preferences.novelTtsKeepHighlightInView.get()
+
+        val jsCode = """
+            (function() {
+                var state = window.__tdTtsState || (window.__tdTtsState = {});
+                if (!state.styleEl) {
+                    state.styleEl = document.createElement('style');
+                    state.styleEl.id = 'td-tts-highlight-style';
+                    state.styleEl.textContent =
+                        '.td-tts-highlight-bg{background:var(--td-tts-highlight-bg)!important;color:var(--td-tts-highlight-text)!important;border-radius:6px;padding:0 .2em;}' +
+                        '.td-tts-highlight-underline{text-decoration:underline 2px var(--td-tts-highlight-bg)!important;text-underline-offset:0.2em;}' +
+                        '.td-tts-highlight-outline{outline:2px solid var(--td-tts-highlight-bg)!important;outline-offset:2px;border-radius:8px;padding:0 .2em;}' ;
+                    document.head.appendChild(state.styleEl);
+                }
+
+                document.documentElement.style.setProperty('--td-tts-highlight-bg', '$highlightColor');
+                document.documentElement.style.setProperty('--td-tts-highlight-text', '$highlightTextColor');
+
+                var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
+                var paragraphs = Array.from(document.querySelectorAll(selectors)).filter(function(el) {
+                    return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                });
+                if (!paragraphs.length) {
+                    paragraphs = Array.from(document.body.children).filter(function(el) {
+                        return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                    });
+                }
+
+                if (state.currentEl) {
+                    state.currentEl.classList.remove('td-tts-highlight-bg', 'td-tts-highlight-underline', 'td-tts-highlight-outline');
+                }
+
+                var targetIndex = Math.min(Math.max($paragraphIndex, 0), Math.max(paragraphs.length - 1, 0));
+                var target = paragraphs[targetIndex];
+                if (!target) {
+                    state.currentEl = null;
+                    return;
+                }
+
+                if ('$highlightStyle' === 'underline') {
+                    target.classList.add('td-tts-highlight-underline');
+                } else if ('$highlightStyle' === 'outline') {
+                    target.classList.add('td-tts-highlight-outline');
+                } else {
+                    target.classList.add('td-tts-highlight-bg');
+                }
+
+                state.currentEl = target;
+                if ($keepInView) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                }
+            })();
+        """.trimIndent()
+
+        evaluateJavascriptSafe(jsCode)
+    }
+
+    private fun clearWebViewTtsHighlight() {
+        evaluateJavascriptSafe(
+            """
+            (function() {
+                var state = window.__tdTtsState;
+                if (state && state.currentEl) {
+                    state.currentEl.classList.remove('td-tts-highlight-bg', 'td-tts-highlight-underline', 'td-tts-highlight-outline');
+                    state.currentEl = null;
+                }
+            })();
+            """.trimIndent(),
+        )
     }
 
     private fun loadNextChapterForTts() {
@@ -514,6 +634,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 .drop(1)
                 .collect {
                     currentChapters?.let { setChapters(it) }
+                }
+        }
+
+        scope.launch {
+            merge(
+                preferences.novelTtsVoice.changes(),
+                preferences.novelTtsSpeed.changes(),
+                preferences.novelTtsPitch.changes(),
+            ).drop(3)
+                .collect {
+                    if (ttsInitialized) {
+                        applyTtsSettings()
+                    }
                 }
         }
 
@@ -948,11 +1081,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     private fun evaluateJavascriptSafe(js: String, callback: ((String) -> Unit)? = null) {
         if (isDestroyed) return
-        try {
-            webView.evaluateJavascript(js, callback)
-        } catch (t: Throwable) {
-            // WebView may already be destroyed; avoid crashing.
-            logcat(LogPriority.WARN) { "NovelWebViewViewer: evaluateJavascript ignored (${t.message})" }
+        activity.runOnUiThread {
+            if (isDestroyed) return@runOnUiThread
+            try {
+                webView.evaluateJavascript(js, callback)
+            } catch (t: Throwable) {
+                // WebView may already be destroyed; avoid crashing.
+                logcat(LogPriority.WARN) { "NovelWebViewViewer: evaluateJavascript ignored (${t.message})" }
+            }
         }
     }
 
@@ -2224,25 +2360,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         if (!ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS (WebView): Not initialized yet, waiting..." }
-            // Queue the speech to start when TTS becomes available
-            scope.launch {
-                // Wait up to 2 seconds for initialization
-                var waited = 0
-                while (!ttsInitialized && waited < 2000) {
-                    delay(100)
-                    waited += 100
-                }
-                if (ttsInitialized) {
-                    startTts() // Retry now that it's initialized
-                } else {
-                    activity.runOnUiThread {
-                        logcat(LogPriority.WARN) { "TTS not available. Please check your TTS settings." }
-                    }
-                }
-            }
+            pendingTtsStartRequest = TtsStartRequest.NORMAL
             return
         }
 
+        pendingTtsStartRequest = null
         isTtsAutoPlay = true // Enable auto-continue
         // Extract text from WebView using JavaScript
         evaluateJavascriptSafe(
@@ -2277,12 +2399,181 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     fun stopTts() {
         isTtsAutoPlay = false // Disable auto-continue when manually stopped
+        ttsPaused = false
+        pendingTtsStartRequest = null
+        ttsChunks = emptyList()
+        ttsChunkParagraphIndexes = emptyList()
+        ttsCurrentChunkIndex = 0
+        hasViewportStartOverride = false
         if (ttsInitialized) {
             tts?.stop()
         }
+        clearWebViewTtsHighlight()
     }
 
+    fun pauseTts() {
+        if (ttsInitialized && tts?.isSpeaking == true) {
+            ttsPaused = true
+            ttsResumeChunkIndex = ttsCurrentChunkIndex
+            tts?.stop()
+            saveTtsProgress()
+        }
+    }
+
+    fun resumeTts() {
+        if (ttsPaused && ttsChunks.isNotEmpty()) {
+            ttsPaused = false
+            // Resume from the chunk that was interrupted
+            speakChunksFrom(ttsResumeChunkIndex)
+        }
+    }
+
+    fun isTtsPaused(): Boolean = ttsPaused
+
     fun isTtsSpeaking(): Boolean = ttsInitialized && tts?.isSpeaking == true
+
+    fun isTtsStarting(): Boolean = pendingTtsStartRequest != null || pendingTtsText != null || (!ttsInitialized && tts != null) || (ttsChunks.isEmpty() && isTtsAutoPlay)
+
+    fun getTtsProgressPercent(): Int {
+        if (ttsChunks.isEmpty()) return 0
+        val chunkCount = ttsChunks.size
+        val currentChunk = if (ttsPaused) ttsResumeChunkIndex else ttsCurrentChunkIndex
+        val clampedChunk = currentChunk.coerceIn(0, chunkCount - 1)
+        return (((clampedChunk + 1) * 100f) / chunkCount).toInt().coerceIn(0, 100)
+    }
+
+    /**
+     * Starts TTS from the first visible paragraph in the viewport.
+     */
+    fun startTtsFromViewport() {
+        ensureTtsInitialized()
+
+        if (!ttsInitialized) {
+            logcat(LogPriority.WARN) { "TTS (WebView): Not initialized yet" }
+            pendingTtsStartRequest = TtsStartRequest.VIEWPORT
+            return
+        }
+
+        pendingTtsStartRequest = null
+        isTtsAutoPlay = true
+        // Determine first visible paragraph index in WebView, then start TTS from that position.
+        evaluateJavascriptSafe(
+            """
+            (function() {
+                var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
+                var elements = Array.from(document.querySelectorAll(selectors)).filter(function(el) {
+                    return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                });
+                if (!elements.length) {
+                    elements = Array.from(document.body.children).filter(function(el) {
+                        return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                    });
+                }
+                var viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+                for (var i = 0; i < elements.length; i++) {
+                    var rect = elements[i].getBoundingClientRect();
+                    if (rect.bottom > 0 && rect.top < viewportHeight) {
+                        return i;
+                    }
+                }
+                return 0;
+            })();
+            """.trimIndent(),
+        ) { rawIndex ->
+            val firstVisibleParagraphIndex = rawIndex?.trim('"')?.toIntOrNull() ?: 0
+            evaluateJavascriptSafe(
+                """
+                (function() {
+                    var body = document.body;
+                    return body ? body.innerText || body.textContent : '';
+                })();
+                """.trimIndent(),
+            ) { result ->
+                val text = result?.let {
+                    if (it.startsWith("\"") && it.endsWith("\"")) {
+                        it.substring(1, it.length - 1)
+                            .replace("\\n", "\n")
+                            .replace("\\t", "\t")
+                            .replace("\\\"", "\"")
+                            .replace("\\\\", "\\")
+                    } else {
+                        it
+                    }
+                }
+
+                if (!text.isNullOrBlank() && text != "null") {
+                    // Keep a forced resume index for this launch from viewport.
+                    ttsViewportParagraphIndex = firstVisibleParagraphIndex.coerceAtLeast(0)
+                    hasViewportStartOverride = true
+                    speak(text)
+                } else {
+                    logcat(LogPriority.WARN) { "TTS (WebView): No text available for viewport start" }
+                }
+            }
+        }
+    }
+
+    /**
+     * Saves the current TTS playback progress to preferences.
+     */
+    private fun saveTtsProgress() {
+        val currentChapter = currentPage
+        if (currentChapter == null || ttsCurrentChunkIndex < 0) return
+
+        val chapterId = currentChapter.index.toLong()
+        val paragraphIndex = ttsCurrentChunkIndex.coerceAtLeast(0)
+
+        // Load existing progress map
+        val progressJson = preferences.novelTtsLastReadParagraph.get()
+        val progressMap = try {
+            kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(progressJson)
+                .toMutableMap()
+        } catch (e: Exception) {
+            mutableMapOf()
+        }
+
+        // Update with current chapter progress
+        progressMap[chapterId.toString()] = paragraphIndex
+
+        // Save back to preferences
+        try {
+            val json = kotlinx.serialization.json.Json.encodeToString(progressMap)
+            preferences.novelTtsLastReadParagraph.set(json)
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR) { "Failed to save TTS progress: ${e.message}" }
+        }
+    }
+
+    /**
+     * Restores the last-read paragraph position for the current chapter.
+     * @return The chunk index to resume from, or 0 if no progress found.
+     */
+    private fun restoreTtsProgress(): Int {
+        val currentChapter = currentPage
+        if (currentChapter == null) return 0
+
+        val chapterId = currentChapter.index.toString()
+        val progressJson = preferences.novelTtsLastReadParagraph.get()
+
+        return try {
+            val progressMap = kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(progressJson)
+            progressMap[chapterId]?.coerceAtLeast(0) ?: 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    /**
+     * Speaks TTS chunks starting from a specific index.
+     */
+    private fun speakChunksFrom(startIndex: Int) {
+        if (ttsChunks.isEmpty() || startIndex >= ttsChunks.size) return
+        ttsChunks.drop(startIndex).forEachIndexed { i, chunk ->
+            val actualIndex = startIndex + i
+            val queueMode = if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+            tts?.speak(chunk, queueMode, null, "tts_utterance_$actualIndex")
+        }
+    }
 
     private fun speak(text: String) {
         if (!ttsInitialized || tts == null) {
@@ -2294,18 +2585,49 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         applyTtsSettings()
 
+        ttsPaused = false
+
         // Android TTS has a max length limit (~4000 chars), chunk long text
         val maxLength = TextToSpeech.getMaxSpeechInputLength()
 
-        if (text.length <= maxLength) {
-            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "tts_utterance_0")
+        val paragraphs = text.split("\n").filter { it.isNotBlank() }
+        val chunkParagraphIndexes = mutableListOf<Int>()
+        ttsChunks = if (paragraphs.size > 1) {
+            paragraphs.flatMapIndexed { paragraphIndex, para ->
+                val chunks = if (para.length <= maxLength) {
+                    listOf(para)
+                } else {
+                    splitTextForTts(para, maxLength)
+                }
+                repeat(chunks.size) { chunkParagraphIndexes.add(paragraphIndex) }
+                chunks
+            }
+        } else if (text.length <= maxLength) {
+            chunkParagraphIndexes.add(0)
+            listOf(text)
         } else {
             val chunks = splitTextForTts(text, maxLength)
-            chunks.forEachIndexed { index, chunk ->
-                val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-                tts?.speak(chunk, queueMode, null, "tts_utterance_$index")
-            }
+            repeat(chunks.size) { chunkParagraphIndexes.add(0) }
+            chunks
         }
+        ttsChunkParagraphIndexes = chunkParagraphIndexes
+
+        // Extract paragraph info for highlighting support
+        ttsCurrentParagraphs = NovelViewerTextUtils.findParagraphs(text)
+
+        // Check if we should resume from saved progress
+        val savedChunkIndex = restoreTtsProgress()
+        ttsCurrentChunkIndex = 0
+        val startIndex = if (hasViewportStartOverride) {
+            // If launched from viewport, convert paragraph index into nearest chunk.
+            val viewportChunkIndex = ttsChunkParagraphIndexes.indexOfFirst { it >= ttsViewportParagraphIndex }
+            if (viewportChunkIndex >= 0) viewportChunkIndex else savedChunkIndex
+        } else {
+            savedChunkIndex
+        }
+        hasViewportStartOverride = false
+
+        speakChunksFrom(startIndex.coerceIn(0, (ttsChunks.size - 1).coerceAtLeast(0)))
     }
 
     private fun splitTextForTts(text: String, maxLength: Int): List<String> =

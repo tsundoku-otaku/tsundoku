@@ -21,6 +21,7 @@
 
     <!-- For background jobs -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -214,6 +215,11 @@
             android:name=".extension.util.ExtensionInstallService"
             android:exported="false"
             android:foregroundServiceType="shortService" />
+
+        <service
+            android:name=".ui.reader.service.TtsPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"

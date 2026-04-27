@@ -13,6 +13,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -47,6 +49,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.VerticalAlignTop
+import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -138,6 +141,7 @@ fun NovelReaderAppBars(
     isTtsPaused: Boolean,
     onToggleTts: () -> Unit,
     onLongPressTts: () -> Unit,
+    onTtsStartFromViewport: () -> Unit = {},
 
     isEditing: Boolean = false,
     onToggleEdit: () -> Unit = {},
@@ -255,6 +259,7 @@ fun NovelReaderAppBars(
                         isTtsPaused = isTtsPaused,
                         onToggleTts = onToggleTts,
                         onLongPressTts = onLongPressTts,
+                        onTtsStartFromViewport = onTtsStartFromViewport,
                         isEditing = isEditing,
                         isWebView = isWebView,
                         onToggleEdit = onToggleEdit,
@@ -388,6 +393,7 @@ private fun NovelReaderBottomBar(
     isTtsPaused: Boolean,
     onToggleTts: () -> Unit,
     onLongPressTts: () -> Unit,
+    onTtsStartFromViewport: () -> Unit = {},
     isEditing: Boolean,
     isWebView: Boolean,
     onToggleEdit: () -> Unit,
@@ -398,23 +404,15 @@ private fun NovelReaderBottomBar(
         items.filter { it.enabled && (isWebView || it.item != BottomBarItem.EDIT) }
     }
 
-    BoxWithConstraints(modifier = modifier) {
-        val availableWidth = maxWidth
-        // Calculate icon size based on available width and number of items
-        // Standard IconButton is 48dp, but we can scale down to 36dp minimum
-        val itemCount = enabledItems.size
-        val idealTotalWidth = (itemCount * 48).dp
-        val scaleFactor = if (idealTotalWidth > availableWidth) {
-            (availableWidth / idealTotalWidth).coerceIn(0.75f, 1f)
-        } else {
-            1f
-        }
-        val iconSize = (24 * scaleFactor).dp
-        val buttonSize = (48 * scaleFactor).dp
-        val paddingSize = (4 * scaleFactor).dp
+    Box(modifier = modifier) {
+        val iconSize = 24.dp
+        val buttonSize = 48.dp
+        val paddingSize = 4.dp
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -524,6 +522,18 @@ private fun NovelReaderBottomBar(
                         )
                     }
 
+                    // TTS from viewport - start reading from first visible paragraph
+                    BottomBarItem.TTS_VIEWPORT -> IconButton(
+                        onClick = onTtsStartFromViewport,
+                        modifier = Modifier.size(buttonSize),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Visibility,
+                            contentDescription = "Start TTS Here",
+                            modifier = Modifier.size(iconSize),
+                        )
+                    }
+
                     // Orientation
                     BottomBarItem.ORIENTATION -> IconButton(
                         onClick = onClickOrientation,
@@ -599,6 +609,7 @@ internal fun bottomBarItemInfo(
     BottomBarItem.TRANSLATE -> Icons.Outlined.Translate to stringResource(TDMR.strings.action_translate)
     BottomBarItem.AUTO_SCROLL -> Icons.Outlined.PlayArrow to stringResource(TDMR.strings.action_start_auto_scroll)
     BottomBarItem.TTS -> Icons.Outlined.RecordVoiceOver to stringResource(TDMR.strings.pref_novel_tts)
+    BottomBarItem.TTS_VIEWPORT -> Icons.Outlined.Visibility to "Start TTS Here"
     BottomBarItem.QUOTES -> Icons.Outlined.FormatQuote to stringResource(TDMR.strings.action_quotes)
     BottomBarItem.ORIENTATION -> orientation.icon to stringResource(MR.strings.rotation_type)
     BottomBarItem.SETTINGS -> Icons.Outlined.Settings to stringResource(MR.strings.action_settings)

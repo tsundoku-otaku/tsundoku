@@ -310,6 +310,9 @@ dependencies {
     implementation(libs.leakCanary.plumber)
 
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // media for tts notification
+    implementation(libs.androidx.media)
 }
 
 androidComponents {

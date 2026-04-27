@@ -281,4 +281,79 @@ object NovelViewerTextUtils {
             loadJob?.cancel()
         }
     }
+
+    /**
+     * Data class representing a paragraph's position and boundaries in text.
+     */
+    data class ParagraphInfo(
+        val index: Int,           // 0-based paragraph index
+        val startChar: Int,       // Character offset where paragraph starts
+        val endChar: Int,         // Character offset where paragraph ends (exclusive)
+        val text: String,         // Paragraph text (without surrounding whitespace)
+    )
+
+    /**
+     * Finds all paragraph boundaries in [text] by splitting on empty lines or paragraph tags.
+     * Returns a list of [ParagraphInfo] objects with position data for each paragraph.
+     */
+    fun findParagraphs(text: String): List<ParagraphInfo> {
+        val paragraphs = mutableListOf<ParagraphInfo>()
+
+        // Strip HTML tags first to get plain text positions
+        val plainText = text.replace(Regex("<[^>]+>"), " ")
+
+        // Split on double newlines, paragraph tags, or significant whitespace
+        val lines = plainText.split(Regex("\n\\s*\n|<p[^>]*>|</p>"))
+        var charOffset = 0
+
+        for ((index, line) in lines.withIndex()) {
+            val trimmed = line.trim()
+            if (trimmed.isEmpty()) {
+                charOffset += line.length + 2  // Account for split pattern
+                continue
+            }
+
+            // Find the actual position in original text
+            val startChar = plainText.indexOf(trimmed, charOffset)
+            if (startChar < 0) continue
+
+            val endChar = startChar + trimmed.length
+
+            paragraphs.add(
+                ParagraphInfo(
+                    index = paragraphs.size,
+                    startChar = startChar,
+                    endChar = endChar,
+                    text = trimmed,
+                )
+            )
+            charOffset = endChar
+        }
+
+        return paragraphs
+    }
+
+    /**
+     * Finds the paragraph index for a given character offset in text.
+     * Used to resume TTS from a saved position.
+     */
+    fun findParagraphAtOffset(text: String, charOffset: Int, paragraphs: List<ParagraphInfo>): Int {
+        return paragraphs.indexOfFirst { it.startChar <= charOffset && charOffset < it.endChar }
+            .takeIf { it >= 0 } ?: 0
+    }
+
+    /**
+     * Converts character offset to chunk index for TTS playback.
+     * Uses the paragraph/chunk mapping to find which TTS chunk to resume from.
+     */
+    fun getChunkIndexFromOffset(charOffset: Int, ttsChunks: List<String>): Int {
+        var currentOffset = 0
+        for ((index, chunk) in ttsChunks.withIndex()) {
+            if (currentOffset + chunk.length > charOffset) {
+                return index
+            }
+            currentOffset += chunk.length
+        }
+        return 0
+    }
 }

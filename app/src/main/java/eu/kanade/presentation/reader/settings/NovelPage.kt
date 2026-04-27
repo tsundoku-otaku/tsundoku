@@ -674,8 +674,6 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         }
     }
 
-    // TTS Settings Section
-    TtsSettingsSection(screenModel)
 }
 
 @Composable
@@ -1322,11 +1320,42 @@ private fun RegexEditDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ColumnScope.TtsSettingsSection(screenModel: ReaderSettingsScreenModel) {
+internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
     val context = LocalContext.current
     val ttsSpeed by screenModel.preferences.novelTtsSpeed.collectAsState()
     val ttsPitch by screenModel.preferences.novelTtsPitch.collectAsState()
     val ttsVoice by screenModel.preferences.novelTtsVoice.collectAsState()
+    val ttsEnableHighlight by screenModel.preferences.novelTtsEnableHighlight.collectAsState()
+    val ttsHighlightStyle by screenModel.preferences.novelTtsHighlightStyle.collectAsState()
+    val ttsHighlightColor by screenModel.preferences.novelTtsHighlightColor.collectAsState()
+    val ttsHighlightTextColor by screenModel.preferences.novelTtsHighlightTextColor.collectAsState()
+    val ttsKeepHighlightInView by screenModel.preferences.novelTtsKeepHighlightInView.collectAsState()
+    var showHighlightBgColorPicker by remember { mutableStateOf(false) }
+    var showHighlightTextColorPicker by remember { mutableStateOf(false) }
+
+    if (showHighlightBgColorPicker) {
+        ColorPickerDialog(
+            title = "TTS Highlight Background",
+            initialColor = ttsHighlightColor,
+            onDismiss = { showHighlightBgColorPicker = false },
+            onConfirm = { color ->
+                screenModel.preferences.novelTtsHighlightColor.set(color)
+                showHighlightBgColorPicker = false
+            },
+        )
+    }
+
+    if (showHighlightTextColorPicker) {
+        ColorPickerDialog(
+            title = "TTS Highlight Text",
+            initialColor = ttsHighlightTextColor,
+            onDismiss = { showHighlightTextColorPicker = false },
+            onConfirm = { color ->
+                screenModel.preferences.novelTtsHighlightTextColor.set(color)
+                showHighlightTextColorPicker = false
+            },
+        )
+    }
 
     // Load available voices using TTS
     val availableVoices = remember { mutableStateListOf<Pair<String, String>>() }
@@ -1428,6 +1457,93 @@ private fun ColumnScope.TtsSettingsSection(screenModel: ReaderSettingsScreenMode
     CheckboxItem(
         label = stringResource(TDMR.strings.pref_novel_tts_auto_next),
         pref = screenModel.preferences.novelTtsAutoNextChapter,
+    )
+
+    // Enable TTS highlighting
+    CheckboxItem(
+        label = "Enable paragraph highlighting during TTS",
+        pref = screenModel.preferences.novelTtsEnableHighlight,
+    )
+
+    // Highlight style selector (pill chips)
+    if (ttsEnableHighlight) {
+        SettingsChipRow("Highlight style") {
+            listOf(
+                "background" to "Background",
+                "underline" to "Underline",
+                "outline" to "Outline",
+            ).forEach { (value, label) ->
+                FilterChip(
+                    selected = ttsHighlightStyle == value,
+                    onClick = { screenModel.preferences.novelTtsHighlightStyle.set(value) },
+                    label = { Text(label) },
+                )
+            }
+        }
+
+        SettingsChipRow(TDMR.strings.pref_novel_background_color) {
+            listOf(
+                0xFFFFD54F.toInt() to "Amber",
+                0xFF90CAF9.toInt() to "Blue",
+                0xFFA5D6A7.toInt() to "Green",
+                0xFFF48FB1.toInt() to "Pink",
+                Int.MIN_VALUE to "Custom",
+            ).forEach { (colorValue, label) ->
+                val selected = if (colorValue == Int.MIN_VALUE) {
+                    listOf(0xFFFFD54F.toInt(), 0xFF90CAF9.toInt(), 0xFFA5D6A7.toInt(), 0xFFF48FB1.toInt()).none { it == ttsHighlightColor }
+                } else {
+                    ttsHighlightColor == colorValue
+                }
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        if (colorValue == Int.MIN_VALUE) {
+                            showHighlightBgColorPicker = true
+                        } else {
+                            screenModel.preferences.novelTtsHighlightColor.set(colorValue)
+                        }
+                    },
+                    label = { Text(label) },
+                )
+            }
+        }
+
+        SettingsChipRow(TDMR.strings.pref_novel_font_color) {
+            listOf(
+                0xFF111111.toInt() to "Dark",
+                0xFFFFFFFF.toInt() to "White",
+                0xFF1E3A8A.toInt() to "Navy",
+                0xFF7F1D1D.toInt() to "Maroon",
+                Int.MIN_VALUE to "Custom",
+            ).forEach { (colorValue, label) ->
+                val selected = if (colorValue == Int.MIN_VALUE) {
+                    listOf(0xFF111111.toInt(), 0xFFFFFFFF.toInt(), 0xFF1E3A8A.toInt(), 0xFF7F1D1D.toInt()).none { it == ttsHighlightTextColor }
+                } else {
+                    ttsHighlightTextColor == colorValue
+                }
+                FilterChip(
+                    selected = selected,
+                    onClick = {
+                        if (colorValue == Int.MIN_VALUE) {
+                            showHighlightTextColorPicker = true
+                        } else {
+                            screenModel.preferences.novelTtsHighlightTextColor.set(colorValue)
+                        }
+                    },
+                    label = { Text(label) },
+                )
+            }
+        }
+
+        CheckboxItem(
+            label = "Keep highlighted paragraph in view",
+            pref = screenModel.preferences.novelTtsKeepHighlightInView,
+        )
+    }
+
+    CheckboxItem(
+        label = "Keep TTS running in background",
+        pref = screenModel.preferences.novelTtsBackgroundPlayback,
     )
 }
 
