@@ -48,6 +48,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.logcat
+import org.json.JSONObject
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.translation.service.TranslationPreferences
 import tachiyomi.i18n.novel.TDMR
@@ -1390,6 +1391,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             } else {
                 finalContent
             }
+            val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapter.chapter.url)
+            val renderableContent = if (plainTextMode) {
+                NovelViewerTextUtils.normalizePlainTextContent(processedContent)
+            } else {
+                NovelViewerTextUtils.normalizeContentForHtml(
+                    processedContent,
+                    chapter.chapter.url,
+                )
+            }
+
             withContext(Dispatchers.Main) {
                 if (isAppendOrPrepend && preferences.novelInfiniteScroll.get()) {
                     if (!loadedChapterIds.contains(chapterId)) {
@@ -1404,12 +1415,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         }
                     }
                     if (isPrepend) {
-                        prependHtmlContent(processedContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                        prependHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
                     } else {
-                        appendHtmlContent(processedContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                        appendHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
                     }
                 } else {
-                    loadHtmlContent(processedContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                    loadHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
 
                     // Fresh load: reset tracking to this single chapter.
                     loadedChapterIds.clear()
@@ -1426,20 +1437,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      * Prepend content to the existing WebView for infinite scroll (loading previous chapter)
      */
     private fun prependHtmlContent(content: String, chapterId: Long, chapterName: String, chapterUrl: String?) {
+        val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
         // Strip script/style/noscript tags from content
-        var cleanContent = normalizeContentForHtml(content, chapterUrl)
-            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-            .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-            .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        var cleanContent = if (plainTextMode) {
+            NovelViewerTextUtils.normalizePlainTextContent(content)
+        } else {
+            normalizeContentForHtml(content, chapterUrl)
+                .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        }
         if (preferences.novelBlockMedia.get()) {
             cleanContent = stripMediaTags(cleanContent)
         }
-        val escapedContent = cleanContent.replace("\\", "\\\\")
-            .replace("`", "\\`")
-            .replace("\$", "\\\$")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
+        val escapedContent = JSONObject.quote(cleanContent)
 
         val js = """
             (function() {
@@ -1449,7 +1461,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 var contentDiv = document.createElement('div');
                 contentDiv.className = 'chapter-content';
                 contentDiv.setAttribute('data-chapter-id', '$chapterId');
-                contentDiv.innerHTML = `$escapedContent`;
+                ${if (plainTextMode) "contentDiv.textContent = $escapedContent;" else "contentDiv.innerHTML = $escapedContent;"}
 
                 var divider = document.createElement('div');
                 divider.className = 'chapter-divider';
@@ -1490,20 +1502,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      * Append content to the existing WebView for infinite scroll
      */
     private fun appendHtmlContent(content: String, chapterId: Long, chapterName: String, chapterUrl: String?) {
+        val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
         // Strip script/style/noscript tags from content
-        var cleanContent = normalizeContentForHtml(content, chapterUrl)
-            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-            .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-            .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        var cleanContent = if (plainTextMode) {
+            NovelViewerTextUtils.normalizePlainTextContent(content)
+        } else {
+            normalizeContentForHtml(content, chapterUrl)
+                .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        }
         if (preferences.novelBlockMedia.get()) {
             cleanContent = stripMediaTags(cleanContent)
         }
-        val escapedContent = cleanContent.replace("\\", "\\\\")
-            .replace("`", "\\`")
-            .replace("\$", "\\\$")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
+        val escapedContent = JSONObject.quote(cleanContent)
 
         val js = """
             (function() {
@@ -1515,7 +1528,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 var contentDiv = document.createElement('div');
                 contentDiv.className = 'chapter-content';
                 contentDiv.setAttribute('data-chapter-id', '$chapterId');
-                contentDiv.innerHTML = `$escapedContent`;
+                ${if (plainTextMode) "contentDiv.textContent = $escapedContent;" else "contentDiv.innerHTML = $escapedContent;"}
                 document.body.appendChild(contentDiv);
 
                 // Update chapter boundaries after DOM update
@@ -1541,12 +1554,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         chapterName: String? = null,
         chapterUrl: String? = null,
     ) {
+        val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
         // Strip script/style/noscript tags from content to prevent unwanted JS execution
-        var cleanContent = NovelViewerTextUtils.normalizeContentForHtml(content, chapterUrl)
-            .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-            .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-            .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        var cleanContent = if (plainTextMode) {
+            NovelViewerTextUtils.normalizePlainTextContent(content)
+        } else {
+            NovelViewerTextUtils.normalizeContentForHtml(content, chapterUrl)
+                .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        }
 
         val blockMedia = preferences.novelBlockMedia.get()
         if (blockMedia) {
@@ -1586,21 +1604,30 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         var finalContent = cleanContent
         var embeddedHead = ""
 
-        try {
-            val doc = org.jsoup.Jsoup.parse(finalContent)
+        if (plainTextMode) {
+            finalContent = """
+                <pre class="chapter-content" data-tsundoku-plain-text="1" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;"></pre>
+                <script>
+                    document.querySelector('.chapter-content').textContent = ${JSONObject.quote(cleanContent)};
+                </script>
+            """.trimIndent()
+        } else {
+            try {
+                val doc = org.jsoup.Jsoup.parse(finalContent)
 
 
-            doc.select("style, link[rel=stylesheet]").remove()
+                doc.select("style, link[rel=stylesheet]").remove()
 
-            doc.select("script, noscript").remove()
+                doc.select("script, noscript").remove()
 
-            val bodyNode = doc.body()
-            if (bodyNode != null && bodyNode.hasText()) {
-                finalContent = bodyNode.html()
-            } else if (bodyNode != null && bodyNode.children().isNotEmpty()) {
-                finalContent = bodyNode.html()
-            }
-        } catch (_: Exception) {}
+                val bodyNode = doc.body()
+                if (bodyNode != null && bodyNode.hasText()) {
+                    finalContent = bodyNode.html()
+                } else if (bodyNode != null && bodyNode.children().isNotEmpty()) {
+                    finalContent = bodyNode.html()
+                }
+            } catch (_: Exception) {}
+        }
 
         val escapedInitialStyle = stylePayload.css
             .replace("</style>", "<\\/style>")
@@ -2108,6 +2135,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
 
         val processedContent = activity.translateContentIfEnabled(content)
+        val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapter.chapter.url)
+        val renderableContent = if (plainTextMode) {
+            NovelViewerTextUtils.normalizePlainTextContent(processedContent)
+        } else {
+            NovelViewerTextUtils.normalizeContentForHtml(
+                processedContent,
+                chapter.chapter.url,
+            )
+        }
 
         withContext(Dispatchers.Main) {
             if (isDestroyed) return@withContext
@@ -2121,9 +2157,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     loadedChapterIds.add(chapterId)
                     loadedChapters.add(chapter)
                 }
-                appendHtmlContent(processedContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                appendHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
             } else {
-                loadHtmlContent(processedContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                loadHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
                 loadedChapterIds.clear()
                 loadedChapters.clear()
                 loadedChapterIds.add(chapterId)

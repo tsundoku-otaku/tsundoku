@@ -1783,7 +1783,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
             content = stripChapterTitle(content, chapter.chapter.name)
         }
 
-        content = normalizeContentForHtml(content, chapter.chapter.url)
+        val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapter.chapter.url)
+        content = if (plainTextMode) {
+            NovelViewerTextUtils.normalizePlainTextContent(content)
+        } else {
+            normalizeContentForHtml(content, chapter.chapter.url)
+        }
 
         // Optionally force lowercase
         if (preferences.novelForceTextLowercase.get()) {
@@ -2136,8 +2141,14 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
             return
         }
 
+        val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
+
         // Process content to ensure paragraph tags exist for styling
-    var processedContent = NovelViewerTextUtils.normalizeContentForHtml(content, chapterUrl)
+        var processedContent = if (plainTextMode) {
+            NovelViewerTextUtils.normalizePlainTextContent(content)
+        } else {
+            NovelViewerTextUtils.normalizeContentForHtml(content, chapterUrl)
+        }
 
         // Strip script tags and their content — they would render as visible text
         processedContent = processedContent.replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
@@ -2160,18 +2171,20 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 .replace(Regex("<source[^>]*>", RegexOption.IGNORE_CASE), "")
         }
 
-        // First, strip any existing leading non-breaking spaces from paragraphs
-        // This prevents double-spacing when indent is applied
-        processedContent = processedContent.replace(Regex("<p>(?:\u00A0|&#160;|&nbsp;)+"), "<p>")
+        if (!plainTextMode) {
+            // First, strip any existing leading non-breaking spaces from paragraphs
+            // This prevents double-spacing when indent is applied
+            processedContent = processedContent.replace(Regex("<p>(?:\u00A0|&#160;|&nbsp;)+"), "<p>")
 
-        // If content doesn't have <p> tags, wrap paragraphs (double newlines or single <br> followed by text)
-        if (!processedContent.contains("<p>", ignoreCase = true)) {
-            // Replace double line breaks with paragraph markers
-            processedContent = processedContent
-                .replace("\n\n", "</p><p>")
-                .replace("\r\n\r\n", "</p><p>")
-            // Wrap in paragraph tags
-            processedContent = "<p>$processedContent</p>"
+            // If content doesn't have <p> tags, wrap paragraphs (double newlines or single <br> followed by text)
+            if (!processedContent.contains("<p>", ignoreCase = true)) {
+                // Replace double line breaks with paragraph markers
+                processedContent = processedContent
+                    .replace("\n\n", "</p><p>")
+                    .replace("\r\n\r\n", "</p><p>")
+                // Wrap in paragraph tags
+                processedContent = "<p>$processedContent</p>"
+            }
         }
 
         // Get paragraph spacing preference (em units, default 0.5)
@@ -2190,23 +2203,27 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 null
             }
 
-            // Strip style and script tags entirely before rendering
-            var cleanHtmlContent = processedContent
-            try {
-                val doc = org.jsoup.Jsoup.parse(cleanHtmlContent)
-                doc.select("style, script").remove()
-                // Force all images to be block-level by wrapping them in generic paragraphs
-                // This prevents `TextView` overlapping them if they appear inline without spaces
-                doc.select("img").forEach { img ->
-                    if (img.parent()?.tagName() != "p" && img.parent()?.tagName() != "div") {
-                        img.wrap("<p style=\"text-align:center;\"></p>")
+            val spanned = if (plainTextMode) {
+                android.text.SpannableStringBuilder(processedContent)
+            } else {
+                // Strip style and script tags entirely before rendering
+                var cleanHtmlContent = processedContent
+                try {
+                    val doc = org.jsoup.Jsoup.parse(cleanHtmlContent)
+                    doc.select("style, script").remove()
+                    // Force all images to be block-level by wrapping them in generic paragraphs
+                    // This prevents `TextView` overlapping them if they appear inline without spaces
+                    doc.select("img").forEach { img ->
+                        if (img.parent()?.tagName() != "p" && img.parent()?.tagName() != "div") {
+                            img.wrap("<p style=\"text-align:center;\"></p>")
+                        }
                     }
-                }
-                cleanHtmlContent = doc.body()?.html() ?: cleanHtmlContent
-            } catch (_: Exception) {}
+                    cleanHtmlContent = doc.body()?.html() ?: cleanHtmlContent
+                } catch (_: Exception) {}
 
-            val spanned = withContext(Dispatchers.Default) {
-                Html.fromHtml(cleanHtmlContent, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+                withContext(Dispatchers.Default) {
+                    Html.fromHtml(cleanHtmlContent, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+                }
             }
 
             // Apply custom paragraph spacing and indent using spans

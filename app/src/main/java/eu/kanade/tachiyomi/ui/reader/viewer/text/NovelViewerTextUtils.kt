@@ -25,6 +25,26 @@ object NovelViewerTextUtils {
         PLAIN_TEXT,
     }
 
+    private val frontMatterRegex = Regex("^\\uFEFF?---\\s*\\r?\\n([\\s\\S]*?)\\r?\\n---\\s*(\\r?\\n|$)")
+
+    fun isPlainTextChapter(chapterUrl: String?): Boolean {
+        val ext = chapterUrl
+            ?.substringBefore('#')
+            ?.substringBefore('?')
+            ?.substringAfterLast('/', "")
+            ?.substringAfterLast('.', "")
+            ?.lowercase()
+            .orEmpty()
+
+        return ext == "txt" || ext == "text"
+    }
+
+    fun normalizePlainTextContent(content: String): String {
+        return content
+            .replace("\u0000", "")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+    }
     /**
      * Normalizes chapter content to HTML so both WebView and TextView pipelines
      * can share rendering behavior for html/plain-text/markdown chapters.
@@ -71,7 +91,7 @@ object NovelViewerTextUtils {
             .replace("\r", "\n")
         val escaped = escapeHtml(normalized)
         return """
-            <div data-tsundoku-plain-text="1" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;">$escaped</div>
+            <pre data-tsundoku-plain-text="1" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;">$escaped</pre>
         """.trimIndent()
     }
 
