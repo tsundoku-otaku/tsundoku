@@ -32,6 +32,14 @@ kotlin {
                 implementation(libs.bundles.serialization)
             }
         }
+
+        androidUnitTest {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.bundles.test)
+                runtimeOnly(libs.junit.platform.launcher)
+            }
+        }
     }
 
     @OptIn(ExperimentalKotlinGradlePluginApi::class)

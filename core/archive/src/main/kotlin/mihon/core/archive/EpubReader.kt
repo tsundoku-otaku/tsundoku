@@ -291,10 +291,20 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         return pages.mapIndexed { index, page ->
             EpubChapter(
                 title = "Chapter ${index + 1}",
-                href = page,
+                href = resolveZipPath(opfBasePath, page),
                 order = index,
             )
         }
+    }
+
+    /**
+     * Returns XHTML resources listed in OPF spine, resolved to archive paths.
+     */
+    fun getSpinePageHrefs(): List<String> {
+        val ref = getPackageHref()
+        val doc = getPackageDocument(ref)
+        val opfBasePath = getParentDirectory(ref)
+        return getPagesFromDocument(doc).map { resolveZipPath(opfBasePath, it) }
     }
 
     /**

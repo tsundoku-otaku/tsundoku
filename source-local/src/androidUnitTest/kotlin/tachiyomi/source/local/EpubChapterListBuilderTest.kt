@@ -44,4 +44,86 @@ class EpubChapterListBuilderTest {
         assertEquals(2f, chapters[1].chapter_number)
         assertEquals(123456789L, chapters[0].date_upload)
     }
+
+    @Test
+    fun `buildEpubChaptersFromToc includes spine-only pages not in toc`() {
+        val tocChapters = listOf(
+            EpubReader.EpubChapter(
+                title = "PART ONE",
+                href = "Fahrenheit_451_split_001.html",
+                order = 0,
+            ),
+            EpubReader.EpubChapter(
+                title = "PART TWO",
+                href = "Fahrenheit_451_split_002.html",
+                order = 1,
+            ),
+            EpubReader.EpubChapter(
+                title = "PART THREE",
+                href = "Fahrenheit_451_split_003.html",
+                order = 2,
+            ),
+        )
+
+        val spinePages = listOf(
+            "titlepage.xhtml",
+            "Fahrenheit_451_split_000.html",
+            "Fahrenheit_451_split_001.html",
+            "Fahrenheit_451_split_002.html",
+            "Fahrenheit_451_split_003.html",
+            "Fahrenheit_451_split_004.html",
+        )
+
+        val chapters = buildEpubChaptersFromToc(
+            mangaUrl = "local-novels/f451",
+            chapterFileName = "f451.epub",
+            chapterFileNameWithoutExtension = "f451",
+            chapterLastModified = 123L,
+            tocChapters = tocChapters,
+            spinePageHrefs = spinePages,
+            hasMultipleEpubFiles = false,
+        )
+
+        assertEquals(6, chapters.size)
+        assertEquals("local-novels/f451/f451.epub#titlepage.xhtml", chapters[0].url)
+        assertEquals("local-novels/f451/f451.epub#Fahrenheit_451_split_000.html", chapters[1].url)
+        assertEquals("local-novels/f451/f451.epub#Fahrenheit_451_split_001.html", chapters[2].url)
+        assertEquals("local-novels/f451/f451.epub#Fahrenheit_451_split_002.html", chapters[3].url)
+        assertEquals("local-novels/f451/f451.epub#Fahrenheit_451_split_003.html", chapters[4].url)
+        assertEquals("local-novels/f451/f451.epub#Fahrenheit_451_split_004.html", chapters[5].url)
+
+        assertEquals("titlepage", chapters[0].name)
+        assertEquals("Fahrenheit 451 split 000", chapters[1].name)
+        assertEquals("PART ONE", chapters[2].name)
+        assertEquals("PART TWO", chapters[3].name)
+        assertEquals("PART THREE", chapters[4].name)
+        assertEquals("Fahrenheit 451 split 004", chapters[5].name)
+    }
+
+    @Test
+    fun `buildEpubChaptersFromToc skips navigation docs in spine when not in toc`() {
+        val chapters = buildEpubChaptersFromToc(
+            mangaUrl = "local-novels/book",
+            chapterFileName = "volume.epub",
+            chapterFileNameWithoutExtension = "volume",
+            chapterLastModified = 1L,
+            tocChapters = listOf(
+                EpubReader.EpubChapter(
+                    title = "Chapter 1",
+                    href = "text/chapter1.xhtml",
+                    order = 0,
+                ),
+            ),
+            spinePageHrefs = listOf(
+                "nav.xhtml",
+                "toc.xhtml",
+                "text/chapter1.xhtml",
+            ),
+            hasMultipleEpubFiles = false,
+        )
+
+        assertEquals(1, chapters.size)
+        assertEquals("local-novels/book/volume.epub#text/chapter1.xhtml", chapters[0].url)
+        assertEquals("Chapter 1", chapters[0].name)
+    }
 }

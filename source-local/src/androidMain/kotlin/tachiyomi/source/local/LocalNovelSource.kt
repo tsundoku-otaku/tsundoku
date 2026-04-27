@@ -248,6 +248,7 @@ actual class LocalNovelSource(
 
                         val tocChapters = epub.getNormalizedTableOfContents()
                         if (tocChapters.isNotEmpty()) {
+                            val spinePageHrefs = epub.getSpinePageHrefs()
                             allChapters.addAll(
                                 buildEpubChaptersFromToc(
                                     mangaUrl = manga.url,
@@ -255,6 +256,7 @@ actual class LocalNovelSource(
                                     chapterFileNameWithoutExtension = chapterFile.nameWithoutExtension.orEmpty(),
                                     chapterLastModified = chapterFile.lastModified(),
                                     tocChapters = tocChapters,
+                                    spinePageHrefs = spinePageHrefs,
                                     hasMultipleEpubFiles = hasMultipleEpubFiles,
                                 ),
                             )
