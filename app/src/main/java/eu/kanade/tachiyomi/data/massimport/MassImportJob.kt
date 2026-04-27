@@ -190,22 +190,32 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         fun getCachedSource(url: String): CatalogueSource? {
             return sourceCache.computeIfAbsent(url) { findMatchingSource(url, importSources) }
         }
+        
+        // Cache DB lookups to avoid repeated queries for same URL
+        val dbCache = ConcurrentHashMap<Pair<Long, String>, Boolean>()
+        suspend fun isAlreadyInLibrary(sourceId: Long, path: String): Boolean {
+            val key = sourceId to path
+            return dbCache.getOrPut(key) {
+                getMangaByUrlAndSourceId.await(path, sourceId)?.favorite ?: false
+            }
+        }
 
-    // Cache DB lookups to avoid repeated queries for same URL
-    val dbCache = ConcurrentHashMap<Pair<Long, String>, Boolean>()
-    suspend fun isAlreadyInLibrary(sourceId: Long, path: String): Boolean {
-        val key = sourceId to path
-        dbCache[key]?.let { return it }
-        val value = getMangaByUrlAndSourceId.await(path, sourceId)?.favorite ?: false
-        val prev = dbCache.putIfAbsent(key, value)
-        return prev ?: value
-    }
+        // Cache DB lookups to avoid repeated queries for same URL
+        val dbCache = ConcurrentHashMap<Pair<Long, String>, Boolean>()
+        suspend fun isAlreadyInLibrary(sourceId: Long, path: String): Boolean {
+            val key = sourceId to path
+            dbCache[key]?.let { return it }
+            val value = getMangaByUrlAndSourceId.await(path, sourceId)?.favorite ?: false
+            val prev = dbCache.putIfAbsent(key, value)
+            return prev ?: value
+        }
 
         // Stream URLs without materializing full list upfront
         // Validate on first pass: count valid URLs for progress tracking
         val validUrlsSequence = urls.asSequence()
             .filter { it.isNotBlank() }
             .filter { url -> url.startsWith("http://") || url.startsWith("https://") }
+
         // Materialize and validate URLs asynchronously to check DB per-URL
         var validCount = 0
         val validUrlsList = mutableListOf<String>()
