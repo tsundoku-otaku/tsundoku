@@ -18,6 +18,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 
 ### Improved
+- Shiny new import EPUB process [@mrissaoussama](https://github.com/mrissaoussama) [#177](https://github.com/tsundoku-otaku/tsundoku/pull/177)
 - Duplicate screen and mass import [@mrissaoussama](https://github.com/mrissaoussama) [#163](https://github.com/tsundoku-otaku/tsundoku/pull/163)
 - Show include/exclude icon on tag chips [@mrissaoussama](https://github.com/mrissaoussama) [#168](https://github.com/tsundoku-otaku/tsundoku/pull/168)
 - Local novels now show under downloaded-only [@mrissaoussama](https://github.com/mrissaoussama) [#169](https://github.com/tsundoku-otaku/tsundoku/pull/169)
