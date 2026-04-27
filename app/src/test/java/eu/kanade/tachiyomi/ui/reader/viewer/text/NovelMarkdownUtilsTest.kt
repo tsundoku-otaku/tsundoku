@@ -7,11 +7,14 @@ class NovelTextNormalizationTest {
 
     @Test
     fun `toHtml escapes unsafe html in plain text`() {
-        val markdown = "Use <script>alert(1)</script> and <tag>."
+        // Pass .txt extension to force plain text detection
+        val content = "Use <script>alert(1)</script> and <tag>."
 
-        val html = NovelMarkdownUtils.toHtml(markdown)
+        val html = NovelViewerTextUtils.normalizeContentForHtml(content, "chapter.txt")
 
-        assertEquals("<p>Use &lt;script&gt;alert(1)&lt;/script&gt; and &lt;tag&gt;.</p>", html)
+        assertTrue(html.contains("data-tsundoku-plain-text=\"1\""))
+        assertTrue(html.contains("&lt;script&gt;"))
+        assertTrue(html.contains("&lt;tag&gt;"))
     }
 
     @Test

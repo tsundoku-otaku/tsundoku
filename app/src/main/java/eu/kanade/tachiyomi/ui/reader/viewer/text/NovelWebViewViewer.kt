@@ -1541,6 +1541,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         chapterName: String? = null,
         chapterUrl: String? = null,
     ) {
+        // Strip script/style/noscript tags from content to prevent unwanted JS execution
         var cleanContent = NovelViewerTextUtils.normalizeContentForHtml(content, chapterUrl)
             .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
             .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
@@ -2107,10 +2108,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
 
         val processedContent = activity.translateContentIfEnabled(content)
-        val renderableContent = NovelViewerTextUtils.normalizeContentForHtml(
-            processedContent,
-            chapter.chapter.url,
-        )
 
         withContext(Dispatchers.Main) {
             if (isDestroyed) return@withContext
