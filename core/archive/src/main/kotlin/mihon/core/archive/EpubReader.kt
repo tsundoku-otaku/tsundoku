@@ -448,7 +448,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         useReaderImageScheme: Boolean,
         bodyOnly: Boolean,
     ): String {
-        val pathPart = chapterHref.substringBefore("#").trim()
+        val pathPart = chapterHref.substringBefore("#").trim().urlDecoded()
         val fragment = chapterHref.substringAfter("#", "").takeIf { it.isNotBlank() }
 
         val packagePath = getPackageHref()
