@@ -612,17 +612,46 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         }.distinct()
 
         for (candidate in candidates) {
-            document.getElementById(candidate)?.outerHtml()?.let { return it }
+            document.getElementById(candidate)?.let { element ->
+                materializeFragmentElement(element)?.let { return it }
+            }
 
             val escaped = candidate
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
             document
                 .selectFirst("*[id=\"$escaped\"], *[name=\"$escaped\"]")
-                ?.outerHtml()
-                ?.let { return it }
+                ?.let { element ->
+                    materializeFragmentElement(element)?.let { return it }
+                }
         }
 
         return null
+    }
+
+    private fun materializeFragmentElement(element: Element): String? {
+        if (isMeaningfulFragmentElement(element)) {
+            return element.outerHtml()
+        }
+
+        // Some EPUB TOCs point to empty anchors (e.g. <a id="..."></a>).
+        // Walk up to a meaningful container; otherwise return null and fall back
+        // to full body/document content.
+        var current: Element? = element.parent()
+        while (current != null && current.tagName() !in setOf("body", "html")) {
+            if (isMeaningfulFragmentElement(current)) {
+                return current.outerHtml()
+            }
+            current = current.parent()
+        }
+
+        return null
+    }
+
+    private fun isMeaningfulFragmentElement(element: Element): Boolean {
+        val text = element.text().trim()
+        if (text.length >= 80) return true
+
+        return element.select("p, div, section, article, table, ul, ol, blockquote, pre, figure, img, svg").isNotEmpty()
     }
 }

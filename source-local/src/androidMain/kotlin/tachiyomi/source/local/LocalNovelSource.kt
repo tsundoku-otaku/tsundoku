@@ -371,10 +371,18 @@ actual class LocalNovelSource(
                     chapterFile.epubReader(context).use { epub ->
                         if (chapterFragment != null) {
                             // Multi-chapter EPUB: read specific chapter
-                            epub.getChapterContent(chapterFragment)
+                            val content = epub.getChapterContent(chapterFragment)
+                            logcat(LogPriority.DEBUG) {
+                                "TEMP EPUB DEBUG: file=${chapterFile.name.orEmpty()} fragmentPath=${chapterFragment.substringBefore('#')} textLength=${content.length}"
+                            }
+                            content
                         } else {
                             // Single chapter EPUB: read all content
-                            epub.getTextContent()
+                            val content = epub.getTextContent()
+                            logcat(LogPriority.DEBUG) {
+                                "TEMP EPUB DEBUG: file=${chapterFile.name.orEmpty()} fullTextLength=${content.length}"
+                            }
+                            content
                         }
                     }
                 }

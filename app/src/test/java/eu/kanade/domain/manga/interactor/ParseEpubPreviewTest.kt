@@ -55,4 +55,35 @@ class ParseEpubPreviewTest {
 
         assertEquals("first_book", parser.defaultCustomTitleFromCandidates(files))
     }
+
+    @Test
+    fun `defaultCustomTitle ignores blank collections`() {
+        val files = listOf(
+            ParseEpubPreview.TitleCandidate(
+                fileName = "pg57493-images-3.epub",
+                title = "Natural History",
+                collection = "   ",
+            ),
+            ParseEpubPreview.TitleCandidate(
+                fileName = "pg49008-images-3.epub",
+                title = "Pliny",
+                collection = "",
+            ),
+        )
+
+        assertEquals("pg57493-images-3", parser.defaultCustomTitleFromCandidates(files))
+    }
+
+    @Test
+    fun `defaultCustomTitle single candidate falls back to filename when title blank`() {
+        val files = listOf(
+            ParseEpubPreview.TitleCandidate(
+                fileName = "pg49008-images-3.epub",
+                title = "  ",
+                collection = null,
+            ),
+        )
+
+        assertEquals("pg49008-images-3", parser.defaultCustomTitleFromCandidates(files))
+    }
 }

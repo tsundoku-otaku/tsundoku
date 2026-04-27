@@ -162,9 +162,16 @@ class ParseEpubPreview {
 
     fun defaultCustomTitleFromCandidates(candidates: List<TitleCandidate>): String {
         if (candidates.isEmpty()) return ""
-        if (candidates.size == 1) return candidates.first().title
+        if (candidates.size == 1) {
+            val first = candidates.first()
+            return first.title.trim().ifBlank {
+                first.fileName.substringBeforeLast('.', first.fileName)
+            }
+        }
 
-        val commonCollection = candidates.mapNotNull { it.collection }.distinct()
+        val commonCollection = candidates
+            .mapNotNull { it.collection?.trim()?.takeIf { collection -> collection.isNotEmpty() } }
+            .distinct()
         if (commonCollection.size == 1) return commonCollection.first()
 
         val first = candidates.first()
