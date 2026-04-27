@@ -1506,6 +1506,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
     fun isTtsSpeaking(): Boolean = ttsInitialized && tts?.isSpeaking == true
 
+    fun isTtsStarting(): Boolean = pendingTtsStartRequest != null || (!ttsInitialized && tts != null) || (ttsChunks.isEmpty() && isTtsAutoPlay)
+
     fun getTtsProgressPercent(): Int {
         if (ttsChunks.isEmpty()) return 0
         val chunkCount = ttsChunks.size

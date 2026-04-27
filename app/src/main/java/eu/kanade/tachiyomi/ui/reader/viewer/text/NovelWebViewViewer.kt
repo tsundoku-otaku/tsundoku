@@ -2432,6 +2432,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     fun isTtsSpeaking(): Boolean = ttsInitialized && tts?.isSpeaking == true
 
+    fun isTtsStarting(): Boolean = pendingTtsStartRequest != null || pendingTtsText != null || (!ttsInitialized && tts != null) || (ttsChunks.isEmpty() && isTtsAutoPlay)
+
     fun getTtsProgressPercent(): Int {
         if (ttsChunks.isEmpty()) return 0
         val chunkCount = ttsChunks.size

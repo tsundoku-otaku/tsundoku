@@ -1099,7 +1099,7 @@ class ReaderActivity : BaseActivity() {
                 val paused = viewer.isTtsPaused()
                 val speaking = viewer.isTtsSpeaking()
                 NovelTtsState(
-                    active = paused || speaking,
+                    active = paused || speaking || viewer.isTtsStarting(),
                     paused = paused,
                     progressPercent = viewer.getTtsProgressPercent(),
                     novelTitle = novelTitle,
@@ -1112,7 +1112,7 @@ class ReaderActivity : BaseActivity() {
                 val paused = viewer.isTtsPaused()
                 val speaking = viewer.isTtsSpeaking()
                 NovelTtsState(
-                    active = paused || speaking,
+                    active = paused || speaking || viewer.isTtsStarting(),
                     paused = paused,
                     progressPercent = viewer.getTtsProgressPercent(),
                     novelTitle = novelTitle,
