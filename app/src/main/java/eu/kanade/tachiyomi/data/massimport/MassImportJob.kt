@@ -238,9 +238,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val validUrls = validUrlsList
 
         val concurrency = if (!fetchDetails && !fetchChapters) {
-            // Offline mode: cap at reasonable concurrency (16) to avoid overwhelming library updates
-            // Skip throttling delays, but keep concurrency bounded to prevent OOM and library model choking
-            16
+            // Offline mode: skip thread limits, use maximum concurrency
+            Int.MAX_VALUE
         } else {
             novelDownloadPreferences.parallelMassImport().get()
         }
