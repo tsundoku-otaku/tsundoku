@@ -389,9 +389,18 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                             "Processing: ${activeImports.size} active",
                         )
 
-                            try {
-                                val success =
-                                    processUrlWithSource(url, source, addToLibrary, fetchDetails, categoryId, fetchChapters, pendingAddIds, flushBatchSize, dbCache)
+                        try {
+                            val success = processUrlWithSource(
+                                url,
+                                source,
+                                addToLibrary,
+                                fetchDetails,
+                                categoryId,
+                                fetchChapters,
+                                pendingAddIds,
+                                flushBatchSize,
+                                dbCache,
+                            )
                             if (success) {
                                 // processUrlWithSource buffers and flushes manga ids
                                 addedCount.incrementAndGet()
@@ -773,7 +782,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // 2. Free memory drops below 50MB (prevent fragmentation)
         val exceedsThreshold = usedMem.toDouble() / maxMem > MEMORY_PRESSURE_THRESHOLD
         val lowFreeMemory = freeMem < 50 * 1024 * 1024L
-
         if (exceedsThreshold || lowFreeMemory) {
             val usagePercent = (usedMem.toDouble() / maxMem * 100).toInt()
             val reason = if (exceedsThreshold) "threshold" else "low free"
@@ -794,7 +802,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
      */
     private suspend fun flushPendingToLibrary(pendingIds: MutableList<Long>) {
         if (pendingIds.isEmpty()) return
-
         val toFlush = pendingIds.toList()
         try {
             getLibraryManga.addToLibraryBulk(toFlush)
@@ -808,7 +815,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 logcat(LogPriority.ERROR, inner) { "Even refresh failed" }
             }
         }
-
         // Clear the buffer after flush
         pendingIds.clear()
     }
