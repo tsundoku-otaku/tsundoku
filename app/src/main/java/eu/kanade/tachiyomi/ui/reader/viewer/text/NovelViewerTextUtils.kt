@@ -13,6 +13,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.logcat
+import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.html.HtmlGenerator
+import org.intellij.markdown.parser.MarkdownParser
 
 /**
  * Shared utility functions used by both [NovelViewer] (native TextView) and
@@ -22,6 +25,7 @@ object NovelViewerTextUtils {
 
     private enum class ChapterTextKind {
         HTML,
+        MARKDOWN,
         PLAIN_TEXT,
     }
 
@@ -51,8 +55,12 @@ object NovelViewerTextUtils {
      */
     fun normalizeContentForHtml(content: String, chapterUrl: String?): String {
         val normalized = content.replace("\u0000", "")
+        if (isPlainTextChapter(chapterUrl)) {
+            return plainTextToHtml(normalized)
+        }
         return when (detectTextKind(chapterUrl, normalized)) {
             ChapterTextKind.HTML -> normalized
+            ChapterTextKind.MARKDOWN -> markdownToHtml(stripFrontMatter(normalized))
             ChapterTextKind.PLAIN_TEXT -> plainTextToHtml(normalized)
         }
     }
@@ -67,6 +75,7 @@ object NovelViewerTextUtils {
             .orEmpty()
 
         return when (ext) {
+            "md", "markdown" -> ChapterTextKind.MARKDOWN
             "txt", "text" -> ChapterTextKind.PLAIN_TEXT
             "html", "htm", "xhtml", "epub" -> ChapterTextKind.HTML
             else -> {
@@ -85,14 +94,28 @@ object NovelViewerTextUtils {
         }
     }
 
+    private fun stripFrontMatter(markdown: String): String {
+        return frontMatterRegex.replaceFirst(markdown, "")
+    }
+
+    private fun markdownToHtml(markdown: String): String {
+        return try {
+            val flavour = GFMFlavourDescriptor()
+            val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
+            val rendered = HtmlGenerator(markdown, parsedTree, flavour).generateHtml()
+            "<div data-tsundoku-markdown=\"1\">$rendered</div>"
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN) { "Markdown render fallback to plain text: ${e.message}" }
+            plainTextToHtml(markdown)
+        }
+    }
+
     private fun plainTextToHtml(text: String): String {
         val normalized = text
             .replace("\r\n", "\n")
             .replace("\r", "\n")
         val escaped = escapeHtml(normalized)
-        return """
-            <pre data-tsundoku-plain-text="1" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;">$escaped</pre>
-        """.trimIndent()
+        return "<pre data-tsundoku-plain-text=\"1\" style=\"white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;\">$escaped</pre>"
     }
 
     private fun escapeHtml(text: String): String {

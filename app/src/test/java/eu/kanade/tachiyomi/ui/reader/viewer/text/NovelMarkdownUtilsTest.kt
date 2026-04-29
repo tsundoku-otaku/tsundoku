@@ -8,15 +8,14 @@ class NovelTextNormalizationTest {
     @Test
     fun `toHtml escapes unsafe html in plain text`() {
         // Pass .txt extension to force plain text detection
-        val content = "Hi\nLine break\n<p> para <p>\n\n<strong> should not be strong  </strong>"
+        val content = "Hi\nLine break\n<quote> para <quote>\n\n<bold> should not be bold"
 
         val html = NovelViewerTextUtils.normalizeContentForHtml(content, "chapter.txt")
-
         assertTrue(html.startsWith("<pre "))
         assertTrue(html.contains("data-tsundoku-plain-text=\"1\""))
         assertTrue(html.contains("Hi\nLine break"))
-        assertTrue(html.contains("&lt;p&gt; para &lt;p&gt;"))
-        assertTrue(html.contains("&lt;strong&gt; should not be strong  &lt;/strong&gt;"))
+        assertTrue(html.contains("&lt;quote&gt; para &lt;quote&gt;"))
+        assertTrue(html.contains("&lt;bold&gt; should not be bold"))
     }
 
     @Test
