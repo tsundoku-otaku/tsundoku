@@ -807,8 +807,14 @@ class JsSource(
                 title = obj["name"]?.jsonPrimitive?.content?.decodeEntities() ?: existing.title
                 author = obj["author"]?.jsonPrimitive?.content?.decodeEntities() ?: existing.author
                 artist = obj["artist"]?.jsonPrimitive?.content?.decodeEntities()
-                description = normalizeHtmlDescription(obj["summary"]?.jsonPrimitive?.content)
+                description = normalizeHtmlDescription(
+                    obj["summary"]?.jsonPrimitive?.content
+                        ?: obj["desc"]?.jsonPrimitive?.content
+                        ?: obj["description"]?.jsonPrimitive?.content,
+                )
                 genre = obj["genres"]?.jsonPrimitive?.content?.decodeEntities()
+                    ?: obj["tags"]?.jsonPrimitive?.content?.decodeEntities()
+                    ?: obj["genre"]?.jsonPrimitive?.content?.decodeEntities()
                 // Parse alternative names if available
                 val altNames = obj["alternativeNames"]?.jsonPrimitive?.content?.decodeEntities()
                     ?: obj["altNames"]?.jsonPrimitive?.content?.decodeEntities()

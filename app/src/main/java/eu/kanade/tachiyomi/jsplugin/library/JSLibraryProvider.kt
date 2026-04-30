@@ -1165,7 +1165,9 @@ class JSLibraryProvider(
                 find: function(s) {
                     // If s is a wrapped cheerio object, return it directly
                     if (s && s._h !== undefined) return s;
-                    return __wrapHandle(__cheerioSelect(h, typeof s === 'string' ? s : ''));
+                    var next = __wrapHandle(__cheerioSelect(h, typeof s === 'string' ? s : ''));
+                    next._prev = this;
+                    return next;
                 },
                 text: function() { return __cheerioText(h); },
                 html: function() { return __cheerioHtml(h); },
@@ -1274,7 +1276,7 @@ class JSLibraryProvider(
                 removeClass: function() { return this; },
                 replaceWith: function(content) { if (typeof content === 'string') { __cheerioAfter(h, content); __cheerioRemove(h); } return this; },
                 addBack: function() { return this; },
-                end: function() { return this; },
+                end: function() { return this._prev || this; },
                 slice: function(start, end) {
                     var arr = this.toArray();
                     return __arrayToCheerio(arr.slice(start, end));
