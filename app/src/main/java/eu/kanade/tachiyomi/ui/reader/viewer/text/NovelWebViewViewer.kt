@@ -472,8 +472,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }.apply {
             isFocusable = true
             isFocusableInTouchMode = true
-            scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
-            isScrollbarFadingEnabled = false
             applyWebViewScrollbarSettings(this)
             settings.apply {
                 javaScriptEnabled = true
@@ -646,10 +644,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     }
 
     private fun applyWebViewScrollbarSettings(target: WebView = webView) {
-        target.isVerticalScrollBarEnabled = false
+        target.isVerticalScrollBarEnabled = true
         target.isHorizontalScrollBarEnabled = false
         target.scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
-        target.isScrollbarFadingEnabled = false
+        target.isScrollbarFadingEnabled = true
+        target.overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         target.layoutDirection = View.LAYOUT_DIRECTION_LTR
     }
 
