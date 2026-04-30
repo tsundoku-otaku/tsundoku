@@ -1,0 +1,778 @@
+<package xmlns="http://www.idpf.org/2007/opf" prefix="ibooks: http://vocabulary.itunes.apple.com/rdf/ibooks/vocabulary-extensions-1.0/" unique-identifier="epub9788835730422" version="3.0" xml:lang="it-IT">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:identifier id="epub9788835730422"/>
+<dc:title>Il Trono di Vetro Volume 1</dc:title>
+<dc:creator id="creator01">Sarah J. Maas</dc:creator>
+<meta property="file-as" refines="#creator01">Maas, Sarah J.</meta>
+<meta property="role" refines="#creator01" scheme="marc:relators">aut</meta>
+<dc:publisher>Mondadori</dc:publisher>
+<dc:rights>© 2023 Mondadori Libri S.p.A., Milano</dc:rights>
+<dc:language>it-IT</dc:language>
+<dc:date>2023-10-20T12:00:00Z</dc:date>
+<meta property="dcterms:modified">2023-10-20T12:00:00Z</meta>
+<meta property="ibooks:specified-fonts">true</meta>
+<meta content="cover_800-jpg" name="cover"/>
+<description xmlns="http://purl.org/dc/elements/1.1/">EDGT2197930</description>
+</metadata>
+<manifest>
+
+<!-- TOC -->
+
+<item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/>
+<item href="toc.xhtml" id="nav" media-type="application/xhtml+xml" properties="nav"/>
+
+<!-- PAGES -->
+
+<item href="p000_cover.xhtml" id="p000" media-type="application/xhtml+xml"/>
+<item href="p001_il-libro.xhtml" id="p001" media-type="application/xhtml+xml"/>
+<item href="p003_frontispiece.xhtml" id="p003" media-type="application/xhtml+xml"/>
+<item href="p004_half-title.xhtml" id="p004" media-type="application/xhtml+xml"/>
+<item href="p005_frontmatter-01.xhtml" id="p005" media-type="application/xhtml+xml"/>
+<item href="p006_frontmatter-02.xhtml" id="p006" media-type="application/xhtml+xml"/>
+<item href="p007_inserto-01.xhtml" id="p007" media-type="application/xhtml+xml"/>
+<item href="p008_inserto-02.xhtml" id="p008" media-type="application/xhtml+xml"/>
+<item href="p009_half-title-01.xhtml" id="p009" media-type="application/xhtml+xml"/>
+<item href="p010_dedication-01.xhtml" id="p010" media-type="application/xhtml+xml"/>
+<item href="p011_capitolo-01.xhtml" id="p011" media-type="application/xhtml+xml"/>
+<item href="p012_capitolo-02.xhtml" id="p012" media-type="application/xhtml+xml"/>
+<item href="p013_capitolo-03.xhtml" id="p013" media-type="application/xhtml+xml"/>
+<item href="p014_capitolo-04.xhtml" id="p014" media-type="application/xhtml+xml"/>
+<item href="p015_capitolo-05.xhtml" id="p015" media-type="application/xhtml+xml"/>
+<item href="p016_capitolo-06.xhtml" id="p016" media-type="application/xhtml+xml"/>
+<item href="p017_capitolo-07.xhtml" id="p017" media-type="application/xhtml+xml"/>
+<item href="p018_capitolo-08.xhtml" id="p018" media-type="application/xhtml+xml"/>
+<item href="p019_capitolo-09.xhtml" id="p019" media-type="application/xhtml+xml"/>
+<item href="p020_capitolo-10.xhtml" id="p020" media-type="application/xhtml+xml"/>
+<item href="p021_capitolo-11.xhtml" id="p021" media-type="application/xhtml+xml"/>
+<item href="p022_capitolo-12.xhtml" id="p022" media-type="application/xhtml+xml"/>
+<item href="p023_capitolo-13.xhtml" id="p023" media-type="application/xhtml+xml"/>
+<item href="p024_capitolo-14.xhtml" id="p024" media-type="application/xhtml+xml"/>
+<item href="p025_capitolo-15.xhtml" id="p025" media-type="application/xhtml+xml"/>
+<item href="p026_capitolo-16.xhtml" id="p026" media-type="application/xhtml+xml"/>
+<item href="p027_capitolo-17.xhtml" id="p027" media-type="application/xhtml+xml"/>
+<item href="p028_capitolo-18.xhtml" id="p028" media-type="application/xhtml+xml"/>
+<item href="p029_capitolo-19.xhtml" id="p029" media-type="application/xhtml+xml"/>
+<item href="p030_capitolo-20.xhtml" id="p030" media-type="application/xhtml+xml"/>
+<item href="p031_capitolo-21.xhtml" id="p031" media-type="application/xhtml+xml"/>
+<item href="p032_capitolo-22.xhtml" id="p032" media-type="application/xhtml+xml"/>
+<item href="p033_capitolo-23.xhtml" id="p033" media-type="application/xhtml+xml"/>
+<item href="p034_capitolo-24.xhtml" id="p034" media-type="application/xhtml+xml"/>
+<item href="p035_capitolo-25.xhtml" id="p035" media-type="application/xhtml+xml"/>
+<item href="p036_capitolo-26.xhtml" id="p036" media-type="application/xhtml+xml"/>
+<item href="p037_capitolo-27.xhtml" id="p037" media-type="application/xhtml+xml"/>
+<item href="p038_capitolo-28.xhtml" id="p038" media-type="application/xhtml+xml"/>
+<item href="p039_capitolo-29.xhtml" id="p039" media-type="application/xhtml+xml"/>
+<item href="p040_capitolo-30.xhtml" id="p040" media-type="application/xhtml+xml"/>
+<item href="p041_capitolo-31.xhtml" id="p041" media-type="application/xhtml+xml"/>
+<item href="p042_capitolo-32.xhtml" id="p042" media-type="application/xhtml+xml"/>
+<item href="p043_capitolo-33.xhtml" id="p043" media-type="application/xhtml+xml"/>
+<item href="p044_capitolo-34.xhtml" id="p044" media-type="application/xhtml+xml"/>
+<item href="p045_capitolo-35.xhtml" id="p045" media-type="application/xhtml+xml"/>
+<item href="p046_capitolo-36.xhtml" id="p046" media-type="application/xhtml+xml"/>
+<item href="p047_capitolo-37.xhtml" id="p047" media-type="application/xhtml+xml"/>
+<item href="p048_capitolo-38.xhtml" id="p048" media-type="application/xhtml+xml"/>
+<item href="p049_capitolo-39.xhtml" id="p049" media-type="application/xhtml+xml"/>
+<item href="p050_capitolo-40.xhtml" id="p050" media-type="application/xhtml+xml"/>
+<item href="p051_capitolo-41.xhtml" id="p051" media-type="application/xhtml+xml"/>
+<item href="p052_capitolo-42.xhtml" id="p052" media-type="application/xhtml+xml"/>
+<item href="p053_capitolo-43.xhtml" id="p053" media-type="application/xhtml+xml"/>
+<item href="p054_capitolo-44.xhtml" id="p054" media-type="application/xhtml+xml"/>
+<item href="p055_capitolo-45.xhtml" id="p055" media-type="application/xhtml+xml"/>
+<item href="p056_capitolo-46.xhtml" id="p056" media-type="application/xhtml+xml"/>
+<item href="p057_capitolo-47.xhtml" id="p057" media-type="application/xhtml+xml"/>
+<item href="p058_capitolo-48.xhtml" id="p058" media-type="application/xhtml+xml"/>
+<item href="p059_capitolo-49.xhtml" id="p059" media-type="application/xhtml+xml"/>
+<item href="p060_capitolo-50.xhtml" id="p060" media-type="application/xhtml+xml"/>
+<item href="p061_capitolo-51.xhtml" id="p061" media-type="application/xhtml+xml"/>
+<item href="p062_capitolo-52.xhtml" id="p062" media-type="application/xhtml+xml"/>
+<item href="p063_capitolo-53.xhtml" id="p063" media-type="application/xhtml+xml"/>
+<item href="p064_capitolo-54.xhtml" id="p064" media-type="application/xhtml+xml"/>
+<item href="p065_capitolo-55.xhtml" id="p065" media-type="application/xhtml+xml"/>
+<item href="p066_ringraziamenti-01.xhtml" id="p066" media-type="application/xhtml+xml"/>
+<item href="p067_inserto-03.xhtml" id="p067" media-type="application/xhtml+xml"/>
+<item href="p068_half-title-02.xhtml" id="p068" media-type="application/xhtml+xml"/>
+<item href="p069_dedication-02.xhtml" id="p069" media-type="application/xhtml+xml"/>
+<item href="p070_parte-01.xhtml" id="p070" media-type="application/xhtml+xml"/>
+<item href="p071_capitolo-56.xhtml" id="p071" media-type="application/xhtml+xml"/>
+<item href="p072_capitolo-57.xhtml" id="p072" media-type="application/xhtml+xml"/>
+<item href="p073_capitolo-58.xhtml" id="p073" media-type="application/xhtml+xml"/>
+<item href="p074_capitolo-59.xhtml" id="p074" media-type="application/xhtml+xml"/>
+<item href="p075_capitolo-60.xhtml" id="p075" media-type="application/xhtml+xml"/>
+<item href="p076_capitolo-61.xhtml" id="p076" media-type="application/xhtml+xml"/>
+<item href="p077_capitolo-62.xhtml" id="p077" media-type="application/xhtml+xml"/>
+<item href="p078_capitolo-63.xhtml" id="p078" media-type="application/xhtml+xml"/>
+<item href="p079_capitolo-64.xhtml" id="p079" media-type="application/xhtml+xml"/>
+<item href="p080_capitolo-65.xhtml" id="p080" media-type="application/xhtml+xml"/>
+<item href="p081_capitolo-66.xhtml" id="p081" media-type="application/xhtml+xml"/>
+<item href="p082_capitolo-67.xhtml" id="p082" media-type="application/xhtml+xml"/>
+<item href="p083_capitolo-68.xhtml" id="p083" media-type="application/xhtml+xml"/>
+<item href="p084_capitolo-69.xhtml" id="p084" media-type="application/xhtml+xml"/>
+<item href="p085_capitolo-70.xhtml" id="p085" media-type="application/xhtml+xml"/>
+<item href="p086_capitolo-71.xhtml" id="p086" media-type="application/xhtml+xml"/>
+<item href="p087_capitolo-72.xhtml" id="p087" media-type="application/xhtml+xml"/>
+<item href="p088_capitolo-73.xhtml" id="p088" media-type="application/xhtml+xml"/>
+<item href="p089_capitolo-74.xhtml" id="p089" media-type="application/xhtml+xml"/>
+<item href="p090_capitolo-75.xhtml" id="p090" media-type="application/xhtml+xml"/>
+<item href="p091_capitolo-76.xhtml" id="p091" media-type="application/xhtml+xml"/>
+<item href="p092_capitolo-77.xhtml" id="p092" media-type="application/xhtml+xml"/>
+<item href="p093_capitolo-78.xhtml" id="p093" media-type="application/xhtml+xml"/>
+<item href="p094_capitolo-79.xhtml" id="p094" media-type="application/xhtml+xml"/>
+<item href="p095_capitolo-80.xhtml" id="p095" media-type="application/xhtml+xml"/>
+<item href="p096_capitolo-81.xhtml" id="p096" media-type="application/xhtml+xml"/>
+<item href="p097_capitolo-82.xhtml" id="p097" media-type="application/xhtml+xml"/>
+<item href="p098_capitolo-83.xhtml" id="p098" media-type="application/xhtml+xml"/>
+<item href="p099_capitolo-84.xhtml" id="p099" media-type="application/xhtml+xml"/>
+<item href="p100_parte-02.xhtml" id="p100" media-type="application/xhtml+xml"/>
+<item href="p101_capitolo-85.xhtml" id="p101" media-type="application/xhtml+xml"/>
+<item href="p102_capitolo-86.xhtml" id="p102" media-type="application/xhtml+xml"/>
+<item href="p103_capitolo-87.xhtml" id="p103" media-type="application/xhtml+xml"/>
+<item href="p104_capitolo-88.xhtml" id="p104" media-type="application/xhtml+xml"/>
+<item href="p105_capitolo-89.xhtml" id="p105" media-type="application/xhtml+xml"/>
+<item href="p106_capitolo-90.xhtml" id="p106" media-type="application/xhtml+xml"/>
+<item href="p107_capitolo-91.xhtml" id="p107" media-type="application/xhtml+xml"/>
+<item href="p108_capitolo-92.xhtml" id="p108" media-type="application/xhtml+xml"/>
+<item href="p109_capitolo-93.xhtml" id="p109" media-type="application/xhtml+xml"/>
+<item href="p110_capitolo-94.xhtml" id="p110" media-type="application/xhtml+xml"/>
+<item href="p111_capitolo-95.xhtml" id="p111" media-type="application/xhtml+xml"/>
+<item href="p112_capitolo-96.xhtml" id="p112" media-type="application/xhtml+xml"/>
+<item href="p113_capitolo-97.xhtml" id="p113" media-type="application/xhtml+xml"/>
+<item href="p114_capitolo-98.xhtml" id="p114" media-type="application/xhtml+xml"/>
+<item href="p115_capitolo-99.xhtml" id="p115" media-type="application/xhtml+xml"/>
+<item href="p116_capitolo-100.xhtml" id="p116" media-type="application/xhtml+xml"/>
+<item href="p117_capitolo-101.xhtml" id="p117" media-type="application/xhtml+xml"/>
+<item href="p118_capitolo-102.xhtml" id="p118" media-type="application/xhtml+xml"/>
+<item href="p119_capitolo-103.xhtml" id="p119" media-type="application/xhtml+xml"/>
+<item href="p120_capitolo-104.xhtml" id="p120" media-type="application/xhtml+xml"/>
+<item href="p121_capitolo-105.xhtml" id="p121" media-type="application/xhtml+xml"/>
+<item href="p122_capitolo-106.xhtml" id="p122" media-type="application/xhtml+xml"/>
+<item href="p123_capitolo-107.xhtml" id="p123" media-type="application/xhtml+xml"/>
+<item href="p124_capitolo-108.xhtml" id="p124" media-type="application/xhtml+xml"/>
+<item href="p125_capitolo-109.xhtml" id="p125" media-type="application/xhtml+xml"/>
+<item href="p126_capitolo-110.xhtml" id="p126" media-type="application/xhtml+xml"/>
+<item href="p127_capitolo-111.xhtml" id="p127" media-type="application/xhtml+xml"/>
+<item href="p128_ringraziamenti-02.xhtml" id="p128" media-type="application/xhtml+xml"/>
+<item href="p129_inserto-04.xhtml" id="p129" media-type="application/xhtml+xml"/>
+<item href="p130_half-title-03.xhtml" id="p130" media-type="application/xhtml+xml"/>
+<item href="p131_dedication-03.xhtml" id="p131" media-type="application/xhtml+xml"/>
+<item href="p132_parte-03.xhtml" id="p132" media-type="application/xhtml+xml"/>
+<item href="p133_capitolo-112.xhtml" id="p133" media-type="application/xhtml+xml"/>
+<item href="p134_capitolo-113.xhtml" id="p134" media-type="application/xhtml+xml"/>
+<item href="p135_capitolo-114.xhtml" id="p135" media-type="application/xhtml+xml"/>
+<item href="p136_capitolo-115.xhtml" id="p136" media-type="application/xhtml+xml"/>
+<item href="p137_capitolo-116.xhtml" id="p137" media-type="application/xhtml+xml"/>
+<item href="p138_capitolo-117.xhtml" id="p138" media-type="application/xhtml+xml"/>
+<item href="p139_capitolo-118.xhtml" id="p139" media-type="application/xhtml+xml"/>
+<item href="p140_capitolo-119.xhtml" id="p140" media-type="application/xhtml+xml"/>
+<item href="p141_capitolo-120.xhtml" id="p141" media-type="application/xhtml+xml"/>
+<item href="p142_capitolo-121.xhtml" id="p142" media-type="application/xhtml+xml"/>
+<item href="p143_parte-04.xhtml" id="p143" media-type="application/xhtml+xml"/>
+<item href="p144_capitolo-122.xhtml" id="p144" media-type="application/xhtml+xml"/>
+<item href="p145_capitolo-123.xhtml" id="p145" media-type="application/xhtml+xml"/>
+<item href="p146_capitolo-124.xhtml" id="p146" media-type="application/xhtml+xml"/>
+<item href="p147_capitolo-125.xhtml" id="p147" media-type="application/xhtml+xml"/>
+<item href="p148_capitolo-126.xhtml" id="p148" media-type="application/xhtml+xml"/>
+<item href="p149_capitolo-127.xhtml" id="p149" media-type="application/xhtml+xml"/>
+<item href="p150_parte-05.xhtml" id="p150" media-type="application/xhtml+xml"/>
+<item href="p151_capitolo-128.xhtml" id="p151" media-type="application/xhtml+xml"/>
+<item href="p152_capitolo-129.xhtml" id="p152" media-type="application/xhtml+xml"/>
+<item href="p153_capitolo-130.xhtml" id="p153" media-type="application/xhtml+xml"/>
+<item href="p154_capitolo-131.xhtml" id="p154" media-type="application/xhtml+xml"/>
+<item href="p155_capitolo-132.xhtml" id="p155" media-type="application/xhtml+xml"/>
+<item href="p156_capitolo-133.xhtml" id="p156" media-type="application/xhtml+xml"/>
+<item href="p157_capitolo-134.xhtml" id="p157" media-type="application/xhtml+xml"/>
+<item href="p158_capitolo-135.xhtml" id="p158" media-type="application/xhtml+xml"/>
+<item href="p159_capitolo-136.xhtml" id="p159" media-type="application/xhtml+xml"/>
+<item href="p160_capitolo-137.xhtml" id="p160" media-type="application/xhtml+xml"/>
+<item href="p161_capitolo-138.xhtml" id="p161" media-type="application/xhtml+xml"/>
+<item href="p162_capitolo-139.xhtml" id="p162" media-type="application/xhtml+xml"/>
+<item href="p163_parte-06.xhtml" id="p163" media-type="application/xhtml+xml"/>
+<item href="p164_capitolo-140.xhtml" id="p164" media-type="application/xhtml+xml"/>
+<item href="p165_capitolo-141.xhtml" id="p165" media-type="application/xhtml+xml"/>
+<item href="p166_capitolo-142.xhtml" id="p166" media-type="application/xhtml+xml"/>
+<item href="p167_capitolo-143.xhtml" id="p167" media-type="application/xhtml+xml"/>
+<item href="p168_capitolo-144.xhtml" id="p168" media-type="application/xhtml+xml"/>
+<item href="p169_capitolo-145.xhtml" id="p169" media-type="application/xhtml+xml"/>
+<item href="p170_capitolo-146.xhtml" id="p170" media-type="application/xhtml+xml"/>
+<item href="p171_capitolo-147.xhtml" id="p171" media-type="application/xhtml+xml"/>
+<item href="p172_capitolo-148.xhtml" id="p172" media-type="application/xhtml+xml"/>
+<item href="p173_capitolo-149.xhtml" id="p173" media-type="application/xhtml+xml"/>
+<item href="p174_capitolo-150.xhtml" id="p174" media-type="application/xhtml+xml"/>
+<item href="p175_capitolo-151.xhtml" id="p175" media-type="application/xhtml+xml"/>
+<item href="p176_parte-07.xhtml" id="p176" media-type="application/xhtml+xml"/>
+<item href="p177_capitolo-152.xhtml" id="p177" media-type="application/xhtml+xml"/>
+<item href="p178_capitolo-153.xhtml" id="p178" media-type="application/xhtml+xml"/>
+<item href="p179_capitolo-154.xhtml" id="p179" media-type="application/xhtml+xml"/>
+<item href="p180_capitolo-155.xhtml" id="p180" media-type="application/xhtml+xml"/>
+<item href="p181_capitolo-156.xhtml" id="p181" media-type="application/xhtml+xml"/>
+<item href="p182_capitolo-157.xhtml" id="p182" media-type="application/xhtml+xml"/>
+<item href="p183_capitolo-158.xhtml" id="p183" media-type="application/xhtml+xml"/>
+<item href="p184_capitolo-159.xhtml" id="p184" media-type="application/xhtml+xml"/>
+<item href="p185_capitolo-160.xhtml" id="p185" media-type="application/xhtml+xml"/>
+<item href="p186_capitolo-161.xhtml" id="p186" media-type="application/xhtml+xml"/>
+<item href="p187_capitolo-162.xhtml" id="p187" media-type="application/xhtml+xml"/>
+<item href="p188_capitolo-163.xhtml" id="p188" media-type="application/xhtml+xml"/>
+<item href="p189_capitolo-164.xhtml" id="p189" media-type="application/xhtml+xml"/>
+<item href="p190_capitolo-165.xhtml" id="p190" media-type="application/xhtml+xml"/>
+<item href="p191_capitolo-166.xhtml" id="p191" media-type="application/xhtml+xml"/>
+<item href="p192_ringraziamenti-03.xhtml" id="p192" media-type="application/xhtml+xml"/>
+<item href="p193_inserto-05.xhtml" id="p193" media-type="application/xhtml+xml"/>
+<item href="p194_half-title-04.xhtml" id="p194" media-type="application/xhtml+xml"/>
+<item href="p195_dedication-04.xhtml" id="p195" media-type="application/xhtml+xml"/>
+<item href="p196_parte-08.xhtml" id="p196" media-type="application/xhtml+xml"/>
+<item href="p197_capitolo-167.xhtml" id="p197" media-type="application/xhtml+xml"/>
+<item href="p198_capitolo-168.xhtml" id="p198" media-type="application/xhtml+xml"/>
+<item href="p199_capitolo-169.xhtml" id="p199" media-type="application/xhtml+xml"/>
+<item href="p200_capitolo-170.xhtml" id="p200" media-type="application/xhtml+xml"/>
+<item href="p201_capitolo-171.xhtml" id="p201" media-type="application/xhtml+xml"/>
+<item href="p202_capitolo-172.xhtml" id="p202" media-type="application/xhtml+xml"/>
+<item href="p203_capitolo-173.xhtml" id="p203" media-type="application/xhtml+xml"/>
+<item href="p204_capitolo-174.xhtml" id="p204" media-type="application/xhtml+xml"/>
+<item href="p205_capitolo-175.xhtml" id="p205" media-type="application/xhtml+xml"/>
+<item href="p206_capitolo-176.xhtml" id="p206" media-type="application/xhtml+xml"/>
+<item href="p207_capitolo-177.xhtml" id="p207" media-type="application/xhtml+xml"/>
+<item href="p208_capitolo-178.xhtml" id="p208" media-type="application/xhtml+xml"/>
+<item href="p209_capitolo-179.xhtml" id="p209" media-type="application/xhtml+xml"/>
+<item href="p210_capitolo-180.xhtml" id="p210" media-type="application/xhtml+xml"/>
+<item href="p211_capitolo-181.xhtml" id="p211" media-type="application/xhtml+xml"/>
+<item href="p212_capitolo-182.xhtml" id="p212" media-type="application/xhtml+xml"/>
+<item href="p213_capitolo-183.xhtml" id="p213" media-type="application/xhtml+xml"/>
+<item href="p214_capitolo-184.xhtml" id="p214" media-type="application/xhtml+xml"/>
+<item href="p215_capitolo-185.xhtml" id="p215" media-type="application/xhtml+xml"/>
+<item href="p216_capitolo-186.xhtml" id="p216" media-type="application/xhtml+xml"/>
+<item href="p217_capitolo-187.xhtml" id="p217" media-type="application/xhtml+xml"/>
+<item href="p218_capitolo-188.xhtml" id="p218" media-type="application/xhtml+xml"/>
+<item href="p219_capitolo-189.xhtml" id="p219" media-type="application/xhtml+xml"/>
+<item href="p220_capitolo-190.xhtml" id="p220" media-type="application/xhtml+xml"/>
+<item href="p221_capitolo-191.xhtml" id="p221" media-type="application/xhtml+xml"/>
+<item href="p222_capitolo-192.xhtml" id="p222" media-type="application/xhtml+xml"/>
+<item href="p223_capitolo-193.xhtml" id="p223" media-type="application/xhtml+xml"/>
+<item href="p224_capitolo-194.xhtml" id="p224" media-type="application/xhtml+xml"/>
+<item href="p225_capitolo-195.xhtml" id="p225" media-type="application/xhtml+xml"/>
+<item href="p226_capitolo-196.xhtml" id="p226" media-type="application/xhtml+xml"/>
+<item href="p227_capitolo-197.xhtml" id="p227" media-type="application/xhtml+xml"/>
+<item href="p228_capitolo-198.xhtml" id="p228" media-type="application/xhtml+xml"/>
+<item href="p229_capitolo-199.xhtml" id="p229" media-type="application/xhtml+xml"/>
+<item href="p230_capitolo-200.xhtml" id="p230" media-type="application/xhtml+xml"/>
+<item href="p231_parte-09.xhtml" id="p231" media-type="application/xhtml+xml"/>
+<item href="p232_capitolo-201.xhtml" id="p232" media-type="application/xhtml+xml"/>
+<item href="p233_capitolo-202.xhtml" id="p233" media-type="application/xhtml+xml"/>
+<item href="p234_capitolo-203.xhtml" id="p234" media-type="application/xhtml+xml"/>
+<item href="p235_capitolo-204.xhtml" id="p235" media-type="application/xhtml+xml"/>
+<item href="p236_capitolo-205.xhtml" id="p236" media-type="application/xhtml+xml"/>
+<item href="p237_capitolo-206.xhtml" id="p237" media-type="application/xhtml+xml"/>
+<item href="p238_capitolo-207.xhtml" id="p238" media-type="application/xhtml+xml"/>
+<item href="p239_capitolo-208.xhtml" id="p239" media-type="application/xhtml+xml"/>
+<item href="p240_capitolo-209.xhtml" id="p240" media-type="application/xhtml+xml"/>
+<item href="p241_capitolo-210.xhtml" id="p241" media-type="application/xhtml+xml"/>
+<item href="p242_capitolo-211.xhtml" id="p242" media-type="application/xhtml+xml"/>
+<item href="p243_capitolo-212.xhtml" id="p243" media-type="application/xhtml+xml"/>
+<item href="p244_capitolo-213.xhtml" id="p244" media-type="application/xhtml+xml"/>
+<item href="p245_capitolo-214.xhtml" id="p245" media-type="application/xhtml+xml"/>
+<item href="p246_capitolo-215.xhtml" id="p246" media-type="application/xhtml+xml"/>
+<item href="p247_capitolo-216.xhtml" id="p247" media-type="application/xhtml+xml"/>
+<item href="p248_capitolo-217.xhtml" id="p248" media-type="application/xhtml+xml"/>
+<item href="p249_capitolo-218.xhtml" id="p249" media-type="application/xhtml+xml"/>
+<item href="p250_capitolo-219.xhtml" id="p250" media-type="application/xhtml+xml"/>
+<item href="p251_capitolo-220.xhtml" id="p251" media-type="application/xhtml+xml"/>
+<item href="p252_capitolo-221.xhtml" id="p252" media-type="application/xhtml+xml"/>
+<item href="p253_capitolo-222.xhtml" id="p253" media-type="application/xhtml+xml"/>
+<item href="p254_capitolo-223.xhtml" id="p254" media-type="application/xhtml+xml"/>
+<item href="p255_capitolo-224.xhtml" id="p255" media-type="application/xhtml+xml"/>
+<item href="p256_capitolo-225.xhtml" id="p256" media-type="application/xhtml+xml"/>
+<item href="p257_capitolo-226.xhtml" id="p257" media-type="application/xhtml+xml"/>
+<item href="p258_capitolo-227.xhtml" id="p258" media-type="application/xhtml+xml"/>
+<item href="p259_capitolo-228.xhtml" id="p259" media-type="application/xhtml+xml"/>
+<item href="p260_capitolo-229.xhtml" id="p260" media-type="application/xhtml+xml"/>
+<item href="p261_capitolo-230.xhtml" id="p261" media-type="application/xhtml+xml"/>
+<item href="p262_capitolo-231.xhtml" id="p262" media-type="application/xhtml+xml"/>
+<item href="p263_capitolo-232.xhtml" id="p263" media-type="application/xhtml+xml"/>
+<item href="p264_capitolo-233.xhtml" id="p264" media-type="application/xhtml+xml"/>
+<item href="p265_capitolo-234.xhtml" id="p265" media-type="application/xhtml+xml"/>
+<item href="p266_ringraziamenti-04.xhtml" id="p266" media-type="application/xhtml+xml"/>
+<item href="p267_inserto-06.xhtml" id="p267" media-type="application/xhtml+xml"/>
+<item href="p268_half-title-05.xhtml" id="p268" media-type="application/xhtml+xml"/>
+<item href="p269_dedication-05.xhtml" id="p269" media-type="application/xhtml+xml"/>
+<item href="p270_parte-10.xhtml" id="p270" media-type="application/xhtml+xml"/>
+<item href="p271_capitolo-235.xhtml" id="p271" media-type="application/xhtml+xml"/>
+<item href="p272_capitolo-236.xhtml" id="p272" media-type="application/xhtml+xml"/>
+<item href="p273_capitolo-237.xhtml" id="p273" media-type="application/xhtml+xml"/>
+<item href="p274_capitolo-238.xhtml" id="p274" media-type="application/xhtml+xml"/>
+<item href="p275_capitolo-239.xhtml" id="p275" media-type="application/xhtml+xml"/>
+<item href="p276_capitolo-240.xhtml" id="p276" media-type="application/xhtml+xml"/>
+<item href="p277_capitolo-241.xhtml" id="p277" media-type="application/xhtml+xml"/>
+<item href="p278_capitolo-242.xhtml" id="p278" media-type="application/xhtml+xml"/>
+<item href="p279_capitolo-243.xhtml" id="p279" media-type="application/xhtml+xml"/>
+<item href="p280_capitolo-244.xhtml" id="p280" media-type="application/xhtml+xml"/>
+<item href="p281_capitolo-245.xhtml" id="p281" media-type="application/xhtml+xml"/>
+<item href="p282_capitolo-246.xhtml" id="p282" media-type="application/xhtml+xml"/>
+<item href="p283_capitolo-247.xhtml" id="p283" media-type="application/xhtml+xml"/>
+<item href="p284_capitolo-248.xhtml" id="p284" media-type="application/xhtml+xml"/>
+<item href="p285_capitolo-249.xhtml" id="p285" media-type="application/xhtml+xml"/>
+<item href="p286_capitolo-250.xhtml" id="p286" media-type="application/xhtml+xml"/>
+<item href="p287_capitolo-251.xhtml" id="p287" media-type="application/xhtml+xml"/>
+<item href="p288_capitolo-252.xhtml" id="p288" media-type="application/xhtml+xml"/>
+<item href="p289_capitolo-253.xhtml" id="p289" media-type="application/xhtml+xml"/>
+<item href="p290_capitolo-254.xhtml" id="p290" media-type="application/xhtml+xml"/>
+<item href="p291_capitolo-255.xhtml" id="p291" media-type="application/xhtml+xml"/>
+<item href="p292_capitolo-256.xhtml" id="p292" media-type="application/xhtml+xml"/>
+<item href="p293_capitolo-257.xhtml" id="p293" media-type="application/xhtml+xml"/>
+<item href="p294_capitolo-258.xhtml" id="p294" media-type="application/xhtml+xml"/>
+<item href="p295_capitolo-259.xhtml" id="p295" media-type="application/xhtml+xml"/>
+<item href="p296_capitolo-260.xhtml" id="p296" media-type="application/xhtml+xml"/>
+<item href="p297_capitolo-261.xhtml" id="p297" media-type="application/xhtml+xml"/>
+<item href="p298_capitolo-262.xhtml" id="p298" media-type="application/xhtml+xml"/>
+<item href="p299_capitolo-263.xhtml" id="p299" media-type="application/xhtml+xml"/>
+<item href="p300_capitolo-264.xhtml" id="p300" media-type="application/xhtml+xml"/>
+<item href="p301_capitolo-265.xhtml" id="p301" media-type="application/xhtml+xml"/>
+<item href="p302_capitolo-266.xhtml" id="p302" media-type="application/xhtml+xml"/>
+<item href="p303_capitolo-267.xhtml" id="p303" media-type="application/xhtml+xml"/>
+<item href="p304_capitolo-268.xhtml" id="p304" media-type="application/xhtml+xml"/>
+<item href="p305_capitolo-269.xhtml" id="p305" media-type="application/xhtml+xml"/>
+<item href="p306_capitolo-270.xhtml" id="p306" media-type="application/xhtml+xml"/>
+<item href="p307_capitolo-271.xhtml" id="p307" media-type="application/xhtml+xml"/>
+<item href="p308_capitolo-272.xhtml" id="p308" media-type="application/xhtml+xml"/>
+<item href="p309_capitolo-273.xhtml" id="p309" media-type="application/xhtml+xml"/>
+<item href="p310_capitolo-274.xhtml" id="p310" media-type="application/xhtml+xml"/>
+<item href="p311_capitolo-275.xhtml" id="p311" media-type="application/xhtml+xml"/>
+<item href="p312_capitolo-276.xhtml" id="p312" media-type="application/xhtml+xml"/>
+<item href="p313_capitolo-277.xhtml" id="p313" media-type="application/xhtml+xml"/>
+<item href="p314_capitolo-278.xhtml" id="p314" media-type="application/xhtml+xml"/>
+<item href="p315_capitolo-279.xhtml" id="p315" media-type="application/xhtml+xml"/>
+<item href="p316_capitolo-280.xhtml" id="p316" media-type="application/xhtml+xml"/>
+<item href="p317_capitolo-281.xhtml" id="p317" media-type="application/xhtml+xml"/>
+<item href="p318_parte-11.xhtml" id="p318" media-type="application/xhtml+xml"/>
+<item href="p319_capitolo-282.xhtml" id="p319" media-type="application/xhtml+xml"/>
+<item href="p320_capitolo-283.xhtml" id="p320" media-type="application/xhtml+xml"/>
+<item href="p321_capitolo-284.xhtml" id="p321" media-type="application/xhtml+xml"/>
+<item href="p322_capitolo-285.xhtml" id="p322" media-type="application/xhtml+xml"/>
+<item href="p323_capitolo-286.xhtml" id="p323" media-type="application/xhtml+xml"/>
+<item href="p324_capitolo-287.xhtml" id="p324" media-type="application/xhtml+xml"/>
+<item href="p325_capitolo-288.xhtml" id="p325" media-type="application/xhtml+xml"/>
+<item href="p326_capitolo-289.xhtml" id="p326" media-type="application/xhtml+xml"/>
+<item href="p327_capitolo-290.xhtml" id="p327" media-type="application/xhtml+xml"/>
+<item href="p328_capitolo-291.xhtml" id="p328" media-type="application/xhtml+xml"/>
+<item href="p329_capitolo-292.xhtml" id="p329" media-type="application/xhtml+xml"/>
+<item href="p330_capitolo-293.xhtml" id="p330" media-type="application/xhtml+xml"/>
+<item href="p331_capitolo-294.xhtml" id="p331" media-type="application/xhtml+xml"/>
+<item href="p332_capitolo-295.xhtml" id="p332" media-type="application/xhtml+xml"/>
+<item href="p333_capitolo-296.xhtml" id="p333" media-type="application/xhtml+xml"/>
+<item href="p334_capitolo-297.xhtml" id="p334" media-type="application/xhtml+xml"/>
+<item href="p335_capitolo-298.xhtml" id="p335" media-type="application/xhtml+xml"/>
+<item href="p336_capitolo-299.xhtml" id="p336" media-type="application/xhtml+xml"/>
+<item href="p337_capitolo-300.xhtml" id="p337" media-type="application/xhtml+xml"/>
+<item href="p338_capitolo-301.xhtml" id="p338" media-type="application/xhtml+xml"/>
+<item href="p339_capitolo-302.xhtml" id="p339" media-type="application/xhtml+xml"/>
+<item href="p340_capitolo-303.xhtml" id="p340" media-type="application/xhtml+xml"/>
+<item href="p341_capitolo-304.xhtml" id="p341" media-type="application/xhtml+xml"/>
+<item href="p342_capitolo-305.xhtml" id="p342" media-type="application/xhtml+xml"/>
+<item href="p343_capitolo-306.xhtml" id="p343" media-type="application/xhtml+xml"/>
+<item href="p344_capitolo-307.xhtml" id="p344" media-type="application/xhtml+xml"/>
+<item href="p345_capitolo-308.xhtml" id="p345" media-type="application/xhtml+xml"/>
+<item href="p346_capitolo-309.xhtml" id="p346" media-type="application/xhtml+xml"/>
+<item href="p347_capitolo-310.xhtml" id="p347" media-type="application/xhtml+xml"/>
+<item href="p348_capitolo-311.xhtml" id="p348" media-type="application/xhtml+xml"/>
+<item href="p349_capitolo-312.xhtml" id="p349" media-type="application/xhtml+xml"/>
+<item href="p350_capitolo-313.xhtml" id="p350" media-type="application/xhtml+xml"/>
+<item href="p351_capitolo-314.xhtml" id="p351" media-type="application/xhtml+xml"/>
+<item href="p352_capitolo-315.xhtml" id="p352" media-type="application/xhtml+xml"/>
+<item href="p353_capitolo-316.xhtml" id="p353" media-type="application/xhtml+xml"/>
+<item href="p354_capitolo-317.xhtml" id="p354" media-type="application/xhtml+xml"/>
+<item href="p355_capitolo-318.xhtml" id="p355" media-type="application/xhtml+xml"/>
+<item href="p356_capitolo-319.xhtml" id="p356" media-type="application/xhtml+xml"/>
+<item href="p357_capitolo-320.xhtml" id="p357" media-type="application/xhtml+xml"/>
+<item href="p358_capitolo-321.xhtml" id="p358" media-type="application/xhtml+xml"/>
+<item href="p359_capitolo-322.xhtml" id="p359" media-type="application/xhtml+xml"/>
+<item href="p360_capitolo-323.xhtml" id="p360" media-type="application/xhtml+xml"/>
+<item href="p361_ringraziamenti-05.xhtml" id="p361" media-type="application/xhtml+xml"/>
+<item href="p999_copyright.xhtml" id="p999" media-type="application/xhtml+xml"/>
+
+<!-- CSS -->
+
+<item href="css/s0_style.css" id="s0" media-type="text/css"/>
+<item href="css/s1_template.css" id="s1" media-type="text/css"/>
+<item href="css/s2_extra.css" id="s2" media-type="text/css"/>
+
+<!-- IMAGES -->
+
+<item href="links/images/cover_800.jpg" id="cover_800-jpg" media-type="image/jpeg" properties="cover-image"/>
+<item href="links/images/mondadori_logotipo.png" id="mondadori_logotipo-png" media-type="image/png"/>
+<item href="links/images/ornament.png" id="ornament-png" media-type="image/png"/>
+<item href="links/images/i02.png" id="i02-png" media-type="image/png"/>
+<item href="links/images/i03.png" id="i03-png" media-type="image/png"/>
+<item href="links/images/i04.jpg" id="i04-jpg" media-type="image/jpeg"/>
+<item href="links/images/i05.jpg" id="i05-jpg" media-type="image/jpeg"/>
+<item href="links/images/i06.jpg" id="i06-jpg" media-type="image/jpeg"/>
+<item href="links/images/i07.jpg" id="i07-jpg" media-type="image/jpeg"/>
+<item href="links/images/i08.jpg" id="i08-jpg" media-type="image/jpeg"/>
+</manifest>
+
+<spine toc="ncx">
+<itemref idref="p000"/>
+<itemref idref="nav" linear="no"/>
+<itemref idref="p001"/>
+<itemref idref="p003"/>
+<itemref idref="p004"/>
+<itemref idref="p005"/>
+<itemref idref="p006"/>
+<itemref idref="p007"/>
+<itemref idref="p008"/>
+<itemref idref="p009"/>
+<itemref idref="p010"/>
+<itemref idref="p011"/>
+<itemref idref="p012"/>
+<itemref idref="p013"/>
+<itemref idref="p014"/>
+<itemref idref="p015"/>
+<itemref idref="p016"/>
+<itemref idref="p017"/>
+<itemref idref="p018"/>
+<itemref idref="p019"/>
+<itemref idref="p020"/>
+<itemref idref="p021"/>
+<itemref idref="p022"/>
+<itemref idref="p023"/>
+<itemref idref="p024"/>
+<itemref idref="p025"/>
+<itemref idref="p026"/>
+<itemref idref="p027"/>
+<itemref idref="p028"/>
+<itemref idref="p029"/>
+<itemref idref="p030"/>
+<itemref idref="p031"/>
+<itemref idref="p032"/>
+<itemref idref="p033"/>
+<itemref idref="p034"/>
+<itemref idref="p035"/>
+<itemref idref="p036"/>
+<itemref idref="p037"/>
+<itemref idref="p038"/>
+<itemref idref="p039"/>
+<itemref idref="p040"/>
+<itemref idref="p041"/>
+<itemref idref="p042"/>
+<itemref idref="p043"/>
+<itemref idref="p044"/>
+<itemref idref="p045"/>
+<itemref idref="p046"/>
+<itemref idref="p047"/>
+<itemref idref="p048"/>
+<itemref idref="p049"/>
+<itemref idref="p050"/>
+<itemref idref="p051"/>
+<itemref idref="p052"/>
+<itemref idref="p053"/>
+<itemref idref="p054"/>
+<itemref idref="p055"/>
+<itemref idref="p056"/>
+<itemref idref="p057"/>
+<itemref idref="p058"/>
+<itemref idref="p059"/>
+<itemref idref="p060"/>
+<itemref idref="p061"/>
+<itemref idref="p062"/>
+<itemref idref="p063"/>
+<itemref idref="p064"/>
+<itemref idref="p065"/>
+<itemref idref="p066"/>
+<itemref idref="p067"/>
+<itemref idref="p068"/>
+<itemref idref="p069"/>
+<itemref idref="p070"/>
+<itemref idref="p071"/>
+<itemref idref="p072"/>
+<itemref idref="p073"/>
+<itemref idref="p074"/>
+<itemref idref="p075"/>
+<itemref idref="p076"/>
+<itemref idref="p077"/>
+<itemref idref="p078"/>
+<itemref idref="p079"/>
+<itemref idref="p080"/>
+<itemref idref="p081"/>
+<itemref idref="p082"/>
+<itemref idref="p083"/>
+<itemref idref="p084"/>
+<itemref idref="p085"/>
+<itemref idref="p086"/>
+<itemref idref="p087"/>
+<itemref idref="p088"/>
+<itemref idref="p089"/>
+<itemref idref="p090"/>
+<itemref idref="p091"/>
+<itemref idref="p092"/>
+<itemref idref="p093"/>
+<itemref idref="p094"/>
+<itemref idref="p095"/>
+<itemref idref="p096"/>
+<itemref idref="p097"/>
+<itemref idref="p098"/>
+<itemref idref="p099"/>
+<itemref idref="p100"/>
+<itemref idref="p101"/>
+<itemref idref="p102"/>
+<itemref idref="p103"/>
+<itemref idref="p104"/>
+<itemref idref="p105"/>
+<itemref idref="p106"/>
+<itemref idref="p107"/>
+<itemref idref="p108"/>
+<itemref idref="p109"/>
+<itemref idref="p110"/>
+<itemref idref="p111"/>
+<itemref idref="p112"/>
+<itemref idref="p113"/>
+<itemref idref="p114"/>
+<itemref idref="p115"/>
+<itemref idref="p116"/>
+<itemref idref="p117"/>
+<itemref idref="p118"/>
+<itemref idref="p119"/>
+<itemref idref="p120"/>
+<itemref idref="p121"/>
+<itemref idref="p122"/>
+<itemref idref="p123"/>
+<itemref idref="p124"/>
+<itemref idref="p125"/>
+<itemref idref="p126"/>
+<itemref idref="p127"/>
+<itemref idref="p128"/>
+<itemref idref="p129"/>
+<itemref idref="p130"/>
+<itemref idref="p131"/>
+<itemref idref="p132"/>
+<itemref idref="p133"/>
+<itemref idref="p134"/>
+<itemref idref="p135"/>
+<itemref idref="p136"/>
+<itemref idref="p137"/>
+<itemref idref="p138"/>
+<itemref idref="p139"/>
+<itemref idref="p140"/>
+<itemref idref="p141"/>
+<itemref idref="p142"/>
+<itemref idref="p143"/>
+<itemref idref="p144"/>
+<itemref idref="p145"/>
+<itemref idref="p146"/>
+<itemref idref="p147"/>
+<itemref idref="p148"/>
+<itemref idref="p149"/>
+<itemref idref="p150"/>
+<itemref idref="p151"/>
+<itemref idref="p152"/>
+<itemref idref="p153"/>
+<itemref idref="p154"/>
+<itemref idref="p155"/>
+<itemref idref="p156"/>
+<itemref idref="p157"/>
+<itemref idref="p158"/>
+<itemref idref="p159"/>
+<itemref idref="p160"/>
+<itemref idref="p161"/>
+<itemref idref="p162"/>
+<itemref idref="p163"/>
+<itemref idref="p164"/>
+<itemref idref="p165"/>
+<itemref idref="p166"/>
+<itemref idref="p167"/>
+<itemref idref="p168"/>
+<itemref idref="p169"/>
+<itemref idref="p170"/>
+<itemref idref="p171"/>
+<itemref idref="p172"/>
+<itemref idref="p173"/>
+<itemref idref="p174"/>
+<itemref idref="p175"/>
+<itemref idref="p176"/>
+<itemref idref="p177"/>
+<itemref idref="p178"/>
+<itemref idref="p179"/>
+<itemref idref="p180"/>
+<itemref idref="p181"/>
+<itemref idref="p182"/>
+<itemref idref="p183"/>
+<itemref idref="p184"/>
+<itemref idref="p185"/>
+<itemref idref="p186"/>
+<itemref idref="p187"/>
+<itemref idref="p188"/>
+<itemref idref="p189"/>
+<itemref idref="p190"/>
+<itemref idref="p191"/>
+<itemref idref="p192"/>
+<itemref idref="p193"/>
+<itemref idref="p194"/>
+<itemref idref="p195"/>
+<itemref idref="p196"/>
+<itemref idref="p197"/>
+<itemref idref="p198"/>
+<itemref idref="p199"/>
+<itemref idref="p200"/>
+<itemref idref="p201"/>
+<itemref idref="p202"/>
+<itemref idref="p203"/>
+<itemref idref="p204"/>
+<itemref idref="p205"/>
+<itemref idref="p206"/>
+<itemref idref="p207"/>
+<itemref idref="p208"/>
+<itemref idref="p209"/>
+<itemref idref="p210"/>
+<itemref idref="p211"/>
+<itemref idref="p212"/>
+<itemref idref="p213"/>
+<itemref idref="p214"/>
+<itemref idref="p215"/>
+<itemref idref="p216"/>
+<itemref idref="p217"/>
+<itemref idref="p218"/>
+<itemref idref="p219"/>
+<itemref idref="p220"/>
+<itemref idref="p221"/>
+<itemref idref="p222"/>
+<itemref idref="p223"/>
+<itemref idref="p224"/>
+<itemref idref="p225"/>
+<itemref idref="p226"/>
+<itemref idref="p227"/>
+<itemref idref="p228"/>
+<itemref idref="p229"/>
+<itemref idref="p230"/>
+<itemref idref="p231"/>
+<itemref idref="p232"/>
+<itemref idref="p233"/>
+<itemref idref="p234"/>
+<itemref idref="p235"/>
+<itemref idref="p236"/>
+<itemref idref="p237"/>
+<itemref idref="p238"/>
+<itemref idref="p239"/>
+<itemref idref="p240"/>
+<itemref idref="p241"/>
+<itemref idref="p242"/>
+<itemref idref="p243"/>
+<itemref idref="p244"/>
+<itemref idref="p245"/>
+<itemref idref="p246"/>
+<itemref idref="p247"/>
+<itemref idref="p248"/>
+<itemref idref="p249"/>
+<itemref idref="p250"/>
+<itemref idref="p251"/>
+<itemref idref="p252"/>
+<itemref idref="p253"/>
+<itemref idref="p254"/>
+<itemref idref="p255"/>
+<itemref idref="p256"/>
+<itemref idref="p257"/>
+<itemref idref="p258"/>
+<itemref idref="p259"/>
+<itemref idref="p260"/>
+<itemref idref="p261"/>
+<itemref idref="p262"/>
+<itemref idref="p263"/>
+<itemref idref="p264"/>
+<itemref idref="p265"/>
+<itemref idref="p266"/>
+<itemref idref="p267"/>
+<itemref idref="p268"/>
+<itemref idref="p269"/>
+<itemref idref="p270"/>
+<itemref idref="p271"/>
+<itemref idref="p272"/>
+<itemref idref="p273"/>
+<itemref idref="p274"/>
+<itemref idref="p275"/>
+<itemref idref="p276"/>
+<itemref idref="p277"/>
+<itemref idref="p278"/>
+<itemref idref="p279"/>
+<itemref idref="p280"/>
+<itemref idref="p281"/>
+<itemref idref="p282"/>
+<itemref idref="p283"/>
+<itemref idref="p284"/>
+<itemref idref="p285"/>
+<itemref idref="p286"/>
+<itemref idref="p287"/>
+<itemref idref="p288"/>
+<itemref idref="p289"/>
+<itemref idref="p290"/>
+<itemref idref="p291"/>
+<itemref idref="p292"/>
+<itemref idref="p293"/>
+<itemref idref="p294"/>
+<itemref idref="p295"/>
+<itemref idref="p296"/>
+<itemref idref="p297"/>
+<itemref idref="p298"/>
+<itemref idref="p299"/>
+<itemref idref="p300"/>
+<itemref idref="p301"/>
+<itemref idref="p302"/>
+<itemref idref="p303"/>
+<itemref idref="p304"/>
+<itemref idref="p305"/>
+<itemref idref="p306"/>
+<itemref idref="p307"/>
+<itemref idref="p308"/>
+<itemref idref="p309"/>
+<itemref idref="p310"/>
+<itemref idref="p311"/>
+<itemref idref="p312"/>
+<itemref idref="p313"/>
+<itemref idref="p314"/>
+<itemref idref="p315"/>
+<itemref idref="p316"/>
+<itemref idref="p317"/>
+<itemref idref="p318"/>
+<itemref idref="p319"/>
+<itemref idref="p320"/>
+<itemref idref="p321"/>
+<itemref idref="p322"/>
+<itemref idref="p323"/>
+<itemref idref="p324"/>
+<itemref idref="p325"/>
+<itemref idref="p326"/>
+<itemref idref="p327"/>
+<itemref idref="p328"/>
+<itemref idref="p329"/>
+<itemref idref="p330"/>
+<itemref idref="p331"/>
+<itemref idref="p332"/>
+<itemref idref="p333"/>
+<itemref idref="p334"/>
+<itemref idref="p335"/>
+<itemref idref="p336"/>
+<itemref idref="p337"/>
+<itemref idref="p338"/>
+<itemref idref="p339"/>
+<itemref idref="p340"/>
+<itemref idref="p341"/>
+<itemref idref="p342"/>
+<itemref idref="p343"/>
+<itemref idref="p344"/>
+<itemref idref="p345"/>
+<itemref idref="p346"/>
+<itemref idref="p347"/>
+<itemref idref="p348"/>
+<itemref idref="p349"/>
+<itemref idref="p350"/>
+<itemref idref="p351"/>
+<itemref idref="p352"/>
+<itemref idref="p353"/>
+<itemref idref="p354"/>
+<itemref idref="p355"/>
+<itemref idref="p356"/>
+<itemref idref="p357"/>
+<itemref idref="p358"/>
+<itemref idref="p359"/>
+<itemref idref="p360"/>
+<itemref idref="p361"/>
+<itemref idref="p999"/>
+</spine>
+
+<guide>
+<reference href="p004_half-title.xhtml" title="Inizio del libro" type="text"/>
+</guide>
+</package>

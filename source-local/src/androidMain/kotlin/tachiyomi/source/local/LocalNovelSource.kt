@@ -88,16 +88,15 @@ actual class LocalNovelSource(
             0L
         }
 
-        var novelEntries = fileSystem.getFilesInBaseDirectory()
-            .filterNot { it.name.orEmpty().startsWith('.') }
-            .filter { it.isDirectory || isChapterSupported(it) }
-            .distinctBy { it.name.orEmpty() }
+        var novelDirs = fileSystem.getFilesInBaseDirectory()
+            // Filter out files that are hidden and is not a folder
+            .filter { it.isDirectory && !it.name.orEmpty().startsWith('.') }
+            .distinctBy { it.name }
             .filter {
-                val displayTitle = if (it.isDirectory) it.name.orEmpty() else it.nameWithoutExtension.orEmpty()
                 if (lastModifiedLimit == 0L && query.isBlank()) {
                     true
                 } else if (lastModifiedLimit == 0L) {
-                    displayTitle.contains(query, ignoreCase = true)
+                    it.name.orEmpty().contains(query, ignoreCase = true)
                 } else {
                     it.lastModified() >= lastModifiedLimit
                 }
@@ -106,21 +105,17 @@ actual class LocalNovelSource(
         filters.forEach { filter ->
             when (filter) {
                 is OrderBy.Popular -> {
-                    novelEntries = if (filter.state!!.ascending) {
-                        novelEntries.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) {
-                            if (it.isDirectory) it.name.orEmpty() else it.nameWithoutExtension.orEmpty()
-                        })
+                    novelDirs = if (filter.state!!.ascending) {
+                        novelDirs.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name.orEmpty() })
                     } else {
-                        novelEntries.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) {
-                            if (it.isDirectory) it.name.orEmpty() else it.nameWithoutExtension.orEmpty()
-                        })
+                        novelDirs.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) { it.name.orEmpty() })
                     }
                 }
                 is OrderBy.Latest -> {
-                    novelEntries = if (filter.state!!.ascending) {
-                        novelEntries.sortedBy(UniFile::lastModified)
+                    novelDirs = if (filter.state!!.ascending) {
+                        novelDirs.sortedBy(UniFile::lastModified)
                     } else {
-                        novelEntries.sortedByDescending(UniFile::lastModified)
+                        novelDirs.sortedByDescending(UniFile::lastModified)
                     }
                 }
                 else -> {
@@ -129,20 +124,15 @@ actual class LocalNovelSource(
             }
         }
 
-        val novels = novelEntries
-            .map { novelEntry ->
+        val novels = novelDirs
+            .map { novelDir ->
                 async {
                     SManga.create().apply {
-                        title = if (novelEntry.isDirectory) {
-                            novelEntry.name.orEmpty()
-                        } else {
-                            novelEntry.nameWithoutExtension.orEmpty()
-                        }
-                        // Keep URL as the exact entry name so both directories and files can resolve.
-                        url = novelEntry.name.orEmpty()
+                        title = novelDir.name.orEmpty()
+                        url = novelDir.name.orEmpty()
 
                         // Try to find the cover
-                        coverManager.find(url)?.let {
+                        coverManager.find(novelDir.name.orEmpty())?.let {
                             thumbnail_url = it.uri.toString()
                         }
                     }
@@ -161,41 +151,29 @@ actual class LocalNovelSource(
 
         // Augment novel details based on metadata files
         try {
-            val novelEntry = resolveNovelEntry(manga.url) ?: error("${manga.url} is not a valid local novel entry")
-            if (novelEntry.isDirectory) {
-                val novelDirFiles = novelEntry.listFiles().orEmpty()
+            val novelDir = fileSystem.getNovelDirectory(manga.url) ?: error("${manga.url} is not a valid directory")
+            val novelDirFiles = novelDir.listFiles().orEmpty()
 
-                val comicInfoFile = novelDirFiles
-                    .firstOrNull { it.name == COMIC_INFO_FILE }
-                val legacyJsonDetailsFile = novelDirFiles
-                    .firstOrNull { it.extension == "json" }
+            val comicInfoFile = novelDirFiles
+                .firstOrNull { it.name == COMIC_INFO_FILE }
+            val legacyJsonDetailsFile = novelDirFiles
+                .firstOrNull { it.extension == "json" }
 
-                when {
-                    // Top level ComicInfo.xml
-                    comicInfoFile != null -> {
-                        setNovelDetailsFromComicInfoFile(comicInfoFile.openInputStream(), manga)
-                    }
-
-                    // Old custom JSON format
-                    legacyJsonDetailsFile != null -> {
-                        json.decodeFromStream<MangaDetails>(legacyJsonDetailsFile.openInputStream()).run {
-                            title?.let { manga.title = it }
-                            author?.let { manga.author = it }
-                            artist?.let { manga.artist = it }
-                            description?.let { manga.description = it }
-                            genre?.let { manga.genre = it.joinToString() }
-                            status?.let { manga.status = it }
-                        }
-                    }
+            when {
+                // Top level ComicInfo.xml
+                comicInfoFile != null -> {
+                    setNovelDetailsFromComicInfoFile(comicInfoFile.openInputStream(), manga)
                 }
-            } else if (novelEntry.extension.equals("epub", true)) {
-                novelEntry.epubReader(context).use { epub ->
-                    val chapter = SChapter.create().apply {
-                        name = novelEntry.nameWithoutExtension.orEmpty()
-                    }
-                    epub.fillMetadata(manga, chapter)
-                    if (manga.title.isBlank()) {
-                        manga.title = chapter.name
+
+                // Old custom JSON format
+                legacyJsonDetailsFile != null -> {
+                    json.decodeFromStream<MangaDetails>(legacyJsonDetailsFile.openInputStream()).run {
+                        title?.let { manga.title = it }
+                        author?.let { manga.author = it }
+                        artist?.let { manga.artist = it }
+                        description?.let { manga.description = it }
+                        genre?.let { manga.genre = it.joinToString() }
+                        status?.let { manga.status = it }
                     }
                 }
             }
@@ -228,25 +206,17 @@ actual class LocalNovelSource(
     override suspend fun getChapterList(manga: SManga): List<SChapter> = withIOContext {
         val allChapters = mutableListOf<SChapter>()
 
-        val novelEntry = resolveNovelEntry(manga.url)
-            ?: return@withIOContext emptyList()
-
-        val chapterFiles = if (novelEntry.isDirectory) {
-            fileSystem.getFilesInNovelDirectory(manga.url)
-                .filterNot { it.name.orEmpty().startsWith('.') }
-                .filter { isChapterSupported(it) }
-                .sortedWith { f1, f2 ->
-                    f1.name.orEmpty().compareToCaseInsensitiveNaturalOrder(f2.name.orEmpty())
-                }
-        } else {
-            listOf(novelEntry)
-        }
-
-        val isSingleFileNovel = !novelEntry.isDirectory
+        val chapterFiles = fileSystem.getFilesInNovelDirectory(manga.url)
+            // Only keep supported formats
+            .filterNot { it.name.orEmpty().startsWith('.') }
+            .filter { isChapterSupported(it) }
+            .sortedWith { f1, f2 ->
+                f1.name.orEmpty().compareToCaseInsensitiveNaturalOrder(f2.name.orEmpty())
+            }
 
         val hasMultipleEpubFiles = chapterFiles.count { it.extension.equals("epub", true) } > 1
-
-        chapterFiles.forEachIndexed { chapterFileIndex, chapterFile ->
+        var epubFileIndex = 0
+        chapterFiles.forEachIndexed { fileIndex, chapterFile ->
             // Check if this is a multi-chapter EPUB
             if (chapterFile.extension.equals("epub", true)) {
                 try {
@@ -281,11 +251,10 @@ actual class LocalNovelSource(
                         if (tocChapters.isNotEmpty()) {
                             val spinePageHrefs = epub.getSpinePageHrefs()
                             val chapterNumberOffset = if (hasMultipleEpubFiles) {
-                                chapterFileIndex * 100_000f
+                                epubFileIndex * 100_000f
                             } else {
                                 0f
                             }
-
                             allChapters.addAll(
                                 buildEpubChaptersFromToc(
                                     mangaUrl = manga.url,
@@ -298,6 +267,7 @@ actual class LocalNovelSource(
                                     chapterNumberOffset = chapterNumberOffset,
                                 ),
                             )
+                            epubFileIndex++
                             return@forEachIndexed
                         }
 
@@ -313,11 +283,13 @@ actual class LocalNovelSource(
                                 epub.fillMetadata(manga, this)
                             },
                         )
+                        epubFileIndex++
                     }
                 } catch (e: Throwable) {
                     logcat(LogPriority.ERROR, e) { "Error reading epub for ${chapterFile.name}" }
                     // Fallback: add as single chapter
                     allChapters.add(createSimpleChapter(manga, chapterFile))
+                    epubFileIndex++
                 }
             } else {
                 // Non-EPUB file/directory
@@ -377,12 +349,15 @@ actual class LocalNovelSource(
     override suspend fun fetchPageText(page: Page): String = withIOContext {
         try {
             // Check if URL contains a chapter fragment (for multi-chapter EPUBs)
-            // Format: novelDir/file.ext#chapterHref or file.ext#chapterHref
+            // Format: novelDir/epubFile.epub#chapterHref
             val urlParts = page.url.split("#", limit = 2)
             val filePath = urlParts[0]
             val chapterFragment = urlParts.getOrNull(1)
 
-            val chapterFile = resolveChapterFile(filePath)
+            val (novelDirName, chapterName) = filePath.split('/', limit = 2)
+            val chapterFile = fileSystem.getBaseDirectory()
+                ?.findFile(novelDirName)
+                ?.findFile(chapterName)
                 ?: throw Exception(context.stringResource(MR.strings.chapter_not_found))
 
             when {
@@ -445,7 +420,10 @@ actual class LocalNovelSource(
         try {
             val urlParts = chapter.url.split("#", limit = 2)
             val filePath = urlParts[0]
-            val chapterFile = resolveChapterFile(filePath)
+            val (novelDirName, chapterName) = filePath.split('/', limit = 2)
+            val chapterFile = fileSystem.getBaseDirectory()
+                ?.findFile(novelDirName)
+                ?.findFile(chapterName)
                 ?: return@withIOContext null
 
             when {
@@ -488,9 +466,12 @@ actual class LocalNovelSource(
 
     fun getFormat(chapter: SChapter): Format {
         try {
-            val filePath = chapter.url.substringBefore('#')
-            return resolveChapterFile(filePath)
-                ?.let(Format::valueOf)
+            val filePath = chapter.url.substringBefore("#")
+            val (novelDirName, chapterName) = filePath.split('/', limit = 2)
+            return fileSystem.getBaseDirectory()
+                ?.findFile(novelDirName)
+                ?.findFile(chapterName)
+                ?.let(Format.Companion::valueOf)
                 ?: throw Exception(context.stringResource(MR.strings.chapter_not_found))
         } catch (e: Format.UnknownFormatException) {
             throw Exception(context.stringResource(MR.strings.local_invalid_format))
@@ -507,7 +488,6 @@ actual class LocalNovelSource(
 
         private val SUPPORTED_EXTENSIONS = setOf(
             "txt", "text", // Plain text
-            "md", "markdown", // Markdown
             "html", "htm", "xhtml", // HTML
             "epub", // EPUB
             "zip", "cbz", // ZIP archives
@@ -517,32 +497,11 @@ actual class LocalNovelSource(
         private val TEXT_EXTENSIONS = setOf(
             "txt",
             "text",
-            "md",
-            "markdown",
             "html",
             "htm",
             "xhtml",
         )
 
-    }
-
-    private fun resolveNovelEntry(url: String): UniFile? {
-        val base = fileSystem.getBaseDirectory() ?: return null
-        return base.findFile(url)
-            ?: base.listFiles().orEmpty().firstOrNull {
-                !it.isDirectory && it.nameWithoutExtension.orEmpty().equals(url, ignoreCase = true)
-            }
-    }
-
-    private fun resolveChapterFile(filePath: String): UniFile? {
-        val base = fileSystem.getBaseDirectory() ?: return null
-
-        return if (filePath.contains('/')) {
-            val (novelDirName, chapterName) = filePath.split('/', limit = 2)
-            base.findFile(novelDirName)?.findFile(chapterName)
-        } else {
-            resolveNovelEntry(filePath)
-        }
     }
 }
 

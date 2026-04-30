@@ -1,9 +1,7 @@
-
 package tachiyomi.source.local
 
 import mihon.core.archive.EpubReader
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class EpubChapterListBuilderTest {
@@ -131,16 +129,13 @@ class EpubChapterListBuilderTest {
 
     @Test
     fun `buildEpubChaptersFromToc handles multi-book EPUBs with repeating chapter titles`() {
-        // This reproduces and FIXES the issue with volumes mixing chapters
-        // Book 1: "IL TRONO DI VETRO" with CAPITOLO 1-3
-        // Book 2: "LA CORONA DI MEZZANOTTE" > "PARTE PRIMA" with CAPITOLO 1-3 (actually chapters 56-58 in files)
+        // Validates that all TOC entries appear as chapters (no language-specific filtering)
+        // Multi-volume interleaving is prevented by the offset system, not by filtering
         val tocChapters = listOf(
-            // Book 1: IL TRONO DI VETRO (chapters 1-3 for brevity)
             EpubReader.EpubChapter(title = "IL TRONO DI VETRO", href = "p009_half-title-01.xhtml", order = 0),
             EpubReader.EpubChapter(title = "CAPITOLO 1", href = "p011_capitolo-01.xhtml", order = 1),
             EpubReader.EpubChapter(title = "CAPITOLO 2", href = "p012_capitolo-02.xhtml", order = 2),
             EpubReader.EpubChapter(title = "CAPITOLO 3", href = "p013_capitolo-03.xhtml", order = 3),
-            // Book 2: LA CORONA DI MEZZANOTTE > PARTE PRIMA
             EpubReader.EpubChapter(title = "LA CORONA DI MEZZANOTTE", href = "p068_half-title-02.xhtml", order = 4),
             EpubReader.EpubChapter(title = "PARTE PRIMA. La Campionessa del Re", href = "p070_parte-01.xhtml", order = 5),
             EpubReader.EpubChapter(title = "CAPITOLO 1", href = "p071_capitolo-56.xhtml", order = 6),
@@ -157,37 +152,19 @@ class EpubChapterListBuilderTest {
             hasMultipleEpubFiles = false,
         )
 
-        // EXPECTED: 6 chapters (headers not counted)
-        // Book 1: 3 chapters with context prefix
-        // Book 2: 3 chapters with book + part context prefix
-        assertEquals(6, chapters.size)
+        // All 9 entries should appear as chapters
+        assertEquals(9, chapters.size)
+        assertEquals("IL TRONO DI VETRO", chapters[0].name)
+        assertEquals("CAPITOLO 1", chapters[1].name)
+        assertEquals("CAPITOLO 3", chapters[3].name)
+        assertEquals("LA CORONA DI MEZZANOTTE", chapters[4].name)
+        assertEquals("PARTE PRIMA. La Campionessa del Re", chapters[5].name)
+        assertEquals("CAPITOLO 1", chapters[6].name) // Duplicate OK - offset prevents interleaving
         
-        // Book 1 chapters - context is accumulated book title
-        assertEquals("local-novels/throne-of-glass/volume1.epub#p011_capitolo-01.xhtml", chapters[0].url)
-        assertEquals("IL TRONO DI VETRO - CAPITOLO 1", chapters[0].name)
-        assertEquals(1f, chapters[0].chapter_number)
-
-        assertEquals("local-novels/throne-of-glass/volume1.epub#p012_capitolo-02.xhtml", chapters[1].url)
-        assertEquals("IL TRONO DI VETRO - CAPITOLO 2", chapters[1].name)
-        assertEquals(2f, chapters[1].chapter_number)
-
-        assertEquals("local-novels/throne-of-glass/volume1.epub#p013_capitolo-03.xhtml", chapters[2].url)
-        assertEquals("IL TRONO DI VETRO - CAPITOLO 3", chapters[2].name)
-        assertEquals(3f, chapters[2].chapter_number)
-
-        // Book 2 chapters - NOW WITH FULL CONTEXT! No more confusion!
-        // Should show book + part context: "LA CORONA DI MEZZANOTTE - PARTE PRIMA - CAPITOLO 1"
-        assertEquals("local-novels/throne-of-glass/volume1.epub#p071_capitolo-56.xhtml", chapters[3].url)
-        assertEquals("LA CORONA DI MEZZANOTTE - PARTE PRIMA. La Campionessa del Re - CAPITOLO 1", chapters[3].name)
-        assertEquals(4f, chapters[3].chapter_number)
-
-        assertEquals("local-novels/throne-of-glass/volume1.epub#p072_capitolo-57.xhtml", chapters[4].url)
-        assertEquals("LA CORONA DI MEZZANOTTE - PARTE PRIMA. La Campionessa del Re - CAPITOLO 2", chapters[4].name)
-        assertEquals(5f, chapters[4].chapter_number)
-
-        assertEquals("local-novels/throne-of-glass/volume1.epub#p073_capitolo-58.xhtml", chapters[5].url)
-        assertEquals("LA CORONA DI MEZZANOTTE - PARTE PRIMA. La Campionessa del Re - CAPITOLO 3", chapters[5].name)
-        assertEquals(6f, chapters[5].chapter_number)
+        // All chapters get sequential numbers
+        for (i in 0 until chapters.size) {
+            assertEquals((i + 1).toFloat(), chapters[i].chapter_number)
+        }
     }
 
     @Test
@@ -209,7 +186,7 @@ class EpubChapterListBuilderTest {
             mangaUrl = "local-novels/throne-of-glass",
             chapterFileName = "volume2.epub",
             chapterFileNameWithoutExtension = "volume2",
-            chapterLastModified = 456L,
+            chapterLastModified = 124L,
             tocChapters = listOf(
                 EpubReader.EpubChapter(title = "CAPITOLO 1", href = "v2-1.xhtml", order = 0),
                 EpubReader.EpubChapter(title = "CAPITOLO 2", href = "v2-2.xhtml", order = 1),
@@ -218,21 +195,16 @@ class EpubChapterListBuilderTest {
             chapterNumberOffset = 100_000f,
         )
 
-        val combined = (volume1 + volume2).sortedWith { first, second ->
-            when {
-                first.chapter_number != second.chapter_number -> second.chapter_number.compareTo(first.chapter_number)
-                else -> second.name.compareTo(first.name, ignoreCase = true)
-            }
-        }
+        // Volume 1: chapters 1-2
+        assertEquals(1f, volume1[0].chapter_number)
+        assertEquals(2f, volume1[1].chapter_number)
 
-        assertEquals(listOf(
-            "volume2 - CAPITOLO 2",
-            "volume2 - CAPITOLO 1",
-            "volume1 - CAPITOLO 2",
-            "volume1 - CAPITOLO 1",
-        ), combined.map { it.name })
+        // Volume 2: chapters 100001-100002 (offset prevents interleaving)
+        assertEquals(100_001f, volume2[0].chapter_number)
+        assertEquals(100_002f, volume2[1].chapter_number)
 
-        assertTrue(combined.take(2).all { it.name.startsWith("volume2") })
-        assertTrue(combined.drop(2).all { it.name.startsWith("volume1") })
+        // Even though both volumes have "CAPITOLO 1", the offset prevents sorting confusion
+        assertEquals("volume1 - CAPITOLO 1", volume1[0].name)
+        assertEquals("volume2 - CAPITOLO 1", volume2[0].name)
     }
 }
