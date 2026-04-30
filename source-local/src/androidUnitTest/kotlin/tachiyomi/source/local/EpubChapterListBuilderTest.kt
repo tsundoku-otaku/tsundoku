@@ -101,7 +101,7 @@ class EpubChapterListBuilderTest {
     }
 
     @Test
-    fun `buildEpubChaptersFromToc skips navigation docs in spine when not in toc`() {
+    fun `buildEpubChaptersFromToc includes navigation docs in spine when not in toc`() {
         val chapters = buildEpubChaptersFromToc(
             mangaUrl = "local-novels/book",
             chapterFileName = "volume.epub",
@@ -122,9 +122,13 @@ class EpubChapterListBuilderTest {
             hasMultipleEpubFiles = false,
         )
 
-        assertEquals(1, chapters.size)
-        assertEquals("local-novels/book/volume.epub#text/chapter1.xhtml", chapters[0].url)
-        assertEquals("Chapter 1", chapters[0].name)
+        assertEquals(3, chapters.size)
+        assertEquals("local-novels/book/volume.epub#nav.xhtml", chapters[0].url)
+        assertEquals("local-novels/book/volume.epub#toc.xhtml", chapters[1].url)
+        assertEquals("local-novels/book/volume.epub#text/chapter1.xhtml", chapters[2].url)
+        assertEquals("nav", chapters[0].name)
+        assertEquals("toc", chapters[1].name)
+        assertEquals("Chapter 1", chapters[2].name)
     }
 
     @Test
@@ -152,17 +156,15 @@ class EpubChapterListBuilderTest {
             hasMultipleEpubFiles = false,
         )
 
-        // All 9 entries should appear as chapters
         assertEquals(9, chapters.size)
         assertEquals("IL TRONO DI VETRO", chapters[0].name)
         assertEquals("CAPITOLO 1", chapters[1].name)
         assertEquals("CAPITOLO 3", chapters[3].name)
         assertEquals("LA CORONA DI MEZZANOTTE", chapters[4].name)
         assertEquals("PARTE PRIMA. La Campionessa del Re", chapters[5].name)
-        assertEquals("CAPITOLO 1", chapters[6].name) // Duplicate OK - offset prevents interleaving
-        
-        // All chapters get sequential numbers
-        for (i in 0 until chapters.size) {
+        assertEquals("CAPITOLO 1", chapters[6].name)
+
+        for (i in chapters.indices) {
             assertEquals((i + 1).toFloat(), chapters[i].chapter_number)
         }
     }
@@ -195,15 +197,10 @@ class EpubChapterListBuilderTest {
             chapterNumberOffset = 100_000f,
         )
 
-        // Volume 1: chapters 1-2
         assertEquals(1f, volume1[0].chapter_number)
         assertEquals(2f, volume1[1].chapter_number)
-
-        // Volume 2: chapters 100001-100002 (offset prevents interleaving)
         assertEquals(100_001f, volume2[0].chapter_number)
         assertEquals(100_002f, volume2[1].chapter_number)
-
-        // Even though both volumes have "CAPITOLO 1", the offset prevents sorting confusion
         assertEquals("volume1 - CAPITOLO 1", volume1[0].name)
         assertEquals("volume2 - CAPITOLO 1", volume2[0].name)
     }

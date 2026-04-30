@@ -67,8 +67,6 @@ internal fun buildEpubChaptersFromToc(
             return@forEach
         }
 
-        if (isLikelyNavigationDocument(spinePath)) return@forEach
-
         val fallbackTitle = spinePath.substringAfterLast('/')
             .substringBeforeLast('.')
             .replace('_', ' ')
@@ -84,16 +82,4 @@ internal fun buildEpubChaptersFromToc(
     }
 
     return chapters
-}
-
-private fun isLikelyNavigationDocument(path: String): Boolean {
-    val lower = path.lowercase()
-    return lower.endsWith("/nav.xhtml") ||
-        lower.endsWith("/nav.html") ||
-        lower.endsWith("/toc.xhtml") ||
-        lower.endsWith("/toc.html") ||
-        lower == "nav.xhtml" ||
-        lower == "nav.html" ||
-        lower == "toc.xhtml" ||
-        lower == "toc.html"
 }
