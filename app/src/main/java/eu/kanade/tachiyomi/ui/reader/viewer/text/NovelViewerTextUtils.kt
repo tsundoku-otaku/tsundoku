@@ -13,12 +13,119 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.logcat
+import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.html.HtmlGenerator
+import org.intellij.markdown.parser.MarkdownParser
 
 /**
  * Shared utility functions used by both [NovelViewer] (native TextView) and
  * [NovelWebViewViewer] (WebView).  Extracted to eliminate code duplication.
  */
 object NovelViewerTextUtils {
+
+    private enum class ChapterTextKind {
+        HTML,
+        MARKDOWN,
+        PLAIN_TEXT,
+    }
+
+    private val frontMatterRegex = Regex("^\\uFEFF?---\\s*\\r?\\n([\\s\\S]*?)\\r?\\n---\\s*(\\r?\\n|$)")
+
+    fun isPlainTextChapter(chapterUrl: String?): Boolean {
+        val ext = chapterUrl
+            ?.substringBefore('#')
+            ?.substringBefore('?')
+            ?.substringAfterLast('/', "")
+            ?.substringAfterLast('.', "")
+            ?.lowercase()
+            .orEmpty()
+
+        return ext == "txt" || ext == "text"
+    }
+
+    fun normalizePlainTextContent(content: String): String {
+        return content
+            .replace("\u0000", "")
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+    }
+    /**
+     * Normalizes chapter content to HTML so both WebView and TextView pipelines
+     * can share rendering behavior for html/plain-text/markdown chapters.
+     */
+    fun normalizeContentForHtml(content: String, chapterUrl: String?): String {
+        val normalized = content.replace("\u0000", "")
+        if (isPlainTextChapter(chapterUrl)) {
+            return plainTextToHtml(normalized)
+        }
+        return when (detectTextKind(chapterUrl, normalized)) {
+            ChapterTextKind.HTML -> normalized
+            ChapterTextKind.MARKDOWN -> markdownToHtml(stripFrontMatter(normalized))
+            ChapterTextKind.PLAIN_TEXT -> plainTextToHtml(normalized)
+        }
+    }
+
+    private fun detectTextKind(chapterUrl: String?, content: String): ChapterTextKind {
+        val ext = chapterUrl
+            ?.substringBefore('#')
+            ?.substringBefore('?')
+            ?.substringAfterLast('/', "")
+            ?.substringAfterLast('.', "")
+            ?.lowercase()
+            .orEmpty()
+
+        return when (ext) {
+            "md", "markdown" -> ChapterTextKind.MARKDOWN
+            "txt", "text" -> ChapterTextKind.PLAIN_TEXT
+            "html", "htm", "xhtml", "epub" -> ChapterTextKind.HTML
+            else -> {
+                val hasCommonHtmlTags = Regex(
+                    "<\\s*(html|head|body|div|p|span|br|h[1-6]|img|a|table|ul|ol|li|blockquote|article|section|!doctype)\\b",
+                    RegexOption.IGNORE_CASE,
+                ).containsMatchIn(content)
+                val hasClosingTag = Regex("</\\s*[a-z][a-z0-9:-]*\\s*>", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(content)
+                if (hasCommonHtmlTags || hasClosingTag) {
+                    ChapterTextKind.HTML
+                } else {
+                    ChapterTextKind.PLAIN_TEXT
+                }
+            }
+        }
+    }
+
+    private fun stripFrontMatter(markdown: String): String {
+        return frontMatterRegex.replaceFirst(markdown, "")
+    }
+
+    private fun markdownToHtml(markdown: String): String {
+        return try {
+            val flavour = GFMFlavourDescriptor()
+            val parsedTree = MarkdownParser(flavour).buildMarkdownTreeFromString(markdown)
+            val rendered = HtmlGenerator(markdown, parsedTree, flavour).generateHtml()
+            "<div data-tsundoku-markdown=\"1\">$rendered</div>"
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN) { "Markdown render fallback to plain text: ${e.message}" }
+            plainTextToHtml(markdown)
+        }
+    }
+
+    private fun plainTextToHtml(text: String): String {
+        val normalized = text
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+        val escaped = escapeHtml(normalized)
+        return "<pre data-tsundoku-plain-text=\"1\" style=\"white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;\">$escaped</pre>"
+    }
+
+    private fun escapeHtml(text: String): String {
+        return text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
+    }
 
     /**
      * Apply user-configured find & replace rules to content.
