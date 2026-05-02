@@ -27,6 +27,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import okio.Buffer
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -70,12 +71,17 @@ class JSLibraryProvider(
         setupLogging(runtime)
         setupFetch(runtime)
         setupCrypto(runtime)
+        setupProtobuf(runtime)
         setupCheerio(runtime)
         setupStorage(runtime)
         setupCacheManagement(runtime)
 
-        // Inject the minimal JS runtime (polyfills + require)
-        val runtimeJs = getMinimalRuntime()
+        // Inject the protobuf runtime bundle first, then the minimal JS runtime (polyfills + require)
+        val runtimeJs = buildString {
+            append(loadProtobufJsBundle())
+            append('\n')
+            append(getMinimalRuntime())
+        }
         runtime.evaluate<Any?>(runtimeJs, "runtime.js", asModule = false)
 
         logcat(LogPriority.DEBUG) { "[$pluginId] JSLibraryProvider setup complete" }
@@ -87,13 +93,33 @@ class JSLibraryProvider(
         runtime.function("__clearCheerioCache") { _ ->
             elementCache.clear()
             handleCounter = 0
-            logcat(LogPriority.DEBUG) { "[$pluginId] Cheerio cache cleared from JS" }
             true
         }
 
         runtime.function("__trimCheerioCache") { _ ->
             trimCache(10)
             true
+        }
+    }
+
+    private fun loadProtobufJsBundle(): String {
+        return try {
+            val bundle = context.assets.open("js/vendor/protobuf.min.js")
+                .bufferedReader(StandardCharsets.UTF_8)
+                .use { it.readText() }
+
+            buildString {
+                append("(function(){\n")
+                append("var module = { exports: {} };\n")
+                append("var exports = module.exports;\n")
+                append(bundle)
+                append("\n;globalThis.protobufjs = module.exports;\n")
+                append("globalThis.parseProto = function(proto) { return module.exports.parse(proto); };\n")
+                append("})();\n")
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "[$pluginId] Failed to load protobufjs bundle from assets" }
+            ""
         }
     }
 
@@ -161,6 +187,401 @@ class JSLibraryProvider(
         }
     }
 
+    // ============ Protobuf API ============
+
+    // Generic protobuf schema support
+    private data class ProtoField(val name: String, val number: Int, val wireType: Int, val nested: String? = null)
+
+    private val protoSchemas: Map<String, List<ProtoField>> = mapOf(
+        "GetNovelRequest" to listOf(ProtoField("slug", 2, 2)),
+        "GetChapterListRequest" to listOf(ProtoField("novelId", 1, 0), ProtoField("slug", 2, 2)),
+        "GetChapterRequest" to listOf(ProtoField("chapterProperty", 1, 2, "ChapterProperty")),
+        "ChapterProperty" to listOf(ProtoField("slugs", 2, 2, "Slugs")),
+        "Slugs" to listOf(ProtoField("novelSlug", 1, 2), ProtoField("chapterSlug", 2, 2))
+    )
+
+    private fun encodeMessageBySchema(typeName: String, data: Map<String, Any?>): ByteArray {
+        val schema = protoSchemas[typeName] ?: return ByteArray(0)
+        val result = mutableListOf<Byte>()
+
+        for (field in schema) {
+            val value = data[field.name]
+            if (value == null) continue
+
+            when (field.wireType) {
+                0 -> { // varint
+                    val numVal = when (value) {
+                        is Number -> value.toLong()
+                        is String -> value.toLongOrNull() ?: 0L
+                        else -> 0L
+                    }
+                    if (numVal != 0L) {
+                        result.addAll(encodeTag(field.number, 0).toList())
+                        result.addAll(encodeVarint(numVal).toList())
+                    }
+                }
+                2 -> { // length-delimited (string or nested message)
+                    if (field.nested != null) {
+                        // nested message
+                        val nestedMap = when (value) {
+                            is Map<*, *> -> value as Map<String, Any?>
+                            else -> null
+                        }
+                        if (nestedMap != null) {
+                            val nestedBytes = encodeMessageBySchema(field.nested, nestedMap)
+                            if (nestedBytes.isNotEmpty()) {
+                                result.addAll(encodeTag(field.number, 2).toList())
+                                result.addAll(encodeVarint(nestedBytes.size.toLong()).toList())
+                                result.addAll(nestedBytes.toList())
+                            }
+                        }
+                    } else {
+                        // assume string
+                        val s = value.toString()
+                        if (s.isNotEmpty()) {
+                            result.addAll(encodeTag(field.number, 2).toList())
+                            result.addAll(encodeString(s).toList())
+                        }
+                    }
+                }
+                else -> {
+                    // unsupported wire type in schema
+                }
+            }
+        }
+
+        return result.toByteArray()
+    }
+
+    private suspend fun setupProtobuf(runtime: QuickJs) {
+        // Encode protobuf request with gRPC-web frame wrapping
+        runtime.function("__encodeProtobufRequest") { args ->
+            try {
+                val requestData = args.getOrNull(0) as? Map<String, Any?> ?: mapOf()
+                val requestType = args.getOrNull(1)?.toString().orEmpty()
+                
+                val protoData = when (requestType) {
+                    "GetNovelRequest" -> encodeGetNovelRequest(requestData)
+                    "GetChapterListRequest" -> encodeGetChapterListRequest(requestData)
+                    "GetChapterRequest" -> encodeGetChapterRequest(requestData)
+                    else -> {
+                        if (protoSchemas.containsKey(requestType)) {
+                            encodeMessageBySchema(requestType, requestData)
+                        } else {
+                            ByteArray(0)
+                        }
+                    }
+                }
+                
+                // Wrap in gRPC-web frame: [compression:1 byte][length:4 bytes][data:length]
+                val frame = ByteArray(5 + protoData.size)
+                frame[0] = 0
+                val len = protoData.size
+                frame[1] = ((len shr 24) and 0xff).toByte()
+                frame[2] = ((len shr 16) and 0xff).toByte()
+                frame[3] = ((len shr 8) and 0xff).toByte()
+                frame[4] = (len and 0xff).toByte()
+                System.arraycopy(protoData, 0, frame, 5, protoData.size)
+                Base64.encodeToString(frame, Base64.NO_WRAP)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "[$pluginId] Protobuf encode error" }
+                ""
+            }
+        }
+        
+        // Decode protobuf response
+        runtime.function("__decodeProtobufResponse") { args ->
+            try {
+                val encodedBase64 = args.getOrNull(0)?.toString().orEmpty()
+                val responseType = args.getOrNull(1)?.toString().orEmpty()
+                
+                if (encodedBase64.isEmpty()) {
+                    return@function "{\"items\":[]}"
+                }
+                
+                val encoded = Base64.decode(encodedBase64, Base64.NO_WRAP)
+
+                // Unwrap gRPC-web frames and return as generic JSON
+                try {
+                    val payload = unwrapGrpcWebFrames(encoded)
+                    logcat(LogPriority.DEBUG) { "[$pluginId] Unwrapped payload: ${payload.size} bytes" }
+                    
+                    if (payload.isEmpty()) {
+                        logcat(LogPriority.WARN) { "[$pluginId] Empty unwrapped payload for $responseType" }
+                        return@function "{\"items\":[]}"
+                    }
+                    
+                    // Return payload as base64 for plugin to decode or parse minimally
+                    val result = decodeGenericProtobufResponse(payload)
+                    logcat(LogPriority.DEBUG) { "[$pluginId] Decode result: $result" }
+                    result
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN, e) { "[$pluginId] Protobuf decode error for $responseType: $e" }
+                    "{\"items\":[]}"
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "[$pluginId] Protobuf decode error: $e" }
+                "{\"items\":[]}"
+            }
+        }
+    }
+
+    private fun unwrapGrpcWebFrames(data: ByteArray): ByteArray {
+        var pos = 0
+        val out = mutableListOf<Byte>()
+        while (pos + 5 <= data.size) {
+            val flag = data[pos].toInt() and 0xff
+            val len = ((data[pos + 1].toInt() and 0xff) shl 24) or
+                ((data[pos + 2].toInt() and 0xff) shl 16) or
+                ((data[pos + 3].toInt() and 0xff) shl 8) or
+                (data[pos + 4].toInt() and 0xff)
+            pos += 5
+            if (len <= 0) continue
+            val end = pos + len
+            if (end > data.size) break
+            for (i in pos until end) out.add(data[i])
+            pos = end
+        }
+        return out.toByteArray()
+    }
+
+    // Generic protobuf decoder (no schema dependency)
+    private fun decodeGenericProtobufResponse(data: ByteArray): String {
+        // Return binary as base64 so plugin can decode with its own protobufjs
+        val base64 = Base64.encodeToString(data, Base64.NO_WRAP)
+        val jsonObj = kotlinx.serialization.json.JsonObject(
+            mapOf("_proto_base64" to kotlinx.serialization.json.JsonPrimitive(base64))
+        )
+        return kotlinx.serialization.json.Json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), jsonObj)
+    }
+
+    // Protobuf encoding helpers
+    private fun encodeVarint(value: Long): ByteArray {
+        val result = mutableListOf<Byte>()
+        var v = value
+        while ((v and 0xffffff80L) != 0L) {
+            result.add(((v and 0x7f) or 0x80).toByte())
+            v = v shr 7
+        }
+        result.add((v and 0x7f).toByte())
+        return result.toByteArray()
+    }
+
+    private fun encodeTag(fieldNumber: Int, wireType: Int): ByteArray {
+        return encodeVarint(((fieldNumber shl 3) or wireType).toLong())
+    }
+
+    private fun encodeString(value: String): ByteArray {
+        val utf8 = value.toByteArray(StandardCharsets.UTF_8)
+        val length = encodeVarint(utf8.size.toLong())
+        return length + utf8
+    }
+
+    private fun encodeGetNovelRequest(data: Map<String, Any?>): ByteArray {
+        val result = mutableListOf<Byte>()
+        
+        // Field 2: string slug (oneof selector: id=1, slug=2)
+        val slug = extractSlugLikeValue(data)
+        if (!slug.isNullOrEmpty()) {
+            result.addAll(encodeTag(2, 2).toList())
+            result.addAll(encodeString(slug).toList())
+        }
+        
+        return result.toByteArray()
+    }
+
+    private fun encodeGetChapterListRequest(data: Map<String, Any?>): ByteArray {
+        val result = mutableListOf<Byte>()
+        
+        // Field 1: int32 novelId (required for wuxiaworld)
+        // Try multiple keys for finding novelId
+        val novelIdValue = data["novelId"] 
+            ?: (data["id"] as? Number)?.toLong()
+            ?: (data["novelId"] as? String)?.toLongOrNull()
+            ?: 0L
+        
+        val novelId = when (novelIdValue) {
+            is Number -> novelIdValue.toLong()
+            is String -> novelIdValue.toLongOrNull() ?: 0L
+            else -> 0L
+        }
+        
+        if (novelId != 0L) {
+            result.addAll(encodeTag(1, 0).toList())
+            result.addAll(encodeVarint(novelId).toList())
+        } else {
+            // Fallback: try to find slug-like value for API that uses string identifier
+            val slug = extractSlugLikeValue(data)
+            if (!slug.isNullOrEmpty()) {
+                result.addAll(encodeTag(2, 2).toList())
+                result.addAll(encodeString(slug).toList())
+            }
+        }
+
+        return result.toByteArray()
+    }
+
+    private fun extractSlugLikeValue(data: Map<String, Any?>): String? {
+        // Try direct keys first
+        val directKeys = listOf("slug", "novelSlug", "path", "url", "id", "novelId", "chapter", "chapterSlug")
+        for (key in directKeys) {
+            val value = data[key]?.toString().orEmpty().trim()
+            if (value.isNotEmpty() && value != "0" && value != "null") {
+                val normalized = normalizeSlugValue(value)
+                if (normalized.isNotEmpty()) {
+                    logcat(LogPriority.DEBUG) { "[$pluginId] extractSlugLikeValue: found '$key' = '$normalized'" }
+                    return normalized
+                }
+            }
+        }
+
+        // Try nested keys
+        val nestedKeys = listOf("novel", "manga", "item", "data", "chapter", "chapterData", "request", "response")
+        for (key in nestedKeys) {
+            val nested = data[key]
+            if (nested is Map<*, *>) {
+                @Suppress("UNCHECKED_CAST")
+                val result = extractSlugLikeValue(nested as Map<String, Any?>)
+                if (!result.isNullOrEmpty()) {
+                    logcat(LogPriority.DEBUG) { "[$pluginId] extractSlugLikeValue: found in nested '$key' = '$result'" }
+                    return result
+                }
+            }
+        }
+
+        logcat(LogPriority.DEBUG) { "[$pluginId] extractSlugLikeValue: no value found in $data" }
+        return null
+    }
+
+    private fun normalizeSlugValue(value: String): String {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return trimmed
+
+        if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            return trimmed.substringAfterLast('/').substringBefore('?').substringBefore('#')
+        }
+
+        val withoutTrailingSlash = trimmed.trimEnd('/')
+        val lastSegment = withoutTrailingSlash.substringAfterLast('/')
+        return if (lastSegment.isNotBlank()) lastSegment else withoutTrailingSlash
+    }
+
+    private fun encodeGetChapterRequest(data: Map<String, Any?>): ByteArray {
+        val result = mutableListOf<Byte>()
+        
+        // Field 1: oneof chapterProperty with nested slugs
+        @Suppress("UNCHECKED_CAST")
+        val chapterProperty = data["chapterProperty"] as? Map<String, Any?>
+        val slugs = chapterProperty?.get("slugs") as? Map<String, Any?>
+        
+        if (slugs != null) {
+            val nestedResult = mutableListOf<Byte>()
+            
+            // Field 1: string novelSlug
+            val novelSlug = slugs["novelSlug"]?.toString()
+            if (!novelSlug.isNullOrEmpty()) {
+                nestedResult.addAll(encodeTag(1, 2).toList())
+                nestedResult.addAll(encodeString(novelSlug).toList())
+            }
+            
+            // Field 2: string chapterSlug
+            val chapterSlug = slugs["chapterSlug"]?.toString()
+            if (!chapterSlug.isNullOrEmpty()) {
+                nestedResult.addAll(encodeTag(2, 2).toList())
+                nestedResult.addAll(encodeString(chapterSlug).toList())
+            }
+            
+            if (nestedResult.isNotEmpty()) {
+                // Wrap in field 2 (slugs) as message
+                result.addAll(encodeTag(2, 2).toList())
+                val nestedBytes = nestedResult.toByteArray()
+                result.addAll(encodeVarint(nestedBytes.size.toLong()).toList())
+                result.addAll(nestedBytes.toList())
+            }
+        }
+        
+        return result.toByteArray()
+    }
+
+    // Protobuf decoding helpers
+    private fun readVarint(data: ByteArray, offset: Int): Pair<Long, Int> {
+        var result = 0L
+        var shift = 0
+        var pos = offset
+        
+        while (pos < data.size) {
+            val byte = data[pos].toInt() and 0xff
+            result = result or ((byte and 0x7f).toLong() shl shift)
+            pos++
+            
+            if ((byte and 0x80) == 0) break
+            shift += 7
+        }
+        
+        return Pair(result, pos)
+    }
+
+    private fun decodeGetChapterListResponse(data: ByteArray): String {
+        var pos = 0
+        val items = mutableListOf<Map<String, Any?>>()
+        
+        while (pos < data.size) {
+            val (tag, nextPos) = readVarint(data, pos)
+            pos = nextPos
+            
+            val fieldNumber = (tag shr 3).toInt()
+            val wireType = (tag and 0x7).toInt()
+            
+            when {
+                fieldNumber == 1 && wireType == 2 -> {
+                    // Repeated ChapterGroupItem (message)
+                    val (length, lengthPos) = readVarint(data, pos)
+                    pos = lengthPos
+                    // Skip message content, just add empty item
+                    items.add(mapOf())
+                    pos += length.toInt()
+                }
+                fieldNumber == 2 && wireType == 2 -> {
+                    // ChapterNovelInfo (message)
+                    val (length, lengthPos) = readVarint(data, pos)
+                    pos = lengthPos
+                    pos += length.toInt()
+                }
+                wireType == 0 -> {
+                    // Varint
+                    val (_, nextPos) = readVarint(data, pos)
+                    pos = nextPos
+                }
+                wireType == 2 -> {
+                    // Length-delimited
+                    val (length, lengthPos) = readVarint(data, pos)
+                    pos = lengthPos + length.toInt()
+                }
+                wireType == 5 -> {
+                    // Fixed32
+                    pos += 4
+                }
+                wireType == 1 -> {
+                    // Fixed64
+                    pos += 8
+                }
+            }
+        }
+        
+        // Return JSON structure
+        return "{\"items\":[]}"
+    }
+
+    private fun decodeGetNovelResponse(data: ByteArray): String {
+        // Basic decoding - return minimal structure
+        return "{\"item\":null}"
+    }
+
+    private fun decodeGetChapterResponse(data: ByteArray): String {
+        // Basic decoding - return minimal structure
+        return "{\"item\":null}"
+    }
+
     @kotlinx.serialization.Serializable
     private data class FetchResponse(
         val ok: Boolean,
@@ -217,6 +638,17 @@ class JSLibraryProvider(
                 }
 
                 val body = extractBody(init, headersMap)
+                
+                // Check if this is binary data encoded as base64
+                val isBinaryBase64 = headersMap.entries.any { it.key.equals("x-binary-base64", ignoreCase = true) && it.value.equals("true", ignoreCase = true) }
+
+                // Log request details for debugging (especially for POST/gRPC)
+                if (method != "GET" && body != null) {
+                    logcat(LogPriority.DEBUG) {
+                        val bodyPreview = if (body.length > 100) body.take(100) + "..." else body
+                        "[$pluginId] [FETCH] POST request: url=$normalizedUrl, isBinary=$isBinaryBase64, bodyLen=${body.length}, bodyStart=$bodyPreview"
+                    }
+                }
 
                 val requestBuilder = Request.Builder().url(normalizedUrl)
 
@@ -224,22 +656,41 @@ class JSLibraryProvider(
                 val headersBuilder = Headers.Builder()
                 headersMap.forEach { (key, value) ->
                     val lowerKey = key.lowercase()
-                    if (lowerKey !in listOf("accept-encoding", "host", "connection", "content-length")) {
+                    if (lowerKey !in listOf("accept-encoding", "host", "connection", "content-length", "x-binary-base64")) {
                         headersBuilder.add(key, value)
                     }
                 }
                 requestBuilder.headers(headersBuilder.build())
 
+
+
                 // Set body for non-GET requests
                 if (method != "GET" && body != null) {
-                    requestBuilder.method(method, body.toRequestBody(detectContentType(headersMap)))
+                    if (isBinaryBase64) {
+                        // Decode base64 to binary and send as raw bytes
+                        try {
+                            val binaryData = Base64.decode(body, Base64.DEFAULT)
+                            requestBuilder.method(method, binaryData.toRequestBody("application/grpc-web+proto".toMediaType()))
+                        } catch (e: Exception) {
+                            requestBuilder.method(method, body.toRequestBody(detectContentType(headersMap)))
+                        }
+                    } else {
+                        requestBuilder.method(method, body.toRequestBody(detectContentType(headersMap)))
+                    }
                 } else if (method != "GET") {
                     requestBuilder.method(method, "".toRequestBody(null))
                 }
 
                 val response = client.newCall(requestBuilder.build()).execute()
                 response.use { resp ->
-                    val responseBody = resp.body?.string() ?: ""
+                    val responseBytes = resp.body?.bytes() ?: ByteArray(0)
+                    val responseText = if (isBinaryBase64) {
+                        Base64.encodeToString(responseBytes, Base64.NO_WRAP)
+                    } else {
+                        String(responseBytes, StandardCharsets.UTF_8)
+                    }
+
+
 
                     // Keep WebView cookie store in sync with OkHttp responses.
                     try {
@@ -257,13 +708,16 @@ class JSLibraryProvider(
                     resp.headers.forEach { (name, value) ->
                         responseHeaders[name.lowercase()] = value
                     }
+                    if (isBinaryBase64) {
+                        responseHeaders["x-binary-base64"] = "true"
+                    }
 
                     FetchResponse(
                         ok = resp.isSuccessful,
                         status = resp.code,
                         statusText = resp.message,
                         url = resp.request.url.toString(),
-                        text = responseBody,
+                        text = responseText,
                         headers = responseHeaders,
                     )
                 }
@@ -468,7 +922,6 @@ class JSLibraryProvider(
                 // If it's a JsObject or function, we can't use it as CSS selector.
                 // Return the original handle unchanged since filter functions aren't supported.
                 selectorArg.toString().startsWith("com.dokar.quickjs.binding.JsObject") -> {
-                    logcat(LogPriority.WARN) { "[$pluginId] cheerioFilter: function/object filters not supported, returning original handle" }
                     handle
                 }
                 else -> cheerioFilter(handle, selectorArg.toString())
@@ -539,7 +992,6 @@ class JSLibraryProvider(
         val doc = Jsoup.parse(html)
         val handle = ++handleCounter
         elementCache[handle] = doc
-        logcat(LogPriority.DEBUG) { "[$pluginId] cheerioLoad: created handle=$handle for ${html.length} chars HTML" }
         return handle
     }
 
@@ -600,7 +1052,6 @@ class JSLibraryProvider(
                 val tagName = el.tagName().lowercase()
                 if (tagName == "script" || tagName == "style") {
                     val data = el.data()
-                    logcat(LogPriority.DEBUG) { "[$pluginId] cheerioHtml(script/style): returning raw data (len=${data.length}): ${data.take(100)}..." }
                     data
                 } else {
                     el.html()
@@ -612,7 +1063,6 @@ class JSLibraryProvider(
                     val tagName = first.tagName().lowercase()
                     if (tagName == "script" || tagName == "style") {
                         val data = first.data()
-                        logcat(LogPriority.DEBUG) { "[$pluginId] cheerioHtml(script/style): returning raw data (len=${data.length}): ${data.take(100)}..." }
                         data
                     } else {
                         first.html()
@@ -623,7 +1073,6 @@ class JSLibraryProvider(
             }
             else -> ""
         }
-        // logcat(LogPriority.DEBUG) { "[$pluginId] cheerioHtml(handle=$handle): ${result.take(200)}..." }
         return result
     }
 
@@ -973,7 +1422,6 @@ class JSLibraryProvider(
         runtime.function("__storageGet") { args ->
             val key = args.getOrNull(0)?.toString() ?: ""
             val value = storage[key]
-            logcat(LogPriority.DEBUG) { "[$pluginId] storage.get('$key') -> '$value'" }
             value
         }
 
@@ -1130,19 +1578,34 @@ class JSLibraryProvider(
             var jsonStr = await __fetch(url, init || {});
             var r = JSON.parse(jsonStr);
             console.log('[FETCH] Response status=' + r.status + ', ok=' + r.ok + ', textLen=' + (r.text || '').length);
+            var isBinary = !!(r.headers && (r.headers['x-binary-base64'] === 'true' || r.headers['x-binary-base64'] === true));
             return {
                 ok: !!r.ok,
                 status: r.status || 0,
                 statusText: r.statusText || '',
                 url: r.url || url,
                 headers: new Headers(r.headers || {}),
-                text: async function() { return r.text || ''; },
+                text: async function() {
+                    if (!isBinary) return r.text || '';
+                    try {
+                        return atob(r.text || '');
+                    } catch (e) {
+                        return '';
+                    }
+                },
                 json: async function() { return JSON.parse(r.text || '{}'); },
                 arrayBuffer: async function() {
+                    if (isBinary) {
+                        var b64 = r.text || '';
+                        var bin = atob(b64);
+                        var out = new Uint8Array(bin.length);
+                        for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i) & 255;
+                        return out.buffer;
+                    }
                     var text = r.text || '';
                     var buf = new ArrayBuffer(text.length);
                     var view = new Uint8Array(buf);
-                    for (var i = 0; i < text.length; i++) view[i] = text.charCodeAt(i);
+                    for (var j = 0; j < text.length; j++) view[j] = text.charCodeAt(j);
                     return buf;
                 },
                 blob: async function() { return new Blob([r.text || '']); },
@@ -1615,9 +2078,6 @@ class JSLibraryProvider(
                         fetchText: async function(u, i, enc) {
                             var r = await fetch(u, i);
                             var text = await r.text();
-                            // Handle encoding if specified
-                            if (enc && enc.toLowerCase() !== 'utf-8') {
-                            }
                             return text;
                         },
                         fetchFile: async function(u, i) {
@@ -1630,9 +2090,136 @@ class JSLibraryProvider(
                                 return '';
                             }
                         },
-                        fetchProto: async function(u, i) {
-                            var r = await fetch(u, i);
-                            return r.arrayBuffer();
+                        /**
+                         * Generic fetchProto using protobufjs for encoding/decoding.
+                         * This avoids Kotlin-side JsObject conversion issues.
+                         */
+                        fetchProto: async function(protoConfig, url, options) {
+                            // Generic fetchProto using protobufjs for encoding/decoding
+                            // protoConfig: { proto: string, requestType: string, responseType: string, requestData: object }
+                            if (!protoConfig || !protoConfig.requestData) {
+                                console.warn('fetchProto: missing config or requestData');
+                                return { items: [] };
+                            }
+
+                            try {
+                                // Parse proto schema with protobufjs
+                                var protoRoot = parseProto(protoConfig.proto).root;
+                                if (!protoRoot || !protoRoot.lookupType) {
+                                    console.warn('fetchProto: failed to parse proto schema');
+                                    return { items: [] };
+                                }
+
+                                // Encode request with protobufjs
+                                var RequestMessage = protoRoot.lookupType(protoConfig.requestType);
+                                if (!RequestMessage) {
+                                    console.warn('fetchProto: unknown request type: ' + protoConfig.requestType);
+                                    return { items: [] };
+                                }
+
+                                // Verify and encode request data
+                                var verification = RequestMessage.verify(protoConfig.requestData);
+                                if (verification) {
+                                    console.warn('fetchProto: invalid request data: ' + verification);
+                                    return { items: [] };
+                                }
+
+                                var encodedMsg = RequestMessage.encode(protoConfig.requestData).finish();
+                                console.warn('fetchProto: encoded ' + protoConfig.requestType + ': ' + encodedMsg.length + ' bytes');
+
+                                // Wrap in gRPC-web frame: [compression:1][length:4][data]
+                                var frame = new Uint8Array(5 + encodedMsg.length);
+                                frame[0] = 0;  // compression flag
+                                frame[1] = (encodedMsg.length >>> 24) & 0xff;
+                                frame[2] = (encodedMsg.length >>> 16) & 0xff;
+                                frame[3] = (encodedMsg.length >>> 8) & 0xff;
+                                frame[4] = encodedMsg.length & 0xff;
+                                for (var i = 0; i < encodedMsg.length; i++) {
+                                    frame[5 + i] = encodedMsg[i];
+                                }
+
+                                // Send request
+                                var mergedOptions = options || {};
+                                mergedOptions.headers = mergedOptions.headers || {};
+                                mergedOptions.headers['Content-Type'] = 'application/grpc-web+proto';
+                                mergedOptions.headers['X-Binary-Base64'] = 'true';
+                                mergedOptions.method = 'POST';
+                                var frameBin = '';
+                                for (var f = 0; f < frame.length; f++) {
+                                    frameBin += String.fromCharCode(frame[f] & 255);
+                                }
+                                mergedOptions.body = btoa(frameBin);
+
+                                console.warn('fetchProto: sending to ' + url);
+                                var response = await fetch(url, mergedOptions);
+
+                                if (!response.ok) {
+                                    console.warn('fetchProto: response not ok: ' + response.status);
+                                    return { items: [] };
+                                }
+
+                                // Get response as binary via arrayBuffer so we can unwrap grpc-web frames safely
+                                var arrayBuf = await response.arrayBuffer();
+                                if (!arrayBuf || arrayBuf.byteLength === 0) {
+                                    console.warn('fetchProto: empty response');
+                                    return { items: [] };
+                                }
+
+                                var respBytes = new Uint8Array(arrayBuf);
+                                console.warn('fetchProto: received ' + respBytes.length + ' bytes');
+
+                                // Unwrap gRPC-web frames
+                                var offset = 0;
+                                var payloadData = null;
+                                while (offset + 5 <= respBytes.length) {
+                                    var isCompressed = respBytes[offset];
+                                    var len = ((respBytes[offset + 1] << 24) | (respBytes[offset + 2] << 16) |
+                                              (respBytes[offset + 3] << 8) | respBytes[offset + 4]) >>> 0;
+                                    offset += 5;
+                                    
+                                    if (len > 0 && offset + len <= respBytes.length) {
+                                        if (isCompressed === 0) {  // uncompressed
+                                            payloadData = respBytes.subarray(offset, offset + len);
+                                        }
+                                        offset += len;
+                                    } else if (len === 0) {
+                                        // trailers
+                                        break;
+                                    } else {
+                                        break;
+                                    }
+                                }
+
+                                if (!payloadData || payloadData.length === 0) {
+                                    console.warn('fetchProto: no payload after unwrap');
+                                    return { items: [] };
+                                }
+
+                                console.warn('fetchProto: unwrapped payload: ' + payloadData.length + ' bytes');
+
+                                // Decode response with protobufjs
+                                var ResponseMessage = protoRoot.lookupType(protoConfig.responseType);
+                                if (!ResponseMessage) {
+                                    console.warn('fetchProto: unknown response type: ' + protoConfig.responseType);
+                                    return { items: [] };
+                                }
+
+                                var decodedMsg = ResponseMessage.decode(payloadData);
+                                var result = ResponseMessage.toObject(decodedMsg, {
+                                    longs: String,
+                                    enums: String,
+                                    bytes: String,
+                                    defaults: true
+                                });
+
+                                console.warn('fetchProto: successfully decoded ' + protoConfig.responseType);
+                                return result;
+
+                            } catch (e) {
+                                console.warn('fetchProto error: ' + (e && e.message ? e.message : String(e)));
+                                console.warn('fetchProto stack: ' + (e && e.stack ? e.stack : 'no stack'));
+                                return { items: [] };
+                            }
                         }
                     };
                 case '@libs/novelStatus':
@@ -1746,8 +2333,7 @@ class JSLibraryProvider(
                 case 'urlencode':
                     return { encode: encodeURIComponent, decode: decodeURIComponent };
                 case 'protobufjs':
-                    // Stub for protobufjs - most plugins don't need full support
-                    return {
+                    return globalThis.protobufjs || {
                         parse: function() { return { root: {} }; },
                         Root: { fromJSON: function() { return {}; } }
                     };
