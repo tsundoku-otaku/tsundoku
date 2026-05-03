@@ -33,7 +33,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
-import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
@@ -68,10 +67,8 @@ data object BrowseTab : Tab {
     override fun Content() {
         val context = LocalContext.current
         val basePreferences = remember { Injekt.get<BasePreferences>() }
-        val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
         val hideMangaUi by basePreferences.hideMangaUi.collectAsState()
-        val isJoined by libraryPreferences.joinedLibrary.collectAsState()
-        val hideMangaBrowseTabs = hideMangaUi || isJoined
+        val hideMangaBrowseTabs = hideMangaUi
 
         // Hoisted for extensions tab's search bar
         val extensionsScreenModel = rememberScreenModel { ExtensionsScreenModel() }
