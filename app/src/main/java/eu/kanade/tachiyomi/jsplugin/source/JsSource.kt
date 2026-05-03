@@ -572,14 +572,7 @@ class JsSource(
                 1
             }
 
-            // Check if plugin implements parsePage before attempting pagination
-            val hasParsePageMethod = try {
-                executePluginMethod("typeof plugin.parsePage === 'function'").toBoolean()
-            } catch (_: Exception) {
-                false
-            }
-
-            if ((totalPages > 1 || chapters.isEmpty()) && hasParsePageMethod) {
+            if (totalPages > 1 || chapters.isEmpty()) {
                 val maxPages = if (totalPages > 0) totalPages else 1
                 val startPage = if (chapters.isEmpty()) 1 else 2
                 logcat(LogPriority.DEBUG) {
@@ -597,10 +590,6 @@ class JsSource(
                             }
                         }
                     }
-                }
-            } else if (totalPages > 1 && !hasParsePageMethod) {
-                logcat(LogPriority.DEBUG) {
-                    "JsSource[$pluginId]: Plugin returned totalPages=$totalPages but doesn't implement parsePage(); treating as single-page source"
                 }
             }
 
@@ -861,7 +850,7 @@ class JsSource(
                 )
                 genre = obj["genres"]?.jsonPrimitive?.content?.decodeEntities()
                     ?: obj["tags"]?.jsonPrimitive?.content?.decodeEntities()
-                    ?: obj["genre"]?.jsonPrimitive?.content?.decodeEntities()
+                        ?: obj["genre"]?.jsonPrimitive?.content?.decodeEntities()
                 // Parse alternative names if available
                 val altNames = obj["alternativeNames"]?.jsonPrimitive?.content?.decodeEntities()
                     ?: obj["altNames"]?.jsonPrimitive?.content?.decodeEntities()

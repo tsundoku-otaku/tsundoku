@@ -246,13 +246,6 @@ class JSLibraryProvider(
                 // Check if this is binary data encoded as base64
                 val isBinaryBase64 = headersMap.entries.any { it.key.equals("x-binary-base64", ignoreCase = true) && it.value.equals("true", ignoreCase = true) }
 
-                // Log request details for debugging (especially for POST/gRPC)
-                if (method != "GET" && body != null) {
-                    logcat(LogPriority.DEBUG) {
-                        val bodyPreview = if (body.length > 100) body.take(100) + "..." else body
-                        "[$pluginId] [FETCH] POST request: url=$normalizedUrl, isBinary=$isBinaryBase64, bodyLen=${body.length}, bodyStart=$bodyPreview"
-                    }
-                }
 
                 val requestBuilder = Request.Builder().url(normalizedUrl)
 
@@ -271,7 +264,6 @@ class JSLibraryProvider(
                 // Set body for non-GET requests
                 if (method != "GET" && body != null) {
                     if (isBinaryBase64) {
-                        // Decode base64 to binary and send as raw bytes
                         try {
                             val binaryData = Base64.decode(body, Base64.DEFAULT)
                             requestBuilder.method(method, binaryData.toRequestBody("application/grpc-web+proto".toMediaType()))
