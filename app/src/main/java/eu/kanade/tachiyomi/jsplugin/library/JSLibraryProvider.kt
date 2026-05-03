@@ -259,7 +259,7 @@ class JSLibraryProvider(
             try {
                 val requestData = args.getOrNull(0) as? Map<String, Any?> ?: mapOf()
                 val requestType = args.getOrNull(1)?.toString().orEmpty()
-                
+
                 val protoData = when (requestType) {
                     "GetNovelRequest" -> encodeGetNovelRequest(requestData)
                     "GetChapterListRequest" -> encodeGetChapterListRequest(requestData)
@@ -272,7 +272,7 @@ class JSLibraryProvider(
                         }
                     }
                 }
-                
+
                 // Wrap in gRPC-web frame: [compression:1 byte][length:4 bytes][data:length]
                 val frame = ByteArray(5 + protoData.size)
                 frame[0] = 0
@@ -288,29 +288,29 @@ class JSLibraryProvider(
                 ""
             }
         }
-        
+
         // Decode protobuf response
         runtime.function("__decodeProtobufResponse") { args ->
             try {
                 val encodedBase64 = args.getOrNull(0)?.toString().orEmpty()
                 val responseType = args.getOrNull(1)?.toString().orEmpty()
-                
+
                 if (encodedBase64.isEmpty()) {
                     return@function "{\"items\":[]}"
                 }
-                
+
                 val encoded = Base64.decode(encodedBase64, Base64.NO_WRAP)
 
                 // Unwrap gRPC-web frames and return as generic JSON
                 try {
                     val payload = unwrapGrpcWebFrames(encoded)
                     logcat(LogPriority.DEBUG) { "[$pluginId] Unwrapped payload: ${payload.size} bytes" }
-                    
+
                     if (payload.isEmpty()) {
                         logcat(LogPriority.WARN) { "[$pluginId] Empty unwrapped payload for $responseType" }
                         return@function "{\"items\":[]}"
                     }
-                    
+
                     // Return payload as base64 for plugin to decode or parse minimally
                     val result = decodeGenericProtobufResponse(payload)
                     logcat(LogPriority.DEBUG) { "[$pluginId] Decode result: $result" }
@@ -328,7 +328,6 @@ class JSLibraryProvider(
 
     private fun unwrapGrpcWebFrames(data: ByteArray): ByteArray {
         var pos = 0
-        val out = mutableListOf<Byte>()
         while (pos + 5 <= data.size) {
             val flag = data[pos].toInt() and 0xff
             val len = ((data[pos + 1].toInt() and 0xff) shl 24) or
@@ -336,18 +335,21 @@ class JSLibraryProvider(
                 ((data[pos + 3].toInt() and 0xff) shl 8) or
                 (data[pos + 4].toInt() and 0xff)
             pos += 5
-            if (len <= 0) continue
+            if (len == 0) break
             val end = pos + len
             if (end > data.size) break
-            for (i in pos until end) out.add(data[i])
+            if (flag == 0) {
+                return data.copyOfRange(pos, end)
+            }
             pos = end
         }
-        return out.toByteArray()
+
+        return ByteArray(0)
     }
 
     // Generic protobuf decoder (no schema dependency)
     private fun decodeGenericProtobufResponse(data: ByteArray): String {
-        // Return binary as base64 so plugin can decode with its own protobufjs
+        logcat(LogPriority.DEBUG) { "[$pluginId] Returning base64 protobuf payload for plugin-side decode (length=${data.size})" }
         val base64 = Base64.encodeToString(data, Base64.NO_WRAP)
         val jsonObj = kotlinx.serialization.json.JsonObject(
             mapOf("_proto_base64" to kotlinx.serialization.json.JsonPrimitive(base64))
@@ -379,33 +381,33 @@ class JSLibraryProvider(
 
     private fun encodeGetNovelRequest(data: Map<String, Any?>): ByteArray {
         val result = mutableListOf<Byte>()
-        
+
         // Field 2: string slug (oneof selector: id=1, slug=2)
         val slug = extractSlugLikeValue(data)
         if (!slug.isNullOrEmpty()) {
             result.addAll(encodeTag(2, 2).toList())
             result.addAll(encodeString(slug).toList())
         }
-        
+
         return result.toByteArray()
     }
 
     private fun encodeGetChapterListRequest(data: Map<String, Any?>): ByteArray {
         val result = mutableListOf<Byte>()
-        
+
         // Field 1: int32 novelId (required for wuxiaworld)
         // Try multiple keys for finding novelId
-        val novelIdValue = data["novelId"] 
+        val novelIdValue = data["novelId"]
             ?: (data["id"] as? Number)?.toLong()
             ?: (data["novelId"] as? String)?.toLongOrNull()
             ?: 0L
-        
+
         val novelId = when (novelIdValue) {
             is Number -> novelIdValue.toLong()
             is String -> novelIdValue.toLongOrNull() ?: 0L
             else -> 0L
         }
-        
+
         if (novelId != 0L) {
             result.addAll(encodeTag(1, 0).toList())
             result.addAll(encodeVarint(novelId).toList())
@@ -468,29 +470,29 @@ class JSLibraryProvider(
 
     private fun encodeGetChapterRequest(data: Map<String, Any?>): ByteArray {
         val result = mutableListOf<Byte>()
-        
+
         // Field 1: oneof chapterProperty with nested slugs
         @Suppress("UNCHECKED_CAST")
         val chapterProperty = data["chapterProperty"] as? Map<String, Any?>
         val slugs = chapterProperty?.get("slugs") as? Map<String, Any?>
-        
+
         if (slugs != null) {
             val nestedResult = mutableListOf<Byte>()
-            
+
             // Field 1: string novelSlug
             val novelSlug = slugs["novelSlug"]?.toString()
             if (!novelSlug.isNullOrEmpty()) {
                 nestedResult.addAll(encodeTag(1, 2).toList())
                 nestedResult.addAll(encodeString(novelSlug).toList())
             }
-            
+
             // Field 2: string chapterSlug
             val chapterSlug = slugs["chapterSlug"]?.toString()
             if (!chapterSlug.isNullOrEmpty()) {
                 nestedResult.addAll(encodeTag(2, 2).toList())
                 nestedResult.addAll(encodeString(chapterSlug).toList())
             }
-            
+
             if (nestedResult.isNotEmpty()) {
                 // Wrap in field 2 (slugs) as message
                 result.addAll(encodeTag(2, 2).toList())
@@ -499,7 +501,7 @@ class JSLibraryProvider(
                 result.addAll(nestedBytes.toList())
             }
         }
-        
+
         return result.toByteArray()
     }
 
@@ -508,30 +510,30 @@ class JSLibraryProvider(
         var result = 0L
         var shift = 0
         var pos = offset
-        
+
         while (pos < data.size) {
             val byte = data[pos].toInt() and 0xff
             result = result or ((byte and 0x7f).toLong() shl shift)
             pos++
-            
+
             if ((byte and 0x80) == 0) break
             shift += 7
         }
-        
+
         return Pair(result, pos)
     }
 
     private fun decodeGetChapterListResponse(data: ByteArray): String {
         var pos = 0
         val items = mutableListOf<Map<String, Any?>>()
-        
+
         while (pos < data.size) {
             val (tag, nextPos) = readVarint(data, pos)
             pos = nextPos
-            
+
             val fieldNumber = (tag shr 3).toInt()
             val wireType = (tag and 0x7).toInt()
-            
+
             when {
                 fieldNumber == 1 && wireType == 2 -> {
                     // Repeated ChapterGroupItem (message)
@@ -567,7 +569,7 @@ class JSLibraryProvider(
                 }
             }
         }
-        
+
         // Return JSON structure
         return "{\"items\":[]}"
     }
@@ -638,7 +640,7 @@ class JSLibraryProvider(
                 }
 
                 val body = extractBody(init, headersMap)
-                
+
                 // Check if this is binary data encoded as base64
                 val isBinaryBase64 = headersMap.entries.any { it.key.equals("x-binary-base64", ignoreCase = true) && it.value.equals("true", ignoreCase = true) }
 
@@ -2176,7 +2178,7 @@ class JSLibraryProvider(
                                     var len = ((respBytes[offset + 1] << 24) | (respBytes[offset + 2] << 16) |
                                               (respBytes[offset + 3] << 8) | respBytes[offset + 4]) >>> 0;
                                     offset += 5;
-                                    
+
                                     if (len > 0 && offset + len <= respBytes.length) {
                                         if (isCompressed === 0) {  // uncompressed
                                             payloadData = respBytes.subarray(offset, offset + len);
