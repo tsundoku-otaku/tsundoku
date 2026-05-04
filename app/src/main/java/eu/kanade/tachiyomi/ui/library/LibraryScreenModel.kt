@@ -326,7 +326,10 @@ class LibraryScreenModel(
         val result = fastFilter {
             // Quick exit for some checks that are fast
             val downloadPasses = applyFilter(filterDownloaded) {
-                it.libraryManga.manga.isLocal() || it.libraryManga.manga.isLocalNovel() || it.downloadCount > 0
+                it.libraryManga.manga.isLocal() ||
+                    it.libraryManga.manga.isLocalNovel() ||
+                    it.downloadCount > 0 ||
+                    downloadManager.getDownloadCount(it.libraryManga.manga) > 0
             }
             if (!downloadPasses) return@fastFilter false
 
@@ -650,10 +653,15 @@ class LibraryScreenModel(
                     LibraryType.Novel -> if (!manga.manga.isNovel) continue
                 }
 
-                val dlCount = downloadManager.getDownloadCount(manga.manga).toLong()
-
                 val cached = itemCache[manga.id]
                 val cachedRef = itemCacheMangaRef[manga.id]
+
+                val dlCount = if (preferences.downloadBadge) {
+                    downloadManager.getDownloadCount(manga.manga).toLong()
+                } else {
+                    0L
+                }
+
                 if (cached != null && cachedRef === manga && cached.downloadCount == dlCount) {
                     result.add(cached)
                     continue
@@ -695,11 +703,13 @@ class LibraryScreenModel(
 
     private fun getLibraryDisplayPreferencesFlow(): Flow<DisplayPreferences> {
         return combine(
+            libraryPreferences.downloadBadge.changes(),
             libraryPreferences.unreadBadge.changes(),
             libraryPreferences.localBadge.changes(),
             libraryPreferences.languageBadge.changes(),
-        ) { unreadBadge, localBadge, languageBadge ->
+        ) { downloadBadge, unreadBadge, localBadge, languageBadge ->
             DisplayPreferences(
+                downloadBadge = downloadBadge,
                 unreadBadge = unreadBadge,
                 localBadge = localBadge,
                 languageBadge = languageBadge,
@@ -1701,6 +1711,7 @@ class LibraryScreenModel(
 
     @Immutable
     private data class DisplayPreferences(
+        val downloadBadge: Boolean,
         val unreadBadge: Boolean,
         val localBadge: Boolean,
         val languageBadge: Boolean,
