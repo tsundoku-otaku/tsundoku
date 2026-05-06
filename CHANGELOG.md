@@ -41,6 +41,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - JS Plugins can now use `end()` [@mrissaoussama](https://github.com/mrissaoussama) [#184](https://github.com/tsundoku-otaku/tsundoku/pull/184)
 - Added padding to edit mode to prevent keyboard overlap [@mrissaoussama](https://github.com/mrissaoussama) [#171](https://github.com/tsundoku-otaku/tsundoku/pull/171)
 - Fixed MAL login [@mrissaoussama](https://github.com/mrissaoussama) [#174](https://github.com/tsundoku-otaku/tsundoku/pull/174)
+- Download count badge and its visibility [@mrissaoussama](https://github.com/mrissaoussama) [#194](https://github.com/tsundoku-otaku/tsundoku/pull/194)
 - Webview scrollbar [@mrissaoussama](https://github.com/mrissaoussama) [#183](https://github.com/tsundoku-otaku/tsundoku/pull/183)
 - Snippet code field should focus when editing [@mrissaoussama](https://github.com/mrissaoussama) [#167](https://github.com/tsundoku-otaku/tsundoku/pull/167)
 - JS Plugin entries now refresh with global updates [@mrissaoussama](https://github.com/mrissaoussama) [#151](https://github.com/tsundoku-otaku/tsundoku/pull/151)
