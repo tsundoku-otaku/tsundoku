@@ -115,7 +115,7 @@ data class BrowseSourceScreen(
             when {
                 !state.isUserQuery && state.toolbarQuery != null -> screenModel.setToolbarQuery(null)
                 // Check if we should show confirmation before going back
-                confirmBackAfterPages > 0 && currentPage > confirmBackAfterPages -> {
+                source.isNovelSource() && confirmBackAfterPages > 0 && currentPage > confirmBackAfterPages -> {
                     showBackConfirmDialog = true
                 }
                 else -> navigator.pop()

@@ -403,7 +403,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                 skippedUrls.toList(),
                                 errorMessages.toMap(),
                             )
-                            
+
                             // Minimum inter-item delay in offline mode (10ms) to let library updates process
                             if (!shouldThrottle) {
                                 delay(10)
@@ -554,12 +554,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             return true
         }
 
-        // Fetch novel details with normalized URL
+        // Prepare input URL for source; JS plugins expect plugin-specific path (no leading slash)
+        val inputUrl = if (source is JsSource) normalizedPath.removePrefix("/") else normalizedPath
+
+        // Fetch novel details with normalized/input URL
         val sManga = source.getMangaDetails(
             eu.kanade.tachiyomi.source.model.SManga.create().apply {
-                this.url = normalizedPath
+                this.url = inputUrl
             },
         )
+        // Store with normalized path (WITH slash) for DB consistency across queries
         sManga.url = normalizedPath
 
         // Convert to local manga
@@ -730,13 +734,13 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val maxMem = maxMemRaw.coerceAtMost(MAX_HEAP_BYTES) // Clamp to 512MB
         val usedMem = runtime.totalMemory() - runtime.freeMemory()
         val freeMem = maxMem - usedMem
-        
+
         // Trigger GC if:
-        // 1. Used memory exceeds 50% threshold, OR  
+        // 1. Used memory exceeds 50% threshold, OR
         // 2. Free memory drops below 50MB (prevent fragmentation)
         val exceedsThreshold = usedMem.toDouble() / maxMem > MEMORY_PRESSURE_THRESHOLD
         val lowFreeMemory = freeMem < 50 * 1024 * 1024L
-        
+
         if (exceedsThreshold || lowFreeMemory) {
             val usagePercent = (usedMem.toDouble() / maxMem * 100).toInt()
             val reason = if (exceedsThreshold) "threshold" else "low free"
@@ -757,7 +761,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
      */
     private suspend fun flushPendingToLibrary(pendingIds: MutableList<Long>) {
         if (pendingIds.isEmpty()) return
-        
+
         val toFlush = pendingIds.toList()
         try {
             getLibraryManga.addToLibraryBulk(toFlush)
@@ -771,7 +775,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 logcat(LogPriority.ERROR, inner) { "Even refresh failed" }
             }
         }
-        
+
         // Clear the buffer after flush
         pendingIds.clear()
     }

@@ -393,11 +393,13 @@ class MassImport(
 
         // Fetch novel details from source
         try {
+            val inputUrl = if (source is JsSource) path.removePrefix("/") else path
             val sManga = source.getMangaDetails(
                 eu.kanade.tachiyomi.source.model.SManga.create().apply {
-                    this.url = path
+                    this.url = inputUrl
                 },
             )
+            // Store with normalized path (WITH slash) for DB consistency across queries
             sManga.url = path
 
             // Validate that essential fields are initialized
