@@ -38,6 +38,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Fixed
 - Fixed issue where some chapters wouldn't be marked read [@mrissaoussama](https://github.com/mrissaoussama) [#148](https://github.com/tsundoku-otaku/tsundoku/pull/148)
+- No longer hide manga browse tabs with combined library [@mrissaoussama](https://github.com/mrissaoussama) [#193](https://github.com/tsundoku-otaku/tsundoku/pull/193)
 - JS Plugins can now use `end()` [@mrissaoussama](https://github.com/mrissaoussama) [#184](https://github.com/tsundoku-otaku/tsundoku/pull/184)
 - Added padding to edit mode to prevent keyboard overlap [@mrissaoussama](https://github.com/mrissaoussama) [#171](https://github.com/tsundoku-otaku/tsundoku/pull/171)
 - Fixed MAL login [@mrissaoussama](https://github.com/mrissaoussama) [#174](https://github.com/tsundoku-otaku/tsundoku/pull/174)
