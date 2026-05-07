@@ -313,6 +313,8 @@
     <string name="novel_find_text">Find Text</string>
     <string name="novel_replace_with">Replace With (empty = remove)</string>
     <string name="novel_use_regex">Use Regex</string>
+    <string name="novel_match_whole_word">Match whole word</string>
+    <string name="novel_case_sensitive_matching">Case sensitive matching</string>
     <string name="novel_test">Test</string>
     <string name="novel_sample_input">Sample Input</string>
     <string name="novel_pattern_empty">Pattern is empty</string>

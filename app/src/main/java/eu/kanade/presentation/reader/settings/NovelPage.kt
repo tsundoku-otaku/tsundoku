@@ -103,6 +103,8 @@ data class RegexReplacement(
     val replacement: String,
     val enabled: Boolean = true,
     val isRegex: Boolean = true,
+    val matchWholeWord: Boolean = false,
+    val caseSensitive: Boolean = false,
 )
 
 private val novelThemes = listOf(
@@ -1076,6 +1078,10 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                         Text(
                             text = buildString {
                                 append(if (rule.isRegex) "regex" else "text")
+                                if (!rule.isRegex) {
+                                    if (rule.matchWholeWord) append(" • whole-word")
+                                    if (rule.caseSensitive) append(" • case-sensitive")
+                                }
                                 append(" • ")
                                 append(if (rule.enabled) "Enabled" else "Disabled")
                             },
@@ -1151,6 +1157,8 @@ private fun RegexEditDialog(
     var pattern by remember { mutableStateOf(initialRule?.pattern ?: "") }
     var replacement by remember { mutableStateOf(initialRule?.replacement ?: "") }
     var isRegex by remember { mutableStateOf(initialRule?.isRegex ?: true) }
+    var matchWholeWord by remember { mutableStateOf(initialRule?.matchWholeWord ?: false) }
+    var caseSensitive by remember { mutableStateOf(initialRule?.caseSensitive ?: false) }
     var testInput by remember { mutableStateOf("") }
     var testOutput by remember { mutableStateOf<String?>(null) }
     var testError by remember { mutableStateOf<String?>(null) }
@@ -1225,9 +1233,62 @@ private fun RegexEditDialog(
                             isRegex = it
                             testOutput = null
                             testError = null
+                            // Reset whole-word/case-sensitive when switching regex mode
+                            if (it) {
+                                matchWholeWord = false
+                                caseSensitive = false
+                            }
                         },
                     )
                     Text(stringResource(TDMR.strings.novel_use_regex), modifier = Modifier.padding(start = 4.dp))
+                }
+
+                // Hint text for current mode
+                Text(
+                    text = stringResource(
+                        if (isRegex) TDMR.strings.novel_regex_pattern else TDMR.strings.novel_find_text
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+
+                if (!isRegex) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = matchWholeWord,
+                            onCheckedChange = {
+                                matchWholeWord = it
+                                testOutput = null
+                                testError = null
+                            },
+                        )
+                        Text(
+                            stringResource(TDMR.strings.novel_match_whole_word),
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = caseSensitive,
+                            onCheckedChange = {
+                                caseSensitive = it
+                                testOutput = null
+                                testError = null
+                            },
+                        )
+                        Text(
+                            stringResource(TDMR.strings.novel_case_sensitive_matching),
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
                 }
 
                 // Test section
@@ -1259,7 +1320,14 @@ private fun RegexEditDialog(
                                 val regex = Regex(pattern)
                                 regex.replace(testInput, replacement)
                             } else {
-                                testInput.replace(pattern, replacement)
+                                val escapedPattern = Regex.escape(pattern)
+                                val boundedPattern = if (matchWholeWord) {
+                                    "(?<![\\p{L}\\p{N}_])(?:$escapedPattern)(?![\\p{L}\\p{N}_])"
+                                } else {
+                                    escapedPattern
+                                }
+                                val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+                                Regex(boundedPattern, options).replace(testInput) { replacement }
                             }
                             testError = null
                         } catch (e: Exception) {
@@ -1302,7 +1370,15 @@ private fun RegexEditDialog(
                             }
                         }
                         onConfirm(
-                            RegexReplacement(title.trim(), pattern, replacement, initialRule?.enabled ?: true, isRegex),
+                            RegexReplacement(
+                                title = title.trim(),
+                                pattern = pattern,
+                                replacement = replacement,
+                                enabled = initialRule?.enabled ?: true,
+                                isRegex = isRegex,
+                                matchWholeWord = if (isRegex) false else matchWholeWord,
+                                caseSensitive = if (isRegex) false else caseSensitive,
+                            ),
                         )
                     }
                 },

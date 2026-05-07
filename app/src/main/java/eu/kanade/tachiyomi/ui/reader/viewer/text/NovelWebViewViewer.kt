@@ -53,6 +53,7 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.translation.service.TranslationPreferences
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
+import java.net.URI
 import java.util.Locale
 
 /**
@@ -60,6 +61,27 @@ import java.util.Locale
  * Supports custom CSS and JavaScript injection.
  */
 class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitListener {
+
+    private companion object {
+        const val TSUNDOKU_CHAPTERS_CONTAINER_ID = "tsundoku-chapters-container"
+        const val CHAPTER_DIVIDER_CLASS = "chapter-divider"
+        const val CHAPTER_CONTENT_CLASS = "chapter-content"
+        const val CHAPTER_ID_ATTR = "data-chapter-id"
+        const val CHAPTER_TITLE_ATTR = "data-chapter-title"
+        const val CHAPTER_NUMBER_ATTR = "data-chapter-number"
+        const val CHAPTER_PATH_ATTR = "data-chapter-path"
+        const val CHAPTER_URL_ATTR = "data-chapter-url"
+        const val TSUNDOKU_CHAPTER_ATTR = "data-tsundoku-chapter"
+        const val TSUNDOKU_OBJECT_NAME = "Tsundoku"
+        const val TSUNDOKU_CURRENT_CHAPTER_KEY = "currentChapter"
+        const val TSUNDOKU_CHAPTERS_KEY = "chapters"
+        const val TSUNDOKU_NOVEL_URL_KEY = "novelUrl"
+        const val TSUNDOKU_IS_EDIT_MODE_KEY = "isEditMode"
+        const val TSUNDOKU_IS_INF_SCROLL_KEY = "isInfScroll"
+        const val TSUNDOKU_TEXT_SELECTION_BLOCKED_KEY = "textSelectionBlocked"
+        const val TSUNDOKU_FORCED_LOWERCASE_KEY = "forcedLowercase"
+        const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
+    }
 
     private val container = FrameLayout(activity)
     private lateinit var webView: WebView
@@ -788,25 +810,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     }
 
     private fun injectCustomScript() {
-        val chapter = currentChapters?.currChapter?.chapter
-            ?: loadedChapters.getOrNull(currentChapterIndex)?.chapter
-        val chapterTitle = (chapter?.name ?: "").jsEscape()
-        val chapterNumber = chapter?.chapter_number ?: -1f
-        val chapterUrl = (chapter?.url ?: "").jsEscape()
-        val novelUrl = (activity.viewModel.manga?.url ?: "").jsEscape()
-
-        val script = """
-        window.Tsundoku = {
-            chapterTitle: "$chapterTitle",
-            chapterNumber: $chapterNumber,
-            chapterUrl: "$chapterUrl",
-            novelUrl: "$novelUrl",
-            isEditMode: $isEditingMode,
-            isInfScroll: ${preferences.novelInfiniteScroll.get()},
-            textSelectionBlocked: ${!preferences.novelTextSelectable.get()},
-            forcedLowercase: ${preferences.novelForceTextLowercase.get()}
-        };
-        """.trimIndent()
+        val script = buildTsundokuScript()
         evaluateJavascriptSafe(script, null)
 
         val customJs = preferences.novelCustomJs.get()
@@ -871,21 +875,25 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         val effectiveThreshold = if (autoLoadThreshold > 0) autoLoadThreshold / 100.0 else 0.95
         val scrollTrackingScript = """
             (function() {
-                if (window.__tsundokuInfiniteScrollInstalled) {
+                window.$TSUNDOKU_OBJECT_NAME = window.$TSUNDOKU_OBJECT_NAME || {};
+                window.$TSUNDOKU_OBJECT_NAME.runtime = window.$TSUNDOKU_OBJECT_NAME.runtime || {};
+                var runtime = window.$TSUNDOKU_OBJECT_NAME.runtime;
+
+                if (runtime.infiniteScrollInstalled) {
                     return;
                 }
-                window.__tsundokuInfiniteScrollInstalled = true;
+                runtime.infiniteScrollInstalled = true;
 
                 var lastProgress = 0;
                 var saveTimeout = null;
-                window.__tsundokuLoadingNext = window.__tsundokuLoadingNext || false;
-                window.__tsundokuSetLoadingNext = function(v) { window.__tsundokuLoadingNext = !!v; };
+                runtime.loadingNext = runtime.loadingNext || false;
+                runtime.setLoadingNext = function(v) { runtime.loadingNext = !!v; };
                 var infiniteScrollEnabled = $infiniteScrollActuallyEnabled;
                 var loadThreshold = $effectiveThreshold;
 
                 // Track chapter boundaries for multi-chapter infinite scroll
                 window.chapterBoundaries = window.chapterBoundaries || [];
-                window.__tsundokuLastBoundaryUpdate = window.__tsundokuLastBoundaryUpdate || 0;
+                runtime.lastBoundaryUpdate = runtime.lastBoundaryUpdate || 0;
 
                 window.addEventListener('scroll', function() {
                     // Keep chapter boundaries in sync with actual DOM markers.
@@ -894,8 +902,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         var dividers = document.querySelectorAll('.chapter-divider');
                         if (!window.chapterBoundaries || window.chapterBoundaries.length !== dividers.length) {
                             window.updateChapterBoundaries();
-                        } else if (Date.now() - window.__tsundokuLastBoundaryUpdate > 1000) {
-                            window.__tsundokuLastBoundaryUpdate = Date.now();
+                        } else if (Date.now() - runtime.lastBoundaryUpdate > 1000) {
+                            runtime.lastBoundaryUpdate = Date.now();
                             window.updateChapterBoundaries();
                         }
                     }
@@ -951,15 +959,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                             shouldLoadNext = progress >= loadThreshold;
                         }
                     }
-                    if (shouldLoadNext && !window.__tsundokuLoadingNext) {
+                    if (shouldLoadNext && !runtime.loadingNext) {
                         console.log('Infinite scroll: Loading next chapter at progress ' + currentChapterProgress + ' (threshold: ' + loadThreshold + ')');
-                        window.__tsundokuLoadingNext = true;
+                        runtime.loadingNext = true;
                         try {
                             Android.loadNextChapter();
                             console.log('Infinite scroll: Successfully called loadNextChapter()');
                         } catch(e) {
                             console.error('Infinite scroll: Error calling loadNextChapter:', e);
-                            window.__tsundokuLoadingNext = false; // Reset immediately on error
+                            runtime.loadingNext = false; // Reset immediately on error
                         }
                     }
                 });
@@ -989,7 +997,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         });
                     });
                     window.chapterBoundaries = boundaries;
-                    window.__tsundokuLastBoundaryUpdate = Date.now();
+                    runtime.lastBoundaryUpdate = Date.now();
                 };
 
                 // Initialize boundaries on first load.
@@ -1146,11 +1154,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 val translatedContent = activity.translateContentIfEnabled(finalContent)
                 withContext(Dispatchers.Main) {
                     loadingIndicator?.hide()
-                    loadHtmlContent(translatedContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                    loadHtmlContent(translatedContent, chapter)
                 }
             }
         } else {
-            loadHtmlContent(finalContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+            loadHtmlContent(finalContent, chapter)
         }
     }
 
@@ -1414,12 +1422,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         }
                     }
                     if (isPrepend) {
-                        prependHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                        prependHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
                     } else {
-                        appendHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                        appendHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
                     }
                 } else {
-                    loadHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                    loadHtmlContent(renderableContent, chapter)
 
                     // Fresh load: reset tracking to this single chapter.
                     loadedChapterIds.clear()
@@ -1435,7 +1443,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     /**
      * Prepend content to the existing WebView for infinite scroll (loading previous chapter)
      */
-    private fun prependHtmlContent(content: String, chapterId: Long, chapterName: String, chapterUrl: String?) {
+    private fun prependHtmlContent(content: String, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
         // Strip script/style/noscript tags from content
         var cleanContent = if (plainTextMode) {
@@ -1458,13 +1466,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 var oldScrollY = window.scrollY || window.pageYOffset;
 
                 var contentDiv = document.createElement('div');
-                contentDiv.className = 'chapter-content';
-                contentDiv.setAttribute('data-chapter-id', '$chapterId');
+                contentDiv.className = '$CHAPTER_CONTENT_CLASS';
+                contentDiv.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
+                contentDiv.setAttribute('$CHAPTER_TITLE_ATTR', ${JSONObject.quote(chapterName)});
+                contentDiv.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
+                contentDiv.setAttribute('$CHAPTER_PATH_ATTR', ${JSONObject.quote(chapterUrl.orEmpty())});
+                contentDiv.setAttribute('$CHAPTER_URL_ATTR', ${JSONObject.quote(toAbsoluteChapterUrl(chapterUrl))});
                 ${if (plainTextMode) "contentDiv.textContent = $escapedContent;" else "contentDiv.innerHTML = $escapedContent;"}
 
                 var divider = document.createElement('div');
-                divider.className = 'chapter-divider';
-                divider.setAttribute('data-chapter-id', '$chapterId');
+                divider.className = '$CHAPTER_DIVIDER_CLASS';
+                divider.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
+                divider.setAttribute('$CHAPTER_TITLE_ATTR', ${JSONObject.quote(chapterName)});
+                divider.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
+                divider.setAttribute('$CHAPTER_PATH_ATTR', ${JSONObject.quote(chapterUrl.orEmpty())});
+                divider.setAttribute('$CHAPTER_URL_ATTR', ${JSONObject.quote(toAbsoluteChapterUrl(chapterUrl))});
 
                 var firstChild = document.body.firstChild;
                 document.body.insertBefore(contentDiv, firstChild);
@@ -1500,7 +1516,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     /**
      * Append content to the existing WebView for infinite scroll
      */
-    private fun appendHtmlContent(content: String, chapterId: Long, chapterName: String, chapterUrl: String?) {
+    private fun appendHtmlContent(content: String, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
         // Strip script/style/noscript tags from content
         var cleanContent = if (plainTextMode) {
@@ -1519,16 +1535,36 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         val js = """
             (function() {
+                // Ensure chapters container exists
+                var chaptersContainer = document.getElementById('$TSUNDOKU_CHAPTERS_CONTAINER_ID');
+                if (!chaptersContainer) {
+                    chaptersContainer = document.createElement('div');
+                    chaptersContainer.id = '$TSUNDOKU_CHAPTERS_CONTAINER_ID';
+                    while (document.body.firstChild) {
+                        chaptersContainer.appendChild(document.body.firstChild);
+                    }
+                    document.body.appendChild(chaptersContainer);
+                }
+
                 var divider = document.createElement('hr');
-                divider.className = 'chapter-divider';
-                divider.setAttribute('data-chapter-id', '$chapterId');
-                document.body.appendChild(divider);
+                divider.className = '$CHAPTER_DIVIDER_CLASS';
+                divider.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
+                divider.setAttribute('$CHAPTER_TITLE_ATTR', ${JSONObject.quote(chapterName)});
+                divider.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
+                divider.setAttribute('$CHAPTER_PATH_ATTR', ${JSONObject.quote(chapterUrl.orEmpty())});
+                divider.setAttribute('$CHAPTER_URL_ATTR', ${JSONObject.quote(toAbsoluteChapterUrl(chapterUrl))});
+                chaptersContainer.appendChild(divider);
 
                 var contentDiv = document.createElement('div');
-                contentDiv.className = 'chapter-content';
-                contentDiv.setAttribute('data-chapter-id', '$chapterId');
+                contentDiv.className = '$CHAPTER_CONTENT_CLASS';
+                contentDiv.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
+                contentDiv.setAttribute('$CHAPTER_TITLE_ATTR', ${JSONObject.quote(chapterName)});
+                contentDiv.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
+                contentDiv.setAttribute('$CHAPTER_PATH_ATTR', ${JSONObject.quote(chapterUrl.orEmpty())});
+                contentDiv.setAttribute('$CHAPTER_URL_ATTR', ${JSONObject.quote(toAbsoluteChapterUrl(chapterUrl))});
+                contentDiv.setAttribute('$TSUNDOKU_CHAPTER_ATTR', '1');
                 ${if (plainTextMode) "contentDiv.textContent = $escapedContent;" else "contentDiv.innerHTML = $escapedContent;"}
-                document.body.appendChild(contentDiv);
+                chaptersContainer.appendChild(contentDiv);
 
                 // Update chapter boundaries after DOM update
                 setTimeout(function() {
@@ -1549,11 +1585,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     private fun loadHtmlContent(
         content: String,
-        chapterId: Long? = null,
-        chapterName: String? = null,
-        chapterUrl: String? = null,
+        chapter: ReaderChapter? = null,
     ) {
-        val normalizedChapterUrl = normalizeUrl(chapterUrl)
+        val chapterModel = chapter?.chapter
+        val chapterId = chapterModel?.id
+        val chapterName = chapterModel?.name.orEmpty()
+        val chapterPath = chapterModel?.url.orEmpty()
+        val normalizedChapterUrl = normalizeUrl(chapterPath)
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(normalizedChapterUrl)
         // Strip script/style/noscript tags from content to prevent unwanted JS execution
         var cleanContent = if (plainTextMode) {
@@ -1585,8 +1623,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         // Add initial invisible chapter divider marker for tracking (no visible separator)
         val chapterDivider = if (chapterId != null && preferences.novelInfiniteScroll.get()) {
-            """<div class="chapter-divider" data-chapter-id="$chapterId" style="height:0;margin:0;padding:0;"></div>
-               <div class="chapter-content" data-chapter-id="$chapterId">"""
+            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="${chapterName.htmlAttributeEscape()}" $CHAPTER_NUMBER_ATTR="${chapterModel?.chapter_number ?: -1f}" $CHAPTER_PATH_ATTR="${chapterPath.htmlAttributeEscape()}" $CHAPTER_URL_ATTR="${toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()}" style="height:0;margin:0;padding:0;"></div>
+               <div class="$CHAPTER_CONTENT_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="${chapterName.htmlAttributeEscape()}" $CHAPTER_NUMBER_ATTR="${chapterModel?.chapter_number ?: -1f}" $CHAPTER_PATH_ATTR="${chapterPath.htmlAttributeEscape()}" $CHAPTER_URL_ATTR="${toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()}">"""
         } else {
             ""
         }
@@ -1599,7 +1637,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
 
         // Build global JS variables for custom scripts
-        val chapterMetaScript = buildChapterMetaScript()
+        val chapterMetaScript = buildTsundokuScript()
 
         var finalContent = cleanContent
         var embeddedHead = ""
@@ -1709,6 +1747,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
     }
 
+    private fun toAbsoluteChapterUrl(chapterPath: String?): String {
+        val normalized = normalizeUrl(chapterPath).orEmpty().trim()
+        if (normalized.isBlank()) return ""
+        if (normalized.startsWith("http://") || normalized.startsWith("https://")) return normalized
+
+        val novelUrl = normalizeUrl(activity.viewModel.manga?.url).orEmpty().trim()
+        if (!(novelUrl.startsWith("http://") || novelUrl.startsWith("https://"))) return normalized
+
+        return try {
+            URI(novelUrl).resolve(normalized).toString()
+        } catch (_: Exception) {
+            normalized
+        }
+    }
+
     private fun stripMediaTags(content: String): String {
         return content
             .replace(Regex("<img[^>]*>", RegexOption.IGNORE_CASE), "")
@@ -1721,27 +1774,57 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     }
 
     /**
-     * Build a JS snippet that sets global chapter/novel metadata variables.
-     * Called during initial [loadHtmlContent] to embed in `<script>` tags.
+     * Build the global Tsundoku JS object for the current chapter context.
+     * Includes the active chapter plus an array of all loaded chapters.
      */
-    private fun buildChapterMetaScript(): String {
-        val chapter = currentChapters?.currChapter?.chapter
-            ?: loadedChapters.getOrNull(currentChapterIndex)?.chapter
-        val chapterTitle = (chapter?.name ?: "").jsEscape()
-        val chapterNumber = chapter?.chapter_number ?: -1f
-        val chapterUrl = normalizeUrl(chapter?.url).orEmpty().jsEscape()
-        val novelUrl = normalizeUrl(activity.viewModel.manga?.url).orEmpty().jsEscape()
+    private fun buildTsundokuScript(): String {
+        val currentChapter = getCurrentTsundokuChapter()
+        val currentChapterJson = buildTsundokuChapterJson(currentChapter)
+        val chaptersJson = buildTsundokuChaptersJson()
+        val novelUrl = JSONObject.quote(normalizeUrl(activity.viewModel.manga?.url).orEmpty())
 
         return """
-            window.__TSUNDOKU_CHAPTER_TITLE = "$chapterTitle";
-            window.__TSUNDOKU_CHAPTER_NUMBER = $chapterNumber;
-            window.__TSUNDOKU_CHAPTER_URL = "$chapterUrl";
-            window.__TSUNDOKU_NOVEL_URL = "$novelUrl";
-            window.__TSUNDOKU_IS_EDIT_MODE = $isEditingMode;
-            window.__TSUNDOKU_IS_INF_SCROLL = ${preferences.novelInfiniteScroll.get()};
-            window.__TSUNDOKU_TEXT_SELECTION_BLOCKED = ${!preferences.novelTextSelectable.get()};
-            window.__TSUNDOKU_FORCED_LOWERCASE = ${preferences.novelForceTextLowercase.get()};
+            window.$TSUNDOKU_OBJECT_NAME = window.$TSUNDOKU_OBJECT_NAME || {};
+            window.$TSUNDOKU_OBJECT_NAME.$TSUNDOKU_NOVEL_URL_KEY = $novelUrl;
+            window.$TSUNDOKU_OBJECT_NAME.$TSUNDOKU_CURRENT_CHAPTER_KEY = $currentChapterJson;
+            window.$TSUNDOKU_OBJECT_NAME.$TSUNDOKU_CHAPTERS_KEY = $chaptersJson;
+            window.$TSUNDOKU_OBJECT_NAME.runtime = window.$TSUNDOKU_OBJECT_NAME.runtime || {};
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_IS_EDIT_MODE_KEY = $isEditingMode;
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_IS_INF_SCROLL_KEY = ${preferences.novelInfiniteScroll.get()};
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_TEXT_SELECTION_BLOCKED_KEY = ${!preferences.novelTextSelectable.get()};
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_FORCED_LOWERCASE_KEY = ${preferences.novelForceTextLowercase.get()};
         """.trimIndent()
+    }
+
+    private fun getCurrentTsundokuChapter(): ReaderChapter? =
+        loadedChapters.getOrNull(currentChapterIndex) ?: currentChapters?.currChapter
+
+    private fun buildTsundokuChaptersJson(): String {
+        val chapters = if (loadedChapters.isNotEmpty()) {
+            loadedChapters
+        } else {
+            currentChapters?.currChapter?.let { listOf(it) }.orEmpty()
+        }
+        return chapters.joinToString(prefix = "[", postfix = "]") { buildTsundokuChapterJson(it) }
+    }
+
+    private fun buildTsundokuChapterJson(chapter: ReaderChapter?): String {
+        val chapterModel = chapter?.chapter
+        val chapterId = chapterModel?.id ?: -1L
+        val chapterTitle = JSONObject.quote(chapterModel?.name.orEmpty())
+        val chapterNumber = chapterModel?.chapter_number ?: -1f
+        val chapterPath = JSONObject.quote(chapterModel?.url.orEmpty())
+        val chapterUrl = JSONObject.quote(toAbsoluteChapterUrl(chapterModel?.url))
+
+        return buildString {
+            append('{')
+            append("\"id\": ").append(chapterId).append(',')
+            append("\"title\": ").append(chapterTitle).append(',')
+            append("\"number\": ").append(chapterNumber).append(',')
+            append("\"path\": ").append(chapterPath).append(',')
+            append("\"url\": ").append(chapterUrl)
+            append('}')
+        }
     }
 
     /**
@@ -1749,7 +1832,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      * boundary change (when the user scrolls into a different chapter).
      */
     private fun updateChapterMetaJs() {
-        val js = buildChapterMetaScript()
+        val js = buildTsundokuScript()
         evaluateJavascriptSafe("(function(){$js})();", null)
     }
 
@@ -1776,6 +1859,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     private fun normalizeContentForHtml(content: String, chapterUrl: String?): String =
         NovelViewerTextUtils.normalizeContentForHtml(content, chapterUrl)
+
+    private fun String.htmlAttributeEscape(): String =
+        this.replace("&", "&amp;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
 
     /**
      * Strips the chapter title from the beginning of the content.
@@ -1984,8 +2074,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                             }
                         }
 
-                        if (!window.__tsundokuEditInputBound) {
-                            window.__tsundokuEditInputBound = true;
+                        window.$TSUNDOKU_OBJECT_NAME = window.$TSUNDOKU_OBJECT_NAME || {};
+                        window.$TSUNDOKU_OBJECT_NAME.runtime = window.$TSUNDOKU_OBJECT_NAME.runtime || {};
+                        if (!window.$TSUNDOKU_OBJECT_NAME.runtime.editInputBound) {
+                            window.$TSUNDOKU_OBJECT_NAME.runtime.editInputBound = true;
                             document.addEventListener('input', function(e) {
                                 if (window.Android && window.Android.onContentEdited) {
                                     window.Android.onContentEdited();
@@ -2125,7 +2217,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun setJsLoadingNext(isLoading: Boolean) {
         val flag = if (isLoading) "true" else "false"
         evaluateJavascriptSafe(
-            "(function(){ if (window.__tsundokuSetLoadingNext) window.__tsundokuSetLoadingNext($flag); })();",
+            "(function(){ if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime && window.$TSUNDOKU_OBJECT_NAME.runtime.setLoadingNext) window.$TSUNDOKU_OBJECT_NAME.runtime.setLoadingNext($flag); })();",
             null,
         )
     }
@@ -2152,6 +2244,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         if (preferences.novelHideChapterTitle.get()) {
             content = stripChapterTitle(content, chapter.chapter.name)
         }
+
+        // Keep preprocessing consistent with normal WebView loads.
+        content = applyRegexReplacements(content)
 
         // Optionally force lowercase
         if (preferences.novelForceTextLowercase.get()) {
@@ -2181,9 +2276,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     loadedChapterIds.add(chapterId)
                     loadedChapters.add(chapter)
                 }
-                appendHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                appendHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
             } else {
-                loadHtmlContent(renderableContent, chapterId, chapter.chapter.name, chapter.chapter.url)
+                loadHtmlContent(renderableContent, chapter)
                 loadedChapterIds.clear()
                 loadedChapters.clear()
                 loadedChapterIds.add(chapterId)
@@ -2794,8 +2889,5 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 }
             }
         }
-    }
-    companion object {
-        private const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
     }
 }

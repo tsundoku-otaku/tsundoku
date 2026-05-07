@@ -151,7 +151,14 @@ object NovelViewerTextUtils {
                     val regex = Regex(rule.pattern)
                     regex.replace(result, rule.replacement)
                 } else {
-                    result.replace(rule.pattern, rule.replacement)
+                    val escapedPattern = Regex.escape(rule.pattern)
+                    val boundedPattern = if (rule.matchWholeWord) {
+                        "(?<![\\p{L}\\p{N}_])(?:$escapedPattern)(?![\\p{L}\\p{N}_])"
+                    } else {
+                        escapedPattern
+                    }
+                    val options = if (rule.caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+                    Regex(boundedPattern, options).replace(result) { rule.replacement }
                 }
             } catch (e: Exception) {
                 logcat(LogPriority.WARN) { "Regex replacement '${rule.title}' failed: ${e.message}" }
