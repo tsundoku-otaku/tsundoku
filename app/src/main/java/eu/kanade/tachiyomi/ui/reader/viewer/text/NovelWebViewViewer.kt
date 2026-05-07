@@ -1458,7 +1458,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         if (preferences.novelBlockMedia.get()) {
             cleanContent = stripMediaTags(cleanContent)
         }
-        val escapedContent = JSONObject.quote(cleanContent)
+        val escapedContent = quoteForJson(cleanContent)
 
         val js = """
             (function() {
@@ -1468,19 +1468,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 var contentDiv = document.createElement('div');
                 contentDiv.className = '$CHAPTER_CONTENT_CLASS';
                 contentDiv.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
-                contentDiv.setAttribute('$CHAPTER_TITLE_ATTR', ${JSONObject.quote(chapterName)});
+                contentDiv.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
                 contentDiv.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
-                contentDiv.setAttribute('$CHAPTER_PATH_ATTR', ${JSONObject.quote(chapterUrl.orEmpty())});
-                contentDiv.setAttribute('$CHAPTER_URL_ATTR', ${JSONObject.quote(toAbsoluteChapterUrl(chapterUrl))});
+                contentDiv.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
+                contentDiv.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
                 ${if (plainTextMode) "contentDiv.textContent = $escapedContent;" else "contentDiv.innerHTML = $escapedContent;"}
 
                 var divider = document.createElement('div');
                 divider.className = '$CHAPTER_DIVIDER_CLASS';
                 divider.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
-                divider.setAttribute('$CHAPTER_TITLE_ATTR', ${JSONObject.quote(chapterName)});
+                divider.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
                 divider.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
-                divider.setAttribute('$CHAPTER_PATH_ATTR', ${JSONObject.quote(chapterUrl.orEmpty())});
-                divider.setAttribute('$CHAPTER_URL_ATTR', ${JSONObject.quote(toAbsoluteChapterUrl(chapterUrl))});
+                divider.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
+                divider.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
 
                 var firstChild = document.body.firstChild;
                 document.body.insertBefore(contentDiv, firstChild);
@@ -1531,7 +1531,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         if (preferences.novelBlockMedia.get()) {
             cleanContent = stripMediaTags(cleanContent)
         }
-        val escapedContent = JSONObject.quote(cleanContent)
+        val escapedContent = quoteForJson(cleanContent)
 
         val js = """
             (function() {
@@ -1549,19 +1549,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 var divider = document.createElement('hr');
                 divider.className = '$CHAPTER_DIVIDER_CLASS';
                 divider.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
-                divider.setAttribute('$CHAPTER_TITLE_ATTR', ${JSONObject.quote(chapterName)});
+                divider.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
                 divider.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
-                divider.setAttribute('$CHAPTER_PATH_ATTR', ${JSONObject.quote(chapterUrl.orEmpty())});
-                divider.setAttribute('$CHAPTER_URL_ATTR', ${JSONObject.quote(toAbsoluteChapterUrl(chapterUrl))});
+                divider.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
+                divider.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
                 chaptersContainer.appendChild(divider);
 
                 var contentDiv = document.createElement('div');
                 contentDiv.className = '$CHAPTER_CONTENT_CLASS';
                 contentDiv.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
-                contentDiv.setAttribute('$CHAPTER_TITLE_ATTR', ${JSONObject.quote(chapterName)});
+                contentDiv.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
                 contentDiv.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
-                contentDiv.setAttribute('$CHAPTER_PATH_ATTR', ${JSONObject.quote(chapterUrl.orEmpty())});
-                contentDiv.setAttribute('$CHAPTER_URL_ATTR', ${JSONObject.quote(toAbsoluteChapterUrl(chapterUrl))});
+                contentDiv.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
+                contentDiv.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
                 contentDiv.setAttribute('$TSUNDOKU_CHAPTER_ATTR', '1');
                 ${if (plainTextMode) "contentDiv.textContent = $escapedContent;" else "contentDiv.innerHTML = $escapedContent;"}
                 chaptersContainer.appendChild(contentDiv);
@@ -1588,8 +1588,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         chapter: ReaderChapter? = null,
     ) {
         val chapterModel = chapter?.chapter
-        val chapterId = chapterModel?.id
+        val chapterId = chapterModel?.id ?: -1L
         val chapterName = chapterModel?.name.orEmpty()
+        val chapterNumber = chapterModel?.chapter_number ?: -1f
         val chapterPath = chapterModel?.url.orEmpty()
         val normalizedChapterUrl = normalizeUrl(chapterPath)
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(normalizedChapterUrl)
@@ -1621,14 +1622,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         loadedChapters.clear()
         currentChapterIndex = 0
 
-        // Add initial invisible chapter divider marker for tracking (no visible separator)
-        val chapterDivider = if (chapterId != null && preferences.novelInfiniteScroll.get()) {
-            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="${chapterName.htmlAttributeEscape()}" $CHAPTER_NUMBER_ATTR="${chapterModel?.chapter_number ?: -1f}" $CHAPTER_PATH_ATTR="${chapterPath.htmlAttributeEscape()}" $CHAPTER_URL_ATTR="${toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()}" style="height:0;margin:0;padding:0;"></div>
-               <div class="$CHAPTER_CONTENT_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="${chapterName.htmlAttributeEscape()}" $CHAPTER_NUMBER_ATTR="${chapterModel?.chapter_number ?: -1f}" $CHAPTER_PATH_ATTR="${chapterPath.htmlAttributeEscape()}" $CHAPTER_URL_ATTR="${toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()}">"""
+        // Add chapter metadata as attributes (always include for consistency)
+        // This enables rich chapter tracking in custom JS regardless of infinite scroll
+        val chapterDivider = if (chapterId != -1L) {
+            val absoluteChapterUrl = toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()
+            val escapedName = chapterName.htmlAttributeEscape()
+            val escapedPath = chapterPath.htmlAttributeEscape()
+            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl" style="height:0;margin:0;padding:0;"></div>
+               <div class="$CHAPTER_CONTENT_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl">"""
         } else {
             ""
         }
-        val chapterDividerEnd = if (chapterId != null && preferences.novelInfiniteScroll.get()) "</div>" else ""
+        val chapterDividerEnd = if (chapterId != -1L) "</div>" else ""
 
         val mediaBlockCss = if (blockMedia) {
             "img, video, audio, source, svg, image { display: none !important; }"
@@ -1781,7 +1786,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         val currentChapter = getCurrentTsundokuChapter()
         val currentChapterJson = buildTsundokuChapterJson(currentChapter)
         val chaptersJson = buildTsundokuChaptersJson()
-        val novelUrl = JSONObject.quote(normalizeUrl(activity.viewModel.manga?.url).orEmpty())
+        val novelUrl = quoteForJson(normalizeUrl(activity.viewModel.manga?.url).orEmpty())
 
         return """
             window.$TSUNDOKU_OBJECT_NAME = window.$TSUNDOKU_OBJECT_NAME || {};
@@ -1811,10 +1816,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun buildTsundokuChapterJson(chapter: ReaderChapter?): String {
         val chapterModel = chapter?.chapter
         val chapterId = chapterModel?.id ?: -1L
-        val chapterTitle = JSONObject.quote(chapterModel?.name.orEmpty())
+        val chapterTitle = quoteForJson(chapterModel?.name.orEmpty())
         val chapterNumber = chapterModel?.chapter_number ?: -1f
-        val chapterPath = JSONObject.quote(chapterModel?.url.orEmpty())
-        val chapterUrl = JSONObject.quote(toAbsoluteChapterUrl(chapterModel?.url))
+        val chapterPath = quoteForJson(chapterModel?.url.orEmpty())
+        val chapterUrl = quoteForJson(toAbsoluteChapterUrl(chapterModel?.url))
 
         return buildString {
             append('{')
@@ -1866,6 +1871,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             .replace("'", "&#39;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
+
+    /**
+     * Helper to safely quote strings for JSON/JavaScript literals.
+     * Centralizes JSON quoting logic.
+     */
+    private fun quoteForJson(value: String): String =
+        JSONObject.quote(value)
 
     /**
      * Strips the chapter title from the beginning of the content.
@@ -2076,9 +2088,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
                         window.$TSUNDOKU_OBJECT_NAME = window.$TSUNDOKU_OBJECT_NAME || {};
                         window.$TSUNDOKU_OBJECT_NAME.runtime = window.$TSUNDOKU_OBJECT_NAME.runtime || {};
+                        // Guard against multiple registrations of input listener
                         if (!window.$TSUNDOKU_OBJECT_NAME.runtime.editInputBound) {
                             window.$TSUNDOKU_OBJECT_NAME.runtime.editInputBound = true;
-                            document.addEventListener('input', function(e) {
+                            // Remove existing listeners first to avoid duplicates
+                            var existingListener = window.$TSUNDOKU_OBJECT_NAME.runtime.inputListener;
+                            if (existingListener) {
+                                document.removeEventListener('input', existingListener);
+                            }
+                            var inputListener = function(e) {
                                 if (window.Android && window.Android.onContentEdited) {
                                     window.Android.onContentEdited();
                                 }
