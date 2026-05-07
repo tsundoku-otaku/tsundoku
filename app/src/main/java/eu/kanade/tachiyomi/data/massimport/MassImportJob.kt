@@ -79,6 +79,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
     private val refreshLibraryCache: RefreshLibraryCache = Injekt.get()
     private val getLibraryManga: tachiyomi.domain.manga.interactor.GetLibraryManga = Injekt.get()
     private val storageManager: StorageManager = Injekt.get()
+    private val sourcePreferences: eu.kanade.domain.source.service.SourcePreferences = Injekt.get()
     private var lastNotificationTime = 0L
     private var lastNotifiedProgress = -1
     private var lastNotificationStatus: String? = null
@@ -495,8 +496,37 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // Normalize URL before any operations
         val normalizedPath = normalizeUrl(rawPath)
 
-        // Check if already exists with normalized URL
-        val existingManga = getMangaByUrlAndSourceId.await(normalizedPath, source.id)
+        // Attempt to resolve the canonical internal URL if the user provided a full web URL.
+        // This is crucial because some extensions (like Comix) map web URLs (e.g. /title/xxxxx)
+        // to different internal references (e.g. /xxxxx).
+        var finalUrl = normalizedPath
+        if (url.startsWith("http", ignoreCase = true)) {
+            val resolvedManga = runCatching {
+                if (source is eu.kanade.tachiyomi.source.online.ResolvableSource && 
+                    source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga) {
+                    source.getManga(url)
+                } else if (source is HttpSource) {
+                    source.getSearchManga(1, url, eu.kanade.tachiyomi.source.model.FilterList()).mangas.firstOrNull()
+                } else {
+                    null
+                }
+            }.getOrNull()
+            if (resolvedManga != null) {
+                try {
+                    if (resolvedManga.url.isNotEmpty()) {
+                        finalUrl = resolvedManga.url
+                        if (!finalUrl.startsWith("/") && !finalUrl.startsWith("http")) {
+                            finalUrl = "/$finalUrl"
+                        }
+                    }
+                } catch (e: UninitializedPropertyAccessException) {
+                    // Ignore uninitialized URL
+                }
+            }
+        }
+
+        // Check if already exists with resolved URL
+        val existingManga = getMangaByUrlAndSourceId.await(finalUrl, source.id)
         if (existingManga != null && existingManga.favorite) {
             return false
         }
@@ -506,8 +536,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         if (!fetchDetails && !fetchChapters) {
             if (existingManga == null) {
                 val placeholderManga = eu.kanade.tachiyomi.source.model.SManga.create().apply {
-                    this.url = normalizedPath
-                    this.title = normalizedPath.substringAfterLast('/').replace("-", " ")
+                    this.url = finalUrl
+                    this.title = finalUrl.substringAfterLast('/').replace("-", " ")
                         .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
                     this.initialized = false
                 }
@@ -522,7 +552,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         ),
                     )
                     // Mark as present in local cache so concurrent checks know it's added
-                    dbCache[source.id to normalizedPath] = true
+                    dbCache[source.id to finalUrl] = true
                     // Buffer for batched library updates to reduce reactive churn
                     pendingAddIds.add(manga.id)
                     if (pendingAddIds.size >= flushBatchSize) {
@@ -541,7 +571,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     ),
                 )
                 // Update cache to reflect new favorite state
-                dbCache[source.id to normalizedPath] = true
+                dbCache[source.id to finalUrl] = true
                 // Buffer for batched library updates to reduce reactive churn
                 pendingAddIds.add(existingManga.id)
                 if (pendingAddIds.size >= flushBatchSize) {
@@ -555,16 +585,72 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
 
         // Prepare input URL for source; JS plugins expect plugin-specific path (no leading slash)
-        val inputUrl = if (source is JsSource) normalizedPath.removePrefix("/") else normalizedPath
+        val inputUrl = if (source is JsSource) finalUrl.removePrefix("/") else finalUrl
 
         // Fetch novel details with normalized/input URL
-        val sManga = source.getMangaDetails(
-            eu.kanade.tachiyomi.source.model.SManga.create().apply {
-                this.url = inputUrl
-            },
-        )
-        // Store with normalized path (WITH slash) for DB consistency across queries
-        sManga.url = normalizedPath
+        val sManga = runCatching {
+            // Try to handle via ResolvableSource first for deep linking support
+            var resolved: eu.kanade.tachiyomi.source.model.SManga? = null
+            if (source is eu.kanade.tachiyomi.source.online.ResolvableSource && 
+                source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga) {
+                try {
+                    resolved = source.getManga(url)
+                } catch (e: Exception) {
+                    // Fallback to legacy path parsing
+                }
+            }
+            
+            resolved ?: source.getMangaDetails(
+                eu.kanade.tachiyomi.source.model.SManga.create().apply {
+                    this.url = inputUrl
+                },
+            )
+        }.getOrElse { firstError ->
+            if (source is HttpSource) {
+                // Try source's deep link search via URL before modifying slashes
+                var searchFallback: eu.kanade.tachiyomi.source.model.SManga? = null
+                try {
+                    val page = source.getSearchManga(1, url, eu.kanade.tachiyomi.source.model.FilterList())
+                    val firstManga = page.mangas.firstOrNull()
+                    if (firstManga != null) {
+                        searchFallback = source.getMangaDetails(firstManga).apply {
+                            this.url = firstManga.url
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Search fallback failed
+                }
+                
+                if (searchFallback != null) {
+                    searchFallback
+                } else {
+                    // Determine fallback url logic based on host concatenation error evidence
+                    val fallbackUrl = if (inputUrl.startsWith("/")) inputUrl.removePrefix("/") else "/$inputUrl"
+                    
+                    source.getMangaDetails(
+                        eu.kanade.tachiyomi.source.model.SManga.create().apply {
+                            this.url = fallbackUrl
+                        }
+                    ).apply {
+                        this.url = fallbackUrl
+                    }
+                }
+            } else {
+                throw firstError
+            }
+        }
+        // Preserve the canonical URL generated by the extension.
+        // If the extension didn't return one, fallback to the requested path.
+        // For consistency, ensure it has a leading slash.
+        try {
+            if (sManga.url.isEmpty()) {
+                sManga.url = normalizedPath
+            } else if (!sManga.url.startsWith("/") && !sManga.url.startsWith("http")) {
+                sManga.url = "/${sManga.url}"
+            }
+        } catch (e: UninitializedPropertyAccessException) {
+            sManga.url = normalizedPath
+        }
 
         // Convert to local manga
         val manga = networkToLocalManga(sManga.toDomainManga(source.id, source.isNovelSource()))
@@ -822,10 +908,21 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         if (matchingSources.isEmpty()) return null
         if (matchingSources.size == 1) return matchingSources.first()
 
-        // Prioritize Kotlin extensions over JS plugins
-        val kotlinSources = matchingSources.filter { it !is JsSource }
+        // Prioritize languages the user actually has enabled in extension settings
+        // and filter out any sources the user explicitly disabled
+        val enabledLanguages = sourcePreferences.enabledLanguages.get()
+        val disabledSources = sourcePreferences.disabledSources.get()
+        
+        val enabledSources = matchingSources.filter { 
+            it.lang in enabledLanguages && it.id.toString() !in disabledSources 
+        }
+        
+        // Prioritize Kotlin extensions over JS plugins from within the filtered match
+        // If no user-enabled language matches, fallback to the first available source natively (index zero)
+        val bestLangSources = if (enabledSources.isNotEmpty()) enabledSources else matchingSources
+        val kotlinSources = bestLangSources.filter { it !is JsSource }
 
-        return kotlinSources.firstOrNull() ?: matchingSources.first()
+        return kotlinSources.firstOrNull() ?: bestLangSources.first()
     }
 
     private fun getSourceBaseUrl(source: CatalogueSource): String {
