@@ -1625,7 +1625,17 @@ class ReaderActivity : BaseActivity() {
                 .onEach(::setNovelCustomBrightness)
                 .launchIn(lifecycleScope)
 
-            // Apply novel brightness when viewer changes to a novel viewer
+            // Novel-specific keep screen on
+            readerPreferences.novelKeepScreenOn.changes()
+                .onEach { enabled ->
+                    val viewer = viewModel.state.value.viewer
+                    if (viewer is NovelViewer || viewer is NovelWebViewViewer) {
+                        setKeepScreenOn(enabled)
+                    }
+                }
+                .launchIn(lifecycleScope)
+
+            // Apply novel brightness and keep screen on when viewer changes to a novel viewer
             viewModel.state
                 .map { it.viewer }
                 .distinctUntilChanged()
@@ -1633,6 +1643,10 @@ class ReaderActivity : BaseActivity() {
                 .onEach { viewer ->
                     if (viewer is NovelViewer || viewer is NovelWebViewViewer) {
                         setNovelCustomBrightness(readerPreferences.novelCustomBrightness.get())
+                        setKeepScreenOn(readerPreferences.novelKeepScreenOn.get())
+                    } else {
+                        // Switch back to manga reader settings for non-novel viewers
+                        setKeepScreenOn(readerPreferences.keepScreenOn.get())
                     }
                 }
                 .launchIn(lifecycleScope)
