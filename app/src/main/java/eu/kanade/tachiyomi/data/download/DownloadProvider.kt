@@ -245,13 +245,15 @@ class DownloadProvider(
         return buildList {
             // Folder of images
             add(chapterDirName)
-            // Archived chapters
+            // Archived chapters - support both .cbz (manga) and .zip (novels)
             add("$chapterDirName.cbz")
+            add("$chapterDirName.zip")
 
             // any legacy names
             legacyChapterDirNames.forEach {
                 add(it)
                 add("$it.cbz")
+                add("$it.zip")
             }
         }
     }
