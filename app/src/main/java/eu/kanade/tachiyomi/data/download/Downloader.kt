@@ -882,7 +882,8 @@ class Downloader(
     }
 
     /**
-     * Archive the chapter pages as a CBZ.
+     * Archives a chapter into a compressed file.
+     * Novels are archived as .zip files, manga chapters as .cbz files.
      */
     private fun archiveChapter(
         mangaDir: UniFile,

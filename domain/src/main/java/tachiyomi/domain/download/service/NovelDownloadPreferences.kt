@@ -148,7 +148,8 @@ class NovelDownloadPreferences(
     )
 
     /**
-     * ZIP compression level for novel chapter archives.
+     * ZIP compression level for novel chapter archives (.zip format).
+     * Novels are saved as .zip files; older downloads may be in .cbz format which is still supported.
      * 0 = store (no compression), 1-9 = deflate levels.
      */
     fun zipCompressionLevel() = preferenceStore.getInt(
