@@ -35,6 +35,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Hide manga should hide manga-only screens from search index [@mrissaoussama](https://github.com/mrissaoussama) [#172](https://github.com/tsundoku-otaku/tsundoku/pull/172)
 - Visual feedback for tag/extension refreshes [@mrissaoussama](https://github.com/mrissaoussama) [#150](https://github.com/tsundoku-otaku/tsundoku/pull/150)
 - Paragraph auto-split [@mrissaoussama](https://github.com/mrissaoussama) [#162](https://github.com/tsundoku-otaku/tsundoku/pull/162)
+- Novel-specific keep screen on setting [@mrissaoussama](https://github.com/mrissaoussama) [#199](https://github.com/tsundoku-otaku/tsundoku/pull/199)
 
 
 ### Fixed
