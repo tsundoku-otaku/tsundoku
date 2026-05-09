@@ -470,4 +470,165 @@ object NovelViewerTextUtils {
         }
         return 0
     }
+
+    /**
+     * Data class holding theme token information for CSS variables and JS exposure.
+     */
+    data class ThemeTokens(
+        val cssVariables: String,        // CSS variables declaration (:root { ... })
+        val jsObject: String,            // JS object JSON string for window.TsundokuTheme
+    )
+
+    /**
+     * Generates Material Design and Tsundoku reader theme tokens.
+     * Resolves Material 3 color tokens from the activity's theme and reader preferences.
+     *
+     * @param activity The hosting activity — needed for resolving Material theme attributes.
+     * @param preferences Reader preferences for background/font color overrides.
+     * @param theme The theme key ("app", "dark", "sepia", "black", "grey", "custom", …).
+     * @return A [ThemeTokens] object containing CSS variables and a JS-serializable token map.
+     */
+    fun getThemeTokens(activity: Activity, preferences: ReaderPreferences, theme: String): ThemeTokens {
+        // Get reader background and text colors
+        val (readerBgColor, readerTextColor) = getThemeColors(activity, preferences, theme)
+
+        // Convert to hex strings
+        val readerBgHex = String.format("#%06X", 0xFFFFFF and readerBgColor)
+        val readerTextHex = String.format("#%06X", 0xFFFFFF and readerTextColor)
+
+        // Resolve Material Design 3 system colors from app theme
+        val typedValue = android.util.TypedValue()
+        val appTheme = activity.theme
+
+        // Material Design 3 system color tokens
+        val mdSysColorPrimary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorPrimary, 0xFF006A6A)
+        val mdSysColorOnPrimary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnPrimary, 0xFFFFFFFF)
+        val mdSysColorPrimaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorPrimaryContainer, 0xFF6FF7F6)
+        val mdSysColorOnPrimaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnPrimaryContainer, 0xFF002020)
+        val mdSysColorSecondary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSecondary, 0xFF006A6A)
+        val mdSysColorOnSecondary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSecondary, 0xFFFFFFFF)
+        val mdSysColorSecondaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSecondaryContainer, 0xFF6FF7F6)
+        val mdSysColorOnSecondaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSecondaryContainer, 0xFF002020)
+        val mdSysColorTertiary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorTertiary, 0xFF006A6A)
+        val mdSysColorOnTertiary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnTertiary, 0xFFFFFFFF)
+        val mdSysColorTertiaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorTertiaryContainer, 0xFF6FF7F6)
+        val mdSysColorOnTertiaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnTertiaryContainer, 0xFF002020)
+        val mdSysColorError = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorError, 0xFFB3261E)
+        val mdSysColorOnError = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnError, 0xFFFFFFFF)
+        val mdSysColorErrorContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorErrorContainer, 0xFFF9DEDC)
+        val mdSysColorOnErrorContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnErrorContainer, 0xFF410E0B)
+        val mdSysColorBackground = resolveColorAttribute(appTheme, typedValue, android.R.attr.colorBackground, readerBgColor.toLong())
+        val mdSysColorOnBackground = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnBackground, readerTextColor.toLong())
+        val mdSysColorSurface = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSurface, readerBgColor.toLong())
+        val mdSysColorOnSurface = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSurface, readerTextColor.toLong())
+        val mdSysColorSurfaceVariant = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSurfaceVariant, 0xFFCCC7C0)
+        val mdSysColorOnSurfaceVariant = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF49454E)
+        val mdSysColorOutline = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOutline, 0xFF79747E)
+
+        // Convert to hex strings
+        val mdHexColorPrimary = String.format("#%06X", 0xFFFFFF and mdSysColorPrimary)
+        val mdHexColorOnPrimary = String.format("#%06X", 0xFFFFFF and mdSysColorOnPrimary)
+        val mdHexColorPrimaryContainer = String.format("#%06X", 0xFFFFFF and mdSysColorPrimaryContainer)
+        val mdHexColorOnPrimaryContainer = String.format("#%06X", 0xFFFFFF and mdSysColorOnPrimaryContainer)
+        val mdHexColorSecondary = String.format("#%06X", 0xFFFFFF and mdSysColorSecondary)
+        val mdHexColorOnSecondary = String.format("#%06X", 0xFFFFFF and mdSysColorOnSecondary)
+        val mdHexColorSecondaryContainer = String.format("#%06X", 0xFFFFFF and mdSysColorSecondaryContainer)
+        val mdHexColorOnSecondaryContainer = String.format("#%06X", 0xFFFFFF and mdSysColorOnSecondaryContainer)
+        val mdHexColorTertiary = String.format("#%06X", 0xFFFFFF and mdSysColorTertiary)
+        val mdHexColorOnTertiary = String.format("#%06X", 0xFFFFFF and mdSysColorOnTertiary)
+        val mdHexColorTertiaryContainer = String.format("#%06X", 0xFFFFFF and mdSysColorTertiaryContainer)
+        val mdHexColorOnTertiaryContainer = String.format("#%06X", 0xFFFFFF and mdSysColorOnTertiaryContainer)
+        val mdHexColorError = String.format("#%06X", 0xFFFFFF and mdSysColorError)
+        val mdHexColorOnError = String.format("#%06X", 0xFFFFFF and mdSysColorOnError)
+        val mdHexColorErrorContainer = String.format("#%06X", 0xFFFFFF and mdSysColorErrorContainer)
+        val mdHexColorOnErrorContainer = String.format("#%06X", 0xFFFFFF and mdSysColorOnErrorContainer)
+        val mdHexColorBackground = String.format("#%06X", 0xFFFFFF and mdSysColorBackground)
+        val mdHexColorOnBackground = String.format("#%06X", 0xFFFFFF and mdSysColorOnBackground)
+        val mdHexColorSurface = String.format("#%06X", 0xFFFFFF and mdSysColorSurface)
+        val mdHexColorOnSurface = String.format("#%06X", 0xFFFFFF and mdSysColorOnSurface)
+        val mdHexColorSurfaceVariant = String.format("#%06X", 0xFFFFFF and mdSysColorSurfaceVariant)
+        val mdHexColorOnSurfaceVariant = String.format("#%06X", 0xFFFFFF and mdSysColorOnSurfaceVariant)
+        val mdHexColorOutline = String.format("#%06X", 0xFFFFFF and mdSysColorOutline)
+
+        // Build CSS variables for :root
+        val cssVariables = """
+            :root {
+                --md-sys-color-primary: $mdHexColorPrimary;
+                --md-sys-color-on-primary: $mdHexColorOnPrimary;
+                --md-sys-color-primary-container: $mdHexColorPrimaryContainer;
+                --md-sys-color-on-primary-container: $mdHexColorOnPrimaryContainer;
+                --md-sys-color-secondary: $mdHexColorSecondary;
+                --md-sys-color-on-secondary: $mdHexColorOnSecondary;
+                --md-sys-color-secondary-container: $mdHexColorSecondaryContainer;
+                --md-sys-color-on-secondary-container: $mdHexColorOnSecondaryContainer;
+                --md-sys-color-tertiary: $mdHexColorTertiary;
+                --md-sys-color-on-tertiary: $mdHexColorOnTertiary;
+                --md-sys-color-tertiary-container: $mdHexColorTertiaryContainer;
+                --md-sys-color-on-tertiary-container: $mdHexColorOnTertiaryContainer;
+                --md-sys-color-error: $mdHexColorError;
+                --md-sys-color-on-error: $mdHexColorOnError;
+                --md-sys-color-error-container: $mdHexColorErrorContainer;
+                --md-sys-color-on-error-container: $mdHexColorOnErrorContainer;
+                --md-sys-color-background: $mdHexColorBackground;
+                --md-sys-color-on-background: $mdHexColorOnBackground;
+                --md-sys-color-surface: $mdHexColorSurface;
+                --md-sys-color-on-surface: $mdHexColorOnSurface;
+                --md-sys-color-surface-variant: $mdHexColorSurfaceVariant;
+                --md-sys-color-on-surface-variant: $mdHexColorOnSurfaceVariant;
+                --md-sys-color-outline: $mdHexColorOutline;
+                --tsundoku-reader-background: $readerBgHex;
+                --tsundoku-reader-text: $readerTextHex;
+            }
+        """.trimIndent()
+
+        // Build JS object
+        val jsObject = """
+            {
+                "mdSysColorPrimary": "$mdHexColorPrimary",
+                "mdSysColorOnPrimary": "$mdHexColorOnPrimary",
+                "mdSysColorPrimaryContainer": "$mdHexColorPrimaryContainer",
+                "mdSysColorOnPrimaryContainer": "$mdHexColorOnPrimaryContainer",
+                "mdSysColorSecondary": "$mdHexColorSecondary",
+                "mdSysColorOnSecondary": "$mdHexColorOnSecondary",
+                "mdSysColorSecondaryContainer": "$mdHexColorSecondaryContainer",
+                "mdSysColorOnSecondaryContainer": "$mdHexColorOnSecondaryContainer",
+                "mdSysColorTertiary": "$mdHexColorTertiary",
+                "mdSysColorOnTertiary": "$mdHexColorOnTertiary",
+                "mdSysColorTertiaryContainer": "$mdHexColorTertiaryContainer",
+                "mdSysColorOnTertiaryContainer": "$mdHexColorOnTertiaryContainer",
+                "mdSysColorError": "$mdHexColorError",
+                "mdSysColorOnError": "$mdHexColorOnError",
+                "mdSysColorErrorContainer": "$mdHexColorErrorContainer",
+                "mdSysColorOnErrorContainer": "$mdHexColorOnErrorContainer",
+                "mdSysColorBackground": "$mdHexColorBackground",
+                "mdSysColorOnBackground": "$mdHexColorOnBackground",
+                "mdSysColorSurface": "$mdHexColorSurface",
+                "mdSysColorOnSurface": "$mdHexColorOnSurface",
+                "mdSysColorSurfaceVariant": "$mdHexColorSurfaceVariant",
+                "mdSysColorOnSurfaceVariant": "$mdHexColorOnSurfaceVariant",
+                "mdSysColorOutline": "$mdHexColorOutline",
+                "tsundokuReaderBackground": "$readerBgHex",
+                "tsundokuReaderText": "$readerTextHex"
+            }
+        """.trimIndent()
+
+        return ThemeTokens(cssVariables, jsObject)
+    }
+
+    /**
+     * Helper function to resolve a Material theme color attribute.
+     * Returns the resolved color or a fallback default.
+     */
+    private fun resolveColorAttribute(
+        theme: android.content.res.Resources.Theme,
+        typedValue: android.util.TypedValue,
+        attr: Int,
+        fallback: Long,
+    ): Int {
+        return if (theme.resolveAttribute(attr, typedValue, true)) {
+            typedValue.data
+        } else {
+            fallback.toInt()
+        }
+    }
 }

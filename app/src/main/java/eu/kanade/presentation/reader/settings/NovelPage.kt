@@ -716,12 +716,12 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
 
     if (isEpub) {
         CheckboxItem(
-            label = "Enable EPUB CSS",
+            label = "Enable embedded CSS",
             pref = screenModel.preferences.enableEpubStyles,
         )
 
         CheckboxItem(
-            label = "Enable EPUB JS",
+            label = "Enable embedded JS",
             pref = screenModel.preferences.enableEpubJs,
         )
     }
