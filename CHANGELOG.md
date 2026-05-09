@@ -18,6 +18,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Fix
 - Manga mass import URL with JS plugins [@mrissaoussama](https://github.com/mrissaoussama) [#197](https://github.com/tsundoku-otaku/tsundoku/pull/197)
 
+### Other
+- Internationalize mass-import strings, add confirmation dialogues [@mrissaoussama](https://github.com/mrissaoussama) [#206](https://github.com/tsundoku-otaku/tsundoku/pull/206)
+
 
 ## [v0.1.4] - 2026-05-09
 ### Added
