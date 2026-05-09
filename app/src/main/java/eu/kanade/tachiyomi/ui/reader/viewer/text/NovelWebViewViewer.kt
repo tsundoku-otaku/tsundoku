@@ -607,6 +607,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 preferences.novelParagraphIndent.changes().drop(1),
                 preferences.novelParagraphSpacing.changes().drop(1),
                 preferences.novelCustomCss.changes().drop(1),
+                preferences.novelSourceCssPriority.changes().drop(1),
                 preferences.novelCustomCssSnippets.changes().drop(1),
                 preferences.novelUseOriginalFonts.changes().drop(1),
                 preferences.novelHideChapterTitle.changes().drop(1),
@@ -626,6 +627,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 .collect {
                     injectCustomScript()
                 }
+        }
+
+        // When embedded CSS/JS toggles change we need to reload the current chapter
+        // because sanitization (strip/keep) happens during initial HTML normalization.
+        scope.launch {
+            merge(
+                preferences.enableEpubStyles.changes().drop(1),
+                preferences.enableEpubJs.changes().drop(1),
+            ).collect {
+                // Reload current chapters so sanitizeHtmlForWebView runs with updated flags
+                currentChapters?.let { setChapters(it) }
+            }
         }
 
         scope.launch {
@@ -761,26 +774,29 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             "font-family: $effectiveFontFamily;"
         }
 
+        val sourceCssPriority = preferences.novelSourceCssPriority.get()
+        val styleImportance = if (sourceCssPriority) "" else " !important"
+
         val css = """
             $fontFaceDeclaration
             body {
-                font-size: ${fontSize}px;
-                $fontFamilyCss
-                line-height: $lineHeight;
-                margin: ${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px;
-                color: $textColorHex !important;
-                background-color: $bgColorHex !important;
-                text-align: $textAlign;
-                -webkit-user-select: ${if (preferences.novelTextSelectable.get()) "text" else "none"};
-                user-select: ${if (preferences.novelTextSelectable.get()) "text" else "none"};
+                font-size: ${fontSize}px$styleImportance;
+                $fontFamilyCss$styleImportance
+                line-height: $lineHeight$styleImportance;
+                margin: ${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px$styleImportance;
+                color: $textColorHex$styleImportance;
+                background-color: $bgColorHex$styleImportance;
+                text-align: $textAlign$styleImportance;
+                -webkit-user-select: ${if (preferences.novelTextSelectable.get()) "text" else "none"}$styleImportance;
+                user-select: ${if (preferences.novelTextSelectable.get()) "text" else "none"}$styleImportance;
             }
             p {
-                text-indent: ${paragraphIndent}em;
-                margin-top: ${paragraphSpacing}em;
-                margin-bottom: ${paragraphSpacing}em;
+                text-indent: ${paragraphIndent}em$styleImportance;
+                margin-top: ${paragraphSpacing}em$styleImportance;
+                margin-bottom: ${paragraphSpacing}em$styleImportance;
             }
             * {
-                color: inherit !important;
+                color: inherit$styleImportance;
             }
             $customCss
             $enabledSnippetsCss

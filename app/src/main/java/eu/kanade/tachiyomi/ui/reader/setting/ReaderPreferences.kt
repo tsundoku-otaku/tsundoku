@@ -237,6 +237,7 @@ class ReaderPreferences(
     // EPUB specific toggles
     val enableEpubStyles: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_enable_epub_css", true)
     val enableEpubJs: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_enable_epub_js", false)
+    val novelSourceCssPriority: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_source_css_priority", false)
 
     // Custom CSS/JS stored as JSON array of {title, code} objects
     val novelCustomCss: Preference<String> = preferenceStore.getString("pref_novel_custom_css", "")
