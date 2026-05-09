@@ -11,6 +11,10 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+### Improved
+- Novel Viewer Improvements - Refactors JS with infinite scroll, and more detailed metadata. [@mrissaoussama](https://github.com/mrissaoussama) [#198](https://github.com/tsundoku-otaku/tsundoku/pull/198)
+
+
 ### Fix
 - Manga mass import URL with JS plugins [@mrissaoussama](https://github.com/mrissaoussama) [#197](https://github.com/tsundoku-otaku/tsundoku/pull/197)
 
