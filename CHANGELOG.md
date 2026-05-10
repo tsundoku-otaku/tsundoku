@@ -14,6 +14,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - Novel Viewer Improvements - Refactors JS with infinite scroll, and more detailed metadata. [@mrissaoussama](https://github.com/mrissaoussama) [#198](https://github.com/tsundoku-otaku/tsundoku/pull/198)
 - Novel description screen now supports novel searches when tapping novel title [@mrissaoussama](https://github.com/mrissaoussama) [#207](https://github.com/tsundoku-otaku/tsundoku/pull/207)
+- Webview constants refactor, also fixes (non-infinite) scroll having dividers - Changes that affect custom CSS/JS [@mrissaoussama](https://github.com/mrissaoussama) [#209](https://github.com/tsundoku-otaku/tsundoku/pull/209)
 
 
 ### Fix
