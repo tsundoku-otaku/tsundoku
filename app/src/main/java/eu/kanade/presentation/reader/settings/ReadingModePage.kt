@@ -15,12 +15,15 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelWebViewViewer
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.CheckboxItem
 import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.SettingsChipRow
 import tachiyomi.presentation.core.components.SliderItem
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.util.collectAsState
 import java.text.NumberFormat
 
@@ -54,6 +57,8 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
     val viewer by screenModel.viewerFlow.collectAsState()
     if (viewer is WebtoonViewer) {
         WebtoonViewerSettings(screenModel)
+    } else if (viewer is NovelViewer || viewer is NovelWebViewViewer) {
+        NovelViewerSettings(screenModel)
     } else {
         PagerViewerSettings(screenModel)
     }
@@ -201,6 +206,20 @@ private fun ColumnScope.WebtoonViewerSettings(screenModel: ReaderSettingsScreenM
     CheckboxItem(
         label = stringResource(MR.strings.pref_webtoon_disable_zoom_out),
         pref = screenModel.preferences.webtoonDisableZoomOut,
+    )
+}
+
+@Composable
+private fun ColumnScope.NovelViewerSettings(screenModel: ReaderSettingsScreenModel) {
+    HeadingItem(TDMR.strings.novel_viewer)
+
+    val navigationModeNovel by screenModel.preferences.navigationModeNovel.collectAsState()
+    val novelNavInverted by screenModel.preferences.novelNavInverted.collectAsState()
+    TapZonesItems(
+        selected = navigationModeNovel,
+        onSelect = screenModel.preferences.navigationModeNovel::set,
+        invertMode = novelNavInverted,
+        onSelectInvertMode = screenModel.preferences.novelNavInverted::set,
     )
 }
 

@@ -155,6 +155,9 @@ class ReaderPreferences(
 
     val navigationModeWebtoon: Preference<Int> = preferenceStore.getInt("reader_navigation_mode_webtoon", 0)
 
+    // Navigation mode for novel viewers (tap zones)
+    val navigationModeNovel: Preference<Int> = preferenceStore.getInt("reader_navigation_mode_novel", 0)
+
     val pagerNavInverted: Preference<TappingInvertMode> = preferenceStore.getEnum(
         "reader_tapping_inverted",
         TappingInvertMode.NONE,
@@ -162,6 +165,11 @@ class ReaderPreferences(
 
     val webtoonNavInverted: Preference<TappingInvertMode> = preferenceStore.getEnum(
         "reader_tapping_inverted_webtoon",
+        TappingInvertMode.NONE,
+    )
+
+    val novelNavInverted: Preference<TappingInvertMode> = preferenceStore.getEnum(
+        "reader_tapping_inverted_novel",
         TappingInvertMode.NONE,
     )
 

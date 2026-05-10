@@ -415,11 +415,20 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     private var isAutoScrolling = false
     private var autoScrollJob: Job? = null
 
-    private var navigator: eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation = eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation()
+    
 
 
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val config = NovelConfig(scope)
+    private val navigator get() = config.navigator
+
+    init {
+        config.navigationModeChangedListener = {
+            val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
+            activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
+        }
+    }
     private var loadJob: Job? = null
     private var currentPage: ReaderPage? = null
     private var currentChapters: ViewerChapters? = null
@@ -515,6 +524,18 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                     e.x / container.width.toFloat(),
                     e.y / container.height.toFloat(),
                 )
+
+                if (preferences.navigationModeNovel.get() == ReaderPreferences.TapZones.size) {
+                    val centerXStart = 0.4f
+                    val centerXEnd = 0.6f
+                    val centerYStart = 0.4f
+                    val centerYEnd = 0.6f
+                    if (pos.x in centerXStart..centerXEnd && pos.y in centerYStart..centerYEnd) {
+                        activity.toggleMenu()
+                        return true
+                    }
+                    return false
+                }
 
                 when (navigator.getAction(pos)) {
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.MENU -> {

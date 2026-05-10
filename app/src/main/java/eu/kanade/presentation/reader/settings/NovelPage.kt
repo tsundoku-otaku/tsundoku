@@ -71,6 +71,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.data.font.FontManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -552,11 +553,42 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         pref = screenModel.preferences.novelVolumeKeysScroll,
     )
 
-    // Tap to Scroll
-    CheckboxItem(
-        label = stringResource(TDMR.strings.pref_novel_tap_to_scroll),
-        pref = screenModel.preferences.novelTapToScroll,
-    )
+    // Tap-zone navigation settings for novel viewer
+    val navigationModeNovel by screenModel.preferences.navigationModeNovel.collectAsState()
+    val novelNavInverted by screenModel.preferences.novelNavInverted.collectAsState()
+    SettingsChipRow(MR.strings.pref_viewer_nav) {
+        ReaderPreferences.TapZones.forEachIndexed { idx, res ->
+            FilterChip(
+                selected = navigationModeNovel == idx,
+                onClick = { screenModel.preferences.navigationModeNovel.set(idx) },
+                label = { Text(stringResource(res)) },
+            )
+        }
+
+        // Add explicit center-only mode (small center tap shows app bars)
+        val centerIndex = ReaderPreferences.TapZones.size
+        FilterChip(
+            selected = navigationModeNovel == centerIndex,
+            onClick = { screenModel.preferences.navigationModeNovel.set(centerIndex) },
+            label = { Text("Center only") },
+        )
+    }
+
+    // Show invert options only when navigation is not disabled or center-only
+    if (navigationModeNovel != 5 && navigationModeNovel != ReaderPreferences.TapZones.size) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(stringResource(MR.strings.pref_read_with_tapping_inverted), style = MaterialTheme.typography.bodyMedium)
+            SettingsChipRow("") {
+                ReaderPreferences.TappingInvertMode.entries.forEach { entry ->
+                    FilterChip(
+                        selected = entry == novelNavInverted,
+                        onClick = { screenModel.preferences.novelNavInverted.set(entry) },
+                        label = { Text(stringResource(entry.titleRes)) },
+                    )
+                }
+            }
+        }
+    }
 
     // Swipe Navigation
     CheckboxItem(
@@ -586,34 +618,37 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         stringResource(TDMR.strings.novel_vertical_scrollbar_left) to "vertical_left",
         stringResource(TDMR.strings.novel_vertical_scrollbar_right) to "vertical_right",
     )
-    InlineSettingsChipRow(TDMR.strings.pref_novel_scrollbar_mode) {
-        scrollbarModeOptions.map { (label, value) ->
-            FilterChip(
-                selected = scrollbarMode == value,
-                onClick = {
-                    when (value) {
-                        "none" -> {
-                            screenModel.preferences.novelShowProgressSlider.set(false)
-                            screenModel.preferences.novelVerticalScrollbar.set(false)
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text(stringResource(TDMR.strings.pref_novel_scrollbar_mode), style = MaterialTheme.typography.bodyMedium)
+        SettingsChipRow("") {
+            scrollbarModeOptions.forEach { (label, value) ->
+                FilterChip(
+                    selected = scrollbarMode == value,
+                    onClick = {
+                        when (value) {
+                            "none" -> {
+                                screenModel.preferences.novelShowProgressSlider.set(false)
+                                screenModel.preferences.novelVerticalScrollbar.set(false)
+                            }
+                            "horizontal" -> {
+                                screenModel.preferences.novelShowProgressSlider.set(true)
+                                screenModel.preferences.novelVerticalScrollbar.set(false)
+                            }
+                            "vertical_left" -> {
+                                screenModel.preferences.novelShowProgressSlider.set(true)
+                                screenModel.preferences.novelVerticalScrollbarPosition.set("left")
+                                screenModel.preferences.novelVerticalScrollbar.set(true)
+                            }
+                            "vertical_right" -> {
+                                screenModel.preferences.novelShowProgressSlider.set(true)
+                                screenModel.preferences.novelVerticalScrollbarPosition.set("right")
+                                screenModel.preferences.novelVerticalScrollbar.set(true)
+                            }
                         }
-                        "horizontal" -> {
-                            screenModel.preferences.novelShowProgressSlider.set(true)
-                            screenModel.preferences.novelVerticalScrollbar.set(false)
-                        }
-                        "vertical_left" -> {
-                            screenModel.preferences.novelShowProgressSlider.set(true)
-                            screenModel.preferences.novelVerticalScrollbarPosition.set("left")
-                            screenModel.preferences.novelVerticalScrollbar.set(true)
-                        }
-                        "vertical_right" -> {
-                            screenModel.preferences.novelShowProgressSlider.set(true)
-                            screenModel.preferences.novelVerticalScrollbarPosition.set("right")
-                            screenModel.preferences.novelVerticalScrollbar.set(true)
-                        }
-                    }
-                },
-                label = { Text(label) },
-            )
+                    },
+                    label = { Text(label) },
+                )
+            }
         }
     }
 
@@ -652,13 +687,16 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
     }
     if (infiniteScrollEnabled) {
         val effectiveAutoLoadAt = if (autoLoadAt > 0) autoLoadAt else 95
-        SliderItem(
-            label = stringResource(TDMR.strings.pref_novel_auto_load_next_at),
-            value = effectiveAutoLoadAt,
-            valueRange = 1..99,
-            valueString = "$effectiveAutoLoadAt%",
-            onChange = { screenModel.preferences.novelAutoLoadNextChapterAt.set(it) },
-        )
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(stringResource(TDMR.strings.pref_novel_auto_load_next_at), style = MaterialTheme.typography.bodyMedium)
+            SliderItem(
+                label = "",
+                value = effectiveAutoLoadAt,
+                valueRange = 1..99,
+                valueString = "$effectiveAutoLoadAt%",
+                onChange = { screenModel.preferences.novelAutoLoadNextChapterAt.set(it) },
+            )
+        }
     }
 
     // Chapter Sort Order
