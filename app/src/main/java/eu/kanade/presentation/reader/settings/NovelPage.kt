@@ -566,16 +566,17 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         }
 
         // Add explicit center-only mode (small center tap shows app bars)
-        val centerIndex = ReaderPreferences.TapZones.size
         FilterChip(
-            selected = navigationModeNovel == centerIndex,
-            onClick = { screenModel.preferences.navigationModeNovel.set(centerIndex) },
-            label = { Text("Center only") },
+            selected = navigationModeNovel == ReaderPreferences.TAPZONE_CENTER_INDEX,
+            onClick = { screenModel.preferences.navigationModeNovel.set(ReaderPreferences.TAPZONE_CENTER_INDEX) },
+            label = { Text(stringResource(TDMR.strings.novel_nav_center_only)) },
         )
     }
 
     // Show invert options only when navigation is not disabled or center-only
-    if (navigationModeNovel != 5 && navigationModeNovel != ReaderPreferences.TapZones.size) {
+    if (navigationModeNovel != ReaderPreferences.TAPZONE_DISABLED_INDEX &&
+        navigationModeNovel != ReaderPreferences.TAPZONE_CENTER_INDEX
+    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text(stringResource(MR.strings.pref_read_with_tapping_inverted), style = MaterialTheme.typography.bodyMedium)
             SettingsChipRow("") {

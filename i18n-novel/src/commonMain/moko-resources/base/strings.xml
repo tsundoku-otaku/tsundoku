@@ -38,6 +38,7 @@
 
     <!-- Reader Section -->
     <string name="novel_viewer">Novel (text)</string>
+    <string name="novel_nav_center_only">Center only</string>
     <string name="chapter_progress_novel">%1$d%%</string>
     <!-- Library -->
     <string name="chapters_from_database">Chapter entries from database</string>

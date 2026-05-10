@@ -365,6 +365,9 @@ class ReaderPreferences(
 
         const val MILLI_CONVERSION = 100
 
+        const val TAPZONE_DISABLED_INDEX = 5
+        const val TAPZONE_CENTER_INDEX = 6
+
         val TapZones = listOf(
             MR.strings.label_default,
             MR.strings.l_nav,

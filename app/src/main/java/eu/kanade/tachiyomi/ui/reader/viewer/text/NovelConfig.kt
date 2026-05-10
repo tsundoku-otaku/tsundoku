@@ -42,8 +42,8 @@ class NovelConfig(
             2 -> KindlishNavigation()
             3 -> EdgeNavigation()
             4 -> RightAndLeftNavigation()
-            6 -> CenterNavigation()
-            5 -> DisabledNavigation()
+            ReaderPreferences.TAPZONE_CENTER_INDEX -> CenterNavigation()
+            ReaderPreferences.TAPZONE_DISABLED_INDEX -> DisabledNavigation()
             else -> defaultNavigation()
         }
         navigationModeChangedListener?.invoke()
