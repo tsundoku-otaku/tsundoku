@@ -1666,18 +1666,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         loadedChapters.clear()
         currentChapterIndex = 0
 
-        // Add chapter metadata as attributes (always include for consistency)
-        // This enables rich chapter tracking in custom JS regardless of infinite scroll
-        val chapterDivider = if (chapterId != -1L) {
+        // Only add chapter divider when infinite scroll is enabled (used for chapter boundary tracking)
+        // For single chapter loads without infinite scroll, skip the divider to avoid unnecessary DOM elements
+        val infiniteScrollEnabled = preferences.novelInfiniteScroll.get()
+        val chapterDivider = if (chapterId != -1L && infiniteScrollEnabled) {
             val absoluteChapterUrl = toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()
             val escapedName = chapterName.htmlAttributeEscape()
             val escapedPath = chapterPath.htmlAttributeEscape()
-            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl" style="height:0;margin:0;padding:0;"></div>
+            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl" style="display:none;height:0;margin:0;padding:0;"></div>
                <$CHAPTER_TAG_NAME $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl">"""
         } else {
             ""
         }
-        val chapterDividerEnd = if (chapterId != -1L) "</$CHAPTER_TAG_NAME>" else ""
+        val chapterDividerEnd = if (chapterId != -1L && infiniteScrollEnabled) "</$CHAPTER_TAG_NAME>" else ""
 
         val mediaBlockCss = if (blockMedia) {
             "img, video, audio, source, svg, image { display: none !important; }"
