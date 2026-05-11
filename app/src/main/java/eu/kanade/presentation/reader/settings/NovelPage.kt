@@ -712,19 +712,22 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
         return
     }
 
-    val isEpub by screenModel.isEpubFlow.collectAsState()
+    // Show embedded CSS/JS toggles even when not an EPUB source — these control embedded styles/scripts
+    CheckboxItem(
+        label = "Enable embedded CSS",
+        pref = screenModel.preferences.enableEpubStyles,
+    )
 
-    if (isEpub) {
-        CheckboxItem(
-            label = "Enable EPUB CSS",
-            pref = screenModel.preferences.enableEpubStyles,
-        )
+    CheckboxItem(
+        label = "Enable embedded JS",
+        pref = screenModel.preferences.enableEpubJs,
+    )
 
-        CheckboxItem(
-            label = "Enable EPUB JS",
-            pref = screenModel.preferences.enableEpubJs,
-        )
-    }
+    // Allow user to choose whether source CSS has priority over reader theme
+    CheckboxItem(
+        label = "Source CSS priority",
+        pref = screenModel.preferences.novelSourceCssPriority,
+    )
 
     val cssSnippetsJson by screenModel.preferences.novelCustomCssSnippets.collectAsState()
     val jsSnippetsJson by screenModel.preferences.novelCustomJsSnippets.collectAsState()

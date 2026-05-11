@@ -34,6 +34,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
             readerPref.novelMarginTop,
             readerPref.novelMarginBottom,
             readerPref.novelAutoLoadNextChapterAt,
+            readerPref.novelSourceCssPriority,
             readerPref.novelTtsSpeed,
             readerPref.novelTtsPitch,
         )
@@ -328,6 +329,11 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     preference = readerPreferences.novelShowRawHtml,
                     title = "Show raw HTML",
                     subtitle = "Display HTML source instead of rendered content",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.novelSourceCssPriority,
+                    title = "Source CSS priority",
+                    subtitle = "Allow embedded/source CSS to override reader theme colors",
                 ),
             ),
         )

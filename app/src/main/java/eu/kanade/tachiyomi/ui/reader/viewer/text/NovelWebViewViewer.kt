@@ -64,7 +64,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     private companion object {
         const val TSUNDOKU_CHAPTERS_CONTAINER_ID = "tsundoku-chapters-container"
-        const val CHAPTER_DIVIDER_CLASS = "chapter-divider"
+        const val CHAPTER_DIVIDER_CLASS = "tsundoku-chapter-divider"
         const val CHAPTER_CONTENT_CLASS = "chapter-content"
         const val CHAPTER_ID_ATTR = "data-chapter-id"
         const val CHAPTER_TITLE_ATTR = "data-chapter-title"
@@ -81,6 +81,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         const val TSUNDOKU_TEXT_SELECTION_BLOCKED_KEY = "textSelectionBlocked"
         const val TSUNDOKU_FORCED_LOWERCASE_KEY = "forcedLowercase"
         const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
+
+        const val CHAPTER_TAG_NAME = "tsundoku-chapter"
+        const val PLAIN_TEXT_CLASS = "tsundoku-plain-text"
+        const val ATTR_DATA_CHAPTER_ID = "data-chapter-id"
+        const val ATTR_DATA_PLAIN_TEXT = "data-tsundoku-plain-text"
+        const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
+        const val STYLE_ID_CUSTOM = "tsundoku-custom-style"
+        const val ID_NEXT_CHAPTER_BTN_CONTAINER = "next-chapter-btn-container"
+        const val ID_INLINE_LOADING = "inline-loading"
+        const val ID_INLINE_ERROR = "inline-error"
+        const val ID_EDIT_MODE_STYLE = "edit-mode-style"
+        const val URL_SCHEME_NOVEL_IMAGE = "tsundoku-novel-image://"
     }
 
     private val container = FrameLayout(activity)
@@ -516,8 +528,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     request: android.webkit.WebResourceRequest?,
                 ): android.webkit.WebResourceResponse? {
                     val url = request?.url?.toString() ?: return null
-                    if (url.startsWith("tsundoku-novel-image://")) {
-                        val imagePath = android.net.Uri.decode(url.removePrefix("tsundoku-novel-image://"))
+                    if (url.startsWith(URL_SCHEME_NOVEL_IMAGE)) {
+                        val imagePath = android.net.Uri.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE))
                         val loader = activity.viewModel.state.value.viewerChapters?.currChapter?.pageLoader
                         if (loader != null) {
                             val stream = kotlinx.coroutines.runBlocking { loader.getPageDataStream(imagePath) }
@@ -595,6 +607,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 preferences.novelParagraphIndent.changes().drop(1),
                 preferences.novelParagraphSpacing.changes().drop(1),
                 preferences.novelCustomCss.changes().drop(1),
+                preferences.novelSourceCssPriority.changes().drop(1),
                 preferences.novelCustomCssSnippets.changes().drop(1),
                 preferences.novelUseOriginalFonts.changes().drop(1),
                 preferences.novelHideChapterTitle.changes().drop(1),
@@ -614,6 +627,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 .collect {
                     injectCustomScript()
                 }
+        }
+
+        // When embedded CSS/JS toggles change we need to reload the current chapter
+        // because sanitization (strip/keep) happens during initial HTML normalization.
+        scope.launch {
+            merge(
+                preferences.enableEpubStyles.changes().drop(1),
+                preferences.enableEpubJs.changes().drop(1),
+            ).collect {
+                // Reload current chapters so sanitizeHtmlForWebView runs with updated flags
+                currentChapters?.let { setChapters(it) }
+            }
         }
 
         scope.launch {
@@ -749,26 +774,29 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             "font-family: $effectiveFontFamily;"
         }
 
+        val sourceCssPriority = preferences.novelSourceCssPriority.get()
+        val styleImportance = if (sourceCssPriority) "" else " !important"
+
         val css = """
             $fontFaceDeclaration
             body {
-                font-size: ${fontSize}px;
-                $fontFamilyCss
-                line-height: $lineHeight;
-                margin: ${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px;
-                color: $textColorHex !important;
-                background-color: $bgColorHex !important;
-                text-align: $textAlign;
-                -webkit-user-select: ${if (preferences.novelTextSelectable.get()) "text" else "none"};
-                user-select: ${if (preferences.novelTextSelectable.get()) "text" else "none"};
+                font-size: ${fontSize}px$styleImportance;
+                $fontFamilyCss$styleImportance
+                line-height: $lineHeight$styleImportance;
+                margin: ${marginTop}px ${marginRight}px ${marginBottom}px ${marginLeft}px$styleImportance;
+                color: $textColorHex$styleImportance;
+                background-color: $bgColorHex$styleImportance;
+                text-align: $textAlign$styleImportance;
+                -webkit-user-select: ${if (preferences.novelTextSelectable.get()) "text" else "none"}$styleImportance;
+                user-select: ${if (preferences.novelTextSelectable.get()) "text" else "none"}$styleImportance;
             }
             p {
-                text-indent: ${paragraphIndent}em;
-                margin-top: ${paragraphSpacing}em;
-                margin-bottom: ${paragraphSpacing}em;
+                text-indent: ${paragraphIndent}em$styleImportance;
+                margin-top: ${paragraphSpacing}em$styleImportance;
+                margin-bottom: ${paragraphSpacing}em$styleImportance;
             }
             * {
-                color: inherit !important;
+                color: inherit$styleImportance;
             }
             $customCss
             $enabledSnippetsCss
@@ -788,10 +816,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         val js = """
             (function() {
-                var style = document.getElementById('tsundoku-custom-style');
+                var style = document.getElementById('${STYLE_ID_CUSTOM}');
                 if (!style) {
                     style = document.createElement('style');
-                    style.id = 'tsundoku-custom-style';
+                    style.id = '${STYLE_ID_CUSTOM}';
                     document.head.appendChild(style);
                 }
                 style.textContent = `${payload.css}`;
@@ -842,11 +870,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         val js = """
             (function() {
                 // Remove existing button if any
-                var existing = document.getElementById('next-chapter-btn-container');
+                var existing = document.getElementById('${ID_NEXT_CHAPTER_BTN_CONTAINER}');
                 if (existing) existing.remove();
 
                 var container = document.createElement('div');
-                container.id = 'next-chapter-btn-container';
+                container.id = '${ID_NEXT_CHAPTER_BTN_CONTAINER}';
                 container.style.cssText = 'padding: 32px 16px; text-align: center;';
 
                 var btn = document.createElement('button');
@@ -899,7 +927,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     // Keep chapter boundaries in sync with actual DOM markers.
                     // This is important after appends/prepends.
                     if (infiniteScrollEnabled && typeof window.updateChapterBoundaries === 'function') {
-                        var dividers = document.querySelectorAll('.chapter-divider');
+                        var dividers = document.querySelectorAll('.${CHAPTER_DIVIDER_CLASS}');
                         if (!window.chapterBoundaries || window.chapterBoundaries.length !== dividers.length) {
                             window.updateChapterBoundaries();
                         } else if (Date.now() - runtime.lastBoundaryUpdate > 1000) {
@@ -983,11 +1011,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
                 // Function to update chapter boundary heights after content load
                 window.updateChapterBoundaries = function() {
-                    var dividers = document.querySelectorAll('.chapter-divider');
+                    var dividers = document.querySelectorAll('.${CHAPTER_DIVIDER_CLASS}');
                     var boundaries = [];
                     var lastEnd = 0;
                     dividers.forEach(function(divider, index) {
-                        var chapterId = divider.getAttribute('data-chapter-id');
+                        var chapterId = divider.getAttribute('${ATTR_DATA_CHAPTER_ID}');
                         var nextDivider = dividers[index + 1];
                         var endPos = nextDivider ? nextDivider.offsetTop : document.body.scrollHeight;
                         boundaries.push({
@@ -1111,21 +1139,39 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         if (!shouldAutoMarkShortChapter(page)) return
         if (page.status != Page.State.Ready || page.text.isNullOrBlank()) return
 
+        // Use ResizeObserver to wait for layout to stabilize before checking viewport height
         evaluateJavascriptSafe(
             """
             (function() {
-                var maxScroll = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-                return maxScroll <= 0;
+                // Helper function to check if content needs scrolling
+                function checkIfShortChapter() {
+                    var maxScroll = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+                    return maxScroll <= 0;
+                }
+                
+                // Set up a ResizeObserver to wait for content to stabilize
+                var resizeObserver = new ResizeObserver(function() {
+                    if (checkIfShortChapter()) {
+                        // Content fits in viewport - call Android interface
+                        Android.markChapterAsShort();
+                        resizeObserver.disconnect();
+                    }
+                });
+                
+                // Observe document body for size changes
+                resizeObserver.observe(document.body);
+                
+                // Also check after a small delay to catch static content
+                setTimeout(function() {
+                    if (checkIfShortChapter()) {
+                        Android.markChapterAsShort();
+                    }
+                    resizeObserver.disconnect();
+                }, 500);
             })();
             """.trimIndent(),
-        ) { result ->
-            if (result == "true") {
-                // If the whole chapter fits in the viewport, treat it as fully read.
-                lastSavedProgress = 1f
-                saveProgress()
-                activity.onNovelProgressChanged(1f)
-            }
-        }
+            null
+        )
     }
 
     override fun getView(): View = container
@@ -1270,10 +1316,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun showInlineLoading(isPrepend: Boolean) {
         val js = """
             (function() {
-                var loadingDiv = document.getElementById('inline-loading');
+                var loadingDiv = document.getElementById('${ID_INLINE_LOADING}');
                 if (!loadingDiv) {
                     loadingDiv = document.createElement('div');
-                    loadingDiv.id = 'inline-loading';
+                    loadingDiv.id = '${ID_INLINE_LOADING}';
                     loadingDiv.style.textAlign = 'center';
                     loadingDiv.style.padding = '20px';
                     loadingDiv.style.color = '#888';
@@ -1293,7 +1339,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun hideInlineLoading(isPrepend: Boolean) {
         val js = """
             (function() {
-                var loadingDiv = document.getElementById('inline-loading');
+                var loadingDiv = document.getElementById('${ID_INLINE_LOADING}');
                 if (loadingDiv) {
                     loadingDiv.remove();
                 }
@@ -1310,12 +1356,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
             val js = """
                 (function() {
-                    var errorDiv = document.getElementById('inline-error');
+                    var errorDiv = document.getElementById('${ID_INLINE_ERROR}');
                     if (errorDiv) {
                         errorDiv.remove();
                     }
                     errorDiv = document.createElement('div');
-                    errorDiv.id = 'inline-error';
+                    errorDiv.id = '${ID_INLINE_ERROR}';
                     errorDiv.style.textAlign = 'center';
                     errorDiv.style.padding = '16px';
                     errorDiv.style.color = '#FF5252';
@@ -1336,7 +1382,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             // Auto-dismiss after 8 seconds
             delay(8000)
             evaluateJavascriptSafe(
-                "document.getElementById('inline-error')?.remove();",
+                "document.getElementById('${ID_INLINE_ERROR}')?.remove();",
                 null,
             )
         }
@@ -1345,7 +1391,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private fun scrollToChapterIndex(index: Int) {
         val js = """
             (function() {
-                var dividers = document.querySelectorAll('.chapter-divider');
+                var dividers = document.querySelectorAll('.${CHAPTER_DIVIDER_CLASS}');
                 if (dividers[$index]) {
                     dividers[$index].scrollIntoView({ behavior: 'smooth' });
                 }
@@ -1445,18 +1491,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      */
     private fun prependHtmlContent(content: String, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
-        // Strip script/style/noscript tags from content
+        
+        // Get user preferences for embedded CSS/JS
+        val keepEmbeddedCss = preferences.enableEpubStyles.get()
+        val keepEmbeddedJs = preferences.enableEpubJs.get()
+        val blockMedia = preferences.novelBlockMedia.get()
+        
+        // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
         } else {
-            normalizeContentForHtml(content, chapterUrl)
-                .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-                .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-                .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-        }
-        if (preferences.novelBlockMedia.get()) {
-            cleanContent = stripMediaTags(cleanContent)
+            val normalized = normalizeContentForHtml(content, chapterUrl)
+            sanitizeHtmlForWebView(normalized, keepEmbeddedCss, keepEmbeddedJs, blockMedia)
         }
         val escapedContent = quoteForJson(cleanContent)
 
@@ -1465,26 +1511,27 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 var oldHeight = document.body.scrollHeight;
                 var oldScrollY = window.scrollY || window.pageYOffset;
 
-                var contentDiv = document.createElement('div');
-                contentDiv.className = '$CHAPTER_CONTENT_CLASS';
-                contentDiv.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
-                contentDiv.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
-                contentDiv.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
-                contentDiv.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
-                contentDiv.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
-                ${if (plainTextMode) "contentDiv.textContent = $escapedContent;" else "contentDiv.innerHTML = $escapedContent;"}
+                var chapterElement = document.createElement('${CHAPTER_TAG_NAME}');
+                chapterElement.setAttribute('${ATTR_DATA_CHAPTER_ID}', '$chapterId');
+                chapterElement.setAttribute('${TSUNDOKU_CHAPTER_ATTR}', '1');
+                chapterElement.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
+                chapterElement.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
+                chapterElement.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
+                chapterElement.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
+                ${if (plainTextMode) "chapterElement.textContent = $escapedContent;" else "chapterElement.innerHTML = $escapedContent;"}
 
                 var divider = document.createElement('div');
                 divider.className = '$CHAPTER_DIVIDER_CLASS';
-                divider.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
+                divider.setAttribute('${ATTR_DATA_CHAPTER_ID}', '$chapterId');
+                divider.setAttribute('${TSUNDOKU_CHAPTER_ATTR}', '1');
                 divider.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
                 divider.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
                 divider.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
                 divider.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
 
                 var firstChild = document.body.firstChild;
-                document.body.insertBefore(contentDiv, firstChild);
-                document.body.insertBefore(divider, contentDiv);
+                document.body.insertBefore(chapterElement, firstChild);
+                document.body.insertBefore(divider, chapterElement);
 
                 // Restore scroll position
                 // Use setTimeout to ensure layout is updated
@@ -1518,18 +1565,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      */
     private fun appendHtmlContent(content: String, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
-        // Strip script/style/noscript tags from content
+        
+        // Get user preferences for embedded CSS/JS
+        val keepEmbeddedCss = preferences.enableEpubStyles.get()
+        val keepEmbeddedJs = preferences.enableEpubJs.get()
+        val blockMedia = preferences.novelBlockMedia.get()
+        
+        // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
         } else {
-            normalizeContentForHtml(content, chapterUrl)
-                .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-                .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-                .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-        }
-        if (preferences.novelBlockMedia.get()) {
-            cleanContent = stripMediaTags(cleanContent)
+            val normalized = normalizeContentForHtml(content, chapterUrl)
+            sanitizeHtmlForWebView(normalized, keepEmbeddedCss, keepEmbeddedJs, blockMedia)
         }
         val escapedContent = quoteForJson(cleanContent)
 
@@ -1546,7 +1593,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     document.body.appendChild(chaptersContainer);
                 }
 
-                var divider = document.createElement('hr');
+                var divider = document.createElement('div');
                 divider.className = '$CHAPTER_DIVIDER_CLASS';
                 divider.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
                 divider.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
@@ -1555,16 +1602,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 divider.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
                 chaptersContainer.appendChild(divider);
 
-                var contentDiv = document.createElement('div');
-                contentDiv.className = '$CHAPTER_CONTENT_CLASS';
-                contentDiv.setAttribute('$CHAPTER_ID_ATTR', '$chapterId');
-                contentDiv.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
-                contentDiv.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
-                contentDiv.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
-                contentDiv.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
-                contentDiv.setAttribute('$TSUNDOKU_CHAPTER_ATTR', '1');
-                ${if (plainTextMode) "contentDiv.textContent = $escapedContent;" else "contentDiv.innerHTML = $escapedContent;"}
-                chaptersContainer.appendChild(contentDiv);
+                var chapterElement = document.createElement('${CHAPTER_TAG_NAME}');
+                chapterElement.setAttribute('${ATTR_DATA_CHAPTER_ID}', '$chapterId');
+                chapterElement.setAttribute('$CHAPTER_TITLE_ATTR', ${quoteForJson(chapterName)});
+                chapterElement.setAttribute('$CHAPTER_NUMBER_ATTR', '$chapterNumber');
+                chapterElement.setAttribute('$CHAPTER_PATH_ATTR', ${quoteForJson(chapterUrl.orEmpty())});
+                chapterElement.setAttribute('$CHAPTER_URL_ATTR', ${quoteForJson(toAbsoluteChapterUrl(chapterUrl))});
+                chapterElement.setAttribute('${TSUNDOKU_CHAPTER_ATTR}', '1');
+                ${if (plainTextMode) "chapterElement.textContent = $escapedContent;" else "chapterElement.innerHTML = $escapedContent;"}
+                chaptersContainer.appendChild(chapterElement);
 
                 // Update chapter boundaries after DOM update
                 setTimeout(function() {
@@ -1594,20 +1640,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         val chapterPath = chapterModel?.url.orEmpty()
         val normalizedChapterUrl = normalizeUrl(chapterPath)
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(normalizedChapterUrl)
-        // Strip script/style/noscript tags from content to prevent unwanted JS execution
+        
+        // Get user preferences for embedded CSS/JS
+        val keepEmbeddedCss = preferences.enableEpubStyles.get()
+        val keepEmbeddedJs = preferences.enableEpubJs.get()
+        val blockMedia = preferences.novelBlockMedia.get()
+        
+        // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
         } else {
-            NovelViewerTextUtils.normalizeContentForHtml(content, normalizedChapterUrl)
-                .replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-                .replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
-                .replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-                .replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-        }
-
-        val blockMedia = preferences.novelBlockMedia.get()
-        if (blockMedia) {
-            cleanContent = stripMediaTags(cleanContent)
+            val normalized = NovelViewerTextUtils.normalizeContentForHtml(content, normalizedChapterUrl)
+            sanitizeHtmlForWebView(normalized, keepEmbeddedCss, keepEmbeddedJs, blockMedia)
         }
 
         // Apply user's regex find & replace rules
@@ -1622,18 +1666,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         loadedChapters.clear()
         currentChapterIndex = 0
 
-        // Add chapter metadata as attributes (always include for consistency)
-        // This enables rich chapter tracking in custom JS regardless of infinite scroll
-        val chapterDivider = if (chapterId != -1L) {
+        // Only add chapter divider when infinite scroll is enabled (used for chapter boundary tracking)
+        // For single chapter loads without infinite scroll, skip the divider to avoid unnecessary DOM elements
+        val infiniteScrollEnabled = preferences.novelInfiniteScroll.get()
+        val chapterDivider = if (chapterId != -1L && infiniteScrollEnabled) {
             val absoluteChapterUrl = toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()
             val escapedName = chapterName.htmlAttributeEscape()
             val escapedPath = chapterPath.htmlAttributeEscape()
-            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl" style="height:0;margin:0;padding:0;"></div>
-               <div class="$CHAPTER_CONTENT_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl">"""
+            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl" style="display:none;height:0;margin:0;padding:0;"></div>
+               <$CHAPTER_TAG_NAME $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl">"""
         } else {
             ""
         }
-        val chapterDividerEnd = if (chapterId != -1L) "</div>" else ""
+        val chapterDividerEnd = if (chapterId != -1L && infiniteScrollEnabled) "</$CHAPTER_TAG_NAME>" else ""
 
         val mediaBlockCss = if (blockMedia) {
             "img, video, audio, source, svg, image { display: none !important; }"
@@ -1642,26 +1687,33 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
 
         // Build global JS variables for custom scripts
-        val chapterMetaScript = buildTsundokuScript()
+    val chapterMetaScript = buildTsundokuScript()
+
+    // Get theme tokens for CSS variables and JS exposure
+    val theme = preferences.novelTheme.get()
+    val themeTokens = NovelViewerTextUtils.getThemeTokens(activity, preferences, theme)
 
         var finalContent = cleanContent
         var embeddedHead = ""
 
         if (plainTextMode) {
             finalContent = """
-                <pre class="chapter-content" data-tsundoku-plain-text="1" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;"></pre>
+                <pre class="${PLAIN_TEXT_CLASS}" ${ATTR_DATA_PLAIN_TEXT}="1" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;"></pre>
                 <script>
-                    document.querySelector('.chapter-content').textContent = ${JSONObject.quote(cleanContent)};
+                    document.querySelector('.${PLAIN_TEXT_CLASS}').textContent = ${JSONObject.quote(cleanContent)};
                 </script>
             """.trimIndent()
         } else {
             try {
                 val doc = org.jsoup.Jsoup.parse(finalContent)
 
-
-                doc.select("style, link[rel=stylesheet]").remove()
-
-                doc.select("script, noscript").remove()
+                // Note: If keepEmbeddedCss is true, styles were already kept by sanitizeHtmlForWebView
+                // If keepEmbeddedCss is false, styles were already stripped
+                // We don't need to do anything here since sanitization was already done
+                
+                // Note: If keepEmbeddedJs is true, scripts were already kept by sanitizeHtmlForWebView
+                // If keepEmbeddedJs is false, scripts were already stripped
+                // We don't need to do anything here since sanitization was already done
 
                 val bodyNode = doc.body()
                 if (bodyNode != null && bodyNode.hasText()) {
@@ -1682,6 +1734,20 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         } else {
             ""
         }
+        
+        // Escape theme token CSS variables for safe embedding in HTML
+        val escapedThemeCss = themeTokens.cssVariables
+            .replace("</style>", "<\\/style>")
+            .replace("</Style>", "<\\/Style>")
+            .replace("</STYLE>", "<\\/STYLE>")
+        
+        // Build theme exposure script - escape for safe embedding
+        val escapedThemeJson = themeTokens.jsObject
+            .replace("\\", "\\\\")
+            .replace("</script>", "<\\/script>")
+            .replace("</Script>", "<\\/Script>")
+            .replace("</SCRIPT>", "<\\/SCRIPT>")
+        val themeExposureScript = """window.TsundokuTheme = $escapedThemeJson;"""
 
         val html = """
             <!DOCTYPE html>
@@ -1690,7 +1756,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    .chapter-divider {
+                    $escapedThemeCss
+                    .tsundoku-chapter-divider {
                         height: 1px;
                         margin: 32px auto;
                         padding: 0;
@@ -1698,6 +1765,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         border-top: 1px solid currentColor;
                         opacity: 0.4;
                         width: 60%;
+                    }
+                    tsundoku-chapter {
+                        display: block;
                     }
                     img {
                         max-width: 100%;
@@ -1717,6 +1787,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 <style id="tsundoku-custom-style">$escapedInitialStyle</style>
                 $embeddedHead
                 <script>$chapterMetaScript</script>
+                <script>$themeExposureScript</script>
             </head>
             <body>
                 $chapterDivider
@@ -1776,6 +1847,46 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             .replace(Regex("<video[^>]*>.*?</video>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
             .replace(Regex("<audio[^>]*>.*?</audio>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
             .replace(Regex("<source[^>]*>", RegexOption.IGNORE_CASE), "")
+    }
+
+    /**
+     * Sanitize HTML content for WebView rendering based on user preferences.
+     * Handles conditional stripping of scripts, styles, and media based on user toggles.
+     */
+    private fun sanitizeHtmlForWebView(
+        content: String,
+        keepEmbeddedCss: Boolean,
+        keepEmbeddedJs: Boolean,
+        blockMedia: Boolean,
+    ): String {
+        var result = content
+
+        if (!keepEmbeddedJs) {
+            result = result.replace(Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            result = result.replace(Regex("<script[^>]*/>", RegexOption.IGNORE_CASE), "")
+        }
+
+        if (!keepEmbeddedCss) {
+            result = result.replace(Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+            result = result.replace(Regex("<link[^>]*rel[^>]*stylesheet[^>]*>", RegexOption.IGNORE_CASE), "")
+            result = result.replace(Regex("<link[^>]*stylesheet[^>]*rel[^>]*>", RegexOption.IGNORE_CASE), "")
+
+            try {
+                val doc = org.jsoup.Jsoup.parse(result)
+                doc.select("*").removeAttr("style")
+                result = doc.html()
+            } catch (_: Exception) {
+                // Keep the partially sanitized result if parsing fails.
+            }
+        }
+
+        result = result.replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+
+        if (blockMedia) {
+            result = stripMediaTags(result)
+        }
+
+        return result
     }
 
     /**
@@ -2063,25 +2174,25 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             (function() {
                 function enableEdit() {
                     document.designMode = 'off';
-                    var styleId = 'edit-mode-style';
+                    var styleId = '${ID_EDIT_MODE_STYLE}';
                     if ('$isEditing' === 'true') {
                         if (!document.getElementById(styleId)) {
                             var style = document.createElement('style');
                             style.id = styleId;
-                            style.innerHTML = '.chapter-content, [data-tsundoku-editable="1"], body { -webkit-user-select: text !important; user-select: text !important; pointer-events: auto !important; -webkit-tap-highlight-color: transparent; outline: none; } ' +
+                            style.innerHTML = '${CHAPTER_TAG_NAME}, [${ATTR_DATA_EDITABLE}="1"], body { -webkit-user-select: text !important; user-select: text !important; pointer-events: auto !important; -webkit-tap-highlight-color: transparent; outline: none; } ' +
                                 'body { padding-bottom: max(220px, 38vh) !important; }';
                             document.head.appendChild(style);
                         }
 
-                        var editTargets = document.querySelectorAll('.chapter-content');
+                        var editTargets = document.querySelectorAll('${CHAPTER_TAG_NAME}');
                         if (editTargets.length === 0 && document.body) {
                             document.body.setAttribute('contenteditable', 'true');
-                            document.body.setAttribute('data-tsundoku-editable', '1');
+                            document.body.setAttribute('${ATTR_DATA_EDITABLE}', '1');
                             document.body.setAttribute('tabindex', '0');
                         } else {
                             for (var i = 0; i < editTargets.length; i++) {
                                 editTargets[i].setAttribute('contenteditable', 'true');
-                                editTargets[i].setAttribute('data-tsundoku-editable', '1');
+                                editTargets[i].setAttribute('${ATTR_DATA_EDITABLE}', '1');
                                 editTargets[i].setAttribute('tabindex', '0');
                             }
                         }
@@ -2111,16 +2222,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         var editableNodes = document.querySelectorAll('[data-tsundoku-editable="1"]');
                         for (var j = 0; j < editableNodes.length; j++) {
                             editableNodes[j].removeAttribute('contenteditable');
-                            editableNodes[j].removeAttribute('data-tsundoku-editable');
+                            editableNodes[j].removeAttribute('${ATTR_DATA_EDITABLE}');
                             editableNodes[j].removeAttribute('tabindex');
                         }
 
                         var contents = [];
-                        var nodes = document.querySelectorAll('.chapter-content');
+                        var nodes = document.querySelectorAll('${CHAPTER_TAG_NAME}');
                         if (nodes.length > 0) {
                             for (var i = 0; i < nodes.length; i++) {
                                 var html = nodes[i].innerHTML;
-                                var chapterId = nodes[i].getAttribute('data-chapter-id');
+                                var chapterId = nodes[i].getAttribute('${ATTR_DATA_CHAPTER_ID}');
                                 contents.push({id: chapterId, content: html});
                             }
                         } else if (document.body) {
@@ -2228,6 +2339,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         "NovelWebViewViewer: loadNextChapter ignored (infiniteScroll=${preferences.novelInfiniteScroll.get()}, isLoadingNext=$isLoadingNext)"
                     }
                 }
+            }
+        }
+
+        @JavascriptInterface
+        fun markChapterAsShort() {
+            activity.runOnUiThread {
+                // If the whole chapter fits in the viewport, treat it as fully read.
+                lastSavedProgress = 1f
+                saveProgress()
+                activity.onNovelProgressChanged(1f)
+                logcat(LogPriority.DEBUG) { "NovelWebViewViewer: Chapter marked as short (fits in viewport)" }
             }
         }
     }
