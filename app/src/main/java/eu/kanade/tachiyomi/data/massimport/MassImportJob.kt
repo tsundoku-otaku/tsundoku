@@ -201,16 +201,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             return prev ?: value
         }
 
-        // Cache DB lookups to avoid repeated queries for same URL
-        val dbCache = ConcurrentHashMap<Pair<Long, String>, Boolean>()
-        suspend fun isAlreadyInLibrary(sourceId: Long, path: String): Boolean {
-            val key = sourceId to path
-            dbCache[key]?.let { return it }
-            val value = getMangaByUrlAndSourceId.await(path, sourceId)?.favorite ?: false
-            val prev = dbCache.putIfAbsent(key, value)
-            return prev ?: value
-        }
-
         // Stream URLs without materializing full list upfront
         // Validate on first pass: count valid URLs for progress tracking
         val validUrlsSequence = urls.asSequence()
@@ -1117,10 +1107,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
          * Reinsert errored URLs from a batch back into the queue as a new batch.
          */
         fun reinsertErrored(context: Context, batch: Batch) {
-            if (batch.erroredUrls.isEmpty()) return
+            val interactor = eu.kanade.domain.manga.interactor.MassImport()
+            val urls = interactor.readErroredUrlsForBatch(batch.id).ifEmpty { batch.erroredUrls }
+            if (urls.isEmpty()) return
             start(
                 context = context,
-                urls = batch.erroredUrls,
+                urls = urls,
                 categoryId = batch.categoryId,
                 addToLibrary = batch.addToLibrary,
                 fetchChapters = batch.fetchChapters,
@@ -1167,6 +1159,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
          * Useful for debugging and sharing import results.
          */
         fun generateReport(batch: Batch): String {
+            val interactor = eu.kanade.domain.manga.interactor.MassImport()
+            val rows = interactor.readAllResultsForBatch(batch.id)
+            val added = rows.filter { it.getOrNull(1) == "added" }
+            val skipped = rows.filter { it.getOrNull(1) == "skipped" }
+            val errored = rows.filter { it.getOrNull(1) == "errored" }
+
             return buildString {
                 appendLine("=== Mass Import Report ===")
                 appendLine("Batch ID: ${batch.id}")
@@ -1174,28 +1172,26 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 appendLine()
                 appendLine("=== Summary ===")
                 appendLine("Total URLs: ${batch.urls.size}")
-                appendLine("Successfully Added: ${batch.added}")
-                appendLine("Skipped (already in library): ${batch.skipped}")
-                appendLine("Errors: ${batch.errored}")
+                appendLine("Successfully Added: ${added.size}")
+                appendLine("Skipped (already in library): ${skipped.size}")
+                appendLine("Errors: ${errored.size}")
                 appendLine()
 
-                if (batch.erroredUrls.isNotEmpty()) {
-                    appendLine("=== Failed URLs (${batch.erroredUrls.size}) ===")
-                    batch.erroredUrls.forEach { url ->
-                        val errorMsg = batch.errorMessages[url]
-                        if (errorMsg != null) {
-                            appendLine("$url")
-                            appendLine("  Error: $errorMsg")
-                        } else {
-                            appendLine(url)
-                        }
+                if (errored.isNotEmpty()) {
+                    appendLine("=== Failed URLs (${errored.size}) ===")
+                    errored.forEach { cols ->
+                        val url = cols.getOrNull(2) ?: ""
+                        val msg = cols.getOrNull(5) ?: ""
+                        appendLine(url)
+                        if (msg.isNotBlank()) appendLine("  Error: $msg")
                     }
                     appendLine()
                 }
 
-                if (batch.skippedUrls.isNotEmpty()) {
-                    appendLine("=== Skipped URLs (${batch.skippedUrls.size}) ===")
-                    batch.skippedUrls.forEach { url ->
+                if (skipped.isNotEmpty()) {
+                    appendLine("=== Skipped URLs (${skipped.size}) ===")
+                    skipped.forEach { cols ->
+                        val url = cols.getOrNull(2) ?: ""
                         appendLine(url)
                     }
                     appendLine()
@@ -1212,13 +1208,15 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
          * Generate errors with messages for clipboard copy.
          */
         fun generateErrorsWithMessages(batch: Batch): String {
+            val interactor = eu.kanade.domain.manga.interactor.MassImport()
+            val rows = interactor.readAllResultsForBatch(batch.id)
+            val errored = rows.filter { it.getOrNull(1) == "errored" }
             return buildString {
-                batch.erroredUrls.forEach { url ->
+                errored.forEach { cols ->
+                    val url = cols.getOrNull(2) ?: ""
+                    val msg = cols.getOrNull(5) ?: ""
                     appendLine(url)
-                    val errorMsg = batch.errorMessages[url]
-                    if (errorMsg != null) {
-                        appendLine("  → $errorMsg")
-                    }
+                    if (msg.isNotBlank()) appendLine("  → $msg")
                 }
             }
         }
