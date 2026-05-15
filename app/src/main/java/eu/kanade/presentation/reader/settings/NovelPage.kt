@@ -556,13 +556,26 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
     // Tap-zone navigation settings for novel viewer
     val navigationModeNovel by screenModel.preferences.navigationModeNovel.collectAsState()
     val novelNavInverted by screenModel.preferences.novelNavInverted.collectAsState()
+    val effectiveNavigationModeNovel = if (navigationModeNovel == ReaderPreferences.TAPZONE_DISABLED_INDEX) {
+        0
+    } else {
+        navigationModeNovel
+    }
     SettingsChipRow(MR.strings.pref_viewer_nav) {
         ReaderPreferences.TapZones.forEachIndexed { idx, res ->
-            FilterChip(
-                selected = navigationModeNovel == idx,
-                onClick = { screenModel.preferences.navigationModeNovel.set(idx) },
-                label = { Text(stringResource(res)) },
-            )
+            if (idx == 0) {
+                FilterChip(
+                    selected = effectiveNavigationModeNovel == 0,
+                    onClick = { screenModel.preferences.navigationModeNovel.set(ReaderPreferences.TAPZONE_DISABLED_INDEX) },
+                    label = { Text(stringResource(res)) },
+                )
+            } else if (idx != ReaderPreferences.TAPZONE_DISABLED_INDEX) {
+                FilterChip(
+                    selected = effectiveNavigationModeNovel == idx,
+                    onClick = { screenModel.preferences.navigationModeNovel.set(idx) },
+                    label = { Text(stringResource(res)) },
+                )
+            }
         }
 
         // Add explicit center-only mode (small center tap shows app bars)
@@ -573,9 +586,9 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         )
     }
 
-    // Show invert options only when navigation is not disabled or center-only
-    if (navigationModeNovel != ReaderPreferences.TAPZONE_DISABLED_INDEX &&
-        navigationModeNovel != ReaderPreferences.TAPZONE_CENTER_INDEX
+    // Show invert options only when navigation is not default, disabled, or center-only
+    if (effectiveNavigationModeNovel != 0 &&
+        effectiveNavigationModeNovel != ReaderPreferences.TAPZONE_CENTER_INDEX
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text(stringResource(MR.strings.pref_read_with_tapping_inverted), style = MaterialTheme.typography.bodyMedium)
