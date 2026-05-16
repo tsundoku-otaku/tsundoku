@@ -610,23 +610,42 @@ fun MassImportDialog(
                 onClick = {
                     // Run URL parsing and job enqueue off main thread
                     dialogScope.launch(Dispatchers.Default) {
-                        val uniqueUrls = LinkedHashSet<String>()
-                        if (pendingUrls.isNotBlank()) {
-                            uniqueUrls.addAll(massImportNovels.parseUrls(pendingUrls))
-                        }
-                        if (urlText.isNotBlank()) {
-                            uniqueUrls.addAll(massImportNovels.parseUrls(urlText))
-                        }
-
                         withContext(Dispatchers.Main) {
-                            MassImportJob.start(
-                                context = context,
-                                urls = uniqueUrls.toList(),
-                                addToLibrary = true,
-                                fetchDetails = fetchDetails,
-                                categoryId = selectedCategoryId ?: 0L,
-                                fetchChapters = syncChapterList,
-                            )
+                            val combinedRawText = when {
+                                pendingUrls.isNotBlank() && urlText.isNotBlank() -> pendingUrls + "\n" + urlText
+                                pendingUrls.isNotBlank() -> pendingUrls
+                                else -> urlText
+                            }
+
+                            val useRawTextFastPath = combinedRawText.length > 100_000
+                            if (useRawTextFastPath) {
+                                MassImportJob.start(
+                                    context = context,
+                                    urls = emptyList(),
+                                    addToLibrary = true,
+                                    fetchDetails = fetchDetails,
+                                    categoryId = selectedCategoryId ?: 0L,
+                                    fetchChapters = syncChapterList,
+                                    rawText = combinedRawText,
+                                )
+                            } else {
+                                val uniqueUrls = LinkedHashSet<String>()
+                                if (pendingUrls.isNotBlank()) {
+                                    uniqueUrls.addAll(massImportNovels.parseUrls(pendingUrls))
+                                }
+                                if (urlText.isNotBlank()) {
+                                    uniqueUrls.addAll(massImportNovels.parseUrls(urlText))
+                                }
+
+                                MassImportJob.start(
+                                    context = context,
+                                    urls = uniqueUrls.toList(),
+                                    addToLibrary = true,
+                                    fetchDetails = fetchDetails,
+                                    categoryId = selectedCategoryId ?: 0L,
+                                    fetchChapters = syncChapterList,
+                                )
+                            }
                             urlText = ""
                             pendingUrls = ""
                         }

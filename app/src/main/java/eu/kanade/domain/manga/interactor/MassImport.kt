@@ -53,6 +53,8 @@ class MassImport(
     private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) {
+    private val missingSourceHostLogCache = ConcurrentHashMap<String, Boolean>()
+
     data class ImportResult(
         val added: MutableList<ImportedNovel> = mutableListOf(),
         val skipped: MutableList<SkippedNovel> = mutableListOf(),
@@ -559,7 +561,14 @@ class MassImport(
         }
 
         if (matchingSources.isEmpty()) {
-            logcat(LogPriority.WARN) { "MassImport: No source match for $url" }
+            val hostKey = try {
+                URI(url).host?.lowercase()?.removePrefix("www.")
+            } catch (_: Exception) {
+                null
+            }
+            if (hostKey == null || missingSourceHostLogCache.putIfAbsent(hostKey, true) == null) {
+                logcat(LogPriority.WARN) { "MassImport: No source match for $url host=$hostKey" }
+            }
             return null
         }
         if (matchingSources.size == 1) return matchingSources.first()
