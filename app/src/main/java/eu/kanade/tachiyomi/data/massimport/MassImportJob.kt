@@ -24,6 +24,8 @@ import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
+import eu.kanade.tachiyomi.util.source.normalizeSourcePath
+import eu.kanade.tachiyomi.util.source.toggleLeadingSlash
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -597,10 +599,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 }
             }
             return true
-        }
 
-        // Fetch novel details using the shared interactor logic
-        val manga = massImportInteractor.resolveMangaUrl(url, finalUrl, source)
+            // Fetch novel details using the shared interactor logic
+            val manga = massImportInteractor.resolveMangaUrl(url, finalUrl, source)
 
         if (addToLibrary) {
             mangaRepository.update(
@@ -756,6 +757,58 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             .filter { it is HttpSource || it is JsSource }
     }
 
+    private suspend fun resolveMangaDetailsForImport(
+        url: String,
+        source: CatalogueSource,
+        normalizedPath: String,
+    ): eu.kanade.tachiyomi.source.model.SManga {
+        val inputUrl = normalizeSourcePath(source, normalizedPath)
+
+        val resolved = runCatching {
+            var result: eu.kanade.tachiyomi.source.model.SManga? = null
+            if (source is eu.kanade.tachiyomi.source.online.ResolvableSource &&
+                source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga
+            ) {
+                result = runCatching { source.getManga(url) }.getOrNull()
+            }
+
+            result ?: source.getMangaDetails(
+                eu.kanade.tachiyomi.source.model.SManga.create().apply {
+                    this.url = inputUrl
+                },
+            )
+        }.getOrElse { firstError ->
+            if (source is HttpSource) {
+                val fallback = runCatching {
+                    val page = source.getSearchManga(
+                        1,
+                        url,
+                        eu.kanade.tachiyomi.source.model.FilterList(),
+                    )
+                    page.mangas.firstOrNull()?.let { firstManga ->
+                        source.getMangaDetails(firstManga).apply { this.url = firstManga.url }
+                    }
+                }.getOrNull()
+
+                fallback ?: run {
+                    val fallbackUrl = toggleLeadingSlash(inputUrl)
+                    source.getMangaDetails(
+                        eu.kanade.tachiyomi.source.model.SManga.create().apply { this.url = fallbackUrl },
+                    ).apply {
+                        if (this.url.isEmpty()) this.url = fallbackUrl
+                    }
+                }
+            } else {
+                throw firstError
+            }
+        }
+
+        val resolvedUrl = runCatching { resolved.url }.getOrNull().orEmpty()
+        resolved.url = if (resolvedUrl.isBlank()) normalizedPath else normalizeSourcePath(source, resolvedUrl)
+
+        return resolved
+    }
+
     /**
      * Wait if memory usage exceeds the threshold to let GC reclaim before continuing.
      * Triggers at 50% usage to maintain headroom before 512MB limit.
@@ -805,7 +858,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             } catch (inner: Exception) {
                 logcat(LogPriority.ERROR, inner) { "Even refresh failed" }
             }
-        }
         // Clear the buffer after flush
         pendingIds.clear()
     }
@@ -852,21 +904,25 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         if (matchingSources.isEmpty()) return null
         if (matchingSources.size == 1) return matchingSources.first()
 
-        // Prioritize languages the user actually has enabled in extension settings
-        // and filter out any sources the user explicitly disabled
         val enabledLanguages = sourcePreferences.enabledLanguages.get()
         val disabledSources = sourcePreferences.disabledSources.get()
-        
-        val enabledSources = matchingSources.filter { 
-            it.lang in enabledLanguages && it.id.toString() !in disabledSources 
+        val enabledSources = matchingSources.filter {
+            it.lang in enabledLanguages && it.id.toString() !in disabledSources
         }
-        
-        // Prioritize Kotlin extensions over JS plugins from within the filtered match
-        // If no user-enabled language matches, fallback to the first available source natively (index zero)
         val bestLangSources = if (enabledSources.isNotEmpty()) enabledSources else matchingSources
+
+        // Prioritize Kotlin extensions over JS plugins
         val kotlinSources = bestLangSources.filter { it !is JsSource }
 
         return kotlinSources.firstOrNull() ?: bestLangSources.first()
+    }
+
+    private fun getSourceBaseUrl(source: CatalogueSource): String {
+        return when (source) {
+            is HttpSource -> source.baseUrl
+            is JsSource -> source.baseUrl
+            else -> ""
+        }
     }
 
     data class ImportResult(

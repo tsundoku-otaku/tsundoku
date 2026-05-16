@@ -621,11 +621,8 @@ class MassImport(
                 normalizedUrl
             }
         }
-        val rawPath = if (source is JsSource && extractedPath.startsWith("/")) {
-            extractedPath.substring(1)
-        } else {
-            extractedPath
-        }
+
+        val rawPath = source?.let { normalizeSourcePath(it, extractedPath) } ?: extractedPath
         return normalizeUrl(rawPath)
     }
 

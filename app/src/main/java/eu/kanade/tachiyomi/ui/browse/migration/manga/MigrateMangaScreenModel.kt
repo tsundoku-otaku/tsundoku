@@ -112,7 +112,7 @@ class MigrateMangaScreenModel(
                 var skipCount = 0
                 for (manga in selectedManga) {
                     try {
-                        val newUrl = if (!manga.url.startsWith("/")) "/${manga.url}" else manga.url
+                        val newUrl = if (manga.url.startsWith("/")) manga.url else "/${manga.url}"
                         val existing = getMangaByUrlAndSourceId.await(newUrl, targetSourceId)
                         if (existing?.favorite == true) {
                             skipCount++
@@ -147,7 +147,7 @@ class MigrateMangaScreenModel(
                 val migratedIds = mutableListOf<Long>()
                 for (manga in selectedManga) {
                     try {
-                        val newUrl = if (!manga.url.startsWith("/")) "/${manga.url}" else manga.url
+                        val newUrl = if (manga.url.startsWith("/")) manga.url else "/${manga.url}"
                         val existing = getMangaByUrlAndSourceId.await(newUrl, targetSourceId)
                         if (existing?.favorite == true) continue
                         updateManga.await(MangaUpdate(id = manga.id, source = targetSourceId, url = newUrl))

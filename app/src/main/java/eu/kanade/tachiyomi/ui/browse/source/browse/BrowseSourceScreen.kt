@@ -62,7 +62,7 @@ import eu.kanade.tachiyomi.ui.browse.source.browse.BrowseSourceScreenModel.Listi
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
-import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
+import eu.kanade.tachiyomi.util.source.resolveRelativeUrl
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -520,7 +520,11 @@ data class BrowseSourceScreen(
             // Prefill dialog with selected novels' URLs (one per line)
             val selected = screenModel.state.value.selection
             val initialText = selected.joinToString("\n") { manga ->
-                screenModel.source.getMangaUrlOrNull(manga.toSManga()) ?: manga.url
+                when (val resolvedSource = screenModel.source) {
+                    is eu.kanade.tachiyomi.jsplugin.source.JsSource -> manga.url
+                    is HttpSource -> resolveRelativeUrl(resolvedSource.baseUrl, manga.url)
+                    else -> manga.url
+                }
             }
 
             MassImportDialog(

@@ -56,6 +56,30 @@ fun resolveRelativeUrl(baseUrl: String, pathOrUrl: String): String {
     }
 }
 
+fun normalizeSourcePath(source: Source, pathOrUrl: String): String {
+    val trimmed = pathOrUrl.trim()
+    if (trimmed.isBlank()) {
+        return trimmed
+    }
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        return trimmed
+    }
+    return when (source) {
+        is JsSource, is HttpSource -> if (trimmed.startsWith("/")) trimmed else "/$trimmed"
+        else -> trimmed
+    }
+}
+
+fun toggleLeadingSlash(pathOrUrl: String): String {
+    if (pathOrUrl.isBlank()) {
+        return pathOrUrl
+    }
+    if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+        return pathOrUrl
+    }
+    return if (pathOrUrl.startsWith("/")) pathOrUrl.removePrefix("/") else "/$pathOrUrl"
+}
+
 fun Source.getMangaUrlOrNull(manga: SManga): String? {
     return when (this) {
         is CustomNovelSource -> resolveRelativeUrl(baseUrl, manga.url)

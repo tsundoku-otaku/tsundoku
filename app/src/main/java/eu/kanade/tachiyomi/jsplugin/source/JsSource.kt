@@ -111,42 +111,6 @@ class JsSource(
         }
     }
 
-    private fun codeLooksTruncated(code: String): Boolean {
-        if (code.isBlank()) return true
-        if (!code.contains("exports.default")) return true
-        // A very lightweight sanity check: most of these plugins are big, minified blobs.
-        // If braces are unbalanced it's a strong indicator of truncation.
-        val open = code.count { it == '{' }
-        val close = code.count { it == '}' }
-        return open != close
-    }
-
-    private suspend fun maybeHealCode(original: String): String {
-        val url = plugin.url
-        if (url.isBlank()) return original
-        if (!codeLooksTruncated(original)) return original
-
-        return try {
-            logcat(LogPriority.WARN) {
-                "JsSource[${plugin.id}]: plugin code looks truncated (len=${original.length}); re-downloading from $url"
-            }
-            val response = networkHelper.client.newCall(GET(url)).execute()
-            response.use { resp ->
-                if (!resp.isSuccessful) {
-                    logcat(LogPriority.WARN) { "JsSource[${plugin.id}]: re-download failed HTTP ${resp.code}" }
-                    return original
-                }
-                val fresh = resp.body?.string().orEmpty()
-                if (fresh.isBlank()) return original
-                logcat(LogPriority.INFO) { "JsSource[${plugin.id}]: re-downloaded plugin code (len=${fresh.length})" }
-                fresh
-            }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "JsSource[${plugin.id}]: re-download failed" }
-            original
-        }
-    }
-
     /**
      * Get or create a cached plugin instance to avoid expensive re-initialization.
      * Must be called from jsDispatcher to ensure proper JNI environment.
@@ -170,7 +134,7 @@ class JsSource(
         }
 
         // Create new instance outside lock to avoid blocking
-        val codeToUse = maybeHealCode(jsCode)
+        val codeToUse = jsCode
         val runtime = PluginRuntime(pluginId, context, jsDispatcher, baseUrl)
         val newInstance = try {
             runtime.executePlugin(codeToUse)
@@ -204,7 +168,6 @@ class JsSource(
             }
 
             cachedInstance = newInstance
-            lastUsed = System.currentTimeMillis()
             newInstance
         }
     }
@@ -537,7 +500,7 @@ class JsSource(
                 return@withContext cached.first
             }
 
-            val path = normalizeDoubleSlashes(manga.url).replace("'", "\\'").replace("\"", "\\\"")
+            val path = normalizePluginPath(manga.url).replace("'", "\\'").replace("\"", "\\\"")
             val result = executePluginMethod("plugin.parseNovel('$path')")
             val details = parseNovelDetails(result, manga)
 
@@ -559,7 +522,7 @@ class JsSource(
                 return@withContext cached.first
             }
 
-            val path = normalizeDoubleSlashes(manga.url).replace("'", "\\'").replace("\"", "\\\"")
+            val path = normalizePluginPath(manga.url).replace("'", "\\'").replace("\"", "\\\"")
             val result = executePluginMethod("plugin.parseNovel('$path')")
             val chapters = parseChapterList(result).toMutableList()
 
@@ -625,7 +588,7 @@ class JsSource(
                 logcat(LogPriority.ERROR) { "[$id] getPageList: chapter.url is blank, cannot parse chapter" }
                 return@withContext emptyList()
             }
-            val path = normalizeDoubleSlashes(chapter.url).replace("'", "\\'").replace("\"", "\\\"")
+            val path = normalizePluginPath(chapter.url).replace("'", "\\'").replace("\"", "\\\"")
             val result = executePluginMethod("plugin.parseChapter('$path')")
             // For novels, the result is HTML content - return as a single text page
             // Store the chapter URL in the page so fetchPageText can re-fetch if needed
@@ -747,6 +710,15 @@ class JsSource(
             "${parts[0]}://$normalizedPath"
         } else {
             value.replace(Regex("/{2,}"), "/")
+        }
+    }
+
+    private fun normalizePluginPath(value: String): String {
+        val normalized = normalizeDoubleSlashes(value.trim())
+        return if (normalized.startsWith("http://") || normalized.startsWith("https://")) {
+            normalized
+        } else {
+            normalized.removePrefix("/")
         }
     }
 
@@ -1249,7 +1221,7 @@ class JsSource(
             }
 
             // Validate URL before calling plugin - avoid fetching base URL with empty path
-            val chapterUrl = normalizeDoubleSlashes(page.url).replace("'", "\\'").replace("\"", "\\\"")
+            val chapterUrl = normalizePluginPath(page.url).replace("'", "\\'").replace("\"", "\\\"")
             if (chapterUrl.isBlank()) {
                 logcat(LogPriority.WARN) { "[$id] fetchPageText: page.url is blank, cannot parse chapter" }
                 return@withContext "Chapter content unavailable (empty URL)"
