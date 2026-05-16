@@ -16,6 +16,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Changed
 - Novel downloads will be saved as zip format [@mrissaoussama](https://github.com/mrissaoussama) [#202](https://github.com/tsundoku-otaku/tsundoku/pull/202)
+- TTS speed/pitch range increased from 0.5x–2.0x to 0.5x–6.0x [@mrissaoussama](https://github.com/mrissaoussama) [#215](https://github.com/tsundoku-otaku/tsundoku/pull/215)
 
 ### Improved
 - Novel Viewer Improvements - Refactors JS with infinite scroll, and more detailed metadata. [@mrissaoussama](https://github.com/mrissaoussama) [#198](https://github.com/tsundoku-otaku/tsundoku/pull/198)
