@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.data.translation.engine.GoogleTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.GoogleTranslateScraperEngine
 import eu.kanade.tachiyomi.data.translation.engine.HuggingFaceTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.LibreTranslateEngine
+import eu.kanade.tachiyomi.data.translation.engine.NvidiaNimTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.OllamaTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.OpenAITranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.SystranTranslateEngine
@@ -32,6 +33,7 @@ class TranslationEngineManager(
         listOf(
             LibreTranslateEngine(), // Free, open-source
             OpenAITranslateEngine(), // Paid, high quality
+            NvidiaNimTranslateEngine(), // OpenAI-compatible NIM endpoint
             DeepSeekTranslateEngine(), // Paid, affordable
             OllamaTranslateEngine(), // Local AI, free
             HuggingFaceTranslateEngine(), // Free, limited languages
@@ -115,5 +117,6 @@ class TranslationEngineManager(
         const val ENGINE_DEEPL = 6L
         const val ENGINE_GOOGLE = 7L
         const val ENGINE_GEMINI = 8L
+        const val ENGINE_NVIDIA_NIM = 11L
     }
 }

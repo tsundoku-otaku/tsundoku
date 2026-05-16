@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.translation.engine.DeepSeekTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.GeminiTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.LibreTranslateEngine
+import eu.kanade.tachiyomi.data.translation.engine.NvidiaNimTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.OllamaTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.OpenAITranslateEngine
 import eu.kanade.tachiyomi.source.fetchNovelPageText
@@ -41,6 +42,7 @@ import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.domain.translation.service.TranslationPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -507,7 +509,7 @@ class TranslationService(
                             } else {
                                 translated
                             }
-                            val translatedParagraphs = cleanedTranslation.split("\n\n").filter { it.isNotBlank() }
+                            val translatedParagraphs = TranslationHtmlUtils.splitParagraphsPreserving(cleanedTranslation)
                             // Update previous chunk tracking for next iteration
                             previousRawParagraphs = chunkParagraphsList[chunkIndex]
                             previousTranslatedParagraphs = translatedParagraphs.ifEmpty { listOf(cleanedTranslation) }
@@ -751,7 +753,7 @@ class TranslationService(
         // Check for existing translation in database
         if (chapterId != null) {
             val existingTranslation = translatedChapterRepository.getTranslatedChapter(chapterId, tgtLang)
-            if (existingTranslation != null) {
+            if (existingTranslation != null && isCachedTranslationCompatible(existingTranslation.translatedContent, content)) {
                 logcat(LogPriority.DEBUG) { "Using cached translation for chapter $chapterId (lang: $tgtLang)" }
                 return existingTranslation.translatedContent
             }
@@ -774,6 +776,8 @@ class TranslationService(
                     translatedHtml = TranslationHtmlUtils.reinsertImages(translatedHtml, preservedImages)
                 }
 
+                val cachedTranslatedHtml = wrapTranslatedHtmlWithSourceHash(content, translatedHtml)
+
                 // Save translation to database
                 if (chapterId != null && mangaId != null) {
                     val engine = translationEngineManager.getEngine()
@@ -782,7 +786,7 @@ class TranslationService(
                         mangaId = mangaId,
                         targetLanguage = tgtLang,
                         engineId = engine?.id?.toString() ?: "unknown",
-                        translatedContent = translatedHtml,
+                        translatedContent = cachedTranslatedHtml,
                         dateTranslated = System.currentTimeMillis(),
                     )
                     try {
@@ -796,12 +800,38 @@ class TranslationService(
                     }
                 }
 
-                translatedHtml
+                cachedTranslatedHtml
             }
             is TranslationResult.Error -> {
                 logcat(LogPriority.WARN) { "Translation failed: ${result.message}" }
-                content // Return original content on error
+                throw IllegalStateException(result.message)
             }
+        }
+    }
+
+    private fun isCachedTranslationCompatible(cachedContent: String, sourceContent: String): Boolean {
+        val cachedHash = extractSourceHash(cachedContent) ?: return false
+        return cachedHash == computeSourceHash(sourceContent)
+    }
+
+    private fun wrapTranslatedHtmlWithSourceHash(sourceContent: String, translatedHtml: String): String {
+        val hash = computeSourceHash(sourceContent)
+        return "<!-- tsundoku-source-hash:$hash -->\n$translatedHtml"
+    }
+
+    private fun extractSourceHash(cachedContent: String): String? {
+        val prefix = "<!-- tsundoku-source-hash:"
+        val start = cachedContent.indexOf(prefix)
+        if (start < 0) return null
+        val end = cachedContent.indexOf("-->", start)
+        if (end < 0) return null
+        return cachedContent.substring(start + prefix.length, end).trim().takeIf { it.isNotEmpty() }
+    }
+
+    private fun computeSourceHash(content: String): String {
+        val digest = MessageDigest.getInstance("SHA-256").digest(content.toByteArray(Charsets.UTF_8))
+        return buildString(digest.size * 2) {
+            digest.forEach { byte -> append("%02x".format(byte)) }
         }
     }
 
@@ -894,6 +924,7 @@ class TranslationService(
     companion object {
         /** Priority values for translation queue. */
         const val PRIORITY_LOW = 0
+        const val PRIORITY_AHEAD = 25
         const val PRIORITY_NORMAL = 50
         const val PRIORITY_HIGH = 100
         const val PRIORITY_MANUAL_READ = 200
@@ -901,6 +932,7 @@ class TranslationService(
         /** Engine IDs for LLM-based engines that support contextual anchoring. */
         val LLM_ENGINE_IDS = setOf(
             OpenAITranslateEngine.ENGINE_ID,
+            NvidiaNimTranslateEngine.ENGINE_ID,
             DeepSeekTranslateEngine.ENGINE_ID,
             OllamaTranslateEngine.ENGINE_ID,
             GeminiTranslateEngine.ENGINE_ID,

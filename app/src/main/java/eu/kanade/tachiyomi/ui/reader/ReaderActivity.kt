@@ -1431,6 +1431,8 @@ class ReaderActivity : BaseActivity() {
             content
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Translation failed" }
+            viewModel.disableTranslation()
+            toast(e.message ?: "Translation failed")
             content
         }
     }

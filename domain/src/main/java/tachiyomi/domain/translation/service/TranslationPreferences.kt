@@ -109,6 +109,30 @@ class TranslationPreferences(
     )
 
     /**
+     * NVIDIA NIM base URL.
+     */
+    fun nvidiaNimBaseUrl() = preferenceStore.getString(
+        "translation_nvidia_nim_base_url",
+        "http://localhost:8000",
+    )
+
+    /**
+     * NVIDIA NIM API key (optional).
+     */
+    fun nvidiaNimApiKey() = preferenceStore.getString(
+        "translation_nvidia_nim_api_key",
+        "",
+    )
+
+    /**
+     * NVIDIA NIM model name.
+     */
+    fun nvidiaNimModel() = preferenceStore.getString(
+        "translation_nvidia_nim_model",
+        "",
+    )
+
+    /**
      * DeepSeek API key.
      */
     fun deepSeekApiKey() = preferenceStore.getString(

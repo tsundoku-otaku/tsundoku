@@ -11,6 +11,7 @@ import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.translation.model.TranslatedChapter
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * Filesystem-only implementation of [TranslatedChapterRepository].
@@ -129,13 +130,25 @@ class TranslatedChapterRepositoryImpl(
 
     private val META_PREFIX = "<!-- tsundoku-meta:"
     private val META_SUFFIX = " -->"
-    private val META_REGEX = Regex("^<!-- tsundoku-meta:(.+?):(-?\\d+) -->\\n?")
+    private val META_REGEX = Regex("^<!-- tsundoku-meta:(.+?):(-?\\d+)(?::([a-f0-9]{64}))? -->\\n?")
 
-    private fun buildMetaComment(engineId: String, dateTranslated: Long): String {
-        return "$META_PREFIX$engineId:$dateTranslated$META_SUFFIX\n"
+    private fun buildMetaComment(engineId: String, dateTranslated: Long, sourceContentHash: String? = null): String {
+        val hashPart = if (!sourceContentHash.isNullOrEmpty()) ":$sourceContentHash" else ""
+        return "$META_PREFIX$engineId:$dateTranslated$hashPart$META_SUFFIX\n"
     }
 
-    private data class FileMeta(val engineId: String, val dateTranslated: Long, val content: String)
+    private fun computeSourceHash(content: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(content.toByteArray(Charsets.UTF_8))
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+
+    private data class FileMeta(
+        val engineId: String,
+        val dateTranslated: Long,
+        val sourceHash: String?,
+        val content: String,
+    )
 
     /** Read a translation file, parsing the optional metadata comment from the first line. */
     private fun parseUniFile(file: UniFile): FileMeta? {
@@ -151,10 +164,11 @@ class TranslatedChapterRepositoryImpl(
             FileMeta(
                 engineId = match.groupValues[1],
                 dateTranslated = match.groupValues[2].toLong(),
+                sourceHash = match.groupValues[3].takeIf { it.isNotEmpty() },
                 content = raw.removeRange(match.range).trimStart('\n'),
             )
         } else {
-            FileMeta(engineId = "unknown", dateTranslated = 0L, content = raw)
+            FileMeta(engineId = "unknown", dateTranslated = 0L, sourceHash = null, content = raw)
         }
     }
 

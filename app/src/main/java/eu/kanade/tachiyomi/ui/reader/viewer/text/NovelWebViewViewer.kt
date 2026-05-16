@@ -54,7 +54,9 @@ import tachiyomi.domain.translation.service.TranslationPreferences
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
 import java.net.URI
+import java.io.File
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * NovelWebViewViewer renders novel content using a WebView for more flexibility.
@@ -106,6 +108,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var loadJob: Job? = null
     private var currentPage: ReaderPage? = null
     private var currentChapters: ViewerChapters? = null
+    private val novelImageCache = ConcurrentHashMap<String, File>()
+    private val novelImagePrefetchJobs = ConcurrentHashMap<String, Job>()
 
     // Track scroll progress
     private var lastSavedProgress = 0f
@@ -124,15 +128,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var isAutoScrolling = false
     private var autoScrollJob: Job? = null
 
-    private val config = NovelConfig(scope)
-    private val navigator get() = config.navigator
-
-    init {
-        config.navigationModeChangedListener = {
-            val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
-            activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
-        }
-    }
+    private var navigator: eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation = eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation()
 
     // TTS support
     private var tts: TextToSpeech? = null
@@ -155,6 +151,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var ttsResumeChunkIndex: Int = 0 // Track which chunk to resume from after pause
     private var ttsViewportParagraphIndex: Int = 0
     private var hasViewportStartOverride: Boolean = false
+    @Volatile private var ttsIsPreparing = false // Track TTS initialization/preparation phase
+    @Volatile private var ttsIsStarting = false // Track when speech is about to start
+
     @Volatile private var ttsIsPreparing = false // Track TTS initialization/preparation phase
     @Volatile private var ttsIsStarting = false // Track when speech is about to start
 
@@ -217,18 +216,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     e.x / container.width.toFloat(),
                     e.y / container.height.toFloat(),
                 )
-
-                if (preferences.navigationModeNovel.get() == ReaderPreferences.TapZones.size) {
-                    val centerXStart = 0.4f
-                    val centerXEnd = 0.6f
-                    val centerYStart = 0.4f
-                    val centerYEnd = 0.6f
-                    if (pos.x in centerXStart..centerXEnd && pos.y in centerYStart..centerYEnd) {
-                        activity.toggleMenu()
-                        return true
-                    }
-                    return false
-                }
 
                 when (navigator.getAction(pos)) {
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.MENU -> {
@@ -554,21 +541,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     val url = request?.url?.toString() ?: return null
                     if (url.startsWith(URL_SCHEME_NOVEL_IMAGE)) {
                         val imagePath = android.net.Uri.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE))
+                        val chapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
+                        val cacheKey = buildNovelImageCacheKey(chapterId, imagePath)
+                        novelImageCache[cacheKey]?.takeIf { it.exists() }?.let { cachedFile ->
+                            return android.webkit.WebResourceResponse(
+                                guessNovelImageMimeType(imagePath),
+                                "UTF-8",
+                                cachedFile.inputStream(),
+                            )
+                        }
+
                         val loader = activity.viewModel.state.value.viewerChapters?.currChapter?.pageLoader
                         if (loader != null) {
-                            val stream = kotlinx.coroutines.runBlocking { loader.getPageDataStream(imagePath) }
-                            if (stream != null) {
-                                val mimeType = when (imagePath.substringAfterLast('.', "").lowercase()) {
-                                    "png" -> "image/png"
-                                    "jpg", "jpeg" -> "image/jpeg"
-                                    "gif" -> "image/gif"
-                                    "svg" -> "image/svg+xml"
-                                    "webp" -> "image/webp"
-                                    "avif" -> "image/avif"
-                                    else -> "image/jpeg"
-                                }
-                                return android.webkit.WebResourceResponse(mimeType, "UTF-8", stream)
-                            }
+                            chapterId?.let { prefetchNovelImage(it, imagePath, loader) }
                         }
                     }
                     return super.shouldInterceptRequest(view, request)
@@ -1136,6 +1121,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         ttsIsStarting = false
         isTtsAutoPlay = false
 
+        clearNovelImageCache()
+
         // Mark destroyed first so coroutine finally-blocks won't touch WebView.
         isDestroyed = true
 
@@ -1165,6 +1152,75 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
     }
 
+    private fun clearNovelImageCache() {
+        novelImagePrefetchJobs.values.forEach { it.cancel() }
+        novelImagePrefetchJobs.clear()
+        novelImageCache.values.forEach { cachedFile ->
+            runCatching { cachedFile.delete() }
+        }
+        novelImageCache.clear()
+    }
+
+    private fun buildNovelImageCacheKey(chapterId: Long?, imagePath: String): String {
+        return "${chapterId ?: -1L}:$imagePath"
+    }
+
+    private fun guessNovelImageMimeType(imagePath: String): String {
+        return when (imagePath.substringAfterLast('.', "").lowercase()) {
+            "png" -> "image/png"
+            "jpg", "jpeg" -> "image/jpeg"
+            "gif" -> "image/gif"
+            "svg" -> "image/svg+xml"
+            "webp" -> "image/webp"
+            "avif" -> "image/avif"
+            else -> "image/jpeg"
+        }
+    }
+
+    private fun scheduleNovelImagePrefetch(content: String, chapterId: Long?, loader: PageLoader?) {
+        if (chapterId == null || loader == null) return
+
+        val imageUrlPattern = Regex("${Regex.escape(URL_SCHEME_NOVEL_IMAGE)}([^\"'<>\\s]+)")
+        imageUrlPattern.findAll(content)
+            .mapNotNull { match -> runCatching { android.net.Uri.decode(match.groupValues[1]) }.getOrNull() }
+            .distinct()
+            .forEach { imagePath ->
+                prefetchNovelImage(chapterId, imagePath, loader)
+            }
+    }
+
+    private fun prefetchNovelImage(chapterId: Long, imagePath: String, loader: PageLoader) {
+        val cacheKey = buildNovelImageCacheKey(chapterId, imagePath)
+        if (novelImageCache[cacheKey]?.exists() == true) return
+
+        novelImagePrefetchJobs[cacheKey]?.let { existing ->
+            if (existing.isActive) return
+        }
+
+        val job = scope.launch(Dispatchers.IO) {
+            try {
+                val stream = loader.getPageDataStream(imagePath) ?: return@launch
+                val fileSuffix = imagePath.substringAfterLast('.', "bin").ifBlank { "bin" }
+                val cachedFile = File(activity.cacheDir, "novel-image-${cacheKey.hashCode().toString(16)}.$fileSuffix")
+                stream.use { input ->
+                    cachedFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                novelImageCache[cacheKey] = cachedFile
+            } catch (e: Exception) {
+                logcat(LogPriority.DEBUG) { "NovelWebViewViewer: Failed to prefetch image $imagePath: ${e.message}" }
+            } finally {
+                novelImagePrefetchJobs.remove(cacheKey)
+            }
+        }
+
+        val previous = novelImagePrefetchJobs.putIfAbsent(cacheKey, job)
+        if (previous != null) {
+            job.cancel()
+        }
+    }
+
     private fun shouldAutoMarkShortChapter(page: ReaderPage?): Boolean {
         if (!preferences.novelMarkShortChapterAsRead.get()) return false
         val chapter = page?.chapter?.chapter ?: return false
@@ -1185,7 +1241,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     var maxScroll = document.documentElement.scrollHeight - document.documentElement.clientHeight;
                     return maxScroll <= 0;
                 }
-                
+
                 // Set up a ResizeObserver to wait for content to stabilize
                 var resizeObserver = new ResizeObserver(function() {
                     if (checkIfShortChapter()) {
@@ -1194,10 +1250,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         resizeObserver.disconnect();
                     }
                 });
-                
+
                 // Observe document body for size changes
                 resizeObserver.observe(document.body);
-                
+
                 // Also check after a small delay to catch static content
                 setTimeout(function() {
                     if (checkIfShortChapter()) {
@@ -1481,6 +1537,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             } else {
                 finalContent
             }
+
+            scheduleNovelImagePrefetch(processedContent, chapter.chapter.id, page.chapter.pageLoader)
             val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapter.chapter.url)
             val renderableContent = if (plainTextMode) {
                 NovelViewerTextUtils.normalizePlainTextContent(processedContent)
@@ -1528,12 +1586,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      */
     private fun prependHtmlContent(content: String, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
-        
+
         // Get user preferences for embedded CSS/JS
         val keepEmbeddedCss = preferences.enableEpubStyles.get()
         val keepEmbeddedJs = preferences.enableEpubJs.get()
         val blockMedia = preferences.novelBlockMedia.get()
-        
+
         // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
@@ -1602,12 +1660,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      */
     private fun appendHtmlContent(content: String, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
-        
+
         // Get user preferences for embedded CSS/JS
         val keepEmbeddedCss = preferences.enableEpubStyles.get()
         val keepEmbeddedJs = preferences.enableEpubJs.get()
         val blockMedia = preferences.novelBlockMedia.get()
-        
+
         // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
@@ -1677,12 +1735,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         val chapterPath = chapterModel?.url.orEmpty()
         val normalizedChapterUrl = normalizeUrl(chapterPath)
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(normalizedChapterUrl)
-        
+
         // Get user preferences for embedded CSS/JS
         val keepEmbeddedCss = preferences.enableEpubStyles.get()
         val keepEmbeddedJs = preferences.enableEpubJs.get()
         val blockMedia = preferences.novelBlockMedia.get()
-        
+
         // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
@@ -1690,6 +1748,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             val normalized = NovelViewerTextUtils.normalizeContentForHtml(content, normalizedChapterUrl)
             sanitizeHtmlForWebView(normalized, keepEmbeddedCss, keepEmbeddedJs, blockMedia)
         }
+
+        scheduleNovelImagePrefetch(cleanContent, chapterId.takeIf { it != -1L }, currentPage?.chapter?.pageLoader)
 
         // Apply user's regex find & replace rules
         cleanContent = applyRegexReplacements(cleanContent)
@@ -1724,11 +1784,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
 
         // Build global JS variables for custom scripts
-    val chapterMetaScript = buildTsundokuScript()
+        val chapterMetaScript = buildTsundokuScript()
 
-    // Get theme tokens for CSS variables and JS exposure
-    val theme = preferences.novelTheme.get()
-    val themeTokens = NovelViewerTextUtils.getThemeTokens(activity, preferences, theme)
+        // Get theme tokens for CSS variables and JS exposure
+        val theme = preferences.novelTheme.get()
+        val themeTokens = NovelViewerTextUtils.getThemeTokens(activity, preferences, theme)
 
         var finalContent = cleanContent
         var embeddedHead = ""
@@ -1747,7 +1807,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 // Note: If keepEmbeddedCss is true, styles were already kept by sanitizeHtmlForWebView
                 // If keepEmbeddedCss is false, styles were already stripped
                 // We don't need to do anything here since sanitization was already done
-                
+
                 // Note: If keepEmbeddedJs is true, scripts were already kept by sanitizeHtmlForWebView
                 // If keepEmbeddedJs is false, scripts were already stripped
                 // We don't need to do anything here since sanitization was already done
@@ -1771,13 +1831,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         } else {
             ""
         }
-        
+
         // Escape theme token CSS variables for safe embedding in HTML
         val escapedThemeCss = themeTokens.cssVariables
             .replace("</style>", "<\\/style>")
             .replace("</Style>", "<\\/Style>")
             .replace("</STYLE>", "<\\/STYLE>")
-        
+
         // Build theme exposure script - escape for safe embedding
         val escapedThemeJson = themeTokens.jsObject
             .replace("\\", "\\\\")
@@ -2248,7 +2308,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                                 if (window.Android && window.Android.onContentEdited) {
                                     window.Android.onContentEdited();
                                 }
-                            });
+                            };
+                            document.addEventListener('input', inputListener);
+                            window.$TSUNDOKU_OBJECT_NAME.runtime.inputListener = inputListener;
                         }
                     } else {
                         var style = document.getElementById(styleId);
@@ -2431,6 +2493,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
 
         val processedContent = activity.translateContentIfEnabled(content)
+        scheduleNovelImagePrefetch(processedContent, chapterId, page.chapter.pageLoader)
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapter.chapter.url)
         val renderableContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(processedContent)
@@ -2906,10 +2969,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         applyTtsSettings()
 
+        pendingTtsText = null
         ttsPaused = false
 
         // Android TTS has a max length limit (~4000 chars), chunk long text
-        val maxLength = TextToSpeech.getMaxSpeechInputLength()
+        val maxLength = TextToSpeech.getMaxSpeechInputLength().takeIf { it > 0 } ?: 4000
 
         val paragraphs = text.split("\n").filter { it.isNotBlank() }
         val chunkParagraphIndexes = mutableListOf<Int>()

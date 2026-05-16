@@ -5,6 +5,8 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import tachiyomi.domain.translation.model.TranslationEngine
 import tachiyomi.domain.translation.model.TranslationResult
@@ -138,13 +140,15 @@ class GoogleTranslateScraperEngine : TranslationEngine {
         sourceLanguage: String,
         targetLanguage: String,
     ): TranslationResult {
-        return try {
-            val translated = texts.map { text ->
-                translateSingleInternal(text, sourceLanguage, targetLanguage)
+        return withContext(Dispatchers.IO) {
+            try {
+                val translated = texts.map { text ->
+                    translateSingleInternal(text, sourceLanguage, targetLanguage)
+                }
+                TranslationResult.Success(translated, null)
+            } catch (e: Exception) {
+                TranslationResult.Error(e.message ?: "Unknown error", TranslationResult.ErrorCode.UNKNOWN)
             }
-            TranslationResult.Success(translated, null)
-        } catch (e: Exception) {
-            TranslationResult.Error(e.message ?: "Unknown error", TranslationResult.ErrorCode.UNKNOWN)
         }
     }
 

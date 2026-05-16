@@ -13,6 +13,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.logcat
+import org.jsoup.Jsoup
+import java.util.concurrent.ConcurrentHashMap
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
@@ -30,6 +32,11 @@ object NovelViewerTextUtils {
     }
 
     private val frontMatterRegex = Regex("^\\uFEFF?---\\s*\\r?\\n([\\s\\S]*?)\\r?\\n---\\s*(\\r?\\n|$)")
+    private const val CHAPTER_TITLE_SEARCH_LIMIT = 3000
+
+    // Cache compiled regex replacements keyed by the JSON preference string.
+    private val regexReplacementsCache = ConcurrentHashMap<String, List<Pair<Regex, String>>>()
+    private val intMapJsonCache = ConcurrentHashMap<String, Map<String, Int>>()
 
     fun isPlainTextChapter(chapterUrl: String?): Boolean {
         val ext = chapterUrl
@@ -48,6 +55,30 @@ object NovelViewerTextUtils {
             .replace("\u0000", "")
             .replace("\r\n", "\n")
             .replace("\r", "\n")
+    }
+
+    fun normalizeUrl(url: String?): String? {
+        val value = url?.trim().orEmpty()
+        if (value.isBlank()) return url
+        return when {
+            value.startsWith("https//") -> "https://" + value.removePrefix("https//")
+            value.startsWith("http//") -> "http://" + value.removePrefix("http//")
+            else -> value
+        }
+    }
+
+    fun decodeIntMapPreference(json: String): MutableMap<String, Int> {
+        if (json.isBlank()) return mutableMapOf()
+        val cached = intMapJsonCache[json]
+        if (cached != null) return cached.toMutableMap()
+
+        return try {
+            val decoded = kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(json)
+            intMapJsonCache[json] = decoded
+            decoded.toMutableMap()
+        } catch (_: Exception) {
+            mutableMapOf()
+        }
     }
     /**
      * Normalizes chapter content to HTML so both WebView and TextView pipelines
@@ -95,7 +126,7 @@ object NovelViewerTextUtils {
     }
 
     private fun stripFrontMatter(markdown: String): String {
-        return frontMatterRegex.replaceFirst(markdown, "")
+        return markdown.replaceFirst(frontMatterRegex, "")
     }
 
     private fun markdownToHtml(markdown: String): String {
@@ -136,32 +167,42 @@ object NovelViewerTextUtils {
         val rulesJson = preferences.novelRegexReplacements.get()
         if (rulesJson.isBlank() || rulesJson == "[]") return content
 
-        val rules: List<RegexReplacement> = try {
-            kotlinx.serialization.json.Json.decodeFromString(rulesJson)
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN) { "Failed to parse regex replacements: ${e.message}" }
-            return content
+        val compiled = regexReplacementsCache.computeIfAbsent(rulesJson) { json ->
+            try {
+                val rules: List<RegexReplacement> = kotlinx.serialization.json.Json.decodeFromString(json)
+                rules.mapNotNull { rule ->
+                    if (!rule.enabled || rule.pattern.isBlank()) return@mapNotNull null
+                    try {
+                        if (rule.isRegex) {
+                            val options = if (rule.caseSensitive) emptySet<RegexOption>() else setOf(RegexOption.IGNORE_CASE)
+                            Regex(rule.pattern, options) to rule.replacement
+                        } else {
+                            val escapedPattern = Regex.escape(rule.pattern)
+                            val boundedPattern = if (rule.matchWholeWord) {
+                                "(?<![\\p{L}\\p{N}_])(?:$escapedPattern)(?![\\p{L}\\p{N}_])"
+                            } else {
+                                escapedPattern
+                            }
+                            val options = if (rule.caseSensitive) emptySet<RegexOption>() else setOf(RegexOption.IGNORE_CASE)
+                            Regex(boundedPattern, options) to rule.replacement
+                        }
+                    } catch (e: Exception) {
+                        logcat(LogPriority.WARN) { "Failed to compile regex for '${rule.title}': ${e.message}" }
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN) { "Failed to parse regex replacements: ${e.message}" }
+                emptyList()
+            }
         }
 
         var result = content
-        for (rule in rules) {
-            if (!rule.enabled || rule.pattern.isBlank()) continue
+        for ((regex, replacement) in compiled) {
             try {
-                result = if (rule.isRegex) {
-                    val regex = Regex(rule.pattern)
-                    regex.replace(result, rule.replacement)
-                } else {
-                    val escapedPattern = Regex.escape(rule.pattern)
-                    val boundedPattern = if (rule.matchWholeWord) {
-                        "(?<![\\p{L}\\p{N}_])(?:$escapedPattern)(?![\\p{L}\\p{N}_])"
-                    } else {
-                        escapedPattern
-                    }
-                    val options = if (rule.caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-                    Regex(boundedPattern, options).replace(result) { rule.replacement }
-                }
+                result = regex.replace(result, replacement)
             } catch (e: Exception) {
-                logcat(LogPriority.WARN) { "Regex replacement '${rule.title}' failed: ${e.message}" }
+                logcat(LogPriority.WARN) { "Regex replacement failed: ${e.message}" }
             }
         }
         return result
@@ -174,7 +215,7 @@ object NovelViewerTextUtils {
     fun stripChapterTitle(content: String, chapterName: String): String {
         val normalizedChapterName = chapterName.trim().lowercase()
         // Search within first 3000 chars for title (to handle leading whitespace/tags/extra prefixes)
-        val searchArea = content.take(3000)
+        val searchArea = content.take(CHAPTER_TITLE_SEARCH_LIMIT)
 
         // Try to remove first heading, or other elements if they match the chapter name.
         // We unconditionally hide the first heading.
@@ -413,34 +454,46 @@ object NovelViewerTextUtils {
     fun findParagraphs(text: String): List<ParagraphInfo> {
         val paragraphs = mutableListOf<ParagraphInfo>()
 
-        // Strip HTML tags first to get plain text positions
-        val plainText = text.replace(Regex("<[^>]+>"), " ")
+        // Use Jsoup to parse HTML robustly and extract block-level elements as paragraphs.
+        val doc = try {
+            Jsoup.parse(text)
+        } catch (e: Exception) {
+            // Fallback to naive behavior if parsing fails
+            null
+        }
 
-        // Split on double newlines, paragraph tags, or significant whitespace
-        val lines = plainText.split(Regex("\n\\s*\n|<p[^>]*>|</p>"))
-        var charOffset = 0
+        val plainText = doc?.text() ?: text.replace(Regex("<[^>]+>"), " ")
 
-        for ((index, line) in lines.withIndex()) {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty()) {
-                charOffset += line.length + 2  // Account for split pattern
-                continue
+        // Prefer block elements when available
+        val blocks = doc?.select("p, div, section, article, h1, h2, h3, h4, h5, h6, li")
+
+        if (blocks == null || blocks.isEmpty()) {
+            // Fallback: split on blank lines in the plain text
+            val lines = plainText.split(Regex("\\n\\s*\\n"))
+            var charOffset = 0
+            for (line in lines) {
+                val trimmed = line.trim()
+                if (trimmed.isEmpty()) {
+                    charOffset += line.length + 2
+                    continue
+                }
+                val startChar = plainText.indexOf(trimmed, charOffset)
+                if (startChar < 0) continue
+                val endChar = startChar + trimmed.length
+                paragraphs.add(ParagraphInfo(paragraphs.size, startChar, endChar, trimmed))
+                charOffset = endChar
             }
+            return paragraphs
+        }
 
-            // Find the actual position in original text
+        var charOffset = 0
+        for (elem in blocks) {
+            val trimmed = elem.text().trim()
+            if (trimmed.isEmpty()) continue
             val startChar = plainText.indexOf(trimmed, charOffset)
             if (startChar < 0) continue
-
             val endChar = startChar + trimmed.length
-
-            paragraphs.add(
-                ParagraphInfo(
-                    index = paragraphs.size,
-                    startChar = startChar,
-                    endChar = endChar,
-                    text = trimmed,
-                )
-            )
+            paragraphs.add(ParagraphInfo(paragraphs.size, startChar, endChar, trimmed))
             charOffset = endChar
         }
 

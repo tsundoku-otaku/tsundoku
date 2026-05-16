@@ -31,6 +31,7 @@ import androidx.core.widget.NestedScrollView
 import coil3.asDrawable
 import coil3.imageLoader
 import coil3.request.ImageRequest
+import eu.kanade.tachiyomi.data.translation.TranslationHtmlUtils
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -432,6 +433,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     private var loadJob: Job? = null
     private var currentPage: ReaderPage? = null
     private var currentChapters: ViewerChapters? = null
+    private var renderGeneration = 0L
 
     // Track loaded chapters for infinite scroll
     private data class LoadedChapter(
@@ -1543,12 +1545,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
         // Load existing progress map
         val progressJson = preferences.novelTtsLastReadParagraph.get()
-        val progressMap = try {
-            kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(progressJson)
-                .toMutableMap()
-        } catch (e: Exception) {
-            mutableMapOf()
-        }
+        val progressMap = NovelViewerTextUtils.decodeIntMapPreference(progressJson)
 
         // Update with current chapter progress
         progressMap[chapterId.toString()] = paragraphIndex
@@ -1573,12 +1570,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         val chapterId = currentChapter.index.toString()
         val progressJson = preferences.novelTtsLastReadParagraph.get()
 
-        return try {
-            val progressMap = kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(progressJson)
-            progressMap[chapterId]?.coerceAtLeast(0) ?: 0
-        } catch (e: Exception) {
-            0
-        }
+        val progressMap = NovelViewerTextUtils.decodeIntMapPreference(progressJson)
+        return progressMap[chapterId]?.coerceAtLeast(0) ?: 0
     }
 
     /**
@@ -1705,30 +1698,45 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
      * Re-renders all loaded chapters with or without translation.
      */
     fun reloadWithTranslation() {
+        val generation = ++renderGeneration
         // Re-render all loaded chapters with new translation state
         loadedChapters.forEach { loadedChapter ->
             val page = loadedChapter.chapter.pages?.firstOrNull() as? ReaderPage ?: return@forEach
             val content = page.text ?: return@forEach
             val textView = loadedChapter.textView
+            val preparedContent = prepareContentForTranslation(content, loadedChapter.chapter.chapter.name)
 
             // Apply translation if enabled (async)
             if (activity.isTranslationEnabled()) {
+                textView.gravity = Gravity.CENTER
                 textView.text = "Translating..."
                 scope.launch {
-                    val translatedContent = activity.translateContentIfEnabled(content)
+                    val translatedContent = activity.translateContentIfEnabled(preparedContent)
                     withContext(Dispatchers.Main) {
+                        if (generation != renderGeneration) return@withContext
                         if (!textView.isAttachedToWindow) return@withContext
-                        setTextViewContent(textView, translatedContent, loadedChapter.chapter.chapter.url)
+                        setTextViewContent(
+                            textView,
+                            translatedContent,
+                            loadedChapter.chapter.chapter.url,
+                            processContent = false,
+                        )
                     }
                 }
             } else {
                 // Show original content
-                setTextViewContent(textView, content, loadedChapter.chapter.chapter.url)
+                setTextViewContent(
+                    textView,
+                    preparedContent,
+                    loadedChapter.chapter.chapter.url,
+                    processContent = false,
+                )
             }
         }
     }
 
     override fun setChapters(chapters: ViewerChapters) {
+        renderGeneration++
         val page = chapters.currChapter.pages?.firstOrNull() as? ReaderPage ?: return
 
         loadJob?.cancel()
@@ -1816,6 +1824,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
             content = content.lowercase()
         }
 
+        val preparedContent = content
+
         // Check if chapter is already loaded - return early to prevent duplicate adds
         val existingIndex = loadedChapters.indexOfFirst { it.chapter.chapter.id == chapter.chapter.id }
         if (existingIndex >= 0) {
@@ -1893,14 +1903,23 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         contentContainer.addView(textView)
 
         // Apply translation if enabled (async)
-        val finalContent = content
         // Always show content immediately; translation (if enabled) replaces it asynchronously.
-        setTextViewContent(textView, finalContent, chapter.chapter.url)
+        setTextViewContent(
+            textView,
+            preparedContent,
+            chapter.chapter.url,
+            processContent = false,
+        )
         if (activity.isTranslationEnabled() && !preferences.novelShowRawHtml.get()) {
             scope.launch {
-                val translatedContent = activity.translateContentIfEnabled(finalContent)
+                val translatedContent = activity.translateContentIfEnabled(preparedContent)
                 withContext(Dispatchers.Main) {
-                    setTextViewContent(textView, translatedContent, chapter.chapter.url)
+                    setTextViewContent(
+                        textView,
+                        translatedContent,
+                        chapter.chapter.url,
+                        processContent = false,
+                    )
                 }
             }
         }
@@ -2151,7 +2170,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     private fun getThemeColors(theme: String): Pair<Int, Int> =
         NovelViewerTextUtils.getThemeColors(activity, preferences, theme)
 
-    private fun setTextViewContent(textView: TextView, content: String, chapterUrl: String?) {
+    private fun setTextViewContent(
+        textView: TextView,
+        content: String,
+        chapterUrl: String?,
+        processContent: Boolean = true,
+    ) {
         // Check if raw HTML mode is enabled (for debugging)
         val showRawHtml = preferences.novelShowRawHtml.get()
         if (showRawHtml) {
@@ -2166,7 +2190,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
         // Process content to ensure paragraph tags exist for styling
         var processedContent = if (plainTextMode) {
-            NovelViewerTextUtils.normalizePlainTextContent(content)
+            if (!processContent && TranslationHtmlUtils.hasSourceHashTag(content)) {
+                TranslationHtmlUtils.extractTextFromHtml(content)
+            } else {
+                NovelViewerTextUtils.normalizePlainTextContent(content)
+            }
         } else {
             NovelViewerTextUtils.normalizeContentForHtml(content, chapterUrl)
         }
@@ -2180,7 +2208,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         // Strip noscript tags
         processedContent = processedContent.replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
 
-        processedContent = applyRegexReplacements(processedContent)
+        if (processContent) {
+            processedContent = applyRegexReplacements(processedContent)
+        }
 
         // Optionally strip media tags entirely when blocking media
         if (preferences.novelBlockMedia.get()) {
@@ -2314,6 +2344,18 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
      */
     private fun applyRegexReplacements(content: String): String =
         NovelViewerTextUtils.applyRegexReplacements(content, preferences)
+
+    private fun prepareContentForTranslation(content: String, chapterName: String): String {
+        var prepared = content
+        if (preferences.novelHideChapterTitle.get()) {
+            prepared = stripChapterTitle(prepared, chapterName)
+        }
+        prepared = applyRegexReplacements(prepared)
+        if (preferences.novelForceTextLowercase.get()) {
+            prepared = prepared.lowercase()
+        }
+        return prepared
+    }
 
     private fun normalizeContentForHtml(content: String, chapterUrl: String?): String =
         NovelViewerTextUtils.normalizeContentForHtml(content, chapterUrl)

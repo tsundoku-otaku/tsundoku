@@ -247,6 +247,9 @@ object SettingsTranslationScreen : SearchableSettings {
 
         // Collect all preference states
         val openAiKey by prefs.openAiApiKey().collectAsState()
+        val nvidiaNimBaseUrl by prefs.nvidiaNimBaseUrl().collectAsState()
+        val nvidiaNimApiKey by prefs.nvidiaNimApiKey().collectAsState()
+        val nvidiaNimModel by prefs.nvidiaNimModel().collectAsState()
         val deepSeekKey by prefs.deepSeekApiKey().collectAsState()
         val systranKey by prefs.systranApiKey().collectAsState()
         val deepLKey by prefs.deepLApiKey().collectAsState()
@@ -269,34 +272,38 @@ object SettingsTranslationScreen : SearchableSettings {
 
         fun testButton(engine: tachiyomi.domain.translation.model.TranslationEngine): Preference.PreferenceItem.TextPreference {
             val engineId = engine.id
+            val engineConfigured = engine.isConfigured()
             return Preference.PreferenceItem.TextPreference(
                 title = testEngineFormat.format(engine.name),
                 subtitle = when {
                     testingEngineId == engineId -> testingStr
                     testResults.containsKey(engineId) -> testResults[engineId]!!
+                    !engineConfigured -> "Not configured"
                     else -> testSendStr
                 },
-                enabled = testingEngineId == null,
+                enabled = testingEngineId == null && engineConfigured,
                 onClick = {
-                    testingEngineId = engineId
-                    testResults.remove(engineId)
-                    scope.launch {
-                        try {
-                            val result = engine.translate(
-                                listOf(testTextStr),
-                                sourceLanguage,
-                                targetLanguage,
-                            )
-                            testResults[engineId] = when (result) {
-                                is TranslationResult.Success ->
-                                    "✓ ${result.translatedTexts.joinToString(" | ")}"
-                                is TranslationResult.Error ->
-                                    "✗ ${result.message}"
+                    if (engineConfigured) {
+                        testingEngineId = engineId
+                        testResults.remove(engineId)
+                        scope.launch {
+                            try {
+                                val result = engine.translate(
+                                    listOf(testTextStr),
+                                    sourceLanguage,
+                                    targetLanguage,
+                                )
+                                testResults[engineId] = when (result) {
+                                    is TranslationResult.Success ->
+                                        "✓ ${result.translatedTexts.joinToString(" | ")}"
+                                    is TranslationResult.Error ->
+                                        "✗ ${result.message}"
+                                }
+                            } catch (e: Exception) {
+                                testResults[engineId] = "✗ ${e.message ?: e.javaClass.simpleName}"
+                            } finally {
+                                testingEngineId = null
                             }
-                        } catch (e: Exception) {
-                            testResults[engineId] = "✗ ${e.message ?: e.javaClass.simpleName}"
-                        } finally {
-                            testingEngineId = null
                         }
                     }
                 },
@@ -324,6 +331,28 @@ object SettingsTranslationScreen : SearchableSettings {
                         subtitle = stringResource(MR.strings.pref_translation_user_prompt_desc),
                     ),
                     testButton(engineManager.engines.first { it.name.contains("OpenAI") }),
+                ),
+            ),
+            // NVIDIA NIM
+            Preference.PreferenceGroup(
+                title = "NVIDIA NIM",
+                preferenceItems = persistentListOf(
+                    Preference.PreferenceItem.EditTextPreference(
+                        preference = prefs.nvidiaNimBaseUrl(),
+                        title = stringResource(MR.strings.pref_translation_api_url),
+                        subtitle = if (nvidiaNimBaseUrl.isNotBlank()) nvidiaNimBaseUrl else stringResource(TDMR.strings.not_set),
+                    ),
+                    Preference.PreferenceItem.EditTextPreference(
+                        preference = prefs.nvidiaNimApiKey(),
+                        title = stringResource(MR.strings.pref_translation_api_key),
+                        subtitle = if (nvidiaNimApiKey.isNotBlank()) "••••••••" else stringResource(TDMR.strings.not_set),
+                    ),
+                    Preference.PreferenceItem.EditTextPreference(
+                        preference = prefs.nvidiaNimModel(),
+                        title = stringResource(TDMR.strings.pref_translation_ollama_model),
+                        subtitle = nvidiaNimModel.ifBlank { stringResource(TDMR.strings.not_set) },
+                    ),
+                    testButton(engineManager.getEngineById(TranslationEngineManager.ENGINE_NVIDIA_NIM)!!),
                 ),
             ),
             // DeepSeek

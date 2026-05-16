@@ -62,6 +62,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
@@ -270,6 +271,8 @@ class ReaderViewModel @JvmOverloads constructor(
             .map(::ReaderChapter)
     }
 
+            private val pendingTranslationAheadChapterIds = mutableSetOf<Long>()
+
     private val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
     private val downloadAheadAmount = downloadPreferences.autoDownloadWhileReading.get()
 
@@ -307,6 +310,15 @@ class ReaderViewModel @JvmOverloads constructor(
                 if (novelScrollProgress > 0) {
                     currentChapter.requestedPage = novelScrollProgress
                     novelScrollProgress = -1
+                }
+            }
+            .launchIn(viewModelScope)
+
+        downloadManager.statusFlow()
+            .filter { it.status == Download.State.DOWNLOADED }
+            .onEach { download ->
+                if (pendingTranslationAheadChapterIds.remove(download.chapterId)) {
+                    enqueueDownloadedChapterForTranslation(download.chapterId)
                 }
             }
             .launchIn(viewModelScope)
@@ -814,6 +826,22 @@ class ReaderViewModel @JvmOverloads constructor(
                 manga,
                 chaptersToDownload,
             )
+
+            chaptersToDownload.forEach { chapter ->
+                val chapterId = chapter.id ?: return@forEach
+                val isAlreadyDownloaded = downloadManager.isChapterDownloaded(
+                    chapter.name,
+                    chapter.scanlator,
+                    chapter.url,
+                    manga.title,
+                    manga.source,
+                )
+                if (isAlreadyDownloaded) {
+                    enqueueDownloadedChapterForTranslation(chapterId)
+                } else {
+                    pendingTranslationAheadChapterIds.add(chapterId)
+                }
+            }
         }
     }
 
@@ -1034,6 +1062,15 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     /**
+     * Turns translation mode off without triggering a reload.
+     */
+    fun disableTranslation() {
+        if (state.value.isTranslating) {
+            mutableState.update { it.copy(isTranslating = false) }
+        }
+    }
+
+    /**
      * Force retranslate the current chapter.
      * Deletes existing translation and re-enqueues for translation.
      */
@@ -1055,6 +1092,23 @@ class ReaderViewModel @JvmOverloads constructor(
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Error reloading chapter for retranslation" }
             }
+        }
+    }
+
+    private fun enqueueDownloadedChapterForTranslation(chapterId: Long) {
+        val currentManga = manga ?: return
+        val chapter = chapterList.firstOrNull { it.chapter.id == chapterId } ?: return
+
+        if (
+            sourceManager.get(currentManga.source)?.isNovelSource() == true &&
+            translationPreferences.translationEnabled().get() &&
+            translationPreferences.smartAutoTranslate().get()
+        ) {
+            translationService.enqueue(
+                manga = currentManga,
+                chapter = chapter.chapter.toDomainChapter()!!,
+                priority = TranslationService.PRIORITY_AHEAD,
+            )
         }
     }
 

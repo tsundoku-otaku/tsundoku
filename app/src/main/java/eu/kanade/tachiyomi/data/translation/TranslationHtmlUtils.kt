@@ -12,6 +12,8 @@ import org.jsoup.parser.Parser
  */
 object TranslationHtmlUtils {
 
+    private const val SOURCE_HASH_COMMENT_PREFIX = "<!-- tsundoku-source-hash:"
+
     // ── Image / media preservation ──────────────────────────────────
 
     /** CSS selector for elements that must survive the translate round-trip. */
@@ -89,6 +91,10 @@ object TranslationHtmlUtils {
             .joinToString("") { paragraph ->
                 "<p>${escapeHtml(paragraph.trim()).replace("\n", "<br/>")}</p>"
             }
+    }
+
+    fun hasSourceHashTag(content: String): Boolean {
+        return content.startsWith(SOURCE_HASH_COMMENT_PREFIX)
     }
 
     /**
@@ -172,5 +178,19 @@ object TranslationHtmlUtils {
             .replace("<", "&lt;")
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
+    }
+
+    /**
+     * Split translated text into paragraphs while being robust to model output.
+     * Prefer splitting on two-or-more newlines; if none are present, fall back
+     * to single-line breaks so models that preserve only single newlines still
+     * return sensible paragraphs.
+     */
+    fun splitParagraphsPreserving(text: String): List<String> {
+        if (text.isBlank()) return emptyList()
+        val byDouble = text.split(Regex("\n{2,}")).map { it.trim() }.filter { it.isNotBlank() }
+        if (byDouble.size > 1) return byDouble
+        // Fallback to single-line breaks
+        return text.split(Regex("\n")).map { it.trim() }.filter { it.isNotBlank() }
     }
 }

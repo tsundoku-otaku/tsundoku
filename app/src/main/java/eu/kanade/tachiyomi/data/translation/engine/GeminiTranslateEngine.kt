@@ -5,6 +5,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -32,6 +35,7 @@ class GeminiTranslateEngine(
     override val supportedLanguages: List<Pair<String, String>> =
         LanguageCodes.COMMON_LANGUAGES
 
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -53,7 +57,8 @@ class GeminiTranslateEngine(
     private data class GenerateResponse(val candidates: List<Candidate>? = null)
 
     override fun isConfigured(): Boolean {
-        return preferences.geminiApiKey().get().isNotBlank()
+        return preferences.geminiApiKey().get().isNotBlank() &&
+            preferences.geminiModel().get().isNotBlank()
     }
 
     override suspend fun translate(
@@ -106,20 +111,24 @@ class GeminiTranslateEngine(
         }
 
         val prompt = """
-You are a professional translator specializing in novel/fiction translation.
+    You are a professional translator specializing in novel/fiction translation.
 
-$fromClause
+    $fromClause
 
-Rules:
-- Only output the translation, nothing else
-- Preserve paragraph structure
-- Maintain style and tone
-- Keep character names consistent
+    Rules:
+    - Only output the translation, nothing else
+    - Preserve paragraph structure
+    - Do NOT summarize.
+    - Do NOT merge or split paragraphs.
+    - Do NOT normalize whitespace.
+    - Maintain style and tone
+    - Keep character names consistent
+    - Every line break in the input MUST be preserved exactly in the output.
+    - Do NOT wrap lines.
+    Text:
+    $text
 
-Text:
-$text
-
-Translation:
+    Translation:
         """.trimIndent()
 
         val request = GenerateRequest(
@@ -146,8 +155,19 @@ Translation:
                 429 -> TranslationResult.ErrorCode.RATE_LIMITED
                 else -> TranslationResult.ErrorCode.UNKNOWN
             }
+            // Try to extract the error payload from Gemini's response for better diagnostics
+            val errorDetail = try {
+                val el = json.parseToJsonElement(responseBody)
+                val err = el.jsonObject["error"]?.jsonObject
+                val msg = err?.get("message")?.jsonPrimitive?.content
+                val status = err?.get("status")?.jsonPrimitive?.content
+                listOfNotNull(status, msg).joinToString(" - ").ifEmpty { responseBody }
+            } catch (_: Exception) {
+                responseBody
+            }
+
             throw TranslationException(
-                "Gemini error: HTTP ${response.code}",
+                "Gemini error: HTTP ${response.code}: $errorDetail",
                 errorCode,
             )
         }
