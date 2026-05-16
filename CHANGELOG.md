@@ -14,6 +14,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Added
 - Tap zones for novels [@mrissaoussama](https://github.com/mrissaoussama) [#210](https://github.com/tsundoku-otaku/tsundoku/pull/210)
 
+### Changed
+- Novel downloads will be saved as zip format [@mrissaoussama](https://github.com/mrissaoussama) [#202](https://github.com/tsundoku-otaku/tsundoku/pull/202)
+
 ### Improved
 - Novel Viewer Improvements - Refactors JS with infinite scroll, and more detailed metadata. [@mrissaoussama](https://github.com/mrissaoussama) [#198](https://github.com/tsundoku-otaku/tsundoku/pull/198)
 - Novel description screen now supports novel searches when tapping novel title [@mrissaoussama](https://github.com/mrissaoussama) [#207](https://github.com/tsundoku-otaku/tsundoku/pull/207)
