@@ -39,6 +39,7 @@ import eu.kanade.tachiyomi.util.system.workManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.net.URI
+import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
@@ -54,6 +55,7 @@ class MassImport(
     private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) {
     private val missingSourceHostLogCache = ConcurrentHashMap<String, Boolean>()
+    private val csvLock = Any()
 
     data class ImportResult(
         val added: MutableList<ImportedNovel> = mutableListOf(),
@@ -99,6 +101,12 @@ class MassImport(
         _progress.value = null
         _result.value = null
         isCancelled = false
+    }
+
+    private fun addCsvBuffer(buffer: MutableList<String>, line: String) {
+        synchronized(csvLock) {
+            buffer.add(line)
+        }
     }
 
     fun startImport(
@@ -221,9 +229,9 @@ class MassImport(
         val resultFileName = "mass_import_${batchId ?: System.currentTimeMillis().toString()}.csv"
         val flushBatchSize = 100
 
-        val addedBuffer = mutableListOf<String>()
-        val skippedBuffer = mutableListOf<String>()
-        val erroredBuffer = mutableListOf<String>()
+        val addedBuffer = Collections.synchronizedList(mutableListOf<String>())
+        val skippedBuffer = Collections.synchronizedList(mutableListOf<String>())
+        val erroredBuffer = Collections.synchronizedList(mutableListOf<String>())
 
         fun csvEscape(value: String?): String {
             val safe = value.orEmpty().replace("\"", "\"\"")
@@ -232,52 +240,56 @@ class MassImport(
 
         fun appendLinesToResultFile(lines: List<String>) {
             if (lines.isEmpty()) return
-            try {
-                val file: UniFile = massDir?.findFile(resultFileName) ?: massDir?.createFile(resultFileName) ?: return
-                val existingLines = mutableListOf<String>()
-                if (file.exists()) {
-                    try {
-                        file.openInputStream().bufferedReader().useLines { seq -> seq.forEach { existingLines.add(it) } }
-                    } catch (_: Exception) {
+            synchronized(csvLock) {
+                try {
+                    val file: UniFile = massDir?.findFile(resultFileName) ?: massDir?.createFile(resultFileName) ?: return
+                    val existingLines = mutableListOf<String>()
+                    if (file.exists()) {
+                        try {
+                            file.openInputStream().bufferedReader().useLines { seq -> seq.forEach { existingLines.add(it) } }
+                        } catch (_: Exception) {
+                        }
                     }
-                }
-                file.openOutputStream().bufferedWriter().use { writer ->
-                    if (existingLines.isEmpty()) {
-                        writer.appendLine("timestamp,type,url,id,title,message")
-                    } else {
-                        existingLines.forEach { writer.appendLine(it) }
+                    file.openOutputStream().bufferedWriter().use { writer ->
+                        if (existingLines.isEmpty()) {
+                            writer.appendLine("timestamp,type,url,id,title,message")
+                        } else {
+                            existingLines.forEach { writer.appendLine(it) }
+                        }
+                        lines.forEach { writer.appendLine(it) }
                     }
-                    lines.forEach { writer.appendLine(it) }
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN, e) { "Failed to append results to $resultFileName" }
                 }
-            } catch (e: Exception) {
-                logcat(LogPriority.WARN, e) { "Failed to append results to $resultFileName" }
             }
         }
 
         fun flushBuffers() {
-            if (addedBuffer.isNotEmpty()) {
-                appendLinesToResultFile(addedBuffer.map { entry ->
-                    val parts = entry.split('\t')
-                    listOf(parts.getOrNull(0), "added", parts.getOrNull(3), parts.getOrNull(1), parts.getOrNull(2), "")
-                        .joinToString(",") { csvEscape(it) }
-                })
-                addedBuffer.clear()
-            }
-            if (skippedBuffer.isNotEmpty()) {
-                appendLinesToResultFile(skippedBuffer.map { entry ->
-                    val parts = entry.split('\t')
-                    listOf(parts.getOrNull(0), "skipped", parts.getOrNull(parts.size - 2) ?: parts.getOrNull(1), "", "", parts.getOrNull(parts.size - 1))
-                        .joinToString(",") { csvEscape(it) }
-                })
-                skippedBuffer.clear()
-            }
-            if (erroredBuffer.isNotEmpty()) {
-                appendLinesToResultFile(erroredBuffer.map { entry ->
-                    val parts = entry.split('\t')
-                    listOf(parts.getOrNull(0), "errored", parts.getOrNull(1), "", "", parts.getOrNull(2))
-                        .joinToString(",") { csvEscape(it) }
-                })
-                erroredBuffer.clear()
+            synchronized(csvLock) {
+                if (addedBuffer.isNotEmpty()) {
+                    appendLinesToResultFile(addedBuffer.map { entry ->
+                        val parts = entry.split('\t')
+                        listOf(parts.getOrNull(0), "added", parts.getOrNull(3), parts.getOrNull(1), parts.getOrNull(2), "")
+                            .joinToString(",") { csvEscape(it) }
+                    })
+                    addedBuffer.clear()
+                }
+                if (skippedBuffer.isNotEmpty()) {
+                    appendLinesToResultFile(skippedBuffer.map { entry ->
+                        val parts = entry.split('\t')
+                        listOf(parts.getOrNull(0), "skipped", parts.getOrNull(parts.size - 2) ?: parts.getOrNull(1), "", "", parts.getOrNull(parts.size - 1))
+                            .joinToString(",") { csvEscape(it) }
+                    })
+                    skippedBuffer.clear()
+                }
+                if (erroredBuffer.isNotEmpty()) {
+                    appendLinesToResultFile(erroredBuffer.map { entry ->
+                        val parts = entry.split('\t')
+                        listOf(parts.getOrNull(0), "errored", parts.getOrNull(1), "", "", parts.getOrNull(2))
+                            .joinToString(",") { csvEscape(it) }
+                    })
+                    erroredBuffer.clear()
+                }
             }
         }
 
@@ -340,7 +352,7 @@ class MassImport(
                                             currentResult.errored.add(ErroredNovel(cleanUrl, e.message ?: "Unknown error"))
                                         }
                                     }
-                                    erroredBuffer.add("${System.currentTimeMillis()}\t$cleanUrl\t${e.message ?: "Unknown error"}")
+                                            addCsvBuffer(erroredBuffer, "${System.currentTimeMillis()}\t$cleanUrl\t${e.message ?: "Unknown error"}")
                                 } finally {
                                     activeImports.remove(cleanUrl)
                                     val done = completedCount.incrementAndGet()
@@ -394,11 +406,11 @@ class MassImport(
         skippedBuffer: MutableList<String>,
         erroredBuffer: MutableList<String>,
     ) {
-    val source = getSourceForUrl(url, novelSources) ?: run {
+        val source = getSourceForUrl(url, novelSources) ?: run {
             synchronized(result) {
                 if (result.errored.size < 10) result.errored.add(ErroredNovel(url, "No matching source found for URL"))
             }
-            erroredBuffer.add("${System.currentTimeMillis()}\t$url\tNo matching source found for URL")
+            addCsvBuffer(erroredBuffer, "${System.currentTimeMillis()}\t$url\tNo matching source found for URL")
             return
         }
         val path = extractPathFromUrl(url, getSourceBaseUrl(source), source)
@@ -406,7 +418,7 @@ class MassImport(
             synchronized(result) {
                 if (result.errored.size < 10) result.errored.add(ErroredNovel(url, "Could not extract path from URL"))
             }
-            erroredBuffer.add("${System.currentTimeMillis()}\t$url\tCould not extract path from URL")
+            addCsvBuffer(erroredBuffer, "${System.currentTimeMillis()}\t$url\tCould not extract path from URL")
             return
         }
 
@@ -414,7 +426,7 @@ class MassImport(
             synchronized(result) {
                 if (result.skipped.size < 10) result.skipped.add(SkippedNovel(url, url, "Already in library"))
             }
-            skippedBuffer.add("${System.currentTimeMillis()}\t$url\tAlready in library")
+            addCsvBuffer(skippedBuffer, "${System.currentTimeMillis()}\t$url\tAlready in library")
             return
         }
 
@@ -423,7 +435,7 @@ class MassImport(
             synchronized(result) {
                 if (result.skipped.size < 10) result.skipped.add(SkippedNovel(existingManga.title, url, "Already in library"))
             }
-            skippedBuffer.add("${System.currentTimeMillis()}\t${existingManga.id}\t${existingManga.title}\t$url\tAlready in library")
+            addCsvBuffer(skippedBuffer, "${System.currentTimeMillis()}\t${existingManga.id}\t${existingManga.title}\t$url\tAlready in library")
             return
         }
 
@@ -442,7 +454,7 @@ class MassImport(
             synchronized(result) {
                 if (result.added.size < 10) result.added.add(ImportedNovel(updatedManga.title, url, updatedManga))
             }
-            addedBuffer.add("${System.currentTimeMillis()}\t${updatedManga.id}\t${updatedManga.title}\t$url")
+            addCsvBuffer(addedBuffer, "${System.currentTimeMillis()}\t${updatedManga.id}\t${updatedManga.title}\t$url")
             return
         }
 
@@ -475,19 +487,19 @@ class MassImport(
                 synchronized(result) {
                     if (result.added.size < 10) result.added.add(ImportedNovel(updatedManga.title, url, updatedManga))
                 }
-                addedBuffer.add("${System.currentTimeMillis()}\t${updatedManga.id}\t${updatedManga.title}\t$url")
+                addCsvBuffer(addedBuffer, "${System.currentTimeMillis()}\t${updatedManga.id}\t${updatedManga.title}\t$url")
             } else {
                 synchronized(result) {
                     if (result.added.size < 10) result.added.add(ImportedNovel(manga.title, url, manga))
                 }
-                addedBuffer.add("${System.currentTimeMillis()}\t${manga.id}\t${manga.title}\t$url")
+                addCsvBuffer(addedBuffer, "${System.currentTimeMillis()}\t${manga.id}\t${manga.title}\t$url")
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to fetch novel from $url" }
             synchronized(result) {
                 if (result.errored.size < 10) result.errored.add(ErroredNovel(url, "Failed to fetch: ${e.message}"))
             }
-            erroredBuffer.add("${System.currentTimeMillis()}\t$url\tFailed to fetch: ${e.message}")
+            addCsvBuffer(erroredBuffer, "${System.currentTimeMillis()}\t$url\tFailed to fetch: ${e.message}")
         }
     }
 
