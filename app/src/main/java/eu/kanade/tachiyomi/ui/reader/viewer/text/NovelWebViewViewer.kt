@@ -155,6 +155,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var ttsResumeChunkIndex: Int = 0 // Track which chunk to resume from after pause
     private var ttsViewportParagraphIndex: Int = 0
     private var hasViewportStartOverride: Boolean = false
+    @Volatile private var ttsIsPreparing = false // Track TTS initialization/preparation phase
+    @Volatile private var ttsIsStarting = false // Track when speech is about to start
 
     private data class CustomStylePayload(
         val css: String,
@@ -265,6 +267,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             pendingTtsStartRequest?.let { request ->
                 pendingTtsStartRequest = null
                 activity.runOnUiThread {
+                    ttsIsStarting = true
                     when (request) {
                         TtsStartRequest.NORMAL -> startTts()
                         TtsStartRequest.VIEWPORT -> startTtsFromViewport()
@@ -272,6 +275,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 }
             }
         } else {
+            ttsIsPreparing = false
             logcat(LogPriority.ERROR) { "TTS initialization failed with status: $status" }
             ttsInitialized = false
         }
@@ -1118,6 +1122,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             tts?.shutdown()
         }
         tts = null
+        pendingTtsText = null
+        pendingTtsStartRequest = null
+        ttsChunks = emptyList()
+        ttsChunkParagraphIndexes = emptyList()
+        ttsCurrentParagraphs = emptyList()
+        ttsCurrentChunkIndex = 0
+        ttsResumeChunkIndex = 0
+        ttsViewportParagraphIndex = 0
+        hasViewportStartOverride = false
+        ttsPaused = false
+        ttsIsPreparing = false
+        ttsIsStarting = false
+        isTtsAutoPlay = false
 
         // Mark destroyed first so coroutine finally-blocks won't touch WebView.
         isDestroyed = true
@@ -2642,6 +2659,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     private fun ensureTtsInitialized() {
         if (tts == null) {
+            ttsIsPreparing = true
             // Check if TTS data is available first
             val intent = android.content.Intent(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA)
             try {
