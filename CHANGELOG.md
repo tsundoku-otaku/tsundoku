@@ -25,6 +25,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Fix
 - Manga mass import URL with JS plugins [@mrissaoussama](https://github.com/mrissaoussama) [#197](https://github.com/tsundoku-otaku/tsundoku/pull/197)
+- Make Grid items better respect max lines limits in library [@mrissaoussama](https://github.com/mrissaoussama) [#216](https://github.com/tsundoku-otaku/tsundoku/pull/216)
 
 ### Other
 - Internationalize mass-import strings, add confirmation dialogues [@mrissaoussama](https://github.com/mrissaoussama) [#206](https://github.com/tsundoku-otaku/tsundoku/pull/206)
