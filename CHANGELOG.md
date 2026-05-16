@@ -24,6 +24,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 
 ### Fix
+- Properly remove TTS notification when stopped, more TTS states [@mrissaoussama](https://github.com/mrissaoussama) [#217](https://github.com/tsundoku-otaku/tsundoku/pull/217)
 - Manga mass import URL with JS plugins [@mrissaoussama](https://github.com/mrissaoussama) [#197](https://github.com/tsundoku-otaku/tsundoku/pull/197)
 
 ### Other
