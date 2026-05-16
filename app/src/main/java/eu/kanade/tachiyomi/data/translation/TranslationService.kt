@@ -375,7 +375,7 @@ class TranslationService(
 
         // Extract text from HTML (delegated — fix DRY 2.4)
         val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
-        val paragraphs = plainText.split("\n\n").filter { it.isNotBlank() }
+        val paragraphs = TranslationHtmlUtils.splitParagraphsPreserving(plainText)
 
         logcat(LogPriority.DEBUG) { "Translating ${paragraphs.size} paragraphs for chapter ${chapter.name}" }
 
@@ -394,8 +394,9 @@ class TranslationService(
         val existingTmpParagraphs = run {
             val tmp = translatedChapterRepository.getTmpTranslation(task.chapterId, task.targetLanguage)
             if (tmp != null) {
-                TranslationHtmlUtils.extractTextFromHtml(tmp.translatedContent)
-                    .split("\n\n").filter { it.isNotBlank() }
+                TranslationHtmlUtils.splitParagraphsPreserving(
+                    TranslationHtmlUtils.extractTextFromHtml(tmp.translatedContent),
+                )
             } else {
                 emptyList()
             }
@@ -407,7 +408,7 @@ class TranslationService(
         if (existingTmpParagraphs.isNotEmpty() && !task.forceRetranslate) {
             var coveredParagraphs = 0
             for ((i, chunk) in chunks.withIndex()) {
-                val chunkParagraphCount = chunk.split("\n\n").filter { it.isNotBlank() }.size
+                val chunkParagraphCount = TranslationHtmlUtils.splitParagraphsPreserving(chunk).size
                 coveredParagraphs += chunkParagraphCount
                 if (coveredParagraphs <= existingTmpParagraphs.size) {
                     resumeFromChunk = i + 1
@@ -446,7 +447,7 @@ class TranslationService(
         val useAnchoring = isLlmEngine && anchoringEnabled && anchoringParagraphs > 0
 
         // Build per-chunk paragraph lists for context tracking
-        val chunkParagraphsList = chunks.map { c -> c.split("\n\n").filter { it.isNotBlank() } }
+        val chunkParagraphsList = chunks.map { c -> TranslationHtmlUtils.splitParagraphsPreserving(c) }
         // Track the raw paragraphs of the previously translated chunk
         var previousRawParagraphs = emptyList<String>()
         // Track the translated paragraphs of the previous chunk

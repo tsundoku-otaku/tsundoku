@@ -50,6 +50,17 @@ object TranslationHtmlUtils {
         return result
     }
 
+    /**
+     * Normalize line-break variants so paragraph handling is stable.
+     */
+    fun normalizeLineBreaks(text: String): String {
+        return text
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .replace('\u2028', '\n')
+            .replace('\u2029', '\n')
+    }
+
     // ── Text ↔ HTML conversion ──────────────────────────────────────
 
     /**
@@ -74,9 +85,10 @@ object TranslationHtmlUtils {
             }
         }
 
-        return doc.text()
-            // Normalise whitespace produced by Jsoup's .text()
-            .replace(Regex("[ \\t]+"), " ")
+        return normalizeLineBreaks(doc.body().wholeText())
+            .replace(Regex("[ \\t\\u000B\\f]+"), " ")
+            .replace(Regex("\\n[ \\t]+"), "\n")
+            .replace(Regex("[ \\t]+\\n"), "\n")
             .replace(Regex("\n{3,}"), "\n\n")
             .trim()
     }
@@ -85,11 +97,9 @@ object TranslationHtmlUtils {
      * Wrap plain text (paragraphs separated by `\n\n`) back into `<p>` elements.
      */
     fun wrapTextInHtml(text: String): String {
-        return text
-            .split("\n\n")
-            .filter { it.isNotBlank() }
+        return splitParagraphsPreserving(text)
             .joinToString("") { paragraph ->
-                "<p>${escapeHtml(paragraph.trim()).replace("\n", "<br/>")}</p>"
+                "<p>${escapeHtml(normalizeLineBreaks(paragraph).trim()).replace("\n", "<br/>")}</p>"
             }
     }
 
@@ -188,9 +198,10 @@ object TranslationHtmlUtils {
      */
     fun splitParagraphsPreserving(text: String): List<String> {
         if (text.isBlank()) return emptyList()
-        val byDouble = text.split(Regex("\n{2,}")).map { it.trim() }.filter { it.isNotBlank() }
+        val normalized = normalizeLineBreaks(text)
+        val byDouble = normalized.split(Regex("\n{2,}")).map { it.trim() }.filter { it.isNotBlank() }
         if (byDouble.size > 1) return byDouble
         // Fallback to single-line breaks
-        return text.split(Regex("\n")).map { it.trim() }.filter { it.isNotBlank() }
+        return normalized.split(Regex("\n")).map { it.trim() }.filter { it.isNotBlank() }
     }
 }
