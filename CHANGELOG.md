@@ -19,6 +19,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - TTS speed/pitch range increased from 0.5x–2.0x to 0.5x–6.0x [@mrissaoussama](https://github.com/mrissaoussama) [#215](https://github.com/tsundoku-otaku/tsundoku/pull/215)
 
 ### Improved
+- Translation: NVIDIA NIM, Cache reliability, auto-translation option, better error handling/UX, and rendering improvements [@mrissaoussama](https://github.com/mrissaoussama) [#218](https://github.com/tsundoku-otaku/tsundoku/pull/218)
 - Novel Viewer Improvements - Refactors JS with infinite scroll, and more detailed metadata. [@mrissaoussama](https://github.com/mrissaoussama) [#198](https://github.com/tsundoku-otaku/tsundoku/pull/198)
 - Novel description screen now supports novel searches when tapping novel title [@mrissaoussama](https://github.com/mrissaoussama) [#207](https://github.com/tsundoku-otaku/tsundoku/pull/207)
 - Webview constants refactor, also fixes (non-infinite) scroll having dividers - Changes that affect custom CSS/JS [@mrissaoussama](https://github.com/mrissaoussama) [#209](https://github.com/tsundoku-otaku/tsundoku/pull/209)
