@@ -1566,20 +1566,20 @@ internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
         }
     }
 
-    // Speech Speed Slider (0.5x to 2.0x)
+    // Speech Speed Slider (0.5x to 6.0x)
     SliderItem(
         label = stringResource(TDMR.strings.pref_novel_tts_speed),
         value = (ttsSpeed * 10).toInt(),
-        valueRange = 5..20,
+        valueRange = 5..60,
         onChange = { screenModel.preferences.novelTtsSpeed.set(it / 10f) },
         valueString = String.format("%.1fx", ttsSpeed),
     )
 
-    // Speech Pitch Slider (0.5x to 2.0x)
+    // Speech Pitch Slider (0.5x to 6.0x)
     SliderItem(
         label = stringResource(TDMR.strings.pref_novel_tts_pitch),
         value = (ttsPitch * 10).toInt(),
-        valueRange = 5..20,
+        valueRange = 5..60,
         onChange = { screenModel.preferences.novelTtsPitch.set(it / 10f) },
         valueString = String.format("%.1fx", ttsPitch),
     )
