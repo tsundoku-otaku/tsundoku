@@ -278,12 +278,13 @@ private fun GridItemTitle(
     modifier: Modifier = Modifier,
     maxLines: Int = 2,
 ) {
+    val effectiveMinLines = minOf(minLines, maxLines)
     Text(
         modifier = modifier,
         text = title,
         fontSize = 12.sp,
         lineHeight = 18.sp,
-        minLines = minLines,
+        minLines = effectiveMinLines,
         maxLines = maxLines,
         overflow = TextOverflow.Ellipsis,
         style = style,
