@@ -154,9 +154,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     @Volatile private var ttsIsPreparing = false // Track TTS initialization/preparation phase
     @Volatile private var ttsIsStarting = false // Track when speech is about to start
 
-    @Volatile private var ttsIsPreparing = false // Track TTS initialization/preparation phase
-    @Volatile private var ttsIsStarting = false // Track when speech is about to start
-
     private data class CustomStylePayload(
         val css: String,
         val hideChapterTitle: Boolean,
