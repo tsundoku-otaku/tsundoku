@@ -658,7 +658,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                 val effectiveThreshold = if (autoLoadAt > 0) autoLoadAt / 100f else 0.95f
 
                 val onLastLoaded = currentChapterIndex == (loadedChapters.size - 1).coerceAtLeast(0)
-                if (!isRestoringScroll && chapterProgress >= effectiveThreshold && !isLoadingNext && onLastLoaded) {
+                val ttsIsDrivingChapterHandoff = isTtsAutoPlay && (isTtsSpeaking() || isTtsStarting())
+                if (!isRestoringScroll && !ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold && !isLoadingNext && onLastLoaded) {
                     logcat(LogPriority.DEBUG) {
                         "NovelViewer: scroll threshold hit (progress=$chapterProgress >= $effectiveThreshold, currentIdx=$currentChapterIndex, loadedCount=${loadedChapters.size})"
                     }
