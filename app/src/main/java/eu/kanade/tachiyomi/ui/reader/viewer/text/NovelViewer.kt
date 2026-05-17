@@ -1170,6 +1170,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     private var ttsChunks: List<String> = emptyList()
     private var ttsChunkParagraphIndexes: List<Int> = emptyList()
     private var ttsCurrentParagraphs: List<NovelViewerTextUtils.ParagraphInfo> = emptyList()
+    private var ttsPlaybackChapterIndex: Int = 0
+    private var ttsPlaybackChapterId: Long? = null
 
     private enum class TtsStartRequest {
         NORMAL,
@@ -1233,8 +1235,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
                             if (!isTtsSpeaking()) {
                                 // Save progress before moving to next chapter
                                 saveTtsProgress()
+                                syncCurrentChapterIndexWithCurrentPage()
                                 // Load and play next chapter
-                                loadNextChapterForTts()
+                                loadNextChapterForTts(currentChapterIndex)
                             }
                         }
                     }
@@ -1337,20 +1340,52 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         }
     }
 
-    private fun loadNextChapterForTts() {
+    private fun loadNextChapterForTts(anchorChapterIndex: Int = currentChapterIndex) {
         val chapters = currentChapters ?: return
-        val nextChapter = chapters.nextChapter ?: return
+        chapters.nextChapter ?: return
 
-        logcat(LogPriority.DEBUG) { "TTS: Auto-loading next chapter for playback" }
+        logcat(LogPriority.DEBUG) { "TTS: Auto-loading next chapter for playback ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex ttsPlaybackChapterId=$ttsPlaybackChapterId" }
+
+        if (preferences.novelInfiniteScroll.get() && moveToLoadedNextChapterForTts(anchorChapterIndex)) {
+            startTtsFromChapterStart()
+            return
+        }
 
         // Load next chapter and start TTS when ready
         scope.launch {
             activity.loadNextChapter()
-            // Wait for the chapter to load
-            delay(1000)
+            syncCurrentChapterIndexWithCurrentPage()
             // Start TTS on new chapter
             startTts()
         }
+    }
+
+    private fun syncCurrentChapterIndexWithCurrentPage(): Boolean {
+        val targetChapterId = currentPage?.chapter?.chapter?.id
+            ?: currentChapters?.currChapter?.chapter?.id
+            ?: return false
+        val targetIndex = loadedChapters.indexOfFirst { it.chapter.chapter.id == targetChapterId }
+        if (targetIndex < 0) return false
+        currentChapterIndex = targetIndex
+        return true
+    }
+
+    private fun moveToLoadedNextChapterForTts(anchorChapterIndex: Int = currentChapterIndex): Boolean {
+        logcat(LogPriority.DEBUG) { "TTS: moveToLoadedNextChapterForTts anchor=$anchorChapterIndex ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=$ttsCurrentChunkIndex ttsResumeChunkIndex=$ttsResumeChunkIndex ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex ttsPlaybackChapterId=$ttsPlaybackChapterId" }
+        val nextIndex = anchorChapterIndex + 1
+        val nextLoaded = loadedChapters.getOrNull(nextIndex) ?: return false
+        currentChapterIndex = nextIndex
+
+        logcat(LogPriority.DEBUG) { "TTS: moved to loaded nextIndex=$nextIndex ts=${System.currentTimeMillis()}" }
+
+        nextLoaded.chapter.pages?.firstOrNull()?.let { page ->
+            currentPage = page
+            activity.viewModel.setNovelVisibleChapter(nextLoaded.chapter.chapter)
+            activity.onPageSelected(page)
+            activity.onNovelProgressChanged(0f)
+        }
+
+        return true
     }
 
     private fun applyTtsSettings() {
@@ -1424,7 +1459,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         // Extract paragraph info for highlighting support
         ttsCurrentParagraphs = NovelViewerTextUtils.findParagraphs(text)
 
-        val savedChunkIndex = restoreTtsProgress()
+        val savedChunkIndex = if (isTtsAutoPlay) 0 else restoreTtsProgress()
         ttsCurrentChunkIndex = 0
         val startIndex = if (hasViewportStartOverride) {
             val viewportChunkIndex = ttsChunkParagraphIndexes.indexOfFirst { it >= ttsViewportParagraphIndex }
@@ -1462,6 +1497,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
         pendingTtsStartRequest = null
         isTtsAutoPlay = true // Enable auto-continue
+        syncCurrentChapterIndexWithCurrentPage()
+        ttsPlaybackChapterIndex = currentChapterIndex
+        ttsPlaybackChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
         val text = loadedChapters.getOrNull(currentChapterIndex)?.textView?.text?.toString()
             ?: loadedChapters.firstOrNull()?.textView?.text?.toString()
 
@@ -1476,7 +1514,42 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         speak(text)
     }
 
+    private fun startTtsFromChapterStart() {
+        ensureTtsInitialized()
+
+        if (!ttsInitialized) {
+            logcat(LogPriority.WARN) { "TTS: Not initialized yet, waiting..." }
+            pendingTtsStartRequest = TtsStartRequest.NORMAL
+            return
+        }
+
+        pendingTtsStartRequest = null
+        isTtsAutoPlay = true
+        syncCurrentChapterIndexWithCurrentPage()
+        ttsPlaybackChapterIndex = currentChapterIndex
+        ttsPlaybackChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
+
+        val text = loadedChapters.getOrNull(currentChapterIndex)?.textView?.text?.toString()
+            ?: loadedChapters.firstOrNull()?.textView?.text?.toString()
+
+        if (text.isNullOrEmpty()) {
+            logcat(LogPriority.WARN) {
+                "TTS: No text to speak. loadedChapters=${loadedChapters.size}, currentIndex=$currentChapterIndex"
+            }
+            return
+        }
+
+        ttsCurrentChunkIndex = 0
+        ttsResumeChunkIndex = 0
+        hasViewportStartOverride = false
+        logcat(LogPriority.DEBUG) { "TTS: Starting chapter from beginning ${text.length} characters" }
+        speak(text)
+    }
+
     fun stopTts() {
+        logcat(LogPriority.DEBUG) {
+            "TTS: stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=$ttsCurrentChunkIndex, ttsResumeChunkIndex=$ttsResumeChunkIndex, ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex, ttsPlaybackChapterId=$ttsPlaybackChapterId"
+        }
         isTtsAutoPlay = false // Disable auto-continue when manually stopped
         ttsPaused = false
         pendingTtsStartRequest = null
@@ -1506,6 +1579,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         if (ttsInitialized && tts?.isSpeaking == true) {
             ttsPaused = true
             ttsResumeChunkIndex = ttsCurrentChunkIndex
+            logcat(LogPriority.DEBUG) { "TTS: pauseTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=$ttsCurrentChunkIndex, ttsResumeChunkIndex=$ttsResumeChunkIndex, ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex, ttsPlaybackChapterId=$ttsPlaybackChapterId" }
             tts?.stop()
             saveTtsProgress()
         }
@@ -1517,6 +1591,43 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
             // Resume from the chunk that was interrupted
             speakChunksFrom(ttsResumeChunkIndex)
         }
+    }
+
+    fun ttsNextParagraph() {
+        stepTtsParagraph(1)
+    }
+
+    fun ttsPreviousParagraph() {
+        stepTtsParagraph(-1)
+    }
+
+    private fun stepTtsParagraph(delta: Int) {
+        if (delta == 0) return
+
+        if (ttsChunks.isEmpty()) {
+            startTtsFromViewport()
+            return
+        }
+
+        val currentChunk = (if (ttsPaused) ttsResumeChunkIndex else ttsCurrentChunkIndex)
+            .coerceIn(0, (ttsChunks.size - 1).coerceAtLeast(0))
+        val currentParagraph = ttsChunkParagraphIndexes.getOrElse(currentChunk) { currentChunk }
+        val maxParagraph = (ttsChunkParagraphIndexes.maxOrNull() ?: currentParagraph).coerceAtLeast(0)
+        val targetParagraph = (currentParagraph + delta).coerceIn(0, maxParagraph)
+        val targetChunk = ttsChunkParagraphIndexes.indexOfFirst { it >= targetParagraph }
+            .takeIf { it >= 0 }
+            ?: currentChunk
+
+        ttsResumeChunkIndex = targetChunk
+        ttsCurrentChunkIndex = targetChunk
+        ttsPaused = false
+
+        tts?.stop()
+        speakChunksFrom(targetChunk)
+        if (preferences.novelTtsEnableHighlight.get()) {
+            applyTtsHighlight(targetChunk)
+        }
+        saveTtsProgress()
     }
 
     fun isTtsPaused(): Boolean = ttsPaused
@@ -1537,10 +1648,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
      * Saves the current TTS playback progress to preferences.
      */
     private fun saveTtsProgress() {
+        logcat(LogPriority.DEBUG) { "TTS: saveTtsProgress called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=$ttsCurrentChunkIndex, ttsResumeChunkIndex=$ttsResumeChunkIndex, ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex, ttsPlaybackChapterId=$ttsPlaybackChapterId" }
+
         val currentChapter = currentPage
         if (currentChapter == null || ttsCurrentChunkIndex < 0) return
 
-        val chapterId = currentChapter.index.toLong()
+        val chapterId = ttsPlaybackChapterId ?: currentChapter.index.toLong()
         val paragraphIndex = ttsCurrentChunkIndex.coerceAtLeast(0)
 
         // Load existing progress map
@@ -1554,6 +1667,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         try {
             val json = kotlinx.serialization.json.Json.encodeToString(progressMap)
             preferences.novelTtsLastReadParagraph.set(json)
+            logcat(LogPriority.DEBUG) { "TTS: saved progress chapter=$chapterId -> paragraph=$paragraphIndex ts=${System.currentTimeMillis()}" }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Failed to save TTS progress: ${e.message}" }
         }
@@ -1567,11 +1681,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         val currentChapter = currentPage
         if (currentChapter == null) return 0
 
-        val chapterId = currentChapter.index.toString()
+        val chapterId = ttsPlaybackChapterId?.toString()
+            ?: currentChapter.chapter.chapter.id?.toString()
+            ?: currentChapter.index.toString()
         val progressJson = preferences.novelTtsLastReadParagraph.get()
 
         val progressMap = NovelViewerTextUtils.decodeIntMapPreference(progressJson)
-        return progressMap[chapterId]?.coerceAtLeast(0) ?: 0
+        return progressMap[chapterId]?.coerceAtLeast(0)
+            ?: progressMap[currentChapter.index.toString()]?.coerceAtLeast(0)
+            ?: 0
     }
 
     /**
@@ -1588,6 +1706,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
 
         pendingTtsStartRequest = null
         isTtsAutoPlay = true
+        syncCurrentChapterIndexWithCurrentPage()
+        ttsPlaybackChapterIndex = currentChapterIndex
+        ttsPlaybackChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
         val text = loadedChapters.getOrNull(currentChapterIndex)?.textView?.text?.toString()
             ?: loadedChapters.firstOrNull()?.textView?.text?.toString()
 

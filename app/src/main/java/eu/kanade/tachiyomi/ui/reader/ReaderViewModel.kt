@@ -540,9 +540,8 @@ class ReaderViewModel @JvmOverloads constructor(
         if (!isNovelViewer) return false
         if (!readerPreferences.novelInfiniteScroll.get()) return false
 
-        if (chapter.state !is ReaderChapter.State.Loaded) return false
         val pages = chapter.pages ?: return false
-        return pages.isNotEmpty() && pages.all { it.status == Page.State.Ready }
+        return pages.isNotEmpty() && chapter.state !is ReaderChapter.State.Error
     }
 
     /**

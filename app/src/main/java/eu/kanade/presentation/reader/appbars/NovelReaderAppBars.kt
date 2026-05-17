@@ -48,6 +48,8 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.FastRewind
 import androidx.compose.material.icons.outlined.VerticalAlignTop
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VolumeUp
@@ -142,6 +144,8 @@ fun NovelReaderAppBars(
     onToggleTts: () -> Unit,
     onLongPressTts: () -> Unit,
     onTtsStartFromViewport: () -> Unit = {},
+    onTtsPreviousParagraph: () -> Unit = {},
+    onTtsNextParagraph: () -> Unit = {},
 
     isEditing: Boolean = false,
     onToggleEdit: () -> Unit = {},
@@ -180,6 +184,8 @@ fun NovelReaderAppBars(
                     onReloadSource = onReloadSource,
                     onEditBottomBar = onEditBottomBar,
                     onRetranslate = onRetranslate,
+                    onTtsPreviousParagraph = onTtsPreviousParagraph,
+                    onTtsNextParagraph = onTtsNextParagraph,
                 )
             }
 
@@ -263,6 +269,8 @@ fun NovelReaderAppBars(
                         isEditing = isEditing,
                         isWebView = isWebView,
                         onToggleEdit = onToggleEdit,
+                        onTtsPreviousParagraph = onTtsPreviousParagraph,
+                        onTtsNextParagraph = onTtsNextParagraph,
                         onQuotes = onQuotes,
                     )
                 }
@@ -286,6 +294,8 @@ private fun NovelReaderTopBar(
     onReloadSource: () -> Unit,
     onEditBottomBar: () -> Unit,
     onRetranslate: (() -> Unit)? = null,
+    onTtsPreviousParagraph: () -> Unit = {},
+    onTtsNextParagraph: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     AppBar(
@@ -298,6 +308,7 @@ private fun NovelReaderTopBar(
             AppBarActions(
                 actions = persistentListOf<AppBar.AppBarAction>().builder()
                     .apply {
+                        // top-bar paragraph controls removed (available in bottom bar)
                         add(
                             AppBar.Action(
                                 title = stringResource(
@@ -394,6 +405,8 @@ private fun NovelReaderBottomBar(
     onToggleTts: () -> Unit,
     onLongPressTts: () -> Unit,
     onTtsStartFromViewport: () -> Unit = {},
+    onTtsPreviousParagraph: () -> Unit = {},
+    onTtsNextParagraph: () -> Unit = {},
     isEditing: Boolean,
     isWebView: Boolean,
     onToggleEdit: () -> Unit,
@@ -497,27 +510,57 @@ private fun NovelReaderBottomBar(
                     }
 
                     // TTS toggle - tap to play/pause, long press to stop
-                    BottomBarItem.TTS -> Box(
+                    BottomBarItem.TTS -> androidx.compose.material3.Surface(
                         modifier = Modifier
                             .size(buttonSize)
-                            .combinedClickable(
+                            .padding(paddingSize),
+                        shape = MaterialTheme.shapes.small,
+                        color = if (isTtsActive) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                    ) {
+                        Box(
+                            modifier = Modifier.combinedClickable(
                                 onClick = onToggleTts,
                                 onLongClick = onLongPressTts,
                             ),
-                        contentAlignment = Alignment.Center,
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = when {
+                                    isTtsActive && !isTtsPaused -> Icons.Outlined.Pause
+                                    isTtsActive && isTtsPaused -> Icons.Outlined.PlayArrow
+                                    else -> Icons.Outlined.RecordVoiceOver
+                                },
+                                contentDescription = stringResource(TDMR.strings.pref_novel_tts),
+                                tint = if (isTtsActive) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                modifier = Modifier.size(iconSize),
+                            )
+                        }
+                    }
+
+                    // TTS previous paragraph
+                    BottomBarItem.TTS_PREV_PARAGRAPH -> IconButton(
+                        onClick = onTtsPreviousParagraph,
+                        modifier = Modifier.size(buttonSize),
                     ) {
                         Icon(
-                            imageVector = when {
-                                isTtsActive && !isTtsPaused -> Icons.Outlined.Pause
-                                isTtsActive && isTtsPaused -> Icons.Outlined.PlayArrow
-                                else -> Icons.Outlined.RecordVoiceOver
-                            },
-                            contentDescription = stringResource(TDMR.strings.pref_novel_tts),
-                            tint = if (isTtsActive) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
+                            Icons.Outlined.FastRewind,
+                            contentDescription = "Previous paragraph",
+                            modifier = Modifier.size(iconSize),
+                        )
+                    }
+
+                    // TTS next paragraph
+                    BottomBarItem.TTS_NEXT_PARAGRAPH -> IconButton(
+                        onClick = onTtsNextParagraph,
+                        modifier = Modifier.size(buttonSize),
+                    ) {
+                        Icon(
+                            Icons.Outlined.FastForward,
+                            contentDescription = "Next paragraph",
                             modifier = Modifier.size(iconSize),
                         )
                     }
@@ -610,6 +653,8 @@ internal fun bottomBarItemInfo(
     BottomBarItem.AUTO_SCROLL -> Icons.Outlined.PlayArrow to stringResource(TDMR.strings.action_start_auto_scroll)
     BottomBarItem.TTS -> Icons.Outlined.RecordVoiceOver to stringResource(TDMR.strings.pref_novel_tts)
     BottomBarItem.TTS_VIEWPORT -> Icons.Outlined.Visibility to "Start TTS Here"
+    BottomBarItem.TTS_PREV_PARAGRAPH -> Icons.Outlined.FastRewind to "Previous paragraph"
+    BottomBarItem.TTS_NEXT_PARAGRAPH -> Icons.Outlined.FastForward to "Next paragraph"
     BottomBarItem.QUOTES -> Icons.Outlined.FormatQuote to stringResource(TDMR.strings.action_quotes)
     BottomBarItem.ORIENTATION -> orientation.icon to stringResource(MR.strings.rotation_type)
     BottomBarItem.SETTINGS -> Icons.Outlined.Settings to stringResource(MR.strings.action_settings)

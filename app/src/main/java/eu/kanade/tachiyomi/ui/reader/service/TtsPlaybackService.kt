@@ -42,6 +42,14 @@ class TtsPlaybackService : Service() {
                 sendControlBroadcast(COMMAND_TOGGLE_PAUSE)
             }
 
+            ACTION_PREV_PARAGRAPH -> {
+                sendControlBroadcast(COMMAND_PREV_PARAGRAPH)
+            }
+
+            ACTION_NEXT_PARAGRAPH -> {
+                sendControlBroadcast(COMMAND_NEXT_PARAGRAPH)
+            }
+
             ACTION_STOP_PLAYBACK -> {
                 sendControlBroadcast(COMMAND_STOP)
                 stopForeground(STOP_FOREGROUND_REMOVE)
@@ -93,6 +101,20 @@ class TtsPlaybackService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val prevParagraphIntent = PendingIntent.getService(
+            this,
+            1004,
+            Intent(this, TtsPlaybackService::class.java).setAction(ACTION_PREV_PARAGRAPH),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val nextParagraphIntent = PendingIntent.getService(
+            this,
+            1005,
+            Intent(this, TtsPlaybackService::class.java).setAction(ACTION_NEXT_PARAGRAPH),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
         val openReaderIntent = ReaderActivity.newIntent(
             context = this,
             mangaId = mangaId.takeIf { it > 0L },
@@ -129,9 +151,21 @@ class TtsPlaybackService : Service() {
             setProgress(100, progressPercent, false)
 
             addAction(
+                android.R.drawable.ic_media_previous,
+                "Previous",
+                prevParagraphIntent,
+            )
+
+            addAction(
                 if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
                 if (isPaused) "Resume" else "Pause",
                 toggleIntent,
+            )
+
+            addAction(
+                android.R.drawable.ic_media_next,
+                "Next",
+                nextParagraphIntent,
             )
 
             addAction(
@@ -171,6 +205,12 @@ class TtsPlaybackService : Service() {
         private const val ACTION_TOGGLE_PAUSE =
             "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.TOGGLE_PAUSE"
 
+        private const val ACTION_PREV_PARAGRAPH =
+            "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.PREV_PARAGRAPH"
+
+        private const val ACTION_NEXT_PARAGRAPH =
+            "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.NEXT_PARAGRAPH"
+
         private const val ACTION_STOP_PLAYBACK =
             "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.STOP_PLAYBACK"
 
@@ -180,6 +220,8 @@ class TtsPlaybackService : Service() {
         const val EXTRA_COMMAND = "extra_command"
 
         const val COMMAND_TOGGLE_PAUSE = "toggle_pause"
+        const val COMMAND_PREV_PARAGRAPH = "prev_paragraph"
+        const val COMMAND_NEXT_PARAGRAPH = "next_paragraph"
         const val COMMAND_STOP = "stop"
 
         private const val EXTRA_IS_PAUSED = "extra_is_paused"

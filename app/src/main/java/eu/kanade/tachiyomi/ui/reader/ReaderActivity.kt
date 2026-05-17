@@ -165,6 +165,8 @@ class ReaderActivity : BaseActivity() {
 
             when (intent.getStringExtra(TtsPlaybackService.EXTRA_COMMAND)) {
                 TtsPlaybackService.COMMAND_TOGGLE_PAUSE -> togglePauseResumeFromNotification()
+                TtsPlaybackService.COMMAND_PREV_PARAGRAPH -> stepTtsParagraphFromNotification(isNext = false)
+                TtsPlaybackService.COMMAND_NEXT_PARAGRAPH -> stepTtsParagraphFromNotification(isNext = true)
                 TtsPlaybackService.COMMAND_STOP -> stopTtsFromNotification()
             }
         }
@@ -877,6 +879,18 @@ class ReaderActivity : BaseActivity() {
                         else -> {}
                     }
                 },
+                onTtsPreviousParagraph = {
+                    // ensure UI reflects active TTS when stepping paragraphs
+                    isTtsActive = true
+                    isTtsPaused = false
+                    stepTtsParagraph(isNext = false)
+                },
+                onTtsNextParagraph = {
+                    // ensure UI reflects active TTS when stepping paragraphs
+                    isTtsActive = true
+                    isTtsPaused = false
+                    stepTtsParagraph(isNext = true)
+                },
 
                 isEditing = isEditing,
                 onToggleEdit = {
@@ -1100,7 +1114,7 @@ class ReaderActivity : BaseActivity() {
                 val paused = viewer.isTtsPaused()
                 val speaking = viewer.isTtsSpeaking()
                 NovelTtsState(
-                    active = speaking || viewer.isTtsStarting(),
+                    active = paused || speaking || viewer.isTtsStarting(),
                     paused = paused,
                     progressPercent = viewer.getTtsProgressPercent(),
                     novelTitle = novelTitle,
@@ -1113,7 +1127,7 @@ class ReaderActivity : BaseActivity() {
                 val paused = viewer.isTtsPaused()
                 val speaking = viewer.isTtsSpeaking()
                 NovelTtsState(
-                    active = speaking || viewer.isTtsStarting(),
+                    active = paused || speaking || viewer.isTtsStarting(),
                     paused = paused,
                     progressPercent = viewer.getTtsProgressPercent(),
                     novelTitle = novelTitle,
@@ -1153,6 +1167,33 @@ class ReaderActivity : BaseActivity() {
             else -> Unit
         }
         syncBackgroundTtsState()
+    }
+
+    private fun stepTtsParagraph(isNext: Boolean) {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> {
+                startBackgroundTtsIfEnabled()
+                if (isNext) {
+                    viewer.ttsNextParagraph()
+                } else {
+                    viewer.ttsPreviousParagraph()
+                }
+            }
+            is NovelWebViewViewer -> {
+                startBackgroundTtsIfEnabled()
+                if (isNext) {
+                    viewer.ttsNextParagraph()
+                } else {
+                    viewer.ttsPreviousParagraph()
+                }
+            }
+            else -> return
+        }
+        syncBackgroundTtsState()
+    }
+
+    private fun stepTtsParagraphFromNotification(isNext: Boolean) {
+        stepTtsParagraph(isNext)
     }
 
     private fun stopTtsFromNotification() {
