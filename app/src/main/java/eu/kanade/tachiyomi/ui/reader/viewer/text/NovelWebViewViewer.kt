@@ -1185,7 +1185,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     var maxScroll = document.documentElement.scrollHeight - document.documentElement.clientHeight;
                     return maxScroll <= 0;
                 }
-                
+
                 // Set up a ResizeObserver to wait for content to stabilize
                 var resizeObserver = new ResizeObserver(function() {
                     if (checkIfShortChapter()) {
@@ -1194,10 +1194,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                         resizeObserver.disconnect();
                     }
                 });
-                
+
                 // Observe document body for size changes
                 resizeObserver.observe(document.body);
-                
+
                 // Also check after a small delay to catch static content
                 setTimeout(function() {
                     if (checkIfShortChapter()) {
@@ -1528,12 +1528,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      */
     private fun prependHtmlContent(content: String, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
-        
+
         // Get user preferences for embedded CSS/JS
         val keepEmbeddedCss = preferences.enableEpubStyles.get()
         val keepEmbeddedJs = preferences.enableEpubJs.get()
         val blockMedia = preferences.novelBlockMedia.get()
-        
+
         // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
@@ -1602,12 +1602,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      */
     private fun appendHtmlContent(content: String, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(chapterUrl)
-        
+
         // Get user preferences for embedded CSS/JS
         val keepEmbeddedCss = preferences.enableEpubStyles.get()
         val keepEmbeddedJs = preferences.enableEpubJs.get()
         val blockMedia = preferences.novelBlockMedia.get()
-        
+
         // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
@@ -1677,12 +1677,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         val chapterPath = chapterModel?.url.orEmpty()
         val normalizedChapterUrl = normalizeUrl(chapterPath)
         val plainTextMode = NovelViewerTextUtils.isPlainTextChapter(normalizedChapterUrl)
-        
+
         // Get user preferences for embedded CSS/JS
         val keepEmbeddedCss = preferences.enableEpubStyles.get()
         val keepEmbeddedJs = preferences.enableEpubJs.get()
         val blockMedia = preferences.novelBlockMedia.get()
-        
+
         // Normalize and sanitize content
         var cleanContent = if (plainTextMode) {
             NovelViewerTextUtils.normalizePlainTextContent(content)
@@ -1703,19 +1703,26 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         loadedChapters.clear()
         currentChapterIndex = 0
 
-        // Only add chapter divider when infinite scroll is enabled (used for chapter boundary tracking)
-        // For single chapter loads without infinite scroll, skip the divider to avoid unnecessary DOM elements
+        // Always wrap chapter content with tsundoku chapter metadata so injected CSS/JS
+        // can target chapter attributes in both single and infinite-scroll modes.
         val infiniteScrollEnabled = preferences.novelInfiniteScroll.get()
         val chapterDivider = if (chapterId != -1L && infiniteScrollEnabled) {
             val absoluteChapterUrl = toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()
             val escapedName = chapterName.htmlAttributeEscape()
             val escapedPath = chapterPath.htmlAttributeEscape()
-            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl" style="display:none;height:0;margin:0;padding:0;"></div>
-               <$CHAPTER_TAG_NAME $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl">"""
+            """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl" style="display:none;height:0;margin:0;padding:0;"></div>"""
         } else {
             ""
         }
-        val chapterDividerEnd = if (chapterId != -1L && infiniteScrollEnabled) "</$CHAPTER_TAG_NAME>" else ""
+        val chapterWrapperStart = if (chapterId != -1L) {
+            val absoluteChapterUrl = toAbsoluteChapterUrl(chapterPath).htmlAttributeEscape()
+            val escapedName = chapterName.htmlAttributeEscape()
+            val escapedPath = chapterPath.htmlAttributeEscape()
+            """<$CHAPTER_TAG_NAME $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$escapedName" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$escapedPath" $CHAPTER_URL_ATTR="$absoluteChapterUrl" $TSUNDOKU_CHAPTER_ATTR="1">"""
+        } else {
+            ""
+        }
+        val chapterWrapperEnd = if (chapterId != -1L) "</$CHAPTER_TAG_NAME>" else ""
 
         val mediaBlockCss = if (blockMedia) {
             "img, video, audio, source, svg, image { display: none !important; }"
@@ -1747,7 +1754,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 // Note: If keepEmbeddedCss is true, styles were already kept by sanitizeHtmlForWebView
                 // If keepEmbeddedCss is false, styles were already stripped
                 // We don't need to do anything here since sanitization was already done
-                
+
                 // Note: If keepEmbeddedJs is true, scripts were already kept by sanitizeHtmlForWebView
                 // If keepEmbeddedJs is false, scripts were already stripped
                 // We don't need to do anything here since sanitization was already done
@@ -1771,13 +1778,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         } else {
             ""
         }
-        
+
         // Escape theme token CSS variables for safe embedding in HTML
         val escapedThemeCss = themeTokens.cssVariables
             .replace("</style>", "<\\/style>")
             .replace("</Style>", "<\\/Style>")
             .replace("</STYLE>", "<\\/STYLE>")
-        
+
         // Build theme exposure script - escape for safe embedding
         val escapedThemeJson = themeTokens.jsObject
             .replace("\\", "\\\\")
@@ -1828,8 +1835,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             </head>
             <body>
                 $chapterDivider
+                $chapterWrapperStart
                 $finalContent
-                $chapterDividerEnd
+                $chapterWrapperEnd
             </body>
             </html>
         """.trimIndent()
