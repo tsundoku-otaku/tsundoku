@@ -2256,7 +2256,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                                 if (window.Android && window.Android.onContentEdited) {
                                     window.Android.onContentEdited();
                                 }
-                            });
+                            };
+                            document.addEventListener('input', inputListener);
+                            window.$TSUNDOKU_OBJECT_NAME.runtime.inputListener = inputListener;
                         }
                     } else {
                         var style = document.getElementById(styleId);
