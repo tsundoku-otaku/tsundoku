@@ -90,7 +90,7 @@ object NovelViewerTextUtils {
             return plainTextToHtml(normalized)
         }
         return when (detectTextKind(chapterUrl, normalized)) {
-            ChapterTextKind.HTML -> normalized
+            ChapterTextKind.HTML -> fixDoubleEncodedEntities(normalized)
             ChapterTextKind.MARKDOWN -> markdownToHtml(stripFrontMatter(normalized))
             ChapterTextKind.PLAIN_TEXT -> plainTextToHtml(normalized)
         }
@@ -145,8 +145,23 @@ object NovelViewerTextUtils {
         val normalized = text
             .replace("\r\n", "\n")
             .replace("\r", "\n")
-        val escaped = escapeHtml(normalized)
+        // Unescape any HTML entities before re-escaping to avoid double-encoding.
+        // JS sources may return content with &lt;D&gt; already encoded; escapeHtml would
+        // turn & into &amp;, producing &amp;lt;D&amp;gt; which renders as &lt;D&gt;.
+        val decoded = if (normalized.contains('&')) {
+            org.jsoup.parser.Parser.unescapeEntities(normalized, false)
+        } else {
+            normalized
+        }
+        val escaped = escapeHtml(decoded)
         return "<pre data-tsundoku-plain-text=\"1\" style=\"white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;\">$escaped</pre>"
+    }
+
+    private fun fixDoubleEncodedEntities(html: String): String {
+        if (!html.contains("&amp;")) return html
+        return html.replace(
+            Regex("&amp;(lt|gt|amp|quot|apos|#[0-9]{1,7}|#x[0-9a-fA-F]{1,6});"),
+        ) { "&${it.groupValues[1]};" }
     }
 
     private fun escapeHtml(text: String): String {
