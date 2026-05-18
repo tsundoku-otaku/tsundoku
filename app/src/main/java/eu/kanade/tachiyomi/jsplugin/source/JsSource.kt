@@ -76,6 +76,34 @@ class JsSource(
 
     companion object {
         private const val INSTANCE_TIMEOUT_MS = 60_000L // 1 minute timeout
+
+        /** True when [text] contains structural HTML tags (p, div, br, span, hN, …). */
+        internal fun looksLikeHtml(text: String): Boolean =
+            text.contains(Regex("<(?:p|div|br|span|h[1-6]|ul|ol|li|a|img|table|blockquote)\\b", RegexOption.IGNORE_CASE))
+
+        /**
+         * Normalize raw chapter text extracted from a JS plugin response.
+         *
+         * - Plain text: fully unescape all HTML entities so `&lt;D&gt;` → `<D>`.
+         *   The viewer's `escapeHtml` re-encodes them correctly for display.
+         * - HTML: fix only double-encoded entities (`&amp;lt;` → `&lt;`) without
+         *   destroying HTML structure (full unescape would turn `&lt;tag&gt;` into a
+         *   real `<tag>` element).
+         */
+        internal fun normalizePluginContent(raw: String): String =
+            if (!looksLikeHtml(raw)) {
+                org.jsoup.parser.Parser.unescapeEntities(raw, false)
+            } else {
+                fixDoubleEncodedEntities(raw)
+            }
+
+        /** Fixes `&amp;lt;` → `&lt;`, `&amp;nbsp;` → `&nbsp;`, etc. for HTML content. */
+        internal fun fixDoubleEncodedEntities(html: String): String {
+            if (!html.contains("&amp;")) return html
+            return html.replace(
+                Regex("&amp;([a-zA-Z][a-zA-Z0-9]{1,30}|#[0-9]{1,7}|#x[0-9a-fA-F]{1,6});"),
+            ) { "&${it.groupValues[1]};" }
+        }
     }
 
     private val pluginId: String = plugin.id
@@ -1250,27 +1278,7 @@ class JsSource(
         } else {
             decodeJsonStringIfQuoted(result)
         }
-        // JS plugins often HTML-encode their output even when it shouldn't be encoded.
-        // For plain text: fully decode all entities before the viewer re-encodes for display.
-        // For HTML: only fix double-encoded entities (&amp;lt; → &lt;) — full unescape would
-        // turn intentional &lt;tag&gt; literals into real HTML tags and break structure.
-        return if (!looksLikeHtml(raw)) {
-            org.jsoup.parser.Parser.unescapeEntities(raw, false)
-        } else {
-            fixDoubleEncodedEntities(raw)
-        }
-    }
-
-    private fun looksLikeHtml(text: String): Boolean =
-        text.contains(Regex("<(?:p|div|br|span|h[1-6]|ul|ol|li|a|img|table|blockquote)\\b", RegexOption.IGNORE_CASE))
-
-    // Fixes &amp;lt; → &lt;, &amp;gt; → &gt;, &amp;nbsp; → &nbsp; etc.
-    // Targets any &amp;ENTITY; pattern — covers all HTML5 named + numeric references.
-    private fun fixDoubleEncodedEntities(html: String): String {
-        if (!html.contains("&amp;")) return html
-        return html.replace(
-            Regex("&amp;([a-zA-Z][a-zA-Z0-9]{1,30}|#[0-9]{1,7}|#x[0-9a-fA-F]{1,6});"),
-        ) { "&${it.groupValues[1]};" }
+        return normalizePluginContent(raw)
     }
 }
 
