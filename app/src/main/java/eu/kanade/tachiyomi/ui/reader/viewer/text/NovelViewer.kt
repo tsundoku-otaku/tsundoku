@@ -416,7 +416,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
     private var isAutoScrolling = false
     private var autoScrollJob: Job? = null
 
-    
+
 
 
 
@@ -1561,6 +1561,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         if (ttsInitialized) {
             tts?.stop()
         }
+        ttsPlaybackChapterIndex = 0
+        ttsPlaybackChapterId = null
 
         activity.runOnUiThread {
             loadedChapters.forEach { loaded ->

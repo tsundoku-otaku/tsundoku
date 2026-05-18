@@ -144,6 +144,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     private var pendingTtsHandoffChapterId: Long? = null
     private var pendingTtsHandoffUseViewport: Boolean = false
     private var pendingTtsHandoffStarted: Boolean = false
+    private var pendingTtsHandoffTimeoutJob: kotlinx.coroutines.Job? = null
 
     private enum class TtsStartRequest {
         NORMAL,
@@ -410,17 +411,51 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     pendingTtsHandoffUseViewport = true
                     pendingTtsHandoffStarted = false
                     scrollToChapterIndex(targetIndex)
+                    setPendingTtsHandoffTimeout(2000L)
                 } else {
                     pendingTtsHandoffChapterId = nextChapterId
                     pendingTtsHandoffUseViewport = true
                     pendingTtsHandoffStarted = false
                     appendNextChapterIfAvailable()
+                    setPendingTtsHandoffTimeout(5000L)
                 }
             } else {
                 activity.loadNextChapter()
                 startTts()
             }
         }
+    }
+
+    /**
+     * Set a timeout for pending TTS handoff. If the handoff hasn't completed within [timeoutMs],
+     * clear the pending state and log a warning to prevent TTS from hanging indefinitely.
+     */
+    private fun setPendingTtsHandoffTimeout(timeoutMs: Long) {
+        pendingTtsHandoffTimeoutJob?.cancel()
+
+        pendingTtsHandoffTimeoutJob = scope.launch {
+            delay(timeoutMs)
+            if (pendingTtsHandoffChapterId != null) {
+                logcat(LogPriority.WARN) {
+                    "TTS (WebView): Handoff timeout after ${timeoutMs}ms for chapter $pendingTtsHandoffChapterId; clearing pending state and resuming playback"
+                }
+                clearPendingTtsHandoff()
+                if (isTtsAutoPlay && !isTtsSpeaking()) {
+                    startTts()
+                }
+            }
+        }
+    }
+
+    /**
+     * Clear pending TTS handoff state to prevent stale handoff attempts.
+     */
+    private fun clearPendingTtsHandoff() {
+        pendingTtsHandoffChapterId = null
+        pendingTtsHandoffUseViewport = false
+        pendingTtsHandoffStarted = false
+        pendingTtsHandoffTimeoutJob?.cancel()
+        pendingTtsHandoffTimeoutJob = null
     }
 
     private fun applyTtsSettings() {
@@ -2457,9 +2492,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                             startTts()
                         }
                     } else if (pendingTtsHandoffStarted && progress > 0.01f) {
-                        pendingTtsHandoffChapterId = null
-                        pendingTtsHandoffUseViewport = false
-                        pendingTtsHandoffStarted = false
+                        clearPendingTtsHandoff()
                     }
                 }
             }
@@ -2868,6 +2901,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             tts?.stop()
         }
         clearWebViewTtsHighlight()
+        clearPendingTtsHandoff()
     }
 
     fun pauseTts() {
