@@ -1250,17 +1250,27 @@ class JsSource(
         } else {
             decodeJsonStringIfQuoted(result)
         }
-        // JS plugins often HTML-encode their output (e.g. &lt;D&gt; instead of <D>) even when
-        // returning plain text. Decode entities here so the viewer never sees them pre-encoded.
-        // Only do this for non-HTML content — HTML content uses entities intentionally.
+        // JS plugins often HTML-encode their output even when it shouldn't be encoded.
+        // For plain text: fully decode all entities before the viewer re-encodes for display.
+        // For HTML: only fix double-encoded entities (&amp;lt; → &lt;) — full unescape would
+        // turn intentional &lt;tag&gt; literals into real HTML tags and break structure.
         return if (!looksLikeHtml(raw)) {
             org.jsoup.parser.Parser.unescapeEntities(raw, false)
         } else {
-            raw
+            fixDoubleEncodedEntities(raw)
         }
     }
 
     private fun looksLikeHtml(text: String): Boolean =
         text.contains(Regex("<(?:p|div|br|span|h[1-6]|ul|ol|li|a|img|table|blockquote)\\b", RegexOption.IGNORE_CASE))
+
+    // Fixes &amp;lt; → &lt;, &amp;gt; → &gt;, &amp;nbsp; → &nbsp; etc.
+    // Targets any &amp;ENTITY; pattern — covers all HTML5 named + numeric references.
+    private fun fixDoubleEncodedEntities(html: String): String {
+        if (!html.contains("&amp;")) return html
+        return html.replace(
+            Regex("&amp;([a-zA-Z][a-zA-Z0-9]{1,30}|#[0-9]{1,7}|#x[0-9a-fA-F]{1,6});"),
+        ) { "&${it.groupValues[1]};" }
+    }
 }
 
