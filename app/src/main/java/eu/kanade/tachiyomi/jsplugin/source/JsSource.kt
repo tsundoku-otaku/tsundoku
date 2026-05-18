@@ -590,9 +590,7 @@ class JsSource(
             }
             val path = normalizePluginPath(chapter.url).replace("'", "\\'").replace("\"", "\\\"")
             val result = executePluginMethod("plugin.parseChapter('$path')")
-            // For novels, the result is HTML content - return as a single text page
-            // Store the chapter URL in the page so fetchPageText can re-fetch if needed
-            listOf(Page(0, chapter.url, "").also { it.text = decodeJsonStringIfQuoted(result) })
+            listOf(Page(0, chapter.url, "").also { it.text = extractChapterText(result) })
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Error in getPageList for ${plugin.name}" }
             emptyList()
@@ -1228,26 +1226,29 @@ class JsSource(
             }
 
             val result = executePluginMethod("plugin.parseChapter('$chapterUrl')")
-
-            // Parse result which might be a string or JSON object
-            if (result.startsWith("{")) {
-                try {
-                    val obj = json.parseToJsonElement(result).jsonObject
-                    // Try different fields that plugins might use
-                    obj["chapterText"]?.jsonPrimitive?.content
-                        ?: obj["text"]?.jsonPrimitive?.content
-                        ?: obj["content"]?.jsonPrimitive?.content
-                        ?: result
-                } catch (e: Exception) {
-                    result
-                }
-            } else {
-                decodeJsonStringIfQuoted(result)
-            }
+            extractChapterText(result)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Error fetching page text for ${plugin.name}" }
             "Error loading chapter content: ${e.message}"
         }
+    }
+
+    // Extract chapter text from executePluginMethod result.
+    // Plugins may return a plain JSON string or a JSON object with chapterText/text/content field.
+    // decodeJsonStringIfQuoted returns raw JSON for objects, which viewers then misrender.
+    private fun extractChapterText(result: String): String {
+        if (result.startsWith("{")) {
+            return try {
+                val obj = json.parseToJsonElement(result).jsonObject
+                obj["chapterText"]?.jsonPrimitive?.content
+                    ?: obj["text"]?.jsonPrimitive?.content
+                    ?: obj["content"]?.jsonPrimitive?.content
+                    ?: decodeJsonStringIfQuoted(result)
+            } catch (_: Exception) {
+                decodeJsonStringIfQuoted(result)
+            }
+        }
+        return decodeJsonStringIfQuoted(result)
     }
 }
 
