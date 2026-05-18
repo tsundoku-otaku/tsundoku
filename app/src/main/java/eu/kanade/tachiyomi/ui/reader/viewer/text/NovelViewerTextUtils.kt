@@ -668,6 +668,24 @@ object NovelViewerTextUtils {
         return ThemeTokens(cssVariables, jsObject)
     }
 
+    fun computeTtsStepTargetChunk(
+        delta: Int,
+        ttsPaused: Boolean,
+        ttsResumeChunkIndex: Int,
+        ttsCurrentChunkIndex: Int,
+        ttsChunks: List<String>,
+        ttsChunkParagraphIndexes: List<Int>,
+    ): Int {
+        val currentChunk = (if (ttsPaused) ttsResumeChunkIndex else ttsCurrentChunkIndex)
+            .coerceIn(0, (ttsChunks.size - 1).coerceAtLeast(0))
+        val currentParagraph = ttsChunkParagraphIndexes.getOrElse(currentChunk) { currentChunk }
+        val maxParagraph = (ttsChunkParagraphIndexes.maxOrNull() ?: currentParagraph).coerceAtLeast(0)
+        val targetParagraph = (currentParagraph + delta).coerceIn(0, maxParagraph)
+        return ttsChunkParagraphIndexes.indexOfFirst { it >= targetParagraph }
+            .takeIf { it >= 0 }
+            ?: currentChunk
+    }
+
     /**
      * Helper function to resolve a Material theme color attribute.
      * Returns the resolved color or a fallback default.

@@ -256,12 +256,6 @@ class ReaderPreferences(
     // Global CSS/JS presets stored as JSON array of {name, css, js} objects
     val novelGlobalPresets: Preference<String> = preferenceStore.getString("pref_novel_global_presets", "[]")
 
-    // Currently active global preset name (empty = none)
-    val novelActivePreset: Preference<String> = preferenceStore.getString("pref_novel_active_preset", "")
-
-    // Appearance presets (JSON array of {name, fontFamily, fontSize, fontColor, backgroundColor})
-    val novelAppearancePresets: Preference<String> = preferenceStore.getString("pref_novel_appearance_presets", "[]")
-
     // Regex find/replace rules stored as JSON array of {title, pattern, replacement, enabled, isRegex}
     // Applied to chapter HTML content before rendering in both WebView and TextView modes
     val novelRegexReplacements: Preference<String> = preferenceStore.getString("pref_novel_regex_replacements", "[]")

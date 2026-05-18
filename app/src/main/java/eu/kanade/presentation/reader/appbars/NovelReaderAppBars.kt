@@ -308,7 +308,6 @@ private fun NovelReaderTopBar(
             AppBarActions(
                 actions = persistentListOf<AppBar.AppBarAction>().builder()
                     .apply {
-                        // top-bar paragraph controls removed (available in bottom bar)
                         add(
                             AppBar.Action(
                                 title = stringResource(
@@ -548,7 +547,7 @@ private fun NovelReaderBottomBar(
                     ) {
                         Icon(
                             Icons.Outlined.FastRewind,
-                            contentDescription = "Previous paragraph",
+                            contentDescription = stringResource(TDMR.strings.tts_prev_paragraph),
                             modifier = Modifier.size(iconSize),
                         )
                     }
@@ -560,7 +559,7 @@ private fun NovelReaderBottomBar(
                     ) {
                         Icon(
                             Icons.Outlined.FastForward,
-                            contentDescription = "Next paragraph",
+                            contentDescription = stringResource(TDMR.strings.tts_next_paragraph),
                             modifier = Modifier.size(iconSize),
                         )
                     }
@@ -653,8 +652,8 @@ internal fun bottomBarItemInfo(
     BottomBarItem.AUTO_SCROLL -> Icons.Outlined.PlayArrow to stringResource(TDMR.strings.action_start_auto_scroll)
     BottomBarItem.TTS -> Icons.Outlined.RecordVoiceOver to stringResource(TDMR.strings.pref_novel_tts)
     BottomBarItem.TTS_VIEWPORT -> Icons.Outlined.Visibility to "Start TTS Here"
-    BottomBarItem.TTS_PREV_PARAGRAPH -> Icons.Outlined.FastRewind to "Previous paragraph"
-    BottomBarItem.TTS_NEXT_PARAGRAPH -> Icons.Outlined.FastForward to "Next paragraph"
+    BottomBarItem.TTS_PREV_PARAGRAPH -> Icons.Outlined.FastRewind to stringResource(TDMR.strings.tts_prev_paragraph)
+    BottomBarItem.TTS_NEXT_PARAGRAPH -> Icons.Outlined.FastForward to stringResource(TDMR.strings.tts_next_paragraph)
     BottomBarItem.QUOTES -> Icons.Outlined.FormatQuote to stringResource(TDMR.strings.action_quotes)
     BottomBarItem.ORIENTATION -> orientation.icon to stringResource(MR.strings.rotation_type)
     BottomBarItem.SETTINGS -> Icons.Outlined.Settings to stringResource(MR.strings.action_settings)

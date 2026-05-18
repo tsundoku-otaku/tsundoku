@@ -62,7 +62,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -107,15 +106,6 @@ data class RegexReplacement(
     val isRegex: Boolean = true,
     val matchWholeWord: Boolean = false,
     val caseSensitive: Boolean = false,
-)
-
-@Serializable
-data class NovelAppearancePreset(
-    val name: String,
-    val fontFamily: String,
-    val fontSize: Int,
-    val fontColor: Int,
-    val backgroundColor: Int,
 )
 
 private val novelThemes = listOf(
@@ -330,15 +320,6 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
                 screenModel.preferences.novelFontColor.set(color)
                 showFontColorPicker = false
             },
-            onSave = { name, color ->
-                val currentJson = screenModel.preferences.novelAppearancePresets.get()
-                val existing = try { Json.decodeFromString<List<NovelAppearancePreset>>(currentJson) } catch (_: Exception) { emptyList() }
-                val updated = existing.toMutableList().apply {
-                    add(NovelAppearancePreset(name, fontFamily, fontSize, color, backgroundColor))
-                }
-                screenModel.preferences.novelAppearancePresets.set(Json.encodeToString(updated))
-                showFontColorPicker = false
-            },
         )
     }
 
@@ -349,16 +330,6 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
             onDismiss = { showBgColorPicker = false },
             onConfirm = { color ->
                 screenModel.preferences.novelBackgroundColor.set(color)
-                screenModel.preferences.novelTheme.set("custom")
-                showBgColorPicker = false
-            },
-            onSave = { name, color ->
-                val currentJson = screenModel.preferences.novelAppearancePresets.get()
-                val existing = try { Json.decodeFromString<List<NovelAppearancePreset>>(currentJson) } catch (_: Exception) { emptyList() }
-                val updated = existing.toMutableList().apply {
-                    add(NovelAppearancePreset(name, fontFamily, fontSize, fontColor, color))
-                }
-                screenModel.preferences.novelAppearancePresets.set(Json.encodeToString(updated))
                 screenModel.preferences.novelTheme.set("custom")
                 showBgColorPicker = false
             },
@@ -374,63 +345,6 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
                 label = { Text(stringResource(labelRes)) },
             )
         }
-    }
-
-    // Appearance presets
-    val presetsJson by screenModel.preferences.novelAppearancePresets.collectAsState()
-    val presets = remember(presetsJson) {
-        try {
-            Json.decodeFromString<List<NovelAppearancePreset>>(presetsJson)
-        } catch (e: Exception) {
-            emptyList()
-        }
-    }
-
-    var showDeleteIndex by remember { mutableStateOf<Int?>(null) }
-
-    if (presets.isNotEmpty()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text("Presets", style = MaterialTheme.typography.bodyMedium)
-            SettingsChipRow("") {
-                presets.forEachIndexed { index, preset ->
-                    FilterChip(
-                        selected = false,
-                        onClick = {
-                            // Apply preset
-                            screenModel.preferences.novelFontFamily.set(preset.fontFamily)
-                            screenModel.preferences.novelFontSize.set(preset.fontSize)
-                            screenModel.preferences.novelFontColor.set(preset.fontColor)
-                            screenModel.preferences.novelBackgroundColor.set(preset.backgroundColor)
-                            screenModel.preferences.novelTheme.set("custom")
-                        },
-                        modifier = Modifier.combinedClickable(
-                            onClick = {},
-                            onLongClick = { showDeleteIndex = index },
-                        ),
-                        label = { Text(preset.name) },
-                    )
-                }
-            }
-        }
-    }
-
-    if (showDeleteIndex != null) {
-        val idx = showDeleteIndex!!
-        AlertDialog(
-            onDismissRequest = { showDeleteIndex = null },
-            title = { Text(stringResource(MR.strings.action_delete)) },
-            text = { Text("Delete preset?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val updated = presets.toMutableList().apply { removeAt(idx) }
-                    screenModel.preferences.novelAppearancePresets.set(Json.encodeToString(updated))
-                    showDeleteIndex = null
-                }) { Text(stringResource(MR.strings.action_delete)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteIndex = null }) { Text(stringResource(MR.strings.action_cancel)) }
-            },
-        )
     }
 
     // Font Color
@@ -1775,14 +1689,11 @@ private fun ColorPickerDialog(
     initialColor: Int,
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
-    onSave: ((String, Int) -> Unit)? = null,
 ) {
     var red by remember { mutableIntStateOf((initialColor shr 16) and 0xFF) }
     var green by remember { mutableIntStateOf((initialColor shr 8) and 0xFF) }
     var blue by remember { mutableIntStateOf(initialColor and 0xFF) }
     var hexInput by remember { mutableStateOf(String.format("%06X", initialColor and 0xFFFFFF)) }
-    var showSaveNameDialog by remember { mutableStateOf(false) }
-    var saveName by remember { mutableStateOf("") }
 
     val currentColor = (0xFF shl 24) or (red shl 16) or (green shl 8) or blue
 
@@ -1869,45 +1780,9 @@ private fun ColorPickerDialog(
             }
         },
         dismissButton = {
-            Row {
-                if (onSave != null) {
-                    TextButton(onClick = { showSaveNameDialog = true }) {
-                        Text(stringResource(MR.strings.action_save))
-                    }
-                }
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(MR.strings.action_cancel))
-                }
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(MR.strings.action_cancel))
             }
         },
     )
-
-    if (showSaveNameDialog && onSave != null) {
-        AlertDialog(
-            onDismissRequest = { showSaveNameDialog = false },
-            title = { Text("Save preset") },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = saveName,
-                        onValueChange = { saveName = it },
-                        label = { Text("Preset name") },
-                        singleLine = true,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (saveName.isNotBlank()) {
-                        onSave(saveName.trim(), currentColor)
-                        showSaveNameDialog = false
-                        onDismiss()
-                    }
-                }) { Text(stringResource(MR.strings.action_save)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveNameDialog = false }) { Text(stringResource(MR.strings.action_cancel)) }
-            },
-        )
-    }
 }

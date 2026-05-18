@@ -484,6 +484,8 @@
     <string name="pref_novel_rendering_mode">Rendering mode</string>
     <string name="pref_novel_auto_load_next_at">Auto-load next chapter at %</string>
     <string name="pref_novel_tts">Text to speech</string>
+    <string name="tts_prev_paragraph">Previous paragraph</string>
+    <string name="tts_next_paragraph">Next paragraph</string>
     <string name="pref_novel_infinite_scroll">Infinite scroll (auto-load next chapter)</string>
     <string name="pref_novel_chapter_sort_order">Chapter order</string>
     <string name="pref_novel_progress_slider">Show progress slider</string>
