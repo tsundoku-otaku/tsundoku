@@ -1237,8 +1237,8 @@ class JsSource(
     // Plugins may return a plain JSON string or a JSON object with chapterText/text/content field.
     // decodeJsonStringIfQuoted returns raw JSON for objects, which viewers then misrender.
     private fun extractChapterText(result: String): String {
-        if (result.startsWith("{")) {
-            return try {
+        val raw = if (result.startsWith("{")) {
+            try {
                 val obj = json.parseToJsonElement(result).jsonObject
                 obj["chapterText"]?.jsonPrimitive?.content
                     ?: obj["text"]?.jsonPrimitive?.content
@@ -1247,8 +1247,20 @@ class JsSource(
             } catch (_: Exception) {
                 decodeJsonStringIfQuoted(result)
             }
+        } else {
+            decodeJsonStringIfQuoted(result)
         }
-        return decodeJsonStringIfQuoted(result)
+        // JS plugins often HTML-encode their output (e.g. &lt;D&gt; instead of <D>) even when
+        // returning plain text. Decode entities here so the viewer never sees them pre-encoded.
+        // Only do this for non-HTML content — HTML content uses entities intentionally.
+        return if (!looksLikeHtml(raw)) {
+            org.jsoup.parser.Parser.unescapeEntities(raw, false)
+        } else {
+            raw
+        }
     }
+
+    private fun looksLikeHtml(text: String): Boolean =
+        text.contains(Regex("<(?:p|div|br|span|h[1-6]|ul|ol|li|a|img|table|blockquote)\\b", RegexOption.IGNORE_CASE))
 }
 

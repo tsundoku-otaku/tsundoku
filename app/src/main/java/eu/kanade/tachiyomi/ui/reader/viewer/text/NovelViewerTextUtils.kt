@@ -93,7 +93,7 @@ object NovelViewerTextUtils {
         val kind = detectTextKind(chapterUrl, normalized)
         logcat(LogPriority.DEBUG) { "normalizeContentForHtml: $kind url=$chapterUrl len=${normalized.length}" }
         return when (kind) {
-            ChapterTextKind.HTML -> fixDoubleEncodedEntities(normalized)
+            ChapterTextKind.HTML -> normalized
             ChapterTextKind.MARKDOWN -> markdownToHtml(stripFrontMatter(normalized))
             ChapterTextKind.PLAIN_TEXT -> plainTextToHtml(normalized)
         }
@@ -158,17 +158,6 @@ object NovelViewerTextUtils {
         }
         val escaped = escapeHtml(decoded)
         return "<pre data-tsundoku-plain-text=\"1\" style=\"white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;\">$escaped</pre>"
-    }
-
-    private fun fixDoubleEncodedEntities(html: String): String {
-        if (!html.contains("&amp;")) return html
-        // Match &amp; followed by any valid entity reference (named or numeric).
-        // Named: 2-31 alphanumeric chars (covers all HTML5 named entities like nbsp, mdash, rsquo…)
-        // Numeric decimal: #0-#9999999
-        // Numeric hex: #x0-#xFFFFFF
-        return html.replace(
-            Regex("&amp;([a-zA-Z][a-zA-Z0-9]{1,30}|#[0-9]{1,7}|#x[0-9a-fA-F]{1,6});"),
-        ) { "&${it.groupValues[1]};" }
     }
 
     private fun escapeHtml(text: String): String {
