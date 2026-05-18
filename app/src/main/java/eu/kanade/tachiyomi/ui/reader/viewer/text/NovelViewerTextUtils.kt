@@ -145,7 +145,16 @@ object NovelViewerTextUtils {
         val normalized = text
             .replace("\r\n", "\n")
             .replace("\r", "\n")
-        val escaped = escapeHtml(normalized)
+        // Decode any HTML entities before escaping to prevent double-encoding.
+        // Sources may return already-entity-encoded text (e.g. &lt;D&gt;); without decoding
+        // first, escapeHtml would turn & → &amp; and produce &amp;lt;D&amp;gt; which
+        // both WebView and TextView render as literal &lt;D&gt; instead of <D>.
+        val decoded = if (normalized.contains('&')) {
+            org.jsoup.parser.Parser.unescapeEntities(normalized, false)
+        } else {
+            normalized
+        }
+        val escaped = escapeHtml(decoded)
         return "<pre data-tsundoku-plain-text=\"1\" style=\"white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;\">$escaped</pre>"
     }
 

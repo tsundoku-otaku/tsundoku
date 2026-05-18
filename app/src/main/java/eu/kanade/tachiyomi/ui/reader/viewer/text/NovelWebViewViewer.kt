@@ -2,8 +2,6 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.view.ActionMode
 import android.view.GestureDetector
 import android.view.KeyEvent
@@ -55,14 +53,13 @@ import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
 import java.net.URI
 import java.io.File
-import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 /**
  * NovelWebViewViewer renders novel content using a WebView for more flexibility.
  * Supports custom CSS and JavaScript injection.
  */
-class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitListener {
+class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private companion object {
         const val TSUNDOKU_CHAPTERS_CONTAINER_ID = "tsundoku-chapters-container"
@@ -130,39 +127,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     private var navigator: eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation = eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation()
 
-    // TTS support
-    private var tts: TextToSpeech? = null
-    private var ttsInitialized = false
-    private var pendingTtsText: String? = null
-    private var isTtsAutoPlay = false // Track if TTS should auto-continue to next chapter
-    private var ttsPaused = false
-    private var ttsChunks: List<String> = emptyList()
-    private var ttsChunkParagraphIndexes: List<Int> = emptyList()
-    private var ttsCurrentParagraphs: List<NovelViewerTextUtils.ParagraphInfo> = emptyList()
-    private var ttsPlaybackChapterIndex: Int = 0
-    private var ttsPlaybackChapterId: Long? = null
+    // TTS — delegates to TtsController for engine/state logic.
+    @Volatile private var ttsIsPreparing = false
+    @Volatile private var ttsIsStarting = false
     private var pendingTtsHandoffChapterId: Long? = null
     private var pendingTtsHandoffUseViewport: Boolean = false
     private var pendingTtsHandoffStarted: Boolean = false
     private var pendingTtsHandoffTimeoutJob: kotlinx.coroutines.Job? = null
-
-    private enum class TtsStartRequest {
-        NORMAL,
-        VIEWPORT,
-    }
-
-    private var pendingTtsStartRequest: TtsStartRequest? = null
-
-    @Volatile private var ttsCurrentChunkIndex = 0
-    private var ttsResumeChunkIndex: Int = 0 // Track which chunk to resume from after pause
-    private var ttsViewportParagraphIndex: Int = 0
-    private var hasViewportStartOverride: Boolean = false
-    @Volatile private var ttsIsPreparing = false // Track TTS initialization/preparation phase
-    @Volatile private var ttsIsStarting = false // Track when speech is about to start
-    // Pre-fetched next chapter when JS scroll threshold fires during TTS auto-play.
     private var cachedNextChapterForTts: Pair<ReaderChapter, ReaderPage>? = null
-    // True while appendNextChapterIfAvailable is in flight for TTS auto-advance.
     private var pendingTtsAppend = false
+
+    private lateinit var ttsController: TtsController
 
     private data class CustomStylePayload(
         val css: String,
@@ -247,90 +222,57 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     }
 
     init {
+        ttsController = TtsController(
+            context = activity,
+            preferences = preferences,
+            scope = scope,
+            callbacks = object : TtsController.Callbacks {
+                override fun onInitialized(pendingRequest: TtsController.StartRequest?) {
+                    ttsIsStarting = true
+                    when (pendingRequest) {
+                        TtsController.StartRequest.NORMAL -> startTts()
+                        TtsController.StartRequest.VIEWPORT -> startTtsFromViewport()
+                        null -> {}
+                    }
+                }
+
+                override fun getCurrentPage(): ReaderPage? = currentPage
+
+                override fun onHighlightChunk(chunkIndex: Int, chunk: String, startOffset: Int, paragraphIndex: Int) {
+                    applyTtsHighlight(chunkIndex)
+                }
+
+                override fun onClearHighlights() {
+                    clearWebViewTtsHighlight()
+                }
+
+                override fun onLastChunkDone() {
+                    val nextAlreadyLoaded = preferences.novelInfiniteScroll.get() &&
+                        loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) != null
+                    if (nextAlreadyLoaded) {
+                        unloadReadChaptersAndStartNextTts()
+                    } else {
+                        loadNextChapterForTts(ttsController.ttsPlaybackChapterIndex)
+                    }
+                }
+
+                override fun runOnUiThread(action: () -> Unit) {
+                    activity.runOnUiThread(action)
+                }
+            },
+        )
         initWebView()
         observePreferences()
-        // Defer TTS initialization until actually needed to avoid "not bound" errors
-        // TTS will be initialized lazily when startTts() is called
     }
 
-    override fun onInit(status: Int) {
-        if (status == TextToSpeech.SUCCESS) {
-            ttsInitialized = true
-            applyTtsSettings()
-            setupTtsListener()
-            pendingTtsStartRequest?.let { request ->
-                pendingTtsStartRequest = null
-                activity.runOnUiThread {
-                    ttsIsStarting = true
-                    when (request) {
-                        TtsStartRequest.NORMAL -> startTts()
-                        TtsStartRequest.VIEWPORT -> startTtsFromViewport()
-                    }
-                }
-            }
-        } else {
-            ttsIsPreparing = false
-            logcat(LogPriority.ERROR) { "TTS initialization failed with status: $status" }
-            ttsInitialized = false
-        }
-    }
-
-    private fun setupTtsListener() {
-        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {
-                // Track which chunk is currently speaking
-                utteranceId?.removePrefix("tts_utterance_")?.toIntOrNull()?.let { chunkIndex ->
-                    ttsCurrentChunkIndex = chunkIndex
-                    // Apply highlighting to current chunk if enabled
-                    if (preferences.novelTtsEnableHighlight.get()) {
-                        activity.runOnUiThread {
-                            applyTtsHighlight(chunkIndex)
-                        }
-                    }
-                }
-            }
-
-            override fun onDone(utteranceId: String?) {
-                val finishedIndex = utteranceId?.removePrefix("tts_utterance_")?.toIntOrNull() ?: -1
-                val isLastChunk = finishedIndex >= ttsChunks.size - 1
-
-                // Check if this was the last chunk and auto-play is enabled
-                if (isLastChunk && isTtsAutoPlay && preferences.novelTtsAutoNextChapter.get()) {
-                    activity.runOnUiThread {
-                        scope.launch {
-                            if (!isTtsSpeaking()) {
-                                saveTtsProgress()
-                                val nextAlreadyLoaded = preferences.novelInfiniteScroll.get() &&
-                                    loadedChapters.getOrNull(ttsPlaybackChapterIndex + 1) != null
-                                if (nextAlreadyLoaded) {
-                                    unloadReadChaptersAndStartNextTts()
-                                } else {
-                                    loadNextChapterForTts(ttsPlaybackChapterIndex)
-                                }
-                            }
-                        }
-                    }
-                } else if (isLastChunk) {
-                    activity.runOnUiThread {
-                        clearWebViewTtsHighlight()
-                    }
-                }
-            }
-
-            @Deprecated("Deprecated in Java")
-            override fun onError(utteranceId: String?) {
-                logcat(LogPriority.ERROR) { "TTS error on utterance: $utteranceId" }
-            }
-        })
-    }
 
     /**
      * Applies visual highlighting to the chunk currently being read by TTS using JavaScript.
      */
     private fun applyTtsHighlight(chunkIndex: Int) {
-        if (chunkIndex < 0 || chunkIndex >= ttsChunks.size) return
+        if (chunkIndex < 0 || chunkIndex >= ttsController.ttsChunks.size) return
 
-        val paragraphIndex = ttsChunkParagraphIndexes.getOrElse(chunkIndex) { chunkIndex }
+        val paragraphIndex = ttsController.ttsChunkParagraphIndexes.getOrElse(chunkIndex) { chunkIndex }
         val highlightColor = String.format("#%06X", 0xFFFFFF and preferences.novelTtsHighlightColor.get())
         val highlightTextColor = String.format("#%06X", 0xFFFFFF and preferences.novelTtsHighlightTextColor.get())
         val highlightStyle = preferences.novelTtsHighlightStyle.get()
@@ -405,22 +347,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         )
     }
 
-    private fun loadNextChapterForTts(anchorChapterIndex: Int = ttsPlaybackChapterIndex) {
-        logcat(LogPriority.DEBUG) { "TTS (WebView): Auto-loading next chapter for playback ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex ttsPlaybackChapterId=$ttsPlaybackChapterId" }
+    private fun loadNextChapterForTts(anchorChapterIndex: Int = ttsController.ttsPlaybackChapterIndex) {
+        logcat(LogPriority.DEBUG) { "TTS (WebView): Auto-loading next chapter ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}" }
 
         scope.launch {
             if (preferences.novelInfiniteScroll.get()) {
-                // Fast path (next already in DOM) is handled in onDone before reaching here.
-                // appendNextChapterIfAvailable uses loadedChapters.lastOrNull() as anchor,
-                // so it works even when currentChapters.nextChapter is not yet populated.
                 pendingTtsAppend = true
                 appendNextChapterIfAvailable()
                 setPendingTtsHandoffTimeout(5000L)
             } else {
-                // Non-inf-scroll: require the reader to have the next chapter info loaded.
                 val chapters = currentChapters ?: return@launch
                 chapters.nextChapter ?: return@launch
-                pendingTtsStartRequest = TtsStartRequest.NORMAL
+                ttsController.pendingStartRequest = TtsController.StartRequest.NORMAL
                 activity.loadNextChapter()
             }
         }
@@ -433,7 +371,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
      * unreliable scroll-based viewport handoff entirely.
      */
     private fun unloadReadChaptersAndStartNextTts() {
-        val currentIdx = ttsPlaybackChapterIndex
+        val currentIdx = ttsController.ttsPlaybackChapterIndex
         val nextIdx = currentIdx + 1
         val nextChapter = loadedChapters.getOrNull(nextIdx) ?: return
         val nextChapterId = nextChapter.chapter.id ?: return
@@ -469,8 +407,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 if (loadedChapters.isNotEmpty()) loadedChapters.removeAt(0)
             }
             currentChapterIndex = 0
-            ttsPlaybackChapterIndex = 0
-            ttsPlaybackChapterId = nextChapterId
+            ttsController.ttsPlaybackChapterIndex = 0
+            ttsController.ttsPlaybackChapterId = nextChapterId
 
             nextChapter.pages?.firstOrNull()?.let { page ->
                 currentPage = page
@@ -493,12 +431,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
         pendingTtsHandoffTimeoutJob = scope.launch {
             delay(timeoutMs)
-            if (pendingTtsHandoffChapterId != null) {
+            if (pendingTtsHandoffChapterId != null || pendingTtsAppend) {
                 logcat(LogPriority.WARN) {
-                    "TTS (WebView): Handoff timeout after ${timeoutMs}ms for chapter $pendingTtsHandoffChapterId; clearing pending state and resuming playback"
+                    "TTS (WebView): Handoff timeout after ${timeoutMs}ms for chapter $pendingTtsHandoffChapterId (pendingAppend=$pendingTtsAppend); clearing pending state and resuming playback"
                 }
                 clearPendingTtsHandoff()
-                if (isTtsAutoPlay && !isTtsSpeaking()) {
+                if (ttsController.isTtsAutoPlay && !ttsController.isSpeaking()) {
                     startTts()
                 }
             }
@@ -516,37 +454,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         pendingTtsHandoffTimeoutJob = null
         pendingTtsAppend = false
         cachedNextChapterForTts = null
-    }
-
-    private fun applyTtsSettings() {
-        tts?.let { textToSpeech ->
-            // Set voice/locale
-            val voicePref = preferences.novelTtsVoice.get()
-            if (voicePref.isNotEmpty()) {
-                val voices = textToSpeech.voices
-                val selectedVoice = voices?.find { it.name == voicePref }
-                if (selectedVoice != null) {
-                    textToSpeech.voice = selectedVoice
-                } else {
-                    try {
-                        val locale = Locale.forLanguageTag(voicePref)
-                        textToSpeech.language = locale
-                    } catch (e: Exception) {
-                        textToSpeech.language = Locale.getDefault()
-                    }
-                }
-            } else {
-                textToSpeech.language = Locale.getDefault()
-            }
-
-            // Set speech rate (speed)
-            val speed = preferences.novelTtsSpeed.get()
-            textToSpeech.setSpeechRate(speed)
-
-            // Set pitch
-            val pitch = preferences.novelTtsPitch.get()
-            textToSpeech.setPitch(pitch)
-        }
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
@@ -687,12 +594,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     // Start TTS if a pending request was set by autoplay chapter transition.
                     // Guard: showLoadingIndicator() fires onPageFinished with url="about:blank";
                     // only consume the request when the real chapter content is loaded.
-                    pendingTtsStartRequest?.let { request ->
+                    ttsController.pendingStartRequest?.let { request ->
                         if (!url.isNullOrEmpty() && url != "about:blank") {
-                            pendingTtsStartRequest = null
+                            ttsController.pendingStartRequest = null
                             when (request) {
-                                TtsStartRequest.NORMAL -> startTts()
-                                TtsStartRequest.VIEWPORT -> startTtsFromViewport()
+                                TtsController.StartRequest.NORMAL -> startTts()
+                                TtsController.StartRequest.VIEWPORT -> startTtsFromViewport()
                             }
                         }
                     }
@@ -815,8 +722,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 preferences.novelTtsPitch.changes(),
             ).drop(3)
                 .collect {
-                    if (ttsInitialized) {
-                        applyTtsSettings()
+                    if (ttsController.ttsInitialized) {
+                        ttsController.applySettings()
                     }
                 }
         }
@@ -1225,25 +1132,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         // Save progress before destroying
         saveProgress()
 
-        // Cleanup TTS - only if initialized
-        if (ttsInitialized) {
-            tts?.stop()
-            tts?.shutdown()
-        }
-        tts = null
-        pendingTtsText = null
-        pendingTtsStartRequest = null
-        ttsChunks = emptyList()
-        ttsChunkParagraphIndexes = emptyList()
-        ttsCurrentParagraphs = emptyList()
-        ttsCurrentChunkIndex = 0
-        ttsResumeChunkIndex = 0
-        ttsViewportParagraphIndex = 0
-        hasViewportStartOverride = false
-        ttsPaused = false
+        ttsController.destroy()
         ttsIsPreparing = false
         ttsIsStarting = false
-        isTtsAutoPlay = false
 
         clearNovelImageCache()
 
@@ -1457,7 +1348,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
 
         // Stop TTS only when actually navigating to a genuinely new (not-yet-loaded) chapter.
-        tts?.stop()
+        ttsController.stop()
 
         // Clear previous chapters for manual navigation / initial load.
         if (!preferences.novelInfiniteScroll.get() || loadedChapterIds.isEmpty()) {
@@ -2540,7 +2431,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                     val oldIndex = currentChapterIndex
                     currentChapterIndex = chapterIndex
                     logcat(LogPriority.DEBUG) {
-                        "NovelWebViewViewer: onChapterScrollUpdate chapterIndex=$chapterIndex progress=$progress ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex (changed from $oldIndex)"
+                        "NovelWebViewViewer: onChapterScrollUpdate chapterIndex=$chapterIndex progress=$progress ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} (changed from $oldIndex)"
                     }
 
                     activity.viewModel.setNovelVisibleChapter(loadedChapters.getOrNull(chapterIndex)?.chapter)
@@ -2583,7 +2474,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         @JavascriptInterface
         fun onInfiniteScrollAppendComplete(chapterId: Long) {
             activity.runOnUiThread {
-                if (isTtsAutoPlay && pendingTtsAppend) {
+                if (ttsController.isTtsAutoPlay && pendingTtsAppend) {
                     // Next chapter is now in DOM — cancel timeout, unload current chapter,
                     // and start TTS from the beginning of the newly appended chapter.
                     pendingTtsAppend = false
@@ -2622,7 +2513,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 }
                 if (!preferences.novelInfiniteScroll.get()) {
                     activity.loadNextChapter()
-                } else if (isTtsAutoPlay) {
+                } else if (ttsController.isTtsAutoPlay) {
                     // Don't append to DOM while TTS is active — TTS drives its own appends.
                     // Instead, pre-fetch and cache the next chapter so it's ready instantly
                     // when TTS finishes the current chapter and calls appendNextChapterIfAvailable.
@@ -2843,7 +2734,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
             if (!loaded) return
 
-            logcat(LogPriority.DEBUG) { "NovelWebViewViewer: appending content for chapter $nextId ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=$ttsCurrentChunkIndex ttsResumeChunkIndex=$ttsResumeChunkIndex ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex ttsPlaybackChapterId=$ttsPlaybackChapterId" }
+            logcat(LogPriority.DEBUG) { "NovelWebViewViewer: appending content for chapter $nextId ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}" }
             displayContentImmediate(preparedChapter, page, isAppendOrPrepend = true, isPrepend = false)
             logcat(LogPriority.INFO) {
                 "NovelWebViewViewer: Successfully appended next chapter ${preparedChapter.chapter.name}"
@@ -2978,37 +2869,22 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     // TTS Methods
 
     private fun ensureTtsInitialized() {
-        if (tts == null) {
-            ttsIsPreparing = true
-            // Check if TTS data is available first
-            val intent = android.content.Intent(TextToSpeech.Engine.ACTION_CHECK_TTS_DATA)
-            try {
-                tts = TextToSpeech(activity, this)
-                logcat(LogPriority.DEBUG) { "TTS (WebView): Initialization started" }
-            } catch (e: Exception) {
-                logcat(LogPriority.ERROR) { "TTS (WebView): Failed to create TextToSpeech instance: ${e.message}" }
-                activity.runOnUiThread {
-                    logcat(LogPriority.DEBUG) {
-                        "TTS engine not available. Please install a TTS engine from Google Play."
-                    }
-                }
-            }
-        }
+        ttsIsPreparing = true
+        ttsController.ensureInitialized()
     }
 
     fun startTts() {
         ensureTtsInitialized()
 
-        if (!ttsInitialized) {
+        if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS (WebView): Not initialized yet, waiting..." }
-            pendingTtsStartRequest = TtsStartRequest.NORMAL
+            ttsController.pendingStartRequest = TtsController.StartRequest.NORMAL
             return
         }
 
-        pendingTtsStartRequest = null
-        isTtsAutoPlay = true // Enable auto-continue
+        ttsController.pendingStartRequest = null
+        ttsController.isTtsAutoPlay = true
         syncTtsPlaybackChapterContext()
-        // Extract text from WebView using JavaScript
         evaluateJavascriptSafe(
             """
             (function() {
@@ -3017,7 +2893,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             })();
             """.trimIndent(),
         ) { result ->
-            // JavaScript returns quoted string, need to unquote and unescape
             val text = result?.let {
                 if (it.startsWith("\"") && it.endsWith("\"")) {
                     it.substring(1, it.length - 1)
@@ -3032,7 +2907,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
             if (!text.isNullOrBlank() && text != "null") {
                 logcat(LogPriority.DEBUG) { "TTS (WebView): Starting to speak ${text.length} characters" }
-                speak(text)
+                ttsController.speak(text)
             } else {
                 logcat(LogPriority.WARN) { "TTS (WebView): No text to speak" }
             }
@@ -3041,40 +2916,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
 
     fun stopTts() {
         logcat(LogPriority.DEBUG) {
-            "TTS (WebView): stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=$ttsCurrentChunkIndex, ttsResumeChunkIndex=$ttsResumeChunkIndex, ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex, ttsPlaybackChapterId=$ttsPlaybackChapterId"
+            "TTS (WebView): stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}, ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex}, ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex}, ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
-        isTtsAutoPlay = false // Disable auto-continue when manually stopped
-        ttsPaused = false
-        pendingTtsStartRequest = null
-        ttsChunks = emptyList()
-        ttsChunkParagraphIndexes = emptyList()
-        ttsCurrentChunkIndex = 0
-        hasViewportStartOverride = false
-        if (ttsInitialized) {
-            tts?.stop()
-        }
-        clearWebViewTtsHighlight()
+        ttsController.stop()
         clearPendingTtsHandoff()
     }
 
     fun pauseTts() {
-        if (ttsInitialized && tts?.isSpeaking == true) {
-            ttsPaused = true
-            ttsResumeChunkIndex = ttsCurrentChunkIndex
-            logcat(LogPriority.DEBUG) {
-                "TTS (WebView): pauseTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=$ttsCurrentChunkIndex, ttsResumeChunkIndex=$ttsResumeChunkIndex, ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex, ttsPlaybackChapterId=$ttsPlaybackChapterId"
-            }
-            tts?.stop()
-            saveTtsProgress()
+        logcat(LogPriority.DEBUG) {
+            "TTS (WebView): pauseTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}, ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex}, ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex}, ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
+        ttsController.pause()
     }
 
     fun resumeTts() {
-        if (ttsPaused && ttsChunks.isNotEmpty()) {
-            ttsPaused = false
-            // Resume from the chunk that was interrupted
-            speakChunksFrom(ttsResumeChunkIndex)
-        }
+        ttsController.resume()
     }
 
     fun ttsNextParagraph() {
@@ -3086,26 +2942,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
     }
 
     private fun stepTtsParagraph(delta: Int) {
-        if (delta == 0) return
-
-        if (ttsChunks.isEmpty()) {
-            startTtsFromViewport()
-            return
-        }
-
         syncTtsPlaybackChapterContext()
-
-        val targetChunk = NovelViewerTextUtils.computeTtsStepTargetChunk(
-            delta, ttsPaused, ttsResumeChunkIndex, ttsCurrentChunkIndex, ttsChunks, ttsChunkParagraphIndexes,
-        )
-
-        ttsResumeChunkIndex = targetChunk
-        ttsCurrentChunkIndex = targetChunk
-        ttsPaused = false
-
-        tts?.stop()
-        speakChunksFrom(targetChunk)
-        saveTtsProgress()
+        ttsController.stepParagraph(delta) { startTtsFromViewport() }
     }
 
     private fun syncTtsPlaybackChapterContext() {
@@ -3113,41 +2951,35 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
             ?: currentPage?.chapter
             ?: return
 
-        ttsPlaybackChapterIndex = currentChapterIndex
-        ttsPlaybackChapterId = activeChapter.chapter.id
+        ttsController.ttsPlaybackChapterIndex = currentChapterIndex
+        ttsController.ttsPlaybackChapterId = activeChapter.chapter.id
             ?: currentPage?.chapter?.chapter?.id
     }
 
-    fun isTtsPaused(): Boolean = ttsPaused
+    fun isTtsPaused(): Boolean = ttsController.isPaused()
 
-    fun isTtsSpeaking(): Boolean = ttsInitialized && tts?.isSpeaking == true
+    fun isTtsSpeaking(): Boolean = ttsController.isSpeaking()
 
-    fun isTtsStarting(): Boolean = pendingTtsStartRequest != null || pendingTtsText != null || (!ttsInitialized && tts != null) || (ttsChunks.isEmpty() && isTtsAutoPlay)
+    fun isTtsStarting(): Boolean = ttsController.isStarting()
 
-    fun getTtsProgressPercent(): Int {
-        if (ttsChunks.isEmpty()) return 0
-        val chunkCount = ttsChunks.size
-        val currentChunk = if (ttsPaused) ttsResumeChunkIndex else ttsCurrentChunkIndex
-        val clampedChunk = currentChunk.coerceIn(0, chunkCount - 1)
-        return (((clampedChunk + 1) * 100f) / chunkCount).toInt().coerceIn(0, 100)
-    }
+    fun getTtsProgressPercent(): Int = ttsController.getProgressPercent()
 
-    /**
-     * Starts TTS from the first visible paragraph in the viewport.
-     */
+    fun getAvailableVoices(): List<Pair<String, String>> = ttsController.getAvailableVoices()
+
+    fun getCurrentVoiceName(): String = ttsController.getCurrentVoiceName()
+
     fun startTtsFromViewport() {
         ensureTtsInitialized()
 
-        if (!ttsInitialized) {
+        if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS (WebView): Not initialized yet" }
-            pendingTtsStartRequest = TtsStartRequest.VIEWPORT
+            ttsController.pendingStartRequest = TtsController.StartRequest.VIEWPORT
             return
         }
 
-        pendingTtsStartRequest = null
-        isTtsAutoPlay = true
+        ttsController.pendingStartRequest = null
+        ttsController.isTtsAutoPlay = true
         syncTtsPlaybackChapterContext()
-        // Determine first visible paragraph index in WebView, then start TTS from that position.
         evaluateJavascriptSafe(
             """
             (function() {
@@ -3193,147 +3025,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
                 }
 
                 if (!text.isNullOrBlank() && text != "null") {
-                    // Keep a forced resume index for this launch from viewport.
-                    ttsViewportParagraphIndex = firstVisibleParagraphIndex.coerceAtLeast(0)
-                    hasViewportStartOverride = true
-                    speak(text)
+                    ttsController.ttsViewportParagraphIndex = firstVisibleParagraphIndex.coerceAtLeast(0)
+                    ttsController.hasViewportStartOverride = true
+                    ttsController.speak(text)
                 } else {
                     logcat(LogPriority.WARN) { "TTS (WebView): No text available for viewport start" }
                 }
             }
         }
     }
-
-    /**
-     * Saves the current TTS playback progress to preferences.
-     */
-    private fun saveTtsProgress() {
-        logcat(LogPriority.DEBUG) {
-            "TTS (WebView): saveTtsProgress called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=$ttsCurrentChunkIndex, ttsResumeChunkIndex=$ttsResumeChunkIndex, ttsPlaybackChapterIndex=$ttsPlaybackChapterIndex, ttsPlaybackChapterId=$ttsPlaybackChapterId"
-        }
-
-        val currentChapter = currentPage
-        if (currentChapter == null || ttsCurrentChunkIndex < 0) return
-
-        val chapterId = ttsPlaybackChapterId ?: currentChapter.index.toLong()
-        val paragraphIndex = ttsCurrentChunkIndex.coerceAtLeast(0)
-
-        // Load existing progress map
-        val progressJson = preferences.novelTtsLastReadParagraph.get()
-        val progressMap = try {
-            kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(progressJson)
-                .toMutableMap()
-        } catch (e: Exception) {
-            mutableMapOf()
-        }
-
-        // Update with current chapter progress
-        progressMap[chapterId.toString()] = paragraphIndex
-
-        // Save back to preferences
-        try {
-            val json = kotlinx.serialization.json.Json.encodeToString(progressMap)
-            preferences.novelTtsLastReadParagraph.set(json)
-            logcat(LogPriority.DEBUG) { "TTS (WebView): saved progress chapter=$chapterId -> paragraph=$paragraphIndex ts=${System.currentTimeMillis()}" }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "Failed to save TTS progress: ${e.message}" }
-        }
-    }
-
-    /**
-     * Restores the last-read paragraph position for the current chapter.
-     * @return The chunk index to resume from, or 0 if no progress found.
-     */
-    private fun restoreTtsProgress(): Int {
-        val currentChapter = currentPage
-        if (currentChapter == null) return 0
-
-        val chapterId = ttsPlaybackChapterId?.toString()
-            ?: currentChapter.chapter.chapter.id?.toString()
-            ?: currentChapter.index.toString()
-        val progressJson = preferences.novelTtsLastReadParagraph.get()
-
-        return try {
-            val progressMap = kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(progressJson)
-            progressMap[chapterId]?.coerceAtLeast(0)
-                ?: progressMap[currentChapter.index.toString()]?.coerceAtLeast(0)
-                ?: 0
-        } catch (e: Exception) {
-            0
-        }
-    }
-
-    /**
-     * Speaks TTS chunks starting from a specific index.
-     */
-    private fun speakChunksFrom(startIndex: Int) {
-        if (ttsChunks.isEmpty() || startIndex >= ttsChunks.size) return
-        ttsChunks.drop(startIndex).forEachIndexed { i, chunk ->
-            val actualIndex = startIndex + i
-            val queueMode = if (i == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts?.speak(chunk, queueMode, null, "tts_utterance_$actualIndex")
-        }
-    }
-
-    private fun speak(text: String) {
-        if (!ttsInitialized || tts == null) {
-            // Store for later when TTS is initialized
-            pendingTtsText = text
-            logcat(LogPriority.WARN) { "TTS not initialized, storing text for later" }
-            return
-        }
-
-        applyTtsSettings()
-
-        pendingTtsText = null
-        ttsPaused = false
-
-        // Android TTS has a max length limit (~4000 chars), chunk long text
-        val maxLength = TextToSpeech.getMaxSpeechInputLength().takeIf { it > 0 } ?: 4000
-
-        val paragraphs = text.split("\n").filter { it.isNotBlank() }
-        val chunkParagraphIndexes = mutableListOf<Int>()
-        ttsChunks = if (paragraphs.size > 1) {
-            paragraphs.flatMapIndexed { paragraphIndex, para ->
-                val chunks = if (para.length <= maxLength) {
-                    listOf(para)
-                } else {
-                    splitTextForTts(para, maxLength)
-                }
-                repeat(chunks.size) { chunkParagraphIndexes.add(paragraphIndex) }
-                chunks
-            }
-        } else if (text.length <= maxLength) {
-            chunkParagraphIndexes.add(0)
-            listOf(text)
-        } else {
-            val chunks = splitTextForTts(text, maxLength)
-            repeat(chunks.size) { chunkParagraphIndexes.add(0) }
-            chunks
-        }
-        ttsChunkParagraphIndexes = chunkParagraphIndexes
-
-        // Extract paragraph info for highlighting support
-        ttsCurrentParagraphs = NovelViewerTextUtils.findParagraphs(text)
-
-        // Auto-play always starts from the beginning of the next chapter.
-        // Restoring saved progress during auto-play would jump to a stale position.
-        val savedChunkIndex = if (isTtsAutoPlay) 0 else restoreTtsProgress()
-        ttsCurrentChunkIndex = 0
-        val startIndex = if (hasViewportStartOverride) {
-            // If launched from viewport, convert paragraph index into nearest chunk.
-            val viewportChunkIndex = ttsChunkParagraphIndexes.indexOfFirst { it >= ttsViewportParagraphIndex }
-            if (viewportChunkIndex >= 0) viewportChunkIndex else savedChunkIndex
-        } else {
-            savedChunkIndex
-        }
-        hasViewportStartOverride = false
-
-        speakChunksFrom(startIndex.coerceIn(0, (ttsChunks.size - 1).coerceAtLeast(0)))
-    }
-
-    private fun splitTextForTts(text: String, maxLength: Int): List<String> =
-        NovelViewerTextUtils.splitTextForTts(text, maxLength)
 
     /**
      * Get the currently selected text from the WebView
