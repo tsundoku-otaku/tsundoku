@@ -2433,6 +2433,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.OnInitLis
         processedContent = processedContent.replace(Regex("<style[^>]*/>", RegexOption.IGNORE_CASE), "")
         // Strip noscript tags
         processedContent = processedContent.replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        // Strip HTML comments — render as visible text in TextView
+        processedContent = processedContent.replace(Regex("<!--.*?-->", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        // Strip entity-encoded comment markers used as ad injection points (e.g. &lt;!--bg--&gt;)
+        processedContent = processedContent.replace(Regex("&lt;!--.*?--&gt;", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
 
         if (processContent) {
             processedContent = applyRegexReplacements(processedContent)

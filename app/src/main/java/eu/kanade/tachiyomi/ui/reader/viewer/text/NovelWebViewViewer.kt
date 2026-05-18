@@ -2113,6 +2113,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer, TextToSpeech.On
         }
 
         result = result.replace(Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        // Strip HTML comments — can render as visible text in WebView
+        result = result.replace(Regex("<!--.*?-->", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+        // Strip entity-encoded comment markers used as ad injection points (e.g. &lt;!--bg--&gt;)
+        result = result.replace(Regex("&lt;!--.*?--&gt;", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
 
         if (blockMedia) {
             result = stripMediaTags(result)
