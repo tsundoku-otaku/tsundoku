@@ -1732,6 +1732,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             normalizeContentForHtml(content, chapter.chapter.url)
         }
 
+        content = applyRegexReplacements(content)
+
         // Optionally force lowercase
         if (preferences.novelForceTextLowercase.get()) {
             content = content.lowercase()
