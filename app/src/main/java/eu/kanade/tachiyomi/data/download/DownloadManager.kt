@@ -434,8 +434,8 @@ class DownloadManager(
             .firstOrNull() ?: return
 
         var newName = provider.getChapterDirName(newChapter.name, newChapter.scanlator, newChapter.url)
-        if (oldDownload.isFile && oldDownload.extension == "cbz") {
-            newName += ".cbz"
+        if (oldDownload.isFile && (oldDownload.extension == "cbz" || oldDownload.extension == "zip")) {
+            newName += ".${oldDownload.extension}"
         }
 
         if (oldDownload.name == newName) return

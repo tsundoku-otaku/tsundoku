@@ -62,7 +62,7 @@ class ChapterContentReader(
             source,
         ) ?: return null
 
-        val isCbz = chapterDirOrCbz.name?.endsWith(".cbz") == true
+        val isCbz = chapterDirOrCbz.name?.let { it.endsWith(".cbz") || it.endsWith(".zip") } == true
 
         return if (isCbz) {
             readContentFromCbz(chapterDirOrCbz)
@@ -82,7 +82,7 @@ class ChapterContentReader(
     ): String? {
         val mangaDir = downloadProvider.findMangaDir(manga.title, source) ?: return null
         val cbzFiles = mangaDir.listFiles()?.filter {
-            it.isFile && it.name?.endsWith(".cbz") == true
+            it.isFile && (it.name?.endsWith(".cbz") == true || it.name?.endsWith(".zip") == true)
         } ?: return null
 
         val validNames = downloadProvider.getValidChapterDirNames(
@@ -92,7 +92,7 @@ class ChapterContentReader(
         )
 
         val matchingCbz = cbzFiles.find { cbz ->
-            val base = cbz.name?.removeSuffix(".cbz") ?: ""
+            val base = cbz.name?.substringBeforeLast(".") ?: ""
             validNames.any { it == base }
         } ?: return null
 
