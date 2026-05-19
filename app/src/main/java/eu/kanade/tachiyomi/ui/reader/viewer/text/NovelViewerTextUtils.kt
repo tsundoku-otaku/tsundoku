@@ -145,16 +145,7 @@ object NovelViewerTextUtils {
         val normalized = text
             .replace("\r\n", "\n")
             .replace("\r", "\n")
-        // Decode any HTML entities before escaping to prevent double-encoding.
-        // Sources may return already-entity-encoded text (e.g. &lt;D&gt;); without decoding
-        // first, escapeHtml would turn & → &amp; and produce &amp;lt;D&amp;gt; which
-        // both WebView and TextView render as literal &lt;D&gt; instead of <D>.
-        val decoded = if (normalized.contains('&')) {
-            org.jsoup.parser.Parser.unescapeEntities(normalized, false)
-        } else {
-            normalized
-        }
-        val escaped = escapeHtml(decoded)
+        val escaped = escapeHtml(normalized)
         return "<pre data-tsundoku-plain-text=\"1\" style=\"white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;\">$escaped</pre>"
     }
 
@@ -402,9 +393,10 @@ object NovelViewerTextUtils {
         timeoutMs: Long,
         scope: CoroutineScope,
     ): Boolean {
-        // If already loaded and has content, don't trigger a second request.
-        if (!page.text.isNullOrBlank() && page.status is Page.State.Ready) {
-            logcat(LogPriority.DEBUG) { "$tag: page already ready, text.length=${page.text?.length ?: 0}" }
+        // If text is already present, skip loading regardless of status — loadChapter() may
+        // have populated page.text before loadPage() sets status to Ready.
+        if (!page.text.isNullOrBlank()) {
+            logcat(LogPriority.DEBUG) { "$tag: page text already available, text.length=${page.text?.length ?: 0}" }
             return true
         }
 

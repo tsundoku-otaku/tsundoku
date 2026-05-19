@@ -28,7 +28,14 @@ class LocalNovelPageLoader(
             ?: listOf(Page(0, chapter.chapter.url))
 
         return pages.mapIndexed { index, page ->
-            ReaderPage(index, page.url, page.imageUrl)
+            ReaderPage(index, page.url, page.imageUrl).also { readerPage ->
+                // If the source already populated page.text (e.g. JsSource.getPageList fetches
+                // and stores the chapter HTML), copy it so loadPage() can skip a redundant fetch.
+                if (!page.text.isNullOrBlank()) {
+                    readerPage.text = page.text
+                    readerPage.status = Page.State.Ready
+                }
+            }
         }
     }
 

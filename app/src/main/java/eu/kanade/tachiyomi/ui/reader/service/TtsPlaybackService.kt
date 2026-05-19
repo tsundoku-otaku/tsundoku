@@ -151,25 +151,25 @@ class TtsPlaybackService : Service() {
             setProgress(100, progressPercent, false)
 
             addAction(
-                android.R.drawable.ic_media_previous,
+                R.drawable.ic_skip_previous_24dp,
                 "Previous",
                 prevParagraphIntent,
             )
 
             addAction(
-                if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
+                if (isPaused) R.drawable.ic_play_arrow_24dp else R.drawable.ic_pause_24dp,
                 if (isPaused) "Resume" else "Pause",
                 toggleIntent,
             )
 
             addAction(
-                android.R.drawable.ic_media_next,
+                R.drawable.ic_skip_next_24dp,
                 "Next",
                 nextParagraphIntent,
             )
 
             addAction(
-                android.R.drawable.ic_menu_close_clear_cancel,
+                R.drawable.ic_close_24dp,
                 "Stop",
                 stopIntent,
             )

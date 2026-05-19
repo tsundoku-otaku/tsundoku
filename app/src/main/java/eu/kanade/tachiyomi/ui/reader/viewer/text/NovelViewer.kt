@@ -1465,8 +1465,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
         syncCurrentChapterIndexWithCurrentPage()
-        ttsController.ttsPlaybackChapterIndex = currentChapterIndex
-        ttsController.ttsPlaybackChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
         val text = loadedChapters.getOrNull(currentChapterIndex)?.textView?.text?.toString()
             ?: loadedChapters.firstOrNull()?.textView?.text?.toString()
         if (text.isNullOrEmpty()) {
@@ -1474,7 +1472,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             return
         }
         logcat(LogPriority.DEBUG) { "TTS: Starting to speak ${text.length} characters" }
-        ttsController.speak(text)
+        ttsController.speak(
+            text,
+            chapterIndex = currentChapterIndex,
+            chapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id,
+        )
     }
 
     fun stopTts() {
@@ -1517,8 +1519,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
         syncCurrentChapterIndexWithCurrentPage()
-        ttsController.ttsPlaybackChapterIndex = currentChapterIndex
-        ttsController.ttsPlaybackChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
         val text = loadedChapters.getOrNull(currentChapterIndex)?.textView?.text?.toString()
             ?: loadedChapters.firstOrNull()?.textView?.text?.toString()
         if (text.isNullOrEmpty()) {
@@ -1529,7 +1529,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         logcat(LogPriority.DEBUG) { "TTS: Starting from viewport paragraph $firstVisibleParagraphIndex" }
         ttsController.ttsViewportParagraphIndex = firstVisibleParagraphIndex.coerceAtLeast(0)
         ttsController.hasViewportStartOverride = true
-        ttsController.speak(text)
+        ttsController.speak(
+            text,
+            chapterIndex = currentChapterIndex,
+            chapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id,
+        )
     }
 
     /**

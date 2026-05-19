@@ -48,7 +48,9 @@ class TtsController(
         private set
 
     var ttsPlaybackChapterIndex: Int = 0
+        private set
     var ttsPlaybackChapterId: Long? = null
+        private set
 
     @Volatile var ttsCurrentChunkIndex = 0
     var ttsResumeChunkIndex: Int = 0
@@ -105,7 +107,7 @@ class TtsController(
                 if (isLastChunk && isTtsAutoPlay && preferences.novelTtsAutoNextChapter.get()) {
                     callbacks.runOnUiThread {
                         scope.launch {
-                            delay(500)
+                            delay(LAST_CHUNK_DONE_DELAY_MS)
                             if (!isSpeaking()) {
                                 callbacks.onLastChunkDone()
                             }
@@ -125,11 +127,13 @@ class TtsController(
         })
     }
 
-    fun speak(text: String) {
+    fun speak(text: String, chapterIndex: Int = 0, chapterId: Long? = null) {
         if (!ttsInitialized || tts == null) {
             logcat(LogPriority.WARN) { "TTS not initialized, cannot speak" }
             return
         }
+        ttsPlaybackChapterIndex = chapterIndex
+        ttsPlaybackChapterId = chapterId
         applySettings()
         ttsPaused = false
 
@@ -167,13 +171,12 @@ class TtsController(
 
         ttsCurrentParagraphs = NovelViewerTextUtils.findParagraphs(text)
 
-        val savedChunkIndex = 0
         ttsCurrentChunkIndex = 0
         val startIndex = if (hasViewportStartOverride) {
             ttsChunkParagraphIndexes.indexOfFirst { it >= ttsViewportParagraphIndex }
-                .takeIf { it >= 0 } ?: savedChunkIndex
+                .takeIf { it >= 0 } ?: 0
         } else {
-            savedChunkIndex
+            0
         }
         hasViewportStartOverride = false
 
@@ -217,7 +220,7 @@ class TtsController(
         if (ttsInitialized) tts?.stop()
         ttsPlaybackChapterIndex = 0
         ttsPlaybackChapterId = null
-        callbacks.onClearHighlights()
+        callbacks.runOnUiThread { callbacks.onClearHighlights() }
     }
 
     fun stepParagraph(delta: Int, onEmpty: () -> Unit) {
@@ -286,8 +289,13 @@ class TtsController(
 
     fun destroy() {
         tts?.stop()
+        callbacks.runOnUiThread { callbacks.onClearHighlights() }
         tts?.shutdown()
         tts = null
         ttsInitialized = false
+    }
+
+    companion object {
+        private const val LAST_CHUNK_DONE_DELAY_MS = 500L
     }
 }
