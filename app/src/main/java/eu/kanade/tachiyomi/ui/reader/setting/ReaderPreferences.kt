@@ -309,10 +309,6 @@ class ReaderPreferences(
     // Use source's original fonts (don't force a specific font family)
     val novelUseOriginalFonts: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_use_original_fonts", false)
 
-    // Chapter sort order for novel reader: "source" = use source order, "chapter_number" = sort by chapter number
-    // Default is "source" since many novel sources don't provide proper chapter numbers
-    val novelChapterSortOrder: Preference<String> = preferenceStore.getString("pref_novel_chapter_sort_order", "source")
-
     // Keep screen on while reading
     val novelKeepScreenOn: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_keep_screen_on", false)
 
@@ -349,6 +345,8 @@ class ReaderPreferences(
     val novelTtsEnableHighlight: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_enable_highlight", true)
     val novelTtsKeepHighlightInView: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_keep_highlight_in_view", true)
     val novelTtsBackgroundPlayback: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_background_playback", false)
+    val novelTtsControlsVisible: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_controls_visible", false)
+    val novelTtsAutoStartOnPanelOpen: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tts_auto_start_on_panel_open", false)
 
     val novelBottomBarItems: Preference<String> = preferenceStore.getString(
         "novel_bottom_bar_items",

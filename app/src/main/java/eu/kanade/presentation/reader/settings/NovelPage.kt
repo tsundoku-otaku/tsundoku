@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,14 +26,15 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.FormatAlignCenter
 import androidx.compose.material.icons.outlined.FormatAlignJustify
-import androidx.compose.material.icons.outlined.FormatAlignLeft
-import androidx.compose.material.icons.outlined.FormatAlignRight
+import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
+import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
@@ -66,22 +65,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.data.font.FontManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
-import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.core.common.preference.Preference
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.CheckboxItem
-import tachiyomi.presentation.core.components.HeadingItem
 import tachiyomi.presentation.core.components.InlineSettingsChipRow
 import tachiyomi.presentation.core.components.RadioSelectItem
 import tachiyomi.presentation.core.components.SettingsChipRow
@@ -129,9 +124,9 @@ private val systemFonts = listOf(
 )
 
 private val textAlignments = listOf(
-    Icons.Outlined.FormatAlignLeft to "left",
+    Icons.AutoMirrored.Outlined.FormatAlignLeft to "left",
     Icons.Outlined.FormatAlignCenter to "center",
-    Icons.Outlined.FormatAlignRight to "right",
+    Icons.AutoMirrored.Outlined.FormatAlignRight to "right",
     Icons.Outlined.FormatAlignJustify to "justify",
 )
 
@@ -186,7 +181,7 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
 
     // Rendering Mode
     InlineSettingsChipRow(TDMR.strings.pref_novel_rendering_mode) {
-        renderingModes.map { (labelRes, value) ->
+        renderingModes.forEach { (labelRes, value) ->
             FilterChip(
                 selected = renderingMode == value,
                 onClick = { screenModel.preferences.novelRenderingMode.set(value) },
@@ -235,11 +230,13 @@ internal fun ColumnScope.NovelReadingTab(screenModel: ReaderSettingsScreenModel,
         valueRange = 10..40,
     )
 
-    // Line Height
+    // Line Height — 1..50 / 10 = 0.1x..5.0x. Below ~0.5x both TextView and
+    // WebView collapse lines so they overlap (text becomes unreadable but
+    // not crashy). Negative not exposed (pref is Int-backed via multiplier).
     StepperItem(
         label = stringResource(TDMR.strings.pref_novel_line_height),
         pref = screenModel.preferences.novelLineHeight,
-        valueRange = 10..30,
+        valueRange = 1..50,
         multiplier = 10,
     )
 
@@ -305,8 +302,6 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
     val theme by screenModel.preferences.novelTheme.collectAsState()
     val fontColor by screenModel.preferences.novelFontColor.collectAsState()
     val backgroundColor by screenModel.preferences.novelBackgroundColor.collectAsState()
-    val fontFamily by screenModel.preferences.novelFontFamily.collectAsState()
-    val fontSize by screenModel.preferences.novelFontSize.collectAsState()
     var showFontColorPicker by remember { mutableStateOf(false) }
     var showBgColorPicker by remember { mutableStateOf(false) }
 
@@ -338,7 +333,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
 
     // Theme
     SettingsChipRow(TDMR.strings.pref_novel_theme) {
-        novelThemes.map { (labelRes, value) ->
+        novelThemes.forEach { (labelRes, value) ->
             FilterChip(
                 selected = theme == value,
                 onClick = { screenModel.preferences.novelTheme.set(value) },
@@ -349,7 +344,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
 
     // Font Color
     SettingsChipRow(TDMR.strings.pref_novel_font_color) {
-        fontColors.map { (labelRes, colorValue) ->
+        fontColors.forEach { (labelRes, colorValue) ->
             val isCustom = colorValue == Int.MIN_VALUE
             val isSelected = if (isCustom) {
                 fontColors.none { it.second == fontColor } && fontColor != 0
@@ -408,7 +403,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
 
     // Background Color
     SettingsChipRow(TDMR.strings.pref_novel_background_color) {
-        backgroundColors.map { (labelRes, colorValue) ->
+        backgroundColors.forEach { (labelRes, colorValue) ->
             val isCustom = colorValue == Int.MIN_VALUE
             val isSelected = if (isCustom) {
                 backgroundColors.none { it.second == backgroundColor } && backgroundColor != 0
@@ -488,7 +483,7 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
         stringResource(TDMR.strings.novel_chapter_display_both) to 2,
     )
     InlineSettingsChipRow(TDMR.strings.pref_novel_chapter_title_display) {
-        titleDisplayOptions.map { (label, value) ->
+        titleDisplayOptions.forEach { (label, value) ->
             FilterChip(
                 selected = chapterTitleDisplay == value,
                 onClick = { screenModel.preferences.novelChapterTitleDisplay.set(value) },
@@ -539,7 +534,6 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
 @Composable
 internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel, renderingMode: String) {
     val autoScrollSpeed by screenModel.preferences.novelAutoScrollSpeed.collectAsState()
-    val chapterSortOrder by screenModel.preferences.novelChapterSortOrder.collectAsState()
 
     // Auto Scroll Speed
     SliderItem(
@@ -675,7 +669,7 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
             stringResource(TDMR.strings.novel_vertical_progress_slider_full) to "full",
         )
         InlineSettingsChipRow(TDMR.strings.pref_novel_vertical_progress_slider_size) {
-            verticalSizeOptions.map { (label, value) ->
+            verticalSizeOptions.forEach { (label, value) ->
                 FilterChip(
                     selected = verticalProgressSliderSize == value,
                     onClick = { screenModel.preferences.novelVerticalProgressSliderSize.set(value) },
@@ -711,21 +705,6 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
                 valueRange = 1..99,
                 valueString = "$effectiveAutoLoadAt%",
                 onChange = { screenModel.preferences.novelAutoLoadNextChapterAt.set(it) },
-            )
-        }
-    }
-
-    // Chapter Sort Order
-    val sortOrderOptions = listOf(
-        stringResource(TDMR.strings.novel_sort_source) to "source",
-        stringResource(TDMR.strings.novel_sort_chapter) to "chapter_number",
-    )
-    InlineSettingsChipRow(TDMR.strings.pref_novel_chapter_sort_order) {
-        sortOrderOptions.map { (label, value) ->
-            FilterChip(
-                selected = chapterSortOrder == value,
-                onClick = { screenModel.preferences.novelChapterSortOrder.set(value) },
-                label = { Text(label) },
             )
         }
     }
@@ -1462,7 +1441,6 @@ internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
     val ttsHighlightStyle by screenModel.preferences.novelTtsHighlightStyle.collectAsState()
     val ttsHighlightColor by screenModel.preferences.novelTtsHighlightColor.collectAsState()
     val ttsHighlightTextColor by screenModel.preferences.novelTtsHighlightTextColor.collectAsState()
-    val ttsKeepHighlightInView by screenModel.preferences.novelTtsKeepHighlightInView.collectAsState()
     var showHighlightBgColorPicker by remember { mutableStateOf(false) }
     var showHighlightTextColorPicker by remember { mutableStateOf(false) }
 
@@ -1492,13 +1470,11 @@ internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
 
     // Load available voices using TTS
     val availableVoices = remember { mutableStateListOf<Pair<String, String>>() }
-    var ttsReady by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         var tts: TextToSpeech? = null
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                ttsReady = true
                 val voices = tts?.voices ?: emptySet()
                 availableVoices.clear()
                 availableVoices.add("" to context.stringResource(TDMR.strings.novel_tts_default_voice))
@@ -1511,7 +1487,7 @@ internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
             }
         }
         onDispose {
-            tts?.shutdown()
+            tts.shutdown()
         }
     }
 
@@ -1547,7 +1523,7 @@ internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
                     modifier = Modifier
-                        .menuAnchor()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                         .fillMaxWidth(),
                 )
                 ExposedDropdownMenu(
@@ -1675,6 +1651,11 @@ internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
     }
 
     CheckboxItem(
+        label = "Auto-start TTS when opening controls panel",
+        pref = screenModel.preferences.novelTtsAutoStartOnPanelOpen,
+    )
+
+    CheckboxItem(
         label = "Keep TTS running in background",
         pref = screenModel.preferences.novelTtsBackgroundPlayback,
     )
@@ -1742,8 +1723,9 @@ private fun ColorPickerDialog(
                 Slider(
                     value = red.toFloat(),
                     onValueChange = {
-                        red = it.toInt()
-                        hexInput = String.format("%06X", currentColor and 0xFFFFFF)
+                        val newRed = it.toInt()
+                        red = newRed
+                        hexInput = String.format("%06X", ((0xFF shl 24) or (newRed shl 16) or (green shl 8) or blue) and 0xFFFFFF)
                     },
                     valueRange = 0f..255f,
                     modifier = Modifier.fillMaxWidth(),
@@ -1754,8 +1736,9 @@ private fun ColorPickerDialog(
                 Slider(
                     value = green.toFloat(),
                     onValueChange = {
-                        green = it.toInt()
-                        hexInput = String.format("%06X", currentColor and 0xFFFFFF)
+                        val newGreen = it.toInt()
+                        green = newGreen
+                        hexInput = String.format("%06X", ((0xFF shl 24) or (red shl 16) or (newGreen shl 8) or blue) and 0xFFFFFF)
                     },
                     valueRange = 0f..255f,
                     modifier = Modifier.fillMaxWidth(),
@@ -1766,8 +1749,9 @@ private fun ColorPickerDialog(
                 Slider(
                     value = blue.toFloat(),
                     onValueChange = {
-                        blue = it.toInt()
-                        hexInput = String.format("%06X", currentColor and 0xFFFFFF)
+                        val newBlue = it.toInt()
+                        blue = newBlue
+                        hexInput = String.format("%06X", ((0xFF shl 24) or (red shl 16) or (green shl 8) or newBlue) and 0xFFFFFF)
                     },
                     valueRange = 0f..255f,
                     modifier = Modifier.fillMaxWidth(),

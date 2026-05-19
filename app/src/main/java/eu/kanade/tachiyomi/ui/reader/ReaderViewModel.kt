@@ -44,8 +44,8 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
-import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelViewer
-import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelWebViewViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.text.textview.NovelViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewViewer
 import eu.kanade.tachiyomi.util.chapter.filterDownloaded
 import eu.kanade.tachiyomi.util.chapter.removeDuplicates
 import eu.kanade.tachiyomi.util.editCover

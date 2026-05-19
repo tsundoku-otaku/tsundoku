@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.ui.reader.viewer.text
+package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
@@ -30,7 +30,7 @@ object NovelMarkdownUtils {
 
         return buildString {
             append("<h1>")
-            append(escapeHtml(frontmatterTitle))
+            append(HtmlUtils.escapeHtml(frontmatterTitle))
             append("</h1>\n")
             append(renderedBody)
         }.trim()
@@ -68,23 +68,11 @@ object NovelMarkdownUtils {
     }
 
     private fun simpleFallbackHtml(markdown: String): String {
-        val escaped = escapeHtml(markdown).trim()
+        val escaped = HtmlUtils.escapeHtml(markdown).trim()
         if (escaped.isEmpty()) return ""
 
-        return escaped
-            .lines()
-            .joinToString(separator = "<br />\n") { line ->
-                if (line.isBlank()) "" else "<p>$line</p>"
-            }
-            .ifBlank { "<p>$escaped</p>" }
+        val paragraphs = escaped.lines().filter { it.isNotBlank() }.joinToString("\n") { "<p>$it</p>" }
+        return paragraphs.ifBlank { "<p>$escaped</p>" }
     }
 
-    private fun escapeHtml(text: String): String {
-        return text
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&#39;")
-    }
 }

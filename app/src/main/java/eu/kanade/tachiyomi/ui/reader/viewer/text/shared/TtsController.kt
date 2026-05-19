@@ -1,4 +1,4 @@
-package eu.kanade.tachiyomi.ui.reader.viewer.text
+package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
@@ -44,7 +44,7 @@ class TtsController(
         private set
     var ttsChunkStartOffsets: List<Int> = emptyList()
         private set
-    var ttsCurrentParagraphs: List<NovelViewerTextUtils.ParagraphInfo> = emptyList()
+    var ttsCurrentParagraphs: List<TtsTextUtils.ParagraphInfo> = emptyList()
         private set
 
     var ttsPlaybackChapterIndex: Int = 0
@@ -53,7 +53,7 @@ class TtsController(
         private set
 
     @Volatile var ttsCurrentChunkIndex = 0
-    var ttsResumeChunkIndex: Int = 0
+    @Volatile var ttsResumeChunkIndex: Int = 0
     var ttsViewportParagraphIndex: Int = 0
     var hasViewportStartOverride: Boolean = false
     var pendingStartRequest: StartRequest? = null
@@ -144,7 +144,7 @@ class TtsController(
         val chunks = if (paragraphs.size > 1) {
             paragraphs.flatMapIndexed { paragraphIndex, para ->
                 val c = if (para.length <= maxLength) listOf(para)
-                        else NovelViewerTextUtils.splitTextForTts(para, maxLength)
+                        else TtsTextUtils.splitTextForTts(para, maxLength)
                 repeat(c.size) { chunkParagraphIndexes.add(paragraphIndex) }
                 c
             }
@@ -152,7 +152,7 @@ class TtsController(
             chunkParagraphIndexes.add(0)
             listOf(text)
         } else {
-            val c = NovelViewerTextUtils.splitTextForTts(text, maxLength)
+            val c = TtsTextUtils.splitTextForTts(text, maxLength)
             repeat(c.size) { chunkParagraphIndexes.add(0) }
             c
         }
@@ -169,7 +169,7 @@ class TtsController(
         }
         ttsChunkStartOffsets = offsets
 
-        ttsCurrentParagraphs = NovelViewerTextUtils.findParagraphs(text)
+        ttsCurrentParagraphs = TtsTextUtils.findParagraphs(text)
 
         ttsCurrentChunkIndex = 0
         val startIndex = if (hasViewportStartOverride) {
@@ -227,7 +227,7 @@ class TtsController(
         if (delta == 0) return
         if (ttsChunks.isEmpty()) { onEmpty(); return }
 
-        val target = NovelViewerTextUtils.computeTtsStepTargetChunk(
+        val target = TtsTextUtils.computeTtsStepTargetChunk(
             delta, ttsPaused, ttsResumeChunkIndex, ttsCurrentChunkIndex, ttsChunks, ttsChunkParagraphIndexes,
         )
         ttsResumeChunkIndex = target

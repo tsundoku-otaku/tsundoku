@@ -1,17 +1,17 @@
-package eu.kanade.tachiyomi.ui.reader.viewer.text
+package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-class NovelViewerTtsUtilsTest {
+class TtsTextUtilsTest {
 
     // ── splitTextForTts ──────────────────────────────────────────────────────
 
     @Test
     fun `splitTextForTts returns single chunk when text fits within maxLength`() {
         val text = "Short sentence."
-        val chunks = NovelViewerTextUtils.splitTextForTts(text, 100)
+        val chunks = TtsTextUtils.splitTextForTts(text, 100)
         assertEquals(listOf("Short sentence."), chunks)
     }
 
@@ -20,7 +20,7 @@ class NovelViewerTtsUtilsTest {
         val sentence1 = "This is the first sentence."
         val sentence2 = "This is the second sentence which makes the combined text too long for the limit."
         val text = "$sentence1 $sentence2"
-        val chunks = NovelViewerTextUtils.splitTextForTts(text, sentence1.length + 5)
+        val chunks = TtsTextUtils.splitTextForTts(text, sentence1.length + 5)
         // First chunk should end at the sentence boundary (after the period).
         assertTrue(chunks.first().endsWith("."), "Expected first chunk to end at sentence boundary")
         assertTrue(chunks.size >= 2)
@@ -34,7 +34,7 @@ class NovelViewerTtsUtilsTest {
     fun `splitTextForTts splits at word boundary when no sentence end found in first half`() {
         // 30 chars, no sentence ender in first 15 chars, but has a space
         val text = "abcdefghij klmnopqrstuvwxyzabcde"
-        val chunks = NovelViewerTextUtils.splitTextForTts(text, 15)
+        val chunks = TtsTextUtils.splitTextForTts(text, 15)
         // The break should land at the space (index 10), not mid-word.
         assertTrue(chunks.first().trim().isNotEmpty())
         chunks.forEach { chunk -> assertTrue(chunk.isNotEmpty()) }
@@ -44,7 +44,7 @@ class NovelViewerTtsUtilsTest {
     @Test
     fun `splitTextForTts handles text exactly at maxLength`() {
         val text = "x".repeat(100)
-        val chunks = NovelViewerTextUtils.splitTextForTts(text, 100)
+        val chunks = TtsTextUtils.splitTextForTts(text, 100)
         assertEquals(1, chunks.size)
         assertEquals(text, chunks[0])
     }
@@ -53,7 +53,7 @@ class NovelViewerTtsUtilsTest {
     fun `splitTextForTts produces chunks all within maxLength`() {
         val text = "Word ".repeat(200).trim() // 1000 chars
         val maxLen = 50
-        val chunks = NovelViewerTextUtils.splitTextForTts(text, maxLen)
+        val chunks = TtsTextUtils.splitTextForTts(text, maxLen)
         assertTrue(chunks.isNotEmpty())
         chunks.forEach { chunk ->
             assertTrue(chunk.length <= maxLen, "Chunk exceeded maxLength: '${chunk.take(60)}…'")
@@ -62,8 +62,22 @@ class NovelViewerTtsUtilsTest {
 
     @Test
     fun `splitTextForTts empty string returns empty list`() {
-        val chunks = NovelViewerTextUtils.splitTextForTts("", 100)
+        val chunks = TtsTextUtils.splitTextForTts("", 100)
         assertTrue(chunks.isEmpty() || chunks == listOf(""))
+    }
+
+    @Test
+    fun `splitTextForTts respects maxLength when text has no spaces`() {
+        // A long URL or CJK string with no spaces must still be capped at maxLength,
+        // not returned as one oversized chunk.
+        val text = "a".repeat(300)
+        val maxLen = 100
+        val chunks = TtsTextUtils.splitTextForTts(text, maxLen)
+        assertTrue(chunks.isNotEmpty())
+        chunks.forEach { chunk ->
+            assertTrue(chunk.length <= maxLen, "Chunk exceeded maxLength: length=${chunk.length}")
+        }
+        assertEquals(text, chunks.joinToString(""))
     }
 
     // ── computeTtsStepTargetChunk ────────────────────────────────────────────
@@ -75,7 +89,7 @@ class NovelViewerTtsUtilsTest {
         paragraphIndexes: List<Int>,
         paused: Boolean = false,
         resumeChunk: Int = 0,
-    ) = NovelViewerTextUtils.computeTtsStepTargetChunk(
+    ) = TtsTextUtils.computeTtsStepTargetChunk(
         delta = delta,
         ttsPaused = paused,
         ttsResumeChunkIndex = resumeChunk,
@@ -168,5 +182,79 @@ class NovelViewerTtsUtilsTest {
         val result = step(0, 1, threeParaChunks, threeParaIndexes)
         val resultParagraph = threeParaIndexes[result]
         assertEquals(threeParaIndexes[1], resultParagraph)
+    }
+
+    // ── findParagraphs ───────────────────────────────────────────────────────
+
+    @Test
+    fun `findParagraphs splits plain text on double newlines`() {
+        val text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
+        val result = TtsTextUtils.findParagraphs(text)
+        assertEquals(3, result.size)
+        assertEquals("First paragraph.", result[0].text)
+        assertEquals("Second paragraph.", result[1].text)
+        assertEquals("Third paragraph.", result[2].text)
+    }
+
+    @Test
+    fun `findParagraphs assigns sequential indexes`() {
+        val text = "Para one.\n\nPara two.\n\nPara three."
+        val result = TtsTextUtils.findParagraphs(text)
+        result.forEachIndexed { i, p -> assertEquals(i, p.index) }
+    }
+
+    @Test
+    fun `findParagraphs returns empty list for blank input`() {
+        val result = TtsTextUtils.findParagraphs("   \n\n  ")
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `findParagraphs extracts paragraphs from html p tags`() {
+        val html = "<p>Hello world</p><p>Second para</p>"
+        val result = TtsTextUtils.findParagraphs(html)
+        assertEquals(2, result.size)
+        assertTrue(result[0].text.contains("Hello"))
+        assertTrue(result[1].text.contains("Second"))
+    }
+
+    @Test
+    fun `findParagraphs startChar and endChar are within text bounds`() {
+        val text = "Alpha.\n\nBeta."
+        val result = TtsTextUtils.findParagraphs(text)
+        for (p in result) {
+            assertTrue(p.startChar >= 0)
+            assertTrue(p.endChar <= text.length)
+            assertTrue(p.startChar < p.endChar)
+        }
+    }
+
+    // ── getChunkIndexFromOffset ──────────────────────────────────────────────
+
+    @Test
+    fun `getChunkIndexFromOffset returns 0 for empty chunk list`() {
+        assertEquals(0, TtsTextUtils.getChunkIndexFromOffset(5, emptyList()))
+    }
+
+    @Test
+    fun `getChunkIndexFromOffset returns 0 for offset in first chunk`() {
+        val chunks = listOf("hello", "world", "!")
+        assertEquals(0, TtsTextUtils.getChunkIndexFromOffset(0, chunks))
+        assertEquals(0, TtsTextUtils.getChunkIndexFromOffset(4, chunks))
+    }
+
+    @Test
+    fun `getChunkIndexFromOffset returns correct index at chunk boundary`() {
+        val chunks = listOf("hello", "world", "!")
+        // "hello" = 5 chars, offset 5 = start of "world"
+        assertEquals(1, TtsTextUtils.getChunkIndexFromOffset(5, chunks))
+        // "helloworld" = 10 chars, offset 10 = start of "!"
+        assertEquals(2, TtsTextUtils.getChunkIndexFromOffset(10, chunks))
+    }
+
+    @Test
+    fun `getChunkIndexFromOffset returns 0 when offset past end`() {
+        val chunks = listOf("abc")
+        assertEquals(0, TtsTextUtils.getChunkIndexFromOffset(999, chunks))
     }
 }

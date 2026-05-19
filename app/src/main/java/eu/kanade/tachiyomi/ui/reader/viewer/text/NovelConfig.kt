@@ -10,6 +10,9 @@ import eu.kanade.tachiyomi.ui.reader.viewer.navigation.LNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.RightAndLeftNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.CenterNavigation
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -18,12 +21,26 @@ class NovelConfig(
     readerPreferences: ReaderPreferences = Injekt.get(),
 ) : ViewerConfig(readerPreferences, scope) {
 
+    // Tracks whether updateNavigation has been called at least once. The
+    // navigationModeNovel Preference fires its onChanged lambda on the initial
+    // flow emit during construction, which would otherwise trigger the
+    // tap-zone preview every time the reader opens. We only invoke the
+    // listener on subsequent emits — i.e. real user nav-mode changes.
+    private var initialNavigationConsumed = false
+
     init {
         readerPreferences.navigationModeNovel
             .register({ navigationMode = it }, { updateNavigation(navigationMode) })
 
         readerPreferences.novelNavInverted
             .register({ tappingInverted = it }, { navigator.invertMode = it })
+        // Surface the preview overlay when the user flips the invert option
+        // — mirrors the pager/webtoon configs so the novel reader behaves
+        // consistently with the manga reader.
+        readerPreferences.novelNavInverted.changes()
+            .drop(1)
+            .onEach { navigationModeChangedListener?.invoke() }
+            .launchIn(scope)
     }
 
     override var navigator: ViewerNavigation = defaultNavigation()
@@ -46,6 +63,10 @@ class NovelConfig(
             ReaderPreferences.TAPZONE_DISABLED_INDEX -> DisabledNavigation()
             else -> defaultNavigation()
         }
-        navigationModeChangedListener?.invoke()
+        if (initialNavigationConsumed) {
+            navigationModeChangedListener?.invoke()
+        } else {
+            initialNavigationConsumed = true
+        }
     }
 }

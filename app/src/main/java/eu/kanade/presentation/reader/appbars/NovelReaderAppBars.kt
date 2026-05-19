@@ -141,6 +141,8 @@ fun NovelReaderAppBars(
     onRetranslate: (() -> Unit)? = null,
     isTtsActive: Boolean,
     isTtsPaused: Boolean,
+    ttsControlsVisible: Boolean,
+    onToggleTtsControls: () -> Unit,
     onToggleTts: () -> Unit,
     onLongPressTts: () -> Unit,
     onTtsStartFromViewport: () -> Unit = {},
@@ -184,8 +186,6 @@ fun NovelReaderAppBars(
                     onReloadSource = onReloadSource,
                     onEditBottomBar = onEditBottomBar,
                     onRetranslate = onRetranslate,
-                    onTtsPreviousParagraph = onTtsPreviousParagraph,
-                    onTtsNextParagraph = onTtsNextParagraph,
                 )
             }
 
@@ -215,6 +215,20 @@ fun NovelReaderAppBars(
                         currentProgress = currentProgress,
                         onProgressChange = onProgressChange,
                         backgroundColor = backgroundColor,
+                    )
+                }
+
+                if (ttsControlsVisible) {
+                    NovelTtsControlsOverlay(
+                        isTtsActive = isTtsActive,
+                        isTtsPaused = isTtsPaused,
+                        onPauseResume = onToggleTts,
+                        onPrevParagraph = onTtsPreviousParagraph,
+                        onNextParagraph = onTtsNextParagraph,
+                        onStartFromViewport = onTtsStartFromViewport,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = MaterialTheme.padding.small),
                     )
                 }
             }
@@ -262,15 +276,12 @@ fun NovelReaderAppBars(
                         onToggleTranslation = onToggleTranslation,
                         onLongPressTranslation = onLongPressTranslation,
                         isTtsActive = isTtsActive,
-                        isTtsPaused = isTtsPaused,
-                        onToggleTts = onToggleTts,
+                        ttsControlsVisible = ttsControlsVisible,
+                        onToggleTtsControls = onToggleTtsControls,
                         onLongPressTts = onLongPressTts,
-                        onTtsStartFromViewport = onTtsStartFromViewport,
                         isEditing = isEditing,
                         isWebView = isWebView,
                         onToggleEdit = onToggleEdit,
-                        onTtsPreviousParagraph = onTtsPreviousParagraph,
-                        onTtsNextParagraph = onTtsNextParagraph,
                         onQuotes = onQuotes,
                     )
                 }
@@ -294,8 +305,6 @@ private fun NovelReaderTopBar(
     onReloadSource: () -> Unit,
     onEditBottomBar: () -> Unit,
     onRetranslate: (() -> Unit)? = null,
-    onTtsPreviousParagraph: () -> Unit = {},
-    onTtsNextParagraph: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     AppBar(
@@ -400,12 +409,9 @@ private fun NovelReaderBottomBar(
     onToggleTranslation: () -> Unit,
     onLongPressTranslation: () -> Unit,
     isTtsActive: Boolean,
-    isTtsPaused: Boolean,
-    onToggleTts: () -> Unit,
+    ttsControlsVisible: Boolean,
+    onToggleTtsControls: () -> Unit,
     onLongPressTts: () -> Unit,
-    onTtsStartFromViewport: () -> Unit = {},
-    onTtsPreviousParagraph: () -> Unit = {},
-    onTtsNextParagraph: () -> Unit = {},
     isEditing: Boolean,
     isWebView: Boolean,
     onToggleEdit: () -> Unit,
@@ -508,29 +514,25 @@ private fun NovelReaderBottomBar(
                         )
                     }
 
-                    // TTS toggle - tap to play/pause, long press to stop
+                    // TTS toggle - tap to show/hide controls overlay, long press to stop
                     BottomBarItem.TTS -> androidx.compose.material3.Surface(
                         modifier = Modifier
                             .size(buttonSize)
                             .padding(paddingSize),
                         shape = MaterialTheme.shapes.small,
-                        color = if (isTtsActive) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        color = if (ttsControlsVisible) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                     ) {
                         Box(
                             modifier = Modifier.combinedClickable(
-                                onClick = onToggleTts,
+                                onClick = onToggleTtsControls,
                                 onLongClick = onLongPressTts,
                             ),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                imageVector = when {
-                                    isTtsActive && !isTtsPaused -> Icons.Outlined.Pause
-                                    isTtsActive && isTtsPaused -> Icons.Outlined.PlayArrow
-                                    else -> Icons.Outlined.RecordVoiceOver
-                                },
+                                imageVector = if (ttsControlsVisible) Icons.Outlined.VolumeUp else Icons.Outlined.RecordVoiceOver,
                                 contentDescription = stringResource(TDMR.strings.pref_novel_tts),
-                                tint = if (isTtsActive) {
+                                tint = if (ttsControlsVisible) {
                                     MaterialTheme.colorScheme.onPrimaryContainer
                                 } else {
                                     MaterialTheme.colorScheme.onSurface
@@ -540,41 +542,10 @@ private fun NovelReaderBottomBar(
                         }
                     }
 
-                    // TTS previous paragraph
-                    BottomBarItem.TTS_PREV_PARAGRAPH -> IconButton(
-                        onClick = onTtsPreviousParagraph,
-                        modifier = Modifier.size(buttonSize),
-                    ) {
-                        Icon(
-                            Icons.Outlined.FastRewind,
-                            contentDescription = stringResource(TDMR.strings.tts_prev_paragraph),
-                            modifier = Modifier.size(iconSize),
-                        )
-                    }
-
-                    // TTS next paragraph
-                    BottomBarItem.TTS_NEXT_PARAGRAPH -> IconButton(
-                        onClick = onTtsNextParagraph,
-                        modifier = Modifier.size(buttonSize),
-                    ) {
-                        Icon(
-                            Icons.Outlined.FastForward,
-                            contentDescription = stringResource(TDMR.strings.tts_next_paragraph),
-                            modifier = Modifier.size(iconSize),
-                        )
-                    }
-
-                    // TTS from viewport - start reading from first visible paragraph
-                    BottomBarItem.TTS_VIEWPORT -> IconButton(
-                        onClick = onTtsStartFromViewport,
-                        modifier = Modifier.size(buttonSize),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Visibility,
-                            contentDescription = "Start TTS Here",
-                            modifier = Modifier.size(iconSize),
-                        )
-                    }
+                    // Legacy items kept in enum for serialization compat — no longer rendered
+                    BottomBarItem.TTS_PREV_PARAGRAPH,
+                    BottomBarItem.TTS_NEXT_PARAGRAPH,
+                    BottomBarItem.TTS_VIEWPORT -> Unit
 
                     // Orientation
                     BottomBarItem.ORIENTATION -> IconButton(
@@ -632,6 +603,55 @@ private fun NovelReaderBottomBar(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NovelTtsControlsOverlay(
+    isTtsActive: Boolean,
+    isTtsPaused: Boolean,
+    onPauseResume: () -> Unit,
+    onPrevParagraph: () -> Unit,
+    onNextParagraph: () -> Unit,
+    onStartFromViewport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onStartFromViewport) {
+            Icon(
+                Icons.Outlined.Visibility,
+                contentDescription = "Read from here",
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        IconButton(onClick = onPrevParagraph) {
+            Icon(
+                Icons.Outlined.FastRewind,
+                contentDescription = stringResource(TDMR.strings.tts_prev_paragraph),
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        IconButton(onClick = onPauseResume) {
+            Icon(
+                imageVector = if (isTtsActive && !isTtsPaused) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                contentDescription = stringResource(TDMR.strings.pref_novel_tts),
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        IconButton(onClick = onNextParagraph) {
+            Icon(
+                Icons.Outlined.FastForward,
+                contentDescription = stringResource(TDMR.strings.tts_next_paragraph),
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }

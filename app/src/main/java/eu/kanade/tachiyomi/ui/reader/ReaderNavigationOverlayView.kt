@@ -23,11 +23,10 @@ class ReaderNavigationOverlayView(context: Context, attributeSet: AttributeSet) 
     private var navigation: ViewerNavigation? = null
 
     fun setNavigation(navigation: ViewerNavigation, showOnStart: Boolean) {
-        val firstLaunch = this.navigation == null
         this.navigation = navigation
         invalidate()
 
-        if (isVisible || (!showOnStart && firstLaunch) || navigation is DisabledNavigation) {
+        if (!showOnStart || isVisible || navigation is DisabledNavigation) {
             return
         }
 

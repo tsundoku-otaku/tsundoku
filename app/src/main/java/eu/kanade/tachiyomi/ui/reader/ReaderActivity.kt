@@ -63,7 +63,7 @@ import eu.kanade.presentation.reader.ReaderPageIndicator
 import eu.kanade.presentation.reader.ReadingModeSelectDialog
 import eu.kanade.presentation.reader.TranslationLanguageSelectDialog
 import eu.kanade.presentation.reader.appbars.BottomBarEditorSheet
-import eu.kanade.presentation.reader.appbars.DefaultBottomBarItems
+import eu.kanade.presentation.reader.appbars.BottomBarItem
 import eu.kanade.presentation.reader.appbars.NovelReaderAppBars
 import eu.kanade.presentation.reader.appbars.QuotesSheet
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
@@ -85,20 +85,20 @@ import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Success
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
-import eu.kanade.tachiyomi.ui.reader.quote.Quote
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
-import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelViewer
-import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelWebViewViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.text.textview.NovelViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
 import eu.kanade.tachiyomi.util.view.setComposeContent
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -174,6 +174,17 @@ class ReaderActivity : BaseActivity() {
 
     var isScrollingThroughPages = false
         private set
+
+    /**
+     * Has the tap-zone preview overlay been shown at least once in this
+     * activity instance? Set to `true` after the first viewer construction
+     * shows the overlay; subsequent viewer constructions (e.g. switching the
+     * novel rendering mode between TextView and WebView mid-session) check
+     * this flag and skip the on-start auto-display.
+     *
+     * Per-activity-instance — automatically reset on `onCreate`.
+     */
+    var tapZonesShownInSession = false
 
     // Quotes functionality
     private var showQuotesSheet by mutableStateOf(false)
@@ -654,6 +665,7 @@ class ReaderActivity : BaseActivity() {
 
             var isTtsActive by remember { mutableStateOf(false) }
             var isTtsPaused by remember { mutableStateOf(false) }
+            var ttsControlsVisible by remember { mutableStateOf(readerPreferences.novelTtsControlsVisible.get()) }
             LaunchedEffect(state.menuVisible) {
                 if (state.menuVisible) {
                     val viewer = state.viewer
@@ -800,7 +812,56 @@ class ReaderActivity : BaseActivity() {
                 onRetranslate = if (state.isTranslating) viewModel::retranslateCurrentChapter else null,
                 isTtsActive = isTtsActive,
                 isTtsPaused = isTtsPaused,
+                ttsControlsVisible = ttsControlsVisible,
+                onToggleTtsControls = {
+                    val nowVisible = !ttsControlsVisible
+                    ttsControlsVisible = nowVisible
+                    readerPreferences.novelTtsControlsVisible.set(nowVisible)
+                    val viewer = state.viewer
+                    if (nowVisible) {
+                        // Show panel → optionally start TTS if pref enabled and not already running
+                        if (!isTtsActive && readerPreferences.novelTtsAutoStartOnPanelOpen.get()) {
+                            when (viewer) {
+                                is NovelViewer -> {
+                                    startBackgroundTtsIfEnabled()
+                                    viewer.startTts()
+                                    isTtsActive = true
+                                    isTtsPaused = false
+                                    syncBackgroundTtsState()
+                                }
+                                is NovelWebViewViewer -> {
+                                    startBackgroundTtsIfEnabled()
+                                    viewer.startTts()
+                                    isTtsActive = true
+                                    isTtsPaused = false
+                                    syncBackgroundTtsState()
+                                }
+                                else -> {}
+                            }
+                        }
+                    } else {
+                        // Hide panel → stop TTS
+                        when (viewer) {
+                            is NovelViewer -> {
+                                stopBackgroundTtsIfRunning()
+                                viewer.stopTts()
+                                isTtsActive = false
+                                isTtsPaused = false
+                                stopTtsNotificationSync()
+                            }
+                            is NovelWebViewViewer -> {
+                                stopBackgroundTtsIfRunning()
+                                viewer.stopTts()
+                                isTtsActive = false
+                                isTtsPaused = false
+                                stopTtsNotificationSync()
+                            }
+                            else -> {}
+                        }
+                    }
+                },
                 onToggleTts = {
+                    // Pause/resume — used by the TTS controls overlay
                     val viewer = state.viewer
                     when (viewer) {
                         is NovelViewer -> {
@@ -812,13 +873,14 @@ class ReaderActivity : BaseActivity() {
                                 viewer.resumeTts()
                                 isTtsPaused = false
                                 startBackgroundTtsIfEnabled()
+                                syncBackgroundTtsState()
                             } else {
                                 startBackgroundTtsIfEnabled()
                                 viewer.startTts()
                                 isTtsActive = true
                                 isTtsPaused = false
+                                syncBackgroundTtsState()
                             }
-                            syncBackgroundTtsState()
                         }
                         is NovelWebViewViewer -> {
                             if (viewer.isTtsSpeaking()) {
@@ -829,17 +891,20 @@ class ReaderActivity : BaseActivity() {
                                 viewer.resumeTts()
                                 isTtsPaused = false
                                 startBackgroundTtsIfEnabled()
+                                syncBackgroundTtsState()
                             } else {
                                 startBackgroundTtsIfEnabled()
                                 viewer.startTts()
                                 isTtsActive = true
                                 isTtsPaused = false
+                                syncBackgroundTtsState()
                             }
-                            syncBackgroundTtsState()
                         }
+                        else -> {}
                     }
                 },
                 onLongPressTts = {
+                    // Force stop without hiding panel
                     val viewer = state.viewer
                     when (viewer) {
                         is NovelViewer -> {
@@ -952,8 +1017,13 @@ class ReaderActivity : BaseActivity() {
             }
 
             if (showBottomBarEditor) {
+                val legacyTtsItems = setOf(
+                    BottomBarItem.TTS_PREV_PARAGRAPH,
+                    BottomBarItem.TTS_NEXT_PARAGRAPH,
+                    BottomBarItem.TTS_VIEWPORT,
+                )
                 BottomBarEditorSheet(
-                    items = bottomBarItems,
+                    items = bottomBarItems.filter { it.item !in legacyTtsItems },
                     onItemsChange = { viewModel.saveBottomBarItems(it) },
                     onDismiss = { showBottomBarEditor = false },
                     itemInfo = { item ->
@@ -1100,32 +1170,27 @@ class ReaderActivity : BaseActivity() {
         val chapterId = readerState.currentChapter?.chapter?.id ?: -1L
 
         return when (val viewer = viewModel.state.value.viewer) {
-            is NovelViewer -> {
-                val paused = viewer.isTtsPaused()
-                val speaking = viewer.isTtsSpeaking()
-                NovelTtsState(
-                    active = paused || speaking || viewer.isTtsStarting(),
-                    paused = paused,
-                    progressPercent = viewer.getTtsProgressPercent(),
-                    novelTitle = novelTitle,
-                    chapterTitle = chapterTitle,
-                    mangaId = mangaId,
-                    chapterId = chapterId,
-                )
-            }
-            is NovelWebViewViewer -> {
-                val paused = viewer.isTtsPaused()
-                val speaking = viewer.isTtsSpeaking()
-                NovelTtsState(
-                    active = paused || speaking || viewer.isTtsStarting(),
-                    paused = paused,
-                    progressPercent = viewer.getTtsProgressPercent(),
-                    novelTitle = novelTitle,
-                    chapterTitle = chapterTitle,
-                    mangaId = mangaId,
-                    chapterId = chapterId,
-                )
-            }
+            is NovelViewer -> NovelTtsState(
+                // Use isTtsActive() (covers the autoPlay flag) so the brief
+                // gap inside stepParagraph (stop → speakChunksFrom) doesn't
+                // make the periodic sync drop the foreground service.
+                active = viewer.isTtsActive(),
+                paused = viewer.isTtsPaused(),
+                progressPercent = viewer.getTtsProgressPercent(),
+                novelTitle = novelTitle,
+                chapterTitle = chapterTitle,
+                mangaId = mangaId,
+                chapterId = chapterId,
+            )
+            is NovelWebViewViewer -> NovelTtsState(
+                active = viewer.isTtsActive(),
+                paused = viewer.isTtsPaused(),
+                progressPercent = viewer.getTtsProgressPercent(),
+                novelTitle = novelTitle,
+                chapterTitle = chapterTitle,
+                mangaId = mangaId,
+                chapterId = chapterId,
+            )
             else -> null
         }
     }
@@ -1290,10 +1355,8 @@ class ReaderActivity : BaseActivity() {
      * [show]. This is only used when the next/previous buttons on the toolbar are clicked; the
      * other cases are handled with chapter transitions on the viewers and chapter preloading.
      */
+    @Suppress("UNUSED_PARAMETER")
     private fun setProgressDialog(show: Boolean) {
-        if (show) {
-        } else {
-        }
     }
 
     /**
@@ -1312,6 +1375,7 @@ class ReaderActivity : BaseActivity() {
      * should be automatically shown.
      */
     internal fun loadNextChapter() {
+        stopNovelTtsForManualNav()
         lifecycleScope.launch {
             viewModel.loadNextChapter()
             // Only reset to page 0 if NOT using infinite scroll for novel viewers
@@ -1329,6 +1393,7 @@ class ReaderActivity : BaseActivity() {
      * should be automatically shown.
      */
     internal fun loadPreviousChapter() {
+        stopNovelTtsForManualNav()
         lifecycleScope.launch {
             viewModel.loadPreviousChapter()
             // Only reset to page 0 if NOT using infinite scroll for novel viewers
@@ -1338,6 +1403,20 @@ class ReaderActivity : BaseActivity() {
             if (!(isNovelViewer && infiniteScrollEnabled)) {
                 moveToPageIndex(0)
             }
+        }
+    }
+
+    /**
+     * Stops any in-flight TTS session before a user-driven prev/next chapter
+     * navigation. TTS-internal handoffs (auto-advance) go through
+     * `loadNextChapterForTts` instead of this code path, so it's safe to
+     * unconditionally cut TTS here without disturbing automatic advancement.
+     */
+    private fun stopNovelTtsForManualNav() {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.stopTts()
+            is NovelWebViewViewer -> viewer.stopTts()
+            else -> {}
         }
     }
 
@@ -1362,7 +1441,7 @@ class ReaderActivity : BaseActivity() {
      * Updates the progress slider in real-time.
      */
     fun onNovelProgressChanged(progress: Float) {
-        val percentage = (progress * 100).toInt().coerceIn(0, 100)
+        val percentage = (progress * 100).roundToInt().coerceIn(0, 100)
         viewModel.updateNovelProgressPercent(percentage)
     }
 

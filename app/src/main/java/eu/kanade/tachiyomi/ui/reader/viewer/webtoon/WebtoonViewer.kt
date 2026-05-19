@@ -158,7 +158,9 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
         }
 
         config.navigationModeChangedListener = {
-            val showOnStart = config.navigationOverlayOnStart || config.forceNavigationOverlay
+            val requestShow = config.navigationOverlayOnStart || config.forceNavigationOverlay
+            val showOnStart = requestShow && !activity.tapZonesShownInSession
+            if (showOnStart) activity.tapZonesShownInSession = true
             activity.binding.navigationOverlay.setNavigation(config.navigator, showOnStart)
         }
 
@@ -215,7 +217,7 @@ class WebtoonViewer(val activity: ReaderActivity, val isContinuous: Boolean = tr
         if (inPreloadRange && allowPreload && page.chapter == adapter.currentChapter) {
             logcat { "Request preload next chapter because we're at page ${page.number} of ${pages.size}" }
             val nextItem = adapter.items.getOrNull(adapter.items.size - 1)
-            val transitionChapter = (nextItem as? ChapterTransition.Next)?.to ?: (nextItem as?ReaderPage)?.chapter
+            val transitionChapter = (nextItem as? ChapterTransition.Next)?.to ?: (nextItem as? ReaderPage)?.chapter
             if (transitionChapter != null) {
                 logcat { "Requesting to preload chapter ${transitionChapter.chapter.chapter_number}" }
                 activity.requestPreloadChapter(transitionChapter)

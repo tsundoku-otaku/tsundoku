@@ -367,8 +367,6 @@
     <string name="novel_color_charcoal">Charcoal</string>
     <string name="novel_chapter_display_number">Number</string>
     <string name="novel_chapter_display_both">Both</string>
-    <string name="novel_sort_source">Source order</string>
-    <string name="novel_sort_chapter">Chapter number</string>
     <string name="novel_auto_split">Auto-split long chapters</string>
     <string name="novel_split_word_count">Split word count (×50)</string>
     <string name="novel_force_lowercase">Force text to lowercase</string>
@@ -487,7 +485,6 @@
     <string name="tts_prev_paragraph">Previous paragraph</string>
     <string name="tts_next_paragraph">Next paragraph</string>
     <string name="pref_novel_infinite_scroll">Infinite scroll (auto-load next chapter)</string>
-    <string name="pref_novel_chapter_sort_order">Chapter order</string>
     <string name="pref_novel_progress_slider">Show progress slider</string>
     <string name="pref_novel_scrollbar_mode">Progress slider</string>
     <string name="novel_scrollbar_none">None</string>
@@ -807,4 +804,8 @@
     <string name="quotes_add_title">Add Quote</string>
     <string name="quotes_content_label">Quote content</string>
     <string name="quotes_copy">Copy</string>
+    <string name="novel_chapter_loading">Loading…</string>
+    <string name="novel_chapter_translating">Translating…</string>
+    <string name="novel_chapter_next">Next Chapter →</string>
+    <string name="novel_chapter_error">Error loading chapter: %s</string>
 </resources>
