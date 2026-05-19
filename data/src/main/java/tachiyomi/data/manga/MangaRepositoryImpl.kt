@@ -1069,9 +1069,7 @@ class MangaRepositoryImpl(
             mangasQueries.findDuplicatesByUrl { url, source, ids, count ->
                 DuplicateGroup(
                     normalizedTitle = url, // Using URL as the group key
-                    ids =
-                    ids?.let { idString -> idString.split(",").mapNotNull { id -> id.toLongOrNull() } }
-                        ?: emptyList(),
+                    ids = ids.split(",").mapNotNull { id -> id.toLongOrNull() },
                     count = count.toInt(),
                 )
             }

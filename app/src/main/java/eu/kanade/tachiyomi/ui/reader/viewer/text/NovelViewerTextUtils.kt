@@ -302,6 +302,9 @@ object NovelViewerTextUtils {
                 val lastSpace = remaining.substring(0, maxLength).lastIndexOf(' ')
                 if (lastSpace > maxLength / 2) {
                     breakPoint = lastSpace + 1
+                } else if (remaining.indexOf(' ') == -1) {
+                    // No spaces anywhere — output entire remaining to avoid mid-word split
+                    breakPoint = remaining.length
                 }
             }
 
