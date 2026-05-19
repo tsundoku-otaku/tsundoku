@@ -87,11 +87,11 @@ object NovelViewerTextUtils {
     fun normalizeContentForHtml(content: String, chapterUrl: String?): String {
         val normalized = content.replace("\u0000", "")
         if (isPlainTextChapter(chapterUrl)) {
-            logcat(LogPriority.DEBUG) { "normalizeContentForHtml: PLAIN_TEXT (forced by extension) url=$chapterUrl" }
+            logcat(LogPriority.DEBUG) { "normalizeContentForHtml: PLAIN_TEXT (forced by extension)" }
             return plainTextToHtml(normalized)
         }
         val kind = detectTextKind(chapterUrl, normalized)
-        logcat(LogPriority.DEBUG) { "normalizeContentForHtml: $kind url=$chapterUrl len=${normalized.length}" }
+        logcat(LogPriority.DEBUG) { "normalizeContentForHtml: $kind len=${normalized.length}" }
         return when (kind) {
             ChapterTextKind.HTML -> normalized
             ChapterTextKind.MARKDOWN -> markdownToHtml(stripFrontMatter(normalized))
