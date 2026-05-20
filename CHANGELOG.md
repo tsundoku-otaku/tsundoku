@@ -30,6 +30,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Make JS scripts regardless of inf scroll [@mrissaoussama](https://github.com/mrissaoussama) [#220](https://github.com/tsundoku-otaku/tsundoku/pull/220)
 - Properly remove TTS notification when stopped, more TTS states [@mrissaoussama](https://github.com/mrissaoussama) [#217](https://github.com/tsundoku-otaku/tsundoku/pull/217)
 - Manga mass import URL with JS plugins [@mrissaoussama](https://github.com/mrissaoussama) [#197](https://github.com/tsundoku-otaku/tsundoku/pull/197)
+- Correctly recognize .zip archives [@mrissaoussama](https://github.com/mrissaoussama) [#226](https://github.com/tsundoku-otaku/tsundoku/pull/226)
 - Make Grid items better respect max lines limits in library [@mrissaoussama](https://github.com/mrissaoussama) [#216](https://github.com/tsundoku-otaku/tsundoku/pull/216)
 - Fix HTML vs plain text detection [@mrissaoussama](https://github.com/mrissaoussama) [#223](https://github.com/tsundoku-otaku/tsundoku/pull/223)
 
