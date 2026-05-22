@@ -8,6 +8,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.text.Html
 import android.text.Spannable
+import android.text.SpannableStringBuilder
 import android.text.style.ImageSpan
 import android.util.Base64
 import android.widget.TextView
@@ -202,6 +203,9 @@ internal class CoilImageGetter(
     private fun fitToWidthAndInvalidate(drawable: Drawable, wrapper: DrawableWrapper) {
         fitToWidth(drawable, wrapper)
         // Remove and re-add the span so StaticLayout/DynamicLayout recomputes line heights.
+        // PrecomputedText forbids MetricAffectingSpan (ImageSpan) removal — promote to a
+        // mutable SpannableStringBuilder copy on first occurrence. Subsequent images find
+        // the text already mutable and use the normal path.
         val text = textView.text
         if (text is Spannable) {
             val spans = text.getSpans(0, text.length, ImageSpan::class.java)
@@ -210,8 +214,17 @@ internal class CoilImageGetter(
                 val start = text.getSpanStart(span)
                 val end = text.getSpanEnd(span)
                 val flags = text.getSpanFlags(span)
-                text.removeSpan(span)
-                text.setSpan(span, start, end, flags)
+                try {
+                    text.removeSpan(span)
+                    text.setSpan(span, start, end, flags)
+                } catch (_: IllegalArgumentException) {
+                    val mutable = SpannableStringBuilder(text)
+                    mutable.removeSpan(span)
+                    mutable.setSpan(span, start, end, flags)
+                    textView.text = mutable
+                    // setText triggers relayout; skip the explicit requestLayout below.
+                    return
+                }
             }
         }
         textView.invalidate()
