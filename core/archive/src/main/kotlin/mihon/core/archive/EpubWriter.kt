@@ -1,5 +1,6 @@
 package mihon.core.archive
 
+import org.jsoup.Jsoup
 import java.io.File
 import java.io.OutputStream
 import java.util.UUID
@@ -8,21 +9,30 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * EPUB writer for creating EPUB 3.0 files.
- * Creates a valid EPUB with proper structure: mimetype, META-INF/container.xml, content.opf, nav.xhtml, and chapter HTML files.
+ * EPUB writer for creating EPUB 3.0 files (with EPUB 2 compatibility).
+ * Creates a valid EPUB with: mimetype, META-INF/container.xml, content.opf, nav.xhtml, chapter HTML files,
+ * and optionally embedded chapter images.
  *
  * @param deflateLevel Deflate compression level (0-9). 0 = no compression (stored), 9 = max compression.
  *                     Default is [java.util.zip.Deflater.DEFAULT_COMPRESSION] (-1).
- *                     The `mimetype` entry is ALWAYS stored uncompressed per the EPUB spec, regardless of this setting.
+ *                     The `mimetype` entry is ALWAYS stored uncompressed per the EPUB spec.
  */
 class EpubWriter(
     private val deflateLevel: Int = java.util.zip.Deflater.DEFAULT_COMPRESSION,
 ) {
 
+    data class EmbeddedImage(
+        val id: String,
+        val bytes: ByteArray,
+        val mimeType: String,
+        val extension: String,
+    )
+
     data class Chapter(
         val title: String,
         val content: String,
         val order: Int = 0,
+        val images: List<EmbeddedImage> = emptyList(),
     )
 
     data class Metadata(
@@ -35,14 +45,6 @@ class EpubWriter(
         val publisher: String? = null,
     )
 
-    /**
-     * Write an EPUB file to the given output stream.
-     *
-     * @param outputStream The output stream to write to
-     * @param metadata The book metadata
-     * @param chapters The chapters to include
-     * @param coverImage Optional cover image bytes
-     */
     fun write(
         outputStream: OutputStream,
         metadata: Metadata,
@@ -51,30 +53,32 @@ class EpubWriter(
     ) {
         val bookId = UUID.randomUUID().toString()
 
-        ZipOutputStream(outputStream).use { zip ->
-            // Set the compression level for all entries except mimetype
-            zip.setLevel(deflateLevel)
-            // mimetype must be first entry and stored uncompressed
-            writeMimetype(zip)
+        val (coverMimeType, coverExtension) = if (coverImage != null) detectImageType(coverImage) else "image/jpeg" to "jpg"
+        val coverFileName = "cover.$coverExtension"
 
-            // META-INF/container.xml
+        ZipOutputStream(outputStream).use { zip ->
+            zip.setLevel(deflateLevel)
+            writeMimetype(zip)
             writeContainerXml(zip)
 
-            // Cover image (if provided)
             if (coverImage != null) {
-                writeEntry(zip, "OEBPS/images/cover.jpg", coverImage)
+                writeEntry(zip, "OEBPS/images/$coverFileName", coverImage)
             }
 
-            // Chapter files
+            chapters.forEachIndexed { chIdx, chapter ->
+                val chapterPrefix = chapterFilePrefix(chIdx)
+                chapter.images.forEach { img ->
+                    val epubFileName = chapterImageFileName(chapterPrefix, img)
+                    writeEntry(zip, "OEBPS/images/$epubFileName", img.bytes)
+                }
+            }
+
             chapters.forEachIndexed { index, chapter ->
                 writeChapter(zip, index, chapter)
             }
 
-            // Navigation document (EPUB 3)
             writeNavDocument(zip, chapters)
-
-            // Package document (content.opf)
-            writePackageDocument(zip, metadata, chapters, coverImage != null, bookId)
+            writePackageDocument(zip, metadata, chapters, coverImage != null, bookId, coverFileName, coverMimeType)
         }
     }
 
@@ -102,8 +106,8 @@ class EpubWriter(
     }
 
     private fun writeChapter(zip: ZipOutputStream, index: Int, chapter: Chapter) {
-        val safeContent = chapter.content
-            .replace("&(?!amp;|lt;|gt;|quot;|apos;|#\\d+;|#x[0-9a-fA-F]+;)".toRegex(), "&amp;")
+        val chapterPrefix = chapterFilePrefix(index)
+        val bodyContent = rewriteChapterHtml(chapter.content, chapterPrefix, chapter.images)
 
         val content = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
@@ -116,21 +120,83 @@ class EpubWriter(
         h1, h2, h3 { font-family: sans-serif; }
         p { margin: 0.5em 0; text-indent: 1em; }
         .chapter-title { text-align: center; margin-bottom: 2em; }
+        img { max-width: 100%; height: auto; }
     </style>
 </head>
 <body>
     <h1 class="chapter-title">${escapeXml(chapter.title)}</h1>
     <div class="chapter-content">
-        $safeContent
+        $bodyContent
     </div>
 </body>
 </html>"""
-        writeEntry(zip, "OEBPS/chapter${index.toString().padStart(4, '0')}.xhtml", content)
+        writeEntry(zip, "OEBPS/$chapterPrefix.xhtml", content)
+    }
+
+    /**
+     * Rewrites [content] HTML for EPUB embedding:
+     * - Replaces tsundoku-novel-image:// src attributes with relative EPUB image paths.
+     * - Removes orphan tsundoku-novel-image:// img elements (image not in [images]).
+     * - Strips <source> children from <picture>, keeping only the <img> fallback.
+     * - Removes <picture> elements that have no usable <img> fallback.
+     */
+    private fun rewriteChapterHtml(content: String, chapterPrefix: String, images: List<EmbeddedImage>): String {
+        val hasTsundokuPaths = content.contains("tsundoku-novel-image://")
+        val hasPictures = content.contains("<picture")
+        if (images.isEmpty() && !hasTsundokuPaths && !hasPictures) return content
+
+        val imageMap = images.associate { img ->
+            "tsundoku-novel-image://${img.id}" to "images/${chapterImageFileName(chapterPrefix, img)}"
+        }
+
+        val doc = Jsoup.parseBodyFragment(content)
+
+        // Process <picture> elements: strip <source> elements, unwrap to bare <img>
+        doc.select("picture").forEach { picture ->
+            val existingImg = picture.selectFirst("img")
+            val img = existingImg ?: run {
+                // Build an img from the first <source> that has a usable src/srcset
+                val source = picture.selectFirst("source")
+                val src = source?.attr("srcset")
+                    ?.split(",")?.firstOrNull()?.trim()?.split(" ")?.firstOrNull()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: source?.attr("src")?.takeIf { it.isNotBlank() }
+                if (src != null) {
+                    val newImg = doc.createElement("img")
+                    newImg.attr("src", src)
+                    val altText = source?.attr("alt")?.ifBlank { picture.attr("alt") }
+                    if (!altText.isNullOrBlank()) newImg.attr("alt", altText)
+                    newImg
+                } else null
+            }
+
+            if (img != null) {
+                picture.select("source").remove()
+                picture.replaceWith(img)
+            } else {
+                picture.remove()
+            }
+        }
+
+        // Replace / remove tsundoku-novel-image:// src attributes
+        doc.select("img[src]").forEach { imgEl ->
+            val src = imgEl.attr("src")
+            if (src.startsWith("tsundoku-novel-image://")) {
+                val mapped = imageMap[src]
+                if (mapped != null) {
+                    imgEl.attr("src", mapped)
+                } else {
+                    imgEl.remove()
+                }
+            }
+        }
+
+        return doc.body().html()
     }
 
     private fun writeNavDocument(zip: ZipOutputStream, chapters: List<Chapter>) {
         val tocItems = chapters.mapIndexed { index, chapter ->
-            val filename = "chapter${index.toString().padStart(4, '0')}.xhtml"
+            val filename = "${chapterFilePrefix(index)}.xhtml"
             """            <li><a href="$filename">${escapeXml(chapter.title)}</a></li>"""
         }.joinToString("\n")
 
@@ -159,29 +225,37 @@ $tocItems
         chapters: List<Chapter>,
         hasCover: Boolean,
         bookId: String,
+        coverFileName: String,
+        coverMimeType: String,
     ) {
         val manifestItems = buildString {
-            appendLine(
-                """        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>""",
-            )
+            appendLine("""        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>""")
             if (hasCover) {
-                appendLine(
-                    """        <item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>""",
-                )
+                appendLine("""        <item id="cover-image" href="images/$coverFileName" media-type="$coverMimeType" properties="cover-image"/>""")
             }
-            chapters.forEachIndexed { index, _ ->
-                val id = "chapter${index.toString().padStart(4, '0')}"
-                appendLine("""        <item id="$id" href="$id.xhtml" media-type="application/xhtml+xml"/>""")
+            chapters.forEachIndexed { chIdx, chapter ->
+                val prefix = chapterFilePrefix(chIdx)
+                appendLine("""        <item id="$prefix" href="$prefix.xhtml" media-type="application/xhtml+xml"/>""")
+                chapter.images.forEach { img ->
+                    val epubFileName = chapterImageFileName(prefix, img)
+                    val manifestId = "$prefix-img-${img.id.replace('.', '-').replace('_', '-')}"
+                    appendLine("""        <item id="$manifestId" href="images/$epubFileName" media-type="${img.mimeType}"/>""")
+                }
             }
         }.trimEnd()
 
         val spineItems = chapters.mapIndexed { index, _ ->
-            val id = "chapter${index.toString().padStart(4, '0')}"
-            """        <itemref idref="$id"/>"""
+            """        <itemref idref="${chapterFilePrefix(index)}"/>"""
         }.joinToString("\n")
 
         val genresMetadata = metadata.genres.joinToString("\n") { genre ->
             """        <dc:subject>${escapeXml(genre)}</dc:subject>"""
+        }
+
+        val epub2CoverMeta = if (hasCover) {
+            """        <meta name="cover" content="cover-image"/>"""
+        } else {
+            ""
         }
 
         val content = """<?xml version="1.0" encoding="UTF-8"?>
@@ -194,6 +268,7 @@ ${metadata.author?.let { """        <dc:creator>${escapeXml(it)}</dc:creator>"""
 ${metadata.description?.let { """        <dc:description>${escapeXml(it)}</dc:description>""" } ?: ""}
 ${metadata.publisher?.let { """        <dc:publisher>${escapeXml(it)}</dc:publisher>""" } ?: ""}
 $genresMetadata
+$epub2CoverMeta
         <meta property="dcterms:modified">${java.time.Instant.now().toString().substringBefore('.') + "Z"}</meta>
     </metadata>
     <manifest>
@@ -228,7 +303,38 @@ $spineItems
             .replace("'", "&apos;")
     }
 
+    private fun chapterFilePrefix(index: Int) = "chapter${index.toString().padStart(4, '0')}"
+
+    private fun chapterImageFileName(chapterPrefix: String, img: EmbeddedImage): String {
+        val baseName = img.id.substringBeforeLast(".", img.id)
+        return "${chapterPrefix}_${baseName}.${img.extension}"
+    }
+
     companion object {
+        /**
+         * Detects image MIME type and extension from magic bytes.
+         * Returns Pair(mimeType, extension).
+         */
+        fun detectImageType(bytes: ByteArray): Pair<String, String> {
+            if (bytes.size < 4) return "image/jpeg" to "jpg"
+            return when {
+                bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() ->
+                    "image/jpeg" to "jpg"
+                bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte() &&
+                    bytes[2] == 0x4E.toByte() && bytes[3] == 0x47.toByte() ->
+                    "image/png" to "png"
+                bytes.size >= 12 &&
+                    bytes[0] == 0x52.toByte() && bytes[1] == 0x49.toByte() &&
+                    bytes[2] == 0x46.toByte() && bytes[3] == 0x46.toByte() &&
+                    bytes[8] == 0x57.toByte() && bytes[9] == 0x45.toByte() &&
+                    bytes[10] == 0x42.toByte() && bytes[11] == 0x50.toByte() ->
+                    "image/webp" to "webp"
+                bytes[0] == 0x47.toByte() && bytes[1] == 0x49.toByte() && bytes[2] == 0x46.toByte() ->
+                    "image/gif" to "gif"
+                else -> "image/jpeg" to "jpg"
+            }
+        }
+
         /**
          * Convenience method to write EPUB to a file.
          */

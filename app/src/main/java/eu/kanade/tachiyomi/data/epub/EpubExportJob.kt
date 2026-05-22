@@ -9,6 +9,9 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import eu.kanade.tachiyomi.data.download.ChapterContentReader
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.notification.Notifications
@@ -34,6 +37,7 @@ import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
@@ -62,6 +66,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
     private val networkHelper: NetworkHelper = Injekt.get()
     private val translatedChapterRepository: TranslatedChapterRepository = Injekt.get()
     private val downloadPreferences: DownloadPreferences = Injekt.get()
+    private val novelDownloadPreferences: NovelDownloadPreferences = Injekt.get()
     private val localNovelFileSystem: LocalNovelSourceFileSystem = Injekt.get()
 
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_EPUB_EXPORT) {
@@ -251,6 +256,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
 
                             // Original content
                             var originalContent: String? = null
+                            var originalImages: Map<String, ByteArray> = emptyMap()
                             if (translationMode != TranslationMode.TRANSLATED && isDownloaded) {
                                 originalContent = if (localContext != null) {
                                     readLocalEpubContentForExport(
@@ -261,6 +267,11 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                                         ?: readOriginalContent(manga, chapter, source)
                                 } else {
                                     readOriginalContent(manga, chapter, source)
+                                }
+                                if (!isLocalSource && originalContent != null &&
+                                    originalContent.contains("tsundoku-novel-image://")
+                                ) {
+                                    originalImages = readOriginalImages(manga, chapter, source)
                                 }
                             }
 
@@ -306,6 +317,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                                         volumeLabel = localContext?.volumeLabel,
                                         volumeNumber = localContext?.volumeNumber,
                                         chapterHref = resolvedLocalChapterHref,
+                                        images = originalImages,
                                     ),
                                 )
                             }
@@ -412,6 +424,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                                         title = ch.name,
                                         content = ch.originalContent.orEmpty(),
                                         order = ch.order,
+                                        images = toEmbeddedImages(ch.images),
                                     )
                                 }
 
@@ -475,6 +488,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                                         title = ch.name,
                                         content = ch.originalContent.orEmpty(),
                                         order = ch.order,
+                                        images = toEmbeddedImages(ch.images),
                                     )
                                 }
                                 if (originalEpubChapters.isNotEmpty()) {
@@ -633,6 +647,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
         val volumeLabel: String?,
         val volumeNumber: Int?,
         val chapterHref: String?,
+        val images: Map<String, ByteArray> = emptyMap(),
     )
 
     private data class LocalEpubReference(
@@ -1084,6 +1099,54 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
 
         filenameBuilder.append(".epub")
         return filenameBuilder.toString()
+    }
+
+    private fun readOriginalImages(
+        manga: Manga,
+        chapter: tachiyomi.domain.chapter.model.Chapter,
+        source: eu.kanade.tachiyomi.source.Source,
+    ): Map<String, ByteArray> {
+        return try {
+            ChapterContentReader(context, downloadProvider).readChapterImages(manga, chapter, source)
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to read images for chapter: ${chapter.name}" }
+            emptyMap()
+        }
+    }
+
+    private fun toEmbeddedImages(images: Map<String, ByteArray>): List<EpubWriter.EmbeddedImage> {
+        if (images.isEmpty()) return emptyList()
+        val maxSizeKb = novelDownloadPreferences.maxImageSizeKb().get()
+        val quality = novelDownloadPreferences.imageCompressionQuality().get()
+        return images.map { (id, bytes) ->
+            val (mime, ext) = EpubWriter.detectImageType(bytes)
+            val finalBytes = if (maxSizeKb > 0 && bytes.size > maxSizeKb * 1024 && mime != "image/gif") {
+                compressImageForEpub(bytes, quality, maxSizeKb) ?: bytes
+            } else {
+                bytes
+            }
+            val (finalMime, finalExt) = if (finalBytes !== bytes) "image/jpeg" to "jpg" else mime to ext
+            EpubWriter.EmbeddedImage(id = id, bytes = finalBytes, mimeType = finalMime, extension = finalExt)
+        }
+    }
+
+    private fun compressImageForEpub(imageBytes: ByteArray, quality: Int, maxSizeKb: Int): ByteArray? {
+        return try {
+            val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size) ?: return null
+            var currentQuality = quality.coerceIn(10, 100)
+            var outputBytes: ByteArray
+            do {
+                val out = java.io.ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, currentQuality, out)
+                outputBytes = out.toByteArray()
+                currentQuality -= 10
+            } while (outputBytes.size > maxSizeKb * 1024 && currentQuality >= 10)
+            bitmap.recycle()
+            outputBytes
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Failed to compress image for EPUB" }
+            null
+        }
     }
 
     /**
