@@ -891,8 +891,6 @@ class BrowseSourceScreenModel(
     }
 
     fun openMassImportDialog() {
-        // Use the library's mass import dialog which is comprehensive and handles full URL import
-        // Just clear selection and exit, as the library dialog will handle the import flow
         mutableState.update { it.copy(selection = emptySet(), selectionMode = false) }
         setDialog(null)
     }
@@ -906,17 +904,25 @@ class BrowseSourceScreenModel(
         }
     }
 
-    fun deleteLocalNovels(mangas: Set<Manga>) {
+    fun deleteLocalNovels(mangas: Set<Manga>, onComplete: (deleted: Int, failed: Int) -> Unit = { _, _ -> }) {
         val localSource = source as? LocalNovelSource ?: return
         screenModelScope.launchIO {
+            var deleted = 0
+            var failed = 0
             mangas.forEach { manga ->
-                localSource.deleteNovelDirectory(manga.url)
-                updateManga.await(MangaUpdate(id = manga.id, favorite = false, dateAdded = 0))
-                manga.removeCovers(coverCache)
+                try {
+                    localSource.deleteNovelDirectory(manga.url)
+                    updateManga.await(MangaUpdate(id = manga.id, favorite = false))
+                    manga.removeCovers(coverCache)
+                    deleted++
+                } catch (_: Exception) {
+                    failed++
+                }
             }
             clearSelection()
             setDialog(null)
             refreshBrowseResults()
+            onComplete(deleted, failed)
         }
     }
 

@@ -53,6 +53,7 @@
     <string name="local_novel_source_covers_refreshed">Covers refreshed for %d novel(s)</string>
     <string name="local_novel_source_select_category">Select category</string>
     <string name="local_novel_source_open_folder_error">Could not open folder — no file manager found</string>
+    <string name="local_novel_source_delete_failed">Failed to delete %d novel(s) — check permissions</string>
     <!-- History -->
     <string name="pref_clear_cover">Clear cover</string>
     <!-- Downloads activity and service

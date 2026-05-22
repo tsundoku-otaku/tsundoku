@@ -399,10 +399,8 @@ data class BrowseSourceScreen(
                                 },
                             )
                         }
-                        // Actions when items are selected
                         if (state.selectionMode && state.selection.isNotEmpty()) {
                             if (source is LocalNovelSource) {
-                                // Add to library
                                 FilterChip(
                                     selected = true,
                                     onClick = { screenModel.showBulkAddLocalNovelsDialog() },
@@ -415,7 +413,6 @@ data class BrowseSourceScreen(
                                     },
                                     label = { Text(text = stringResource(TDMR.strings.local_novel_source_add_to_library)) },
                                 )
-                                // Refresh covers
                                 FilterChip(
                                     selected = true,
                                     onClick = {
@@ -437,7 +434,6 @@ data class BrowseSourceScreen(
                                     },
                                     label = { Text(text = stringResource(TDMR.strings.local_novel_source_refresh_covers)) },
                                 )
-                                // Delete
                                 FilterChip(
                                     selected = true,
                                     onClick = {
@@ -607,7 +603,20 @@ data class BrowseSourceScreen(
                     title = { Text(text = stringResource(TDMR.strings.local_novel_source_delete_title)) },
                     text = { Text(text = stringResource(TDMR.strings.local_novel_source_delete_message)) },
                     confirmButton = {
-                        TextButton(onClick = { screenModel.deleteLocalNovels(dialog.mangas) }) {
+                        TextButton(
+                            onClick = {
+                                screenModel.deleteLocalNovels(dialog.mangas) { _, failed ->
+                                    if (failed > 0) {
+                                        scope.launchIO {
+                                            snackbarHostState.showSnackbar(
+                                                context.stringResource(TDMR.strings.local_novel_source_delete_failed, failed),
+                                                duration = SnackbarDuration.Long,
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                        ) {
                             Text(text = stringResource(MR.strings.action_delete))
                         }
                     },
