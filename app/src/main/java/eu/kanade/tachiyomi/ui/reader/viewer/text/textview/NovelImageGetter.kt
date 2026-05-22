@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.textview
 
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.PixelFormat
@@ -7,18 +8,22 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.text.Html
-import android.text.Spannable
 import android.text.SpannableStringBuilder
-import android.text.style.ImageSpan
 import android.util.Base64
 import android.widget.TextView
+import androidx.core.text.PrecomputedTextCompat
+import androidx.core.widget.TextViewCompat
 import coil3.asDrawable
 import coil3.imageLoader
 import coil3.request.ImageRequest
+import coil3.size.Dimension as CoilDimension
+import coil3.size.Size as CoilSize
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
@@ -75,9 +80,10 @@ internal class CoilImageGetter(
         (textView.width - textView.paddingLeft - textView.paddingRight)
             .takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
 
-    // Coalesces all concurrent image-load completions into one requestLayout pass.
-    // Without this, N images finishing in the same frame causes N full measure cycles.
-    private var layoutPending = false
+    // Debounced re-precompute job: cancelled and rescheduled each time an image finishes
+    // loading, so N images completing within the debounce window trigger only one
+    // background PrecomputedTextCompat pass instead of N synchronous StaticLayout rebuilds.
+    private var recomputeJob: Job? = null
 
     // Network and archive loads are registered here during Html.fromHtml (Default thread)
     // and launched only after startLoading() is called from the Main thread, once
@@ -164,7 +170,15 @@ internal class CoilImageGetter(
                 val imagePath = android.net.Uri.decode(source.removePrefix("tsundoku-novel-image://"))
                 val stream = loader?.getPageDataStream(imagePath) ?: return@launch
                 val bytes = stream.use { it.readBytes() }
-                val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@launch
+                // Two-pass decode: measure dimensions first, then decode at reduced sample
+                // size so the in-memory bitmap is no larger than the display width.
+                val boundsOpts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, boundsOpts)
+                val decodeOpts = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSizeForWidth(boundsOpts.outWidth)
+                }
+                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts)
+                    ?: return@launch
                 val drawable = BitmapDrawable(activity.resources, bitmap)
                 withContext(Dispatchers.Main) {
                     fitToWidthAndInvalidate(drawable, wrapper)
@@ -178,7 +192,11 @@ internal class CoilImageGetter(
     private fun loadFromNetwork(imageUrl: String, wrapper: DrawableWrapper) {
         scope.launch {
             try {
-                val request = ImageRequest.Builder(activity).data(imageUrl).build()
+                val request = ImageRequest.Builder(activity)
+                    .data(imageUrl)
+                    // Decode at display width; Coil scales proportionally (height = Undefined).
+                    .size(CoilSize(CoilDimension.Pixels(capturedContentWidth), CoilDimension.Undefined))
+                    .build()
                 val result = activity.imageLoader.execute(request)
                 val drawable = result.image?.asDrawable(activity.resources) ?: return@launch
                 fitToWidthAndInvalidate(drawable, wrapper)
@@ -202,40 +220,44 @@ internal class CoilImageGetter(
 
     private fun fitToWidthAndInvalidate(drawable: Drawable, wrapper: DrawableWrapper) {
         fitToWidth(drawable, wrapper)
-        // Remove and re-add the span so StaticLayout/DynamicLayout recomputes line heights.
-        // PrecomputedText forbids MetricAffectingSpan (ImageSpan) removal — promote to a
-        // mutable SpannableStringBuilder copy on first occurrence. Subsequent images find
-        // the text already mutable and use the normal path.
-        val text = textView.text
-        if (text is Spannable) {
-            val spans = text.getSpans(0, text.length, ImageSpan::class.java)
-            val span = spans.firstOrNull { it.drawable === wrapper }
-            if (span != null) {
-                val start = text.getSpanStart(span)
-                val end = text.getSpanEnd(span)
-                val flags = text.getSpanFlags(span)
-                try {
-                    text.removeSpan(span)
-                    text.setSpan(span, start, end, flags)
-                } catch (_: IllegalArgumentException) {
-                    val mutable = SpannableStringBuilder(text)
-                    mutable.removeSpan(span)
-                    mutable.setSpan(span, start, end, flags)
-                    textView.text = mutable
-                    // setText triggers relayout; skip the explicit requestLayout below.
-                    return
-                }
-            }
-        }
+        // Redraw immediately with the new image content. Line heights may still reflect
+        // the old placeholder bounds until scheduleRecompute() finishes.
         textView.invalidate()
-        // Post a single requestLayout for this frame — if multiple images finish
-        // concurrently each one would otherwise trigger a separate full measure pass.
-        if (!layoutPending) {
-            layoutPending = true
-            textView.post {
-                layoutPending = false
-                textView.requestLayout()
+        scheduleRecompute()
+    }
+
+    /**
+     * Debounced background re-precompute. Cancels any pending job and schedules a new
+     * one that fires after a short delay, coalescing multiple concurrent image completions
+     * into a single PrecomputedTextCompat pass off the main thread. This avoids the
+     * synchronous StaticLayout rebuild that happens with a plain textView.text assignment,
+     * while still giving the layout correct line heights once images settle.
+     */
+    private fun scheduleRecompute() {
+        recomputeJob?.cancel()
+        recomputeJob = scope.launch(Dispatchers.Main) {
+            delay(RECOMPUTE_DEBOUNCE_MS)
+            if (!textView.isAttachedToWindow) return@launch
+            val snapshot = textView.text
+            val params = TextViewCompat.getTextMetricsParams(textView)
+            val precomputed = withContext(Dispatchers.Default) {
+                PrecomputedTextCompat.create(SpannableStringBuilder(snapshot), params)
             }
+            if (!textView.isAttachedToWindow) return@launch
+            TextViewCompat.setPrecomputedText(textView, precomputed)
         }
+    }
+
+    // Returns the largest power-of-2 inSampleSize such that the decoded width is
+    // still >= capturedContentWidth. Keeps bitmaps at display resolution or below.
+    private fun sampleSizeForWidth(srcWidth: Int): Int {
+        if (srcWidth <= 0 || capturedContentWidth <= 0) return 1
+        var s = 1
+        while (srcWidth / (s * 2) >= capturedContentWidth) s *= 2
+        return s
+    }
+
+    companion object {
+        private const val RECOMPUTE_DEBOUNCE_MS = 50L
     }
 }
