@@ -569,9 +569,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     request: android.webkit.WebResourceRequest?,
                 ): android.webkit.WebResourceResponse? {
                     val url = request?.url?.toString() ?: return null
-                    val chapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
-                    val loader = activity.viewModel.state.value.viewerChapters?.currChapter?.pageLoader
-                    imageCache.intercept(url, chapterId, loader)?.let { return it }
+                    val fallbackChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
+                    val fallbackLoader = activity.viewModel.state.value.viewerChapters?.currChapter?.pageLoader
+                    imageCache.intercept(url, fallbackChapterId, fallbackLoader)?.let { return it }
                     return super.shouldInterceptRequest(view, request)
                 }
 
@@ -958,7 +958,22 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             val processed = withContext(Dispatchers.Default) {
                 contentPipeline.process(rawContent, cfg, translator)
             }
-            imageCache.schedulePrefetch(processed.text, chapter.chapter.id, page.chapter.pageLoader)
+
+            // For infinite-scroll appends/prepends, prefix every tsundoku-novel-image://
+            // URL with the chapter ID so that shouldInterceptRequest can resolve the
+            // correct loader even when multiple chapters share identical image filenames
+            // (e.g. image_0.jpg in both chapter 3 and chapter 4).
+            val finalProcessed = if (isAppendOrPrepend && processed.text.contains(NovelWebViewImageCache.URL_SCHEME_NOVEL_IMAGE)) {
+                processed.copy(
+                    text = processed.text.replace(
+                        NovelWebViewImageCache.URL_SCHEME_NOVEL_IMAGE,
+                        "${NovelWebViewImageCache.URL_SCHEME_NOVEL_IMAGE}$chapterId/",
+                    ),
+                )
+            } else {
+                processed
+            }
+            imageCache.schedulePrefetch(finalProcessed.text, chapter.chapter.id, page.chapter.pageLoader)
 
             withContext(Dispatchers.Main) {
                 if (isAppendOrPrepend && preferences.novelInfiniteScroll.get()) {
@@ -970,12 +985,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         }
                     }
                     if (isPrepend) {
-                        prependHtmlContent(processed, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
+                        prependHtmlContent(finalProcessed, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
                     } else {
-                        appendHtmlContent(processed, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
+                        appendHtmlContent(finalProcessed, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
                     }
                 } else {
-                    loadHtmlContent(processed, chapter)
+                    loadHtmlContent(finalProcessed, chapter)
 
                     // Fresh load: reset tracking to this single chapter.
                     chapterQueue.clear()
@@ -1088,14 +1103,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 ${if (plainTextMode) "chapterElement.textContent = $escapedContent;" else "chapterElement.innerHTML = $escapedContent;"}
                 chaptersContainer.appendChild(chapterElement);
 
-                // Update chapter boundaries after DOM update
-                if (typeof window.updateChapterBoundaries === 'function') {
-                    window.updateChapterBoundaries();
-                }
-
-                if (window.Android && window.Android.onInfiniteScrollAppendComplete) {
-                    window.Android.onInfiniteScrollAppendComplete($chapterId);
-                }
+                // Defer boundary update to next animation frame so layout heights are final.
+                requestAnimationFrame(function() {
+                    if (typeof window.updateChapterBoundaries === 'function') {
+                        window.updateChapterBoundaries();
+                    }
+                    if (window.Android && window.Android.onInfiniteScrollAppendComplete) {
+                        window.Android.onInfiniteScrollAppendComplete($chapterId);
+                    }
+                });
             })();
         """.trimIndent()
 
@@ -1530,9 +1546,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         activity.onPageSelected(page)
                     }
 
-                    // Reset progress for new chapter - use 0f, not the incoming progress
-                    lastSavedProgress = 0f
-                    activity.onNovelProgressChanged(0f)
+                    lastSavedProgress = progress
+                    activity.onNovelProgressChanged(progress)
 
                     // Update global JS variables for the new chapter
                     updateChapterMetaJs()

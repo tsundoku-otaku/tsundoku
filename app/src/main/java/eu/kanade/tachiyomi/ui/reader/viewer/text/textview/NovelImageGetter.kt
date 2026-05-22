@@ -15,6 +15,7 @@ import coil3.asDrawable
 import coil3.imageLoader
 import coil3.request.ImageRequest
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -118,11 +119,18 @@ internal class CoilImageGetter(
      * [androidx.core.widget.TextViewCompat.setPrecomputedText] has completed so
      * coroutine writes to [DrawableWrapper.setBounds] no longer race with
      * [androidx.core.text.PrecomputedTextCompat.create] reads.
+     *
+     * The [PageLoader] is captured here (Main thread) rather than inside each
+     * IO coroutine. This avoids a race where [ReaderViewModel.State.viewerChapters]
+     * has advanced to the next chapter by the time the coroutine runs, causing
+     * images from the previous chapter to be looked up via the wrong loader.
      */
     fun startLoading() {
+        // Capture on Main thread so every IO coroutine uses the correct loader.
+        val loader = activity.viewModel.state.value.viewerChapters?.currChapter?.pageLoader
         for ((source, wrapper) in pendingLoads) {
             when {
-                source.startsWith("tsundoku-novel-image://") -> loadFromPageLoader(source, wrapper)
+                source.startsWith("tsundoku-novel-image://") -> loadFromPageLoader(source, wrapper, loader)
                 source.startsWith("http://") || source.startsWith("https://") -> loadFromNetwork(source, wrapper)
                 source.startsWith("//") -> loadFromNetwork("https:$source", wrapper)
             }
@@ -149,11 +157,10 @@ internal class CoilImageGetter(
         }
     }
 
-    private fun loadFromPageLoader(source: String, wrapper: DrawableWrapper) {
+    private fun loadFromPageLoader(source: String, wrapper: DrawableWrapper, loader: PageLoader?) {
         scope.launch(Dispatchers.IO) {
             try {
                 val imagePath = android.net.Uri.decode(source.removePrefix("tsundoku-novel-image://"))
-                val loader = activity.viewModel.state.value.viewerChapters?.currChapter?.pageLoader
                 val stream = loader?.getPageDataStream(imagePath) ?: return@launch
                 val bytes = stream.use { it.readBytes() }
                 val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@launch

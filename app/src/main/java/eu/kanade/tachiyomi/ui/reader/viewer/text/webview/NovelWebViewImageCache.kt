@@ -34,16 +34,37 @@ internal class NovelWebViewImageCache(
 
     private val cache = ConcurrentHashMap<String, File>()
     private val prefetchJobs = ConcurrentHashMap<String, Job>()
+    private val chapterLoaderMap = ConcurrentHashMap<Long, PageLoader>()
 
     /**
      * If [url] matches the novel-image scheme and the cache has a file for it,
      * return a [WebResourceResponse] that the WebView will use directly.
      * Otherwise queue a prefetch (so the next request hits the cache) and
      * return `null` to let the WebView handle the request normally.
+     *
+     * Supports two URL formats:
+     * - `tsundoku-novel-image://filename` — legacy, single-chapter.
+     * - `tsundoku-novel-image://chapterId/filename` — used by infinite-scroll
+     *   appends so each chapter's images are unambiguously resolved.
      */
-    fun intercept(url: String, chapterId: Long?, loader: PageLoader?): WebResourceResponse? {
+    fun intercept(url: String, fallbackChapterId: Long?, fallbackLoader: PageLoader?): WebResourceResponse? {
         if (!url.startsWith(URL_SCHEME_NOVEL_IMAGE)) return null
-        val imagePath = Uri.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE))
+        val rawPath = Uri.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE))
+
+        // Parse optional chapterId prefix: "12345/image_0.jpg"
+        val slashIdx = rawPath.indexOf('/')
+        val (chapterId, imagePath) = if (slashIdx > 0) {
+            val possibleId = rawPath.substring(0, slashIdx).toLongOrNull()
+            if (possibleId != null) {
+                possibleId to rawPath.substring(slashIdx + 1)
+            } else {
+                fallbackChapterId to rawPath
+            }
+        } else {
+            fallbackChapterId to rawPath
+        }
+
+        val loader = chapterLoaderMap[chapterId] ?: fallbackLoader
         val cacheKey = buildCacheKey(chapterId, imagePath)
         cache[cacheKey]?.takeIf { it.exists() }?.let { cachedFile ->
             return WebResourceResponse(
@@ -58,14 +79,27 @@ internal class NovelWebViewImageCache(
 
     /**
      * Scan [content] for `tsundoku-novel-image://` references and queue a
-     * prefetch for each distinct one.
+     * prefetch for each distinct one. Also registers [loader] for [chapterId]
+     * so [intercept] can look it up when the WebView requests those images.
+     *
+     * Handles the chapter-ID-prefixed format introduced for infinite scroll:
+     * `tsundoku-novel-image://chapterId/filename`.
      */
     fun schedulePrefetch(content: String, chapterId: Long?, loader: PageLoader?) {
         if (chapterId == null || loader == null) return
+        chapterLoaderMap[chapterId] = loader
         IMAGE_URL_PATTERN.findAll(content)
             .mapNotNull { match -> runCatching { Uri.decode(match.groupValues[1]) }.getOrNull() }
             .distinct()
-            .forEach { imagePath -> prefetch(chapterId, imagePath, loader) }
+            .forEach { rawPath ->
+                // Strip chapterId prefix if present
+                val imagePath = if (rawPath.startsWith("$chapterId/")) {
+                    rawPath.removePrefix("$chapterId/")
+                } else {
+                    rawPath
+                }
+                prefetch(chapterId, imagePath, loader)
+            }
     }
 
     /**
@@ -76,6 +110,7 @@ internal class NovelWebViewImageCache(
         prefetchJobs.clear()
         cache.values.forEach { runCatching { it.delete() } }
         cache.clear()
+        chapterLoaderMap.clear()
     }
 
     private fun prefetch(chapterId: Long, imagePath: String, loader: PageLoader) {
