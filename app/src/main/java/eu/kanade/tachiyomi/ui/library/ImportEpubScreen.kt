@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -107,6 +109,7 @@ private const val TOC_PREVIEW_ALL_THRESHOLD = TOC_PREVIEW_SECTION_SIZE * 3
  */
 class ImportEpubScreen(
     private val initialUriStrings: List<String> = emptyList(),
+    private val closeActivityOnDone: Boolean = false,
 ) : Screen() {
 
     @Composable
@@ -114,6 +117,7 @@ class ImportEpubScreen(
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
+        val finishActivity = { (context as? Activity)?.finish() }
 
         val snackbarHostState = remember { SnackbarHostState() }
         val getCategories = remember { Injekt.get<GetCategories>() }
@@ -133,6 +137,18 @@ class ImportEpubScreen(
         var importResult by remember { mutableStateOf<ImportResult?>(null) }
         var successfullyImportedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
         var showDeleteImportedConfirm by remember { mutableStateOf(false) }
+
+        fun exitImportScreen() {
+            if (closeActivityOnDone) {
+                finishActivity()
+            } else {
+                navigator.pop()
+            }
+        }
+
+        BackHandler(enabled = closeActivityOnDone) {
+            if (importProgress?.isRunning != true) finishActivity()
+        }
 
         LaunchedEffect(Unit) {
             categories = withContext(Dispatchers.IO) {
@@ -360,9 +376,9 @@ class ImportEpubScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues),
-                        canDeleteImportedFiles = successfullyImportedUris.isNotEmpty(),
+                        canDeleteImportedFiles = successfullyImportedUris.isNotEmpty() && successfullyImportedUris.none { it.scheme == "content" },
                         onDeleteImportedFiles = { showDeleteImportedConfirm = true },
-                        onDone = { navigator.pop() },
+                        onDone = { exitImportScreen() },
                     )
 
                     if (showDeleteImportedConfirm) {

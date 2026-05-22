@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.browse.source.browse
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
@@ -10,20 +11,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -36,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -44,6 +56,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.presentation.category.visualName
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.BrowseSourceContent
 import eu.kanade.presentation.browse.MissingSourceScreen
@@ -69,7 +82,9 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import mihon.feature.migration.dialog.MigrateMangaDialog
 import mihon.presentation.core.util.collectAsLazyPagingItems
 import tachiyomi.core.common.Constants
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
@@ -77,6 +92,7 @@ import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
+import tachiyomi.source.local.LocalNovelSource
 import tachiyomi.source.local.LocalSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -136,6 +152,7 @@ data class BrowseSourceScreen(
         }
 
         val scope = rememberCoroutineScope()
+        val context = LocalContext.current
         val haptic = LocalHapticFeedback.current
         val uriHandler = LocalUriHandler.current
         val snackbarHostState = remember { SnackbarHostState() }
@@ -179,7 +196,26 @@ data class BrowseSourceScreen(
             }
         }
 
-        val onHelpClick = { uriHandler.openUri(LocalSource.HELP_URL) }
+        val onHelpClick = {
+            val url = if (source is LocalNovelSource) LocalNovelSource.HELP_URL else LocalSource.HELP_URL
+            uriHandler.openUri(url)
+        }
+        val onOpenFolderClick = {
+            val localNovelSource = source as? LocalNovelSource
+            val dirUri = localNovelSource?.getLocalSourceDir()
+            if (dirUri != null) {
+                val intent = Intent(Intent.ACTION_VIEW, dirUri).apply {
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                runCatching { context.startActivity(intent) }.onFailure {
+                    scope.launchIO {
+                        snackbarHostState.showSnackbar(
+                            context.stringResource(TDMR.strings.local_novel_source_open_folder_error),
+                        )
+                    }
+                }
+            }
+        }
         val onWebViewClick = f@{
             val url: String
             val name: String
@@ -363,23 +399,75 @@ data class BrowseSourceScreen(
                                 },
                             )
                         }
-                        // Add to library button when in selection mode with items selected
+                        // Actions when items are selected
                         if (state.selectionMode && state.selection.isNotEmpty()) {
-                            FilterChip(
-                                selected = true,
-                                onClick = { showMassImportDialog = true },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Favorite,
-                                        contentDescription = null,
-                                        modifier = Modifier
-                                            .size(FilterChipDefaults.IconSize),
-                                    )
-                                },
-                                label = {
-                                    Text(text = stringResource(MR.strings.add_to_library))
-                                },
-                            )
+                            if (source is LocalNovelSource) {
+                                // Add to library
+                                FilterChip(
+                                    selected = true,
+                                    onClick = { screenModel.showBulkAddLocalNovelsDialog() },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Favorite,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                                        )
+                                    },
+                                    label = { Text(text = stringResource(TDMR.strings.local_novel_source_add_to_library)) },
+                                )
+                                // Refresh covers
+                                FilterChip(
+                                    selected = true,
+                                    onClick = {
+                                        screenModel.refreshLocalNovelCovers(state.selection) { count ->
+                                            scope.launchIO {
+                                                snackbarHostState.showSnackbar(
+                                                    context.stringResource(TDMR.strings.local_novel_source_covers_refreshed, count),
+                                                    duration = SnackbarDuration.Short,
+                                                )
+                                            }
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Autorenew,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                                        )
+                                    },
+                                    label = { Text(text = stringResource(TDMR.strings.local_novel_source_refresh_covers)) },
+                                )
+                                // Delete
+                                FilterChip(
+                                    selected = true,
+                                    onClick = {
+                                        screenModel.setDialog(
+                                            BrowseSourceScreenModel.Dialog.ConfirmDeleteLocalNovels(state.selection),
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Delete,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                                        )
+                                    },
+                                    label = { Text(text = stringResource(MR.strings.action_delete)) },
+                                )
+                            } else {
+                                FilterChip(
+                                    selected = true,
+                                    onClick = { showMassImportDialog = true },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Favorite,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                                        )
+                                    },
+                                    label = { Text(text = stringResource(MR.strings.add_to_library)) },
+                                )
+                            }
                         }
                     }
 
@@ -398,6 +486,7 @@ data class BrowseSourceScreen(
                 onWebViewClick = onWebViewClick,
                 onHelpClick = { uriHandler.openUri(Constants.URL_HELP) },
                 onLocalSourceHelpClick = onHelpClick,
+                onOpenFolderClick = onOpenFolderClick,
                 selectionMode = state.selectionMode,
                 selection = state.selection,
                 translateTitles = state.translateTitles,
@@ -512,6 +601,32 @@ data class BrowseSourceScreen(
                     },
                 )
             }
+            is BrowseSourceScreenModel.Dialog.ConfirmDeleteLocalNovels -> {
+                AlertDialog(
+                    onDismissRequest = onDismissRequest,
+                    title = { Text(text = stringResource(TDMR.strings.local_novel_source_delete_title)) },
+                    text = { Text(text = stringResource(TDMR.strings.local_novel_source_delete_message)) },
+                    confirmButton = {
+                        TextButton(onClick = { screenModel.deleteLocalNovels(dialog.mangas) }) {
+                            Text(text = stringResource(MR.strings.action_delete))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDismissRequest) {
+                            Text(text = stringResource(MR.strings.action_cancel))
+                        }
+                    },
+                )
+            }
+            is BrowseSourceScreenModel.Dialog.BulkAddLocalNovels -> {
+                LocalNovelsAddToCategoryDialog(
+                    categories = dialog.categories,
+                    onDismissRequest = onDismissRequest,
+                    onConfirm = { categoryId ->
+                        screenModel.massImportToCategory(categoryId)
+                    },
+                )
+            }
             else -> {}
         }
 
@@ -588,4 +703,67 @@ data class BrowseSourceScreen(
         class Text(txt: String) : SearchType(txt)
         class Genre(txt: String) : SearchType(txt)
     }
+}
+
+@Composable
+private fun LocalNovelsAddToCategoryDialog(
+    categories: List<Category>,
+    onDismissRequest: () -> Unit,
+    onConfirm: (Long?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var selectedCategory by remember { mutableStateOf<Category?>(null) }
+    val noCategoryLabel = stringResource(MR.strings.label_default)
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(text = stringResource(TDMR.strings.local_novel_source_add_to_library)) },
+        text = {
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = it },
+            ) {
+                OutlinedTextField(
+                    value = selectedCategory?.name ?: noCategoryLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(text = stringResource(TDMR.strings.local_novel_source_select_category)) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+                )
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(text = noCategoryLabel) },
+                        onClick = {
+                            selectedCategory = null
+                            expanded = false
+                        },
+                    )
+                    categories.forEach { category ->
+                        DropdownMenuItem(
+                            text = { Text(text = category.visualName) },
+                            onClick = {
+                                selectedCategory = category
+                                expanded = false
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedCategory?.id) }) {
+                Text(text = stringResource(MR.strings.action_ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = stringResource(MR.strings.action_cancel))
+            }
+        },
+    )
 }

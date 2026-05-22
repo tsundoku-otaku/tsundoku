@@ -251,31 +251,7 @@ actual class LocalNovelSource(
             if (chapterFile.extension.equals("epub", true)) {
                 try {
                     chapterFile.epubReader(context).use { epub ->
-                        // Try to find and set the cover image if not set yet
-                        if (coverManager.find(manga.url) == null) {
-                            try {
-                                val cover = epub.getCoverImage()
-                                if (cover != null) {
-                                    if (cover.startsWith("http://") || cover.startsWith("https://")) {
-                                        downloadCoverBytes(cover)?.let { bytes ->
-                                            logcat(LogPriority.INFO) {
-                                                "LocalNovelSource: Downloaded external cover $cover"
-                                            }
-                                            coverManager.update(manga, ByteArrayInputStream(bytes))
-                                        }
-                                    } else {
-                                        epub.getInputStream(cover)?.use { stream ->
-                                            logcat(LogPriority.INFO) {
-                                                "LocalNovelSource: Extracted embedded cover $cover"
-                                            }
-                                            coverManager.update(manga, stream)
-                                        }
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                logcat(LogPriority.ERROR, e) { "Error extracting cover from ${chapterFile.name}" }
-                            }
-                        }
+                        extractCoverFromOpenEpub(epub, manga, force = false)
 
                         val tocChapters = epub.getNormalizedTableOfContents()
                         if (tocChapters.isNotEmpty()) {
@@ -326,6 +302,22 @@ actual class LocalNovelSource(
         }
     }
 
+    suspend fun refreshCover(manga: SManga): String? = withIOContext {
+        val novelEntry = resolveNovelEntry(manga.url) ?: return@withIOContext null
+        val epubFile = when {
+            novelEntry.isDirectory -> fileSystem.getFilesInNovelDirectory(manga.url)
+                .firstOrNull { it.extension.equals("epub", true) }
+            novelEntry.extension.equals("epub", true) -> novelEntry
+            else -> null
+        } ?: return@withIOContext null
+
+        if (!extractCoverFromEpub(epubFile, manga, force = true)) {
+            return@withIOContext null
+        }
+
+        coverManager.find(manga.url)?.uri?.toString()
+    }
+
     private fun createSimpleChapter(manga: SManga, chapterFile: UniFile): SChapter {
         return SChapter.create().apply {
             url = "${manga.url}/${chapterFile.name}"
@@ -345,6 +337,36 @@ actual class LocalNovelSource(
         if (file.isDirectory) return true
         val ext = file.extension?.lowercase() ?: return false
         return ext in SUPPORTED_EXTENSIONS
+    }
+
+    private fun extractCoverFromEpub(chapterFile: UniFile, manga: SManga, force: Boolean): Boolean {
+        return try {
+            chapterFile.epubReader(context).use { epub ->
+                extractCoverFromOpenEpub(epub, manga, force)
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Error extracting cover from ${chapterFile.name}" }
+            false
+        }
+    }
+
+    private fun extractCoverFromOpenEpub(epub: EpubReader, manga: SManga, force: Boolean): Boolean {
+        if (!force && coverManager.find(manga.url) != null) return true
+        val cover = epub.getCoverImage() ?: return false
+        return when {
+            cover.startsWith("http://") || cover.startsWith("https://") -> {
+                val bytes = downloadCoverBytes(cover) ?: return false
+                logcat(LogPriority.INFO) { "LocalNovelSource: Downloaded external cover $cover" }
+                coverManager.update(manga, ByteArrayInputStream(bytes))
+                true
+            }
+            else -> {
+                val stream = epub.getInputStream(cover) ?: return false
+                logcat(LogPriority.INFO) { "LocalNovelSource: Extracted embedded cover $cover" }
+                stream.use { coverManager.update(manga, it) }
+                true
+            }
+        }
     }
 
     private fun downloadCoverBytes(url: String): ByteArray? {
@@ -492,9 +514,17 @@ actual class LocalNovelSource(
         }
     }
 
+    fun getLocalSourceDir(): android.net.Uri? = fileSystem.getBaseDirectory()?.uri
+
+    fun deleteNovelDirectory(mangaUrl: String): Boolean =
+        fileSystem.getNovelDirectory(mangaUrl)?.delete() == true
+
+    fun findCoverUri(mangaUrl: String): String? =
+        coverManager.find(mangaUrl)?.uri?.toString()
+
     companion object {
         const val ID = 1L // Different from LocalSource ID (0L)
-        const val HELP_URL = "https://tsundoku-otaku.github.io/docs/guides/local-source/"
+        const val HELP_URL = "https://tsundoku-otaku.github.io/docs/guides/local-source/novels"
 
         private val LATEST_THRESHOLD = 7.days.inWholeMilliseconds
 

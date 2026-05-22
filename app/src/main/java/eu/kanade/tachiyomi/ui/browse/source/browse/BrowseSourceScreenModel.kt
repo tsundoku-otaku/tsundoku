@@ -14,6 +14,7 @@ import androidx.paging.map
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.source.interactor.ManageFilterPresets
@@ -62,8 +63,10 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.toMangaUpdate
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.source.local.LocalNovelSource
 import tachiyomi.domain.translation.model.TranslationResult
 import tachiyomi.domain.translation.service.TranslationPreferences
 import uy.kohesive.injekt.Injekt
@@ -111,6 +114,9 @@ class BrowseSourceScreenModel(
     // Target end page for page range loading - when set, pages will auto-load until this page is reached
     private val _targetEndPage = MutableStateFlow<Int?>(null)
     val targetEndPage: StateFlow<Int?> = _targetEndPage.asStateFlow()
+
+    // Forces the browse pager to recreate after file-system updates like delete/refresh.
+    private val _refreshGeneration = MutableStateFlow(0L)
 
     /**
      * Jump to a specific page. This recreates the pager starting from that page.
@@ -234,7 +240,8 @@ class BrowseSourceScreenModel(
         state.map { Triple(it.listing.query, it.filters, it.filters.hashCode()) }
             .distinctUntilChanged { old, new -> old.first == new.first && old.third == new.third },
         _initialPage,
-    ) { (query, filters, _), startPage ->
+        _refreshGeneration,
+    ) { (query, filters, _), startPage, _ ->
         logcat(LogPriority.DEBUG) { "Creating new Pager for query='$query', filters=${filters.hashCode()}, startPage=$startPage" }
         // Set both generation and displayed current page to this pager's start page.
         tachiyomi.data.source.BaseSourcePagingSource.setInitialPage(startPage.toInt())
@@ -713,6 +720,8 @@ class BrowseSourceScreenModel(
             val initialSelection: ImmutableList<CheckboxState.State<Category>>,
         ) : Dialog
         data class Migrate(val target: Manga, val current: Manga) : Dialog
+        data class BulkAddLocalNovels(val categories: ImmutableList<Category>) : Dialog
+        data class ConfirmDeleteLocalNovels(val mangas: Set<Manga>) : Dialog
     }
 
     // Translation
@@ -871,7 +880,9 @@ class BrowseSourceScreenModel(
 
     fun selectAll(mangaList: List<Manga>) {
         mutableState.update { state ->
-            state.copy(selection = state.selection + mangaList.filter { !it.favorite })
+            // For local novel source include all items (favorites too, for delete/refresh operations).
+            val candidates = if (source is LocalNovelSource) mangaList else mangaList.filter { !it.favorite }
+            state.copy(selection = state.selection + candidates)
         }
     }
 
@@ -884,6 +895,56 @@ class BrowseSourceScreenModel(
         // Just clear selection and exit, as the library dialog will handle the import flow
         mutableState.update { it.copy(selection = emptySet(), selectionMode = false) }
         setDialog(null)
+    }
+
+    fun showBulkAddLocalNovelsDialog() {
+        screenModelScope.launchIO {
+            val cats = getCategories.await().filter {
+                it.contentType == Category.CONTENT_TYPE_ALL || it.contentType == Category.CONTENT_TYPE_NOVEL
+            }
+            setDialog(Dialog.BulkAddLocalNovels(cats.toImmutableList()))
+        }
+    }
+
+    fun deleteLocalNovels(mangas: Set<Manga>) {
+        val localSource = source as? LocalNovelSource ?: return
+        screenModelScope.launchIO {
+            mangas.forEach { manga ->
+                localSource.deleteNovelDirectory(manga.url)
+                updateManga.await(MangaUpdate(id = manga.id, favorite = false, dateAdded = 0))
+                manga.removeCovers(coverCache)
+            }
+            clearSelection()
+            setDialog(null)
+            refreshBrowseResults()
+        }
+    }
+
+    fun refreshLocalNovelCovers(mangas: Set<Manga>, onComplete: (Int) -> Unit) {
+        val localSource = source as? LocalNovelSource ?: return
+        screenModelScope.launchIO {
+            var refreshed = 0
+            mangas.forEach { manga ->
+                val coverUri = localSource.refreshCover(manga.toSManga())
+                if (coverUri != null) {
+                    updateManga.await(
+                        MangaUpdate(
+                            id = manga.id,
+                            thumbnailUrl = coverUri,
+                            coverLastModified = Instant.now().toEpochMilli(),
+                        ),
+                    )
+                    refreshed++
+                }
+            }
+            clearSelection()
+            refreshBrowseResults()
+            onComplete(refreshed)
+        }
+    }
+
+    fun refreshBrowseResults() {
+        _refreshGeneration.update { it + 1 }
     }
 
     fun massImportToCategory(categoryId: Long?) {

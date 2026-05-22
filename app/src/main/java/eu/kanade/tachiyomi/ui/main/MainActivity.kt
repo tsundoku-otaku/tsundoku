@@ -135,8 +135,9 @@ class MainActivity : BaseActivity() {
 
         val didMigration = Migrator.awaitAndRelease()
 
-        // Do not let the launcher create a new activity http://stackoverflow.com/questions/16283079
-        if (!isTaskRoot) {
+        // Only block duplicate launcher entries. External open/share intents may arrive in a
+        // non-root task and still need to be handled by this activity.
+        if (!isTaskRoot && intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) {
             finish()
             return
         }
@@ -174,7 +175,7 @@ class MainActivity : BaseActivity() {
 
                     if (isLaunch) {
                         // Set start screen
-                        handleIntentAction(intent, navigator)
+                        handleIntentAction(intent, navigator, closeImportScreenOnDone = true)
 
                         // Reset Incognito Mode on relaunch
                         preferences.incognitoMode.set(false)
@@ -295,7 +296,7 @@ class MainActivity : BaseActivity() {
                 componentActivity.addOnNewIntentListener(consumer)
                 awaitClose { componentActivity.removeOnNewIntentListener(consumer) }
             }
-                .collectLatest { handleIntentAction(it, navigator) }
+                .collectLatest { handleIntentAction(it, navigator, closeImportScreenOnDone = false) }
         }
     }
 
@@ -389,7 +390,11 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun handleIntentAction(intent: Intent, navigator: Navigator): Boolean {
+    private fun handleIntentAction(
+        intent: Intent,
+        navigator: Navigator,
+        closeImportScreenOnDone: Boolean,
+    ): Boolean {
         val notificationId = intent.getIntExtra("notificationId", -1)
         if (notificationId > -1) {
             NotificationReceiver.dismissNotification(
@@ -408,7 +413,12 @@ class MainActivity : BaseActivity() {
         if (epubUris.isNotEmpty()) {
             persistEpubReadPermissions(epubUris)
             navigator.popUntilRoot()
-            navigator.push(ImportEpubScreen(epubUris.map { it.toString() }))
+            navigator.push(
+                ImportEpubScreen(
+                    initialUriStrings = epubUris.map { it.toString() },
+                    closeActivityOnDone = closeImportScreenOnDone,
+                ),
+            )
             ready = true
             return true
         }
@@ -504,7 +514,22 @@ class MainActivity : BaseActivity() {
         fun looksLikeEpub(uri: android.net.Uri?): Boolean {
             if (uri == null) return false
             val path = (uri.lastPathSegment ?: uri.path ?: uri.toString()).lowercase()
-            return path.endsWith(".epub")
+            if (path.endsWith(".epub")) return true
+            // Fallback for content URIs where the path has no extension (e.g. Downloads provider
+            // uses numeric IDs like content://…/document/12345). Query the display name instead.
+            if (uri.scheme == "content") {
+                val displayName = runCatching {
+                    contentResolver.query(
+                        uri,
+                        arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                        null, null, null,
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+                }.getOrNull()
+                if (displayName?.lowercase()?.endsWith(".epub") == true) return true
+            }
+            return false
         }
 
         return when (intent.action) {
