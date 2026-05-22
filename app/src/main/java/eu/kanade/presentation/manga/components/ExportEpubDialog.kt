@@ -41,7 +41,7 @@ fun ExportEpubDialog(
     onExport: (Uri, EpubExportOptions) -> Unit,
 ) {
     var filename by remember { mutableStateOf(EpubExportNaming.sanitizeFilename(manga.title) + ".epub") }
-    var downloadedOnly by remember { mutableStateOf(false) }
+    var downloadedOnly by remember { mutableStateOf(true) }
     var translationMode by remember { mutableStateOf(TranslationMode.ORIGINAL) }
     var joinVolumes by remember { mutableStateOf(true) }
     var includeChapterCount by remember { mutableStateOf(false) }
