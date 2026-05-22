@@ -8,6 +8,8 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.TextSplitter
+import logcat.LogPriority
+import logcat.logcat
 import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -65,6 +67,7 @@ class LocalNovelPageLoader(
                 throw IllegalStateException("Source is not a NovelSource")
             }
         } catch (e: Throwable) {
+            logcat(LogPriority.ERROR) { "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}" }
             page.status = Page.State.Error(e)
         }
     }

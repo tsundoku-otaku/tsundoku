@@ -48,10 +48,18 @@ internal class DrawableWrapper : Drawable() {
 
 /**
  * [Html.ImageGetter] for the native TextView reader. Returns a [DrawableWrapper]
- * placeholder immediately and loads the real image asynchronously via Coil 3,
- * base64 decoding, or the [PageLoader] (for downloaded EPUB images served via
- * the `tsundoku-novel-image://` scheme). Loaded images are scaled to fill the
- * TextView's content width.
+ * placeholder immediately; the actual image load is deferred until [startLoading]
+ * is called (after [androidx.core.text.PrecomputedTextCompat.create] completes on
+ * a worker thread), which eliminates the data race where concurrent writes to
+ * [DrawableWrapper.setBounds] from image-load coroutines and reads from the
+ * `PrecomputedTextCompat` measurement pass would produce zero-bounds / blank images.
+ *
+ * Base64 inline images are decoded synchronously inside [getDrawable] because they
+ * are sequential with the `Html.fromHtml` parse and never race with measurement.
+ *
+ * Must be constructed on the Main thread so [capturedContentWidth] reads
+ * [TextView.getWidth] safely. [getDrawable] is called by [Html.fromHtml] on
+ * a worker thread — it must not touch the view directly.
  */
 internal class CoilImageGetter(
     private val textView: TextView,
@@ -59,50 +67,74 @@ internal class CoilImageGetter(
     private val scope: CoroutineScope,
 ) : Html.ImageGetter {
 
+    // Captured at construction (Main thread) — never access textView.width
+    // from the worker thread that Html.fromHtml runs on.
+    private val capturedContentWidth: Int =
+        (textView.width - textView.paddingLeft - textView.paddingRight)
+            .takeIf { it > 0 } ?: activity.resources.displayMetrics.widthPixels
+
+    // Coalesces all concurrent image-load completions into one requestLayout pass.
+    // Without this, N images finishing in the same frame causes N full measure cycles.
+    private var layoutPending = false
+
+    // Network and archive loads are registered here during Html.fromHtml (Default thread)
+    // and launched only after startLoading() is called from the Main thread, once
+    // PrecomputedTextCompat.create() has finished reading the Spannable's bounds.
+    private data class PendingLoad(val source: String, val wrapper: DrawableWrapper)
+    private val pendingLoads = mutableListOf<PendingLoad>()
+
     override fun getDrawable(source: String?): Drawable {
         val wrapper = DrawableWrapper()
 
-        val maxWidth = textView.contentWidth()
         val placeholderHeight = (200 * activity.resources.displayMetrics.density).toInt()
-
-        // Force the placeholder onto its own line and prevent images stacking side-by-side.
         val placeholder = ColorDrawable(android.graphics.Color.LTGRAY)
-        placeholder.setBounds(0, 0, maxWidth, placeholderHeight)
+        placeholder.setBounds(0, 0, capturedContentWidth, placeholderHeight)
         wrapper.innerDrawable = placeholder
-        wrapper.setBounds(0, 0, maxWidth, placeholderHeight)
+        wrapper.setBounds(0, 0, capturedContentWidth, placeholderHeight)
 
         if (source.isNullOrBlank()) return wrapper
 
-        // Base64 data URIs (EPUB downloads encode media inline)
+        // Inline base64 data URIs: decode synchronously — sequential with the parse,
+        // so no race with PrecomputedTextCompat measurement.
         if (source.startsWith("data:")) {
             decodeBase64InlineImage(source, wrapper)
             return wrapper
         }
 
-        // Custom scheme for chapter-archive-backed images
-        if (source.startsWith("tsundoku-novel-image://")) {
-            loadFromPageLoader(source, wrapper)
-            return wrapper
-        }
-
-        // Skip EPUB-internal relative paths (they reference files inside the archive)
-        if (!source.startsWith("http://") && !source.startsWith("https://") && !source.startsWith("//")) {
+        // Defer all other loads until startLoading() is called from the Main thread.
+        if (source.startsWith("tsundoku-novel-image://") ||
+            source.startsWith("http://") || source.startsWith("https://") ||
+            source.startsWith("//")
+        ) {
+            pendingLoads.add(PendingLoad(source, wrapper))
+        } else {
             logcat(LogPriority.DEBUG) { "Skipping non-URL image source: $source" }
-            return wrapper
         }
-
-        val imageUrl = if (source.startsWith("//")) "https:$source" else source
-        loadFromNetwork(imageUrl, wrapper)
         return wrapper
     }
 
-    private fun textViewContentWidth(): Int {
-        val contentWidth = textView.width - textView.paddingLeft - textView.paddingRight
-        return if (contentWidth > 0) contentWidth else activity.resources.displayMetrics.widthPixels
+    /**
+     * Launch all deferred image loads. Must be called on the Main thread after
+     * [androidx.core.widget.TextViewCompat.setPrecomputedText] has completed so
+     * coroutine writes to [DrawableWrapper.setBounds] no longer race with
+     * [androidx.core.text.PrecomputedTextCompat.create] reads.
+     */
+    fun startLoading() {
+        for ((source, wrapper) in pendingLoads) {
+            when {
+                source.startsWith("tsundoku-novel-image://") -> loadFromPageLoader(source, wrapper)
+                source.startsWith("http://") || source.startsWith("https://") -> loadFromNetwork(source, wrapper)
+                source.startsWith("//") -> loadFromNetwork("https:$source", wrapper)
+            }
+        }
+        pendingLoads.clear()
     }
 
-    private fun TextView.contentWidth(): Int = textViewContentWidth()
-
+    /**
+     * Decodes a base64 data URI synchronously on the calling thread (already
+     * [Dispatchers.Default] via [Html.fromHtml]). The Spannable is not yet set
+     * on the view at this point so no layout invalidation is needed after decode.
+     */
     private fun decodeBase64InlineImage(source: String, wrapper: DrawableWrapper) {
         try {
             val commaIndex = source.indexOf(',')
@@ -149,11 +181,10 @@ internal class CoilImageGetter(
     }
 
     private fun fitToWidth(drawable: Drawable, wrapper: DrawableWrapper) {
-        val maxWidth = textView.contentWidth()
         val imgWidth = drawable.intrinsicWidth
         val imgHeight = drawable.intrinsicHeight
         if (imgWidth <= 0 || imgHeight <= 0) return
-        val width = maxWidth.coerceAtLeast(1)
+        val width = capturedContentWidth.coerceAtLeast(1)
         val ratio = width.toFloat() / imgWidth.toFloat()
         val height = (imgHeight * ratio).toInt().coerceAtLeast(1)
         drawable.setBounds(0, 0, width, height)
@@ -163,8 +194,7 @@ internal class CoilImageGetter(
 
     private fun fitToWidthAndInvalidate(drawable: Drawable, wrapper: DrawableWrapper) {
         fitToWidth(drawable, wrapper)
-        // Remove and re-add the span so StaticLayout recomputes line heights without
-        // destroying the current text selection.
+        // Remove and re-add the span so StaticLayout/DynamicLayout recomputes line heights.
         val text = textView.text
         if (text is Spannable) {
             val spans = text.getSpans(0, text.length, ImageSpan::class.java)
@@ -178,6 +208,14 @@ internal class CoilImageGetter(
             }
         }
         textView.invalidate()
-        textView.requestLayout()
+        // Post a single requestLayout for this frame — if multiple images finish
+        // concurrently each one would otherwise trigger a separate full measure pass.
+        if (!layoutPending) {
+            layoutPending = true
+            textView.post {
+                layoutPending = false
+                textView.requestLayout()
+            }
+        }
     }
 }

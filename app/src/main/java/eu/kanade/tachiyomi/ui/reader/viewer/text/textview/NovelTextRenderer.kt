@@ -6,6 +6,8 @@ import android.text.Spannable
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.widget.TextView
+import androidx.core.text.PrecomputedTextCompat
+import androidx.core.widget.TextViewCompat
 import eu.kanade.tachiyomi.data.translation.TranslationHtmlUtils
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -77,43 +79,54 @@ internal class NovelTextRenderer(
         val blockMedia = preferences.novelBlockMedia.get()
 
         scope.launch {
+            // CoilImageGetter must be constructed on Main to safely read textView.width.
             val imageGetter = if (!blockMedia) {
                 CoilImageGetter(textView, activity, scope)
             } else {
                 null
             }
 
-            val spanned = if (plainTextMode) {
-                SpannableStringBuilder(processedContent)
-            } else {
-                val cleanHtmlContent = normalizeHtmlForRendering(processedContent)
-                withContext(Dispatchers.Default) {
+            // All CPU-heavy work — Jsoup normalisation, Html.fromHtml, paragraph
+            // span attachment — runs on Default so the Main thread stays free.
+            val spannable = withContext(Dispatchers.Default) {
+                val spanned: CharSequence = if (plainTextMode) {
+                    SpannableStringBuilder(processedContent)
+                } else {
+                    val cleanHtmlContent = normalizeHtmlForRendering(processedContent)
                     Html.fromHtml(cleanHtmlContent, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
                 }
+                val result = SpannableStringBuilder(spanned)
+                val spacingPx = (paragraphSpacing * fontSize * density).toInt()
+                val indentPx = (paragraphIndent * fontSize * density).toInt()
+                if (spacingPx > 0 || indentPx > 0) {
+                    applyParagraphSpans(result, spacingPx, indentPx)
+                }
+                result
             }
 
-            val spannable = SpannableStringBuilder(spanned)
+            if (!textView.isAttachedToWindow) return@launch
 
-            val spacingPx = (paragraphSpacing * fontSize * density).toInt()
-            val indentPx = (paragraphIndent * fontSize * density).toInt()
-            if (spacingPx > 0 || indentPx > 0) {
-                applyParagraphSpans(spannable, spacingPx, indentPx)
+            // Pre-compute text metrics (word breaks, glyph shaping) off the Main
+            // thread. setText with PrecomputedText skips the StaticLayout measurement
+            // step on Main, which is the dominant source of UI-thread jank for long
+            // chapters.
+            val params = TextViewCompat.getTextMetricsParams(textView)
+            val precomputed = withContext(Dispatchers.Default) {
+                PrecomputedTextCompat.create(spannable, params)
             }
 
-            withContext(Dispatchers.Main) {
-                if (!textView.isAttachedToWindow) return@withContext
+            if (!textView.isAttachedToWindow) return@launch
 
-                clearSelection(textView)
-
-                // The view's selectable/focusable state was already configured in
-                // createSelectableTextView(). Do NOT toggle setTextIsSelectable()
-                // here — calling setTextIsSelectable(false) on a view that has an
-                // active Editor internally calls setText(mText, NORMAL) with
-                // mTextIsSelectable = false, which fires Android's
-                // "Selection cancelled" warning on API 34+.
-                textView.setText(spannable, TextView.BufferType.SPANNABLE)
-                onTextSet(textView)
-            }
+            clearSelection(textView)
+            // The view's selectable/focusable state was already configured in
+            // createSelectableTextView(). Do NOT toggle setTextIsSelectable()
+            // here — calling setTextIsSelectable(false) on a view that has an
+            // active Editor internally calls setText(mText, NORMAL) with
+            // mTextIsSelectable = false, which fires Android's
+            // "Selection cancelled" warning on API 34+.
+            TextViewCompat.setPrecomputedText(textView, precomputed)
+            imageGetter?.startLoading()
+            onTextSet(textView)
         }
     }
 

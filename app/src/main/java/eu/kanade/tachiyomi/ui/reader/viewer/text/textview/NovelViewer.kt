@@ -55,6 +55,8 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ProcessedContent
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ChapterQueue
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
@@ -167,7 +169,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
 
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                // Never toggle menu while the user has text selected
+                // A hold ≥ long-press threshold means the user was selecting text, not tapping.
+                // Without this guard, releasing after a long-press (which starts text selection)
+                // also fires onSingleTapConfirmed and toggles the app bars.
+                if (e.eventTime - e.downTime >= android.view.ViewConfiguration.getLongPressTimeout()) return true
+                // Never toggle menu while text is selected
                 if (loadedChapters.any { it.textView.hasSelection() }) return false
 
                 val pos = android.graphics.PointF(
@@ -1215,8 +1221,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun displayChapter(chapter: ReaderChapter, page: ReaderPage) {
         val rawContent = page.text
         if (rawContent.isNullOrBlank()) {
-            logcat(LogPriority.ERROR) { "NovelViewer: Page text is null or blank" }
-            displayError(Exception("No text content available"))
+            logcat(LogPriority.ERROR) { "NovelViewer: Page text is null or blank for chapter ${chapter.chapter.name}" }
+            displayError(Exception(activity.stringResource(TDMR.strings.novel_error_empty_chapter)))
             return
         }
 
@@ -1305,13 +1311,20 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         )
         scope.launch {
             val pre = withContext(Dispatchers.Default) { contentPipeline.preTranslate(rawContent, cfg) }
-            val processed = withContext(Dispatchers.Default) { contentPipeline.finalize(pre, cfg) }
-            setTextViewContent(textView, processed)
             if (activity.isTranslationEnabled() && !preferences.novelShowRawHtml.get()) {
+                // Show placeholder first, then set translated content in one shot.
+                // Avoids two full StaticLayout builds (untranslated then translated).
+                val savedGravity = textView.gravity
+                textView.gravity = Gravity.CENTER
+                textView.text = activity.stringResource(TDMR.strings.novel_chapter_translating)
                 val translated = withContext(Dispatchers.Default) {
                     contentPipeline.finalize(pre, cfg) { activity.translateContentIfEnabled(it) }
                 }
+                textView.gravity = savedGravity
                 setTextViewContent(textView, translated)
+            } else {
+                val processed = withContext(Dispatchers.Default) { contentPipeline.finalize(pre, cfg) }
+                setTextViewContent(textView, processed)
             }
         }
 
@@ -1627,19 +1640,64 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun displayError(error: Throwable) {
-        val errorView = TextView(activity).apply {
-            text = activity.stringResource(TDMR.strings.novel_chapter_error, error.message ?: "")
-            setTextColor(0xFFFF5555.toInt())
-            gravity = Gravity.CENTER
+        val fmt = ErrorFormatter.format(error)
+        logcat(LogPriority.ERROR) { "NovelViewer: Chapter load failed\n${fmt.stackTrace}" }
+
+        val errorContainer = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 1f,
             )
-            setPadding(32, 32, 32, 32)
+            setPadding(48, 64, 48, 64)
         }
+
+        val categoryView = TextView(activity).apply {
+            text = fmt.category.localized(activity)
+            textSize = 16f
+            setTextColor(0xFFFF5555.toInt())
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = 12 }
+        }
+
+        val summaryView = TextView(activity).apply {
+            text = fmt.summary
+            textSize = 14f
+            setTextColor(0xFF888888.toInt())
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { bottomMargin = 32 }
+        }
+
+        val copyButton = android.widget.Button(activity).apply {
+            text = activity.stringResource(TDMR.strings.novel_error_copy_details)
+            isAllCaps = false
+            textSize = 14f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+            setOnClickListener {
+                val cm = activity.getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("error", fmt.stackTrace))
+                activity.toast(activity.stringResource(TDMR.strings.novel_error_copied))
+            }
+        }
+
+        errorContainer.addView(categoryView)
+        errorContainer.addView(summaryView)
+        errorContainer.addView(copyButton)
+
         contentContainer.removeAllViews()
-        contentContainer.addView(errorView)
+        contentContainer.addView(errorContainer)
     }
 
     fun startAutoScroll() {

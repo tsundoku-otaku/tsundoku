@@ -54,6 +54,8 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ProcessedContent
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ChapterQueue
@@ -188,6 +190,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (isEditingMode) return false
+                if (e.eventTime - e.downTime >= android.view.ViewConfiguration.getLongPressTimeout()) return true
 
                 val pos = android.graphics.PointF(
                     e.x / container.width.toFloat(),
@@ -930,7 +933,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     ) {
         val rawContent = page.text
         if (rawContent.isNullOrBlank()) {
-            displayError(Exception("No text content available"))
+            displayError(Exception(activity.stringResource(TDMR.strings.novel_error_empty_chapter)))
             return
         }
 
@@ -1234,7 +1237,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun displayError(error: Throwable) {
-        logcat(LogPriority.ERROR) { "NovelWebViewViewer: displayError: ${error.javaClass.simpleName}: ${error.message}" }
+        val fmt = ErrorFormatter.format(error)
+        logcat(LogPriority.ERROR) { "NovelWebViewViewer: Chapter load failed\n${fmt.stackTrace}" }
+
         val theme = preferences.novelTheme.get()
         val backgroundColor = preferences.novelBackgroundColor.get()
         val fontColor = preferences.novelFontColor.get()
@@ -1244,15 +1249,49 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         val bgColorHex = ThemeUtils.colorToHex(finalBgColor)
         val textColorHex = ThemeUtils.colorToHex(finalTextColor)
 
-        val escapedMessage = HtmlUtils.escapeHtml("${error.javaClass.simpleName}: ${error.message ?: "(null)"}")
+        val escapedCategory = HtmlUtils.escapeHtml(fmt.category.localized(activity))
+        val escapedSummary = HtmlUtils.escapeHtml(fmt.summary)
+        val escapedTrace = HtmlUtils.escapeHtml(fmt.stackTrace)
+        // Base64-encode the trace so it can be safely passed to the Android JS bridge
+        // without worrying about special characters breaking the JS string literal.
+        val base64Trace = android.util.Base64.encodeToString(
+            fmt.stackTrace.toByteArray(Charsets.UTF_8),
+            android.util.Base64.NO_WRAP,
+        )
+
         val errorHtml = """
             <!DOCTYPE html>
             <html>
-            <body style="display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: $bgColorHex; color: $textColorHex;">
-                <div style="text-align: center; color: #ff5555;">
-                    <h2>Error loading chapter</h2>
-                    <p>$escapedMessage</p>
-                </div>
+            <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+              body { margin: 0; padding: 24px 16px; background: $bgColorHex; color: $textColorHex; font-family: sans-serif; }
+              .err { max-width: 600px; margin: 0 auto; text-align: center; padding-top: 10vh; }
+              .category { color: #ff5555; font-size: 18px; font-weight: bold; margin-bottom: 12px; }
+              .summary { color: #888; font-size: 14px; margin-bottom: 24px; word-break: break-word; }
+              .copy-btn { background: transparent; color: $textColorHex; border: 1px solid #555; border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer; margin-bottom: 20px; }
+              details { text-align: left; margin-top: 4px; }
+              summary { cursor: pointer; color: #777; font-size: 13px; padding: 8px 0; user-select: none; }
+              pre { background: rgba(0,0,0,0.25); color: #bbb; padding: 12px; border-radius: 6px; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 280px; overflow-y: auto; margin: 0; }
+            </style>
+            </head>
+            <body>
+            <div class="err">
+              <div class="category">$escapedCategory</div>
+              <div class="summary">$escapedSummary</div>
+              <button class="copy-btn" onclick="copyErr()">Copy error details</button>
+              <details>
+                <summary>Technical details</summary>
+                <pre>$escapedTrace</pre>
+              </details>
+            </div>
+            <script>
+            function copyErr() {
+              if (window.Android && window.Android.copyToClipboard) {
+                window.Android.copyToClipboard('$base64Trace');
+              }
+            }
+            </script>
             </body>
             </html>
         """.trimIndent()
@@ -1557,6 +1596,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 logcat(LogPriority.DEBUG) { "NovelWebViewViewer: Chapter marked as short (fits in viewport)" }
             }
         }
+
+        @JavascriptInterface
+        fun copyToClipboard(base64Text: String) {
+            activity.runOnUiThread {
+                val text = try {
+                    android.util.Base64.decode(base64Text, android.util.Base64.DEFAULT)
+                        .toString(Charsets.UTF_8)
+                } catch (_: Exception) {
+                    base64Text
+                }
+                val cm = activity.getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("error", text))
+                activity.toast(activity.stringResource(TDMR.strings.novel_error_copied))
+            }
+        }
     }
 
     private fun setJsLoadingNext(isLoading: Boolean) {
@@ -1580,7 +1634,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         val rawContent = page.text
         if (rawContent.isNullOrBlank()) {
-            displayError(Exception("No text content available"))
+            displayError(Exception(activity.stringResource(TDMR.strings.novel_error_empty_chapter)))
             return
         }
 

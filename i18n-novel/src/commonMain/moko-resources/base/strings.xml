@@ -808,4 +808,18 @@
     <string name="novel_chapter_translating">Translating…</string>
     <string name="novel_chapter_next">Next Chapter →</string>
     <string name="novel_chapter_error">Error loading chapter: %s</string>
+    <string name="novel_error_copy_details">Copy error details</string>
+    <string name="novel_error_technical_details">Technical details</string>
+    <string name="novel_error_copied">Copied</string>
+    <string name="novel_error_empty_chapter">Chapter is empty — the source returned no text. Try refreshing or checking the source/extension.</string>
+    <string name="novel_error_cat_network_host">Network error — host not found</string>
+    <string name="novel_error_cat_network_timeout">Network error — connection timed out</string>
+    <string name="novel_error_cat_network_refused">Network error — connection refused</string>
+    <string name="novel_error_cat_network_io">Network / IO error</string>
+    <string name="novel_error_cat_storage_permission">Storage permission denied</string>
+    <string name="novel_error_cat_file_not_found">File not found</string>
+    <string name="novel_error_cat_source_error">Source error</string>
+    <string name="novel_error_cat_source_unsupported">Source does not support this operation</string>
+    <string name="novel_error_cat_out_of_memory">Out of memory — chapter may be too large</string>
+    <string name="novel_error_cat_unknown">Error (%s)</string>
 </resources>
