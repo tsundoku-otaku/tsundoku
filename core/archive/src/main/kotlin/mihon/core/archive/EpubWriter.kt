@@ -21,6 +21,7 @@ class EpubWriter(
     private val deflateLevel: Int = java.util.zip.Deflater.DEFAULT_COMPRESSION,
 ) {
 
+    @Suppress("ArrayInDataClass")
     data class EmbeddedImage(
         val id: String,
         val bytes: ByteArray,
@@ -416,29 +417,6 @@ $spineItems
             }
         }
 
-        /**
-         * Convenience method to write EPUB to a file.
-         */
-        fun writeToFile(
-            file: File,
-            metadata: Metadata,
-            chapters: List<Chapter>,
-            coverImage: ByteArray? = null,
-            deflateLevel: Int = java.util.zip.Deflater.DEFAULT_COMPRESSION,
-            customCss: String? = null,
-            customJs: String? = null,
-        ) {
-            file.outputStream().use { outputStream ->
-                EpubWriter(deflateLevel).write(
-                    outputStream = outputStream,
-                    metadata = metadata,
-                    chapters = chapters,
-                    coverImage = coverImage,
-                    customCss = customCss,
-                    customJs = customJs,
-                )
-            }
-        }
         const val CUSTOM_CSS_PATH = "styles/tsundoku-style.css"
         const val CUSTOM_JS_PATH = "scripts/tsundoku-script.js"
     }

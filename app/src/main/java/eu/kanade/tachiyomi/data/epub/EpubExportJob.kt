@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.epub
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import androidx.core.net.toUri
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
@@ -39,6 +40,7 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
+import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.domain.manga.model.Manga
@@ -54,6 +56,7 @@ import tachiyomi.source.local.isLocalNovel
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URLDecoder
 import java.util.zip.ZipEntry
@@ -115,7 +118,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
             try {
                 performExport(
                     mangaIds = mangaIds,
-                    outputUri = Uri.parse(uriString),
+                    outputUri = uriString.toUri(),
                     downloadedOnly = downloadedOnly,
                     translationMode = translationMode,
                     includeChapterCount = includeChapterCount,
@@ -622,7 +625,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                     showErrorNotification(context.stringResource(TDMR.strings.epub_export_job_error_write_output))
                     return
                 }
-            } else if (tempFiles.isNotEmpty()) {
+            } else {
                 // Single file, copy directly
                 logcat(LogPriority.INFO) {
                     "Writing single EPUB to $outputUri (size=${tempFiles.first().length()} bytes)"
@@ -963,7 +966,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
         unit: VolumeUnit,
         includeVolumeNumber: Boolean,
         fallbackIndex: Int,
-    ): String? {
+    ): String {
         if (includeVolumeNumber && unit.number != null) {
             return "v${unit.number}"
         }
@@ -1067,7 +1070,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
 
     private fun readOriginalImages(
         manga: Manga,
-        chapter: tachiyomi.domain.chapter.model.Chapter,
+        chapter: Chapter,
         source: eu.kanade.tachiyomi.source.Source,
     ): Map<String, ByteArray> {
         return try {
@@ -1100,7 +1103,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
             var currentQuality = quality.coerceIn(10, 100)
             var outputBytes: ByteArray
             do {
-                val out = java.io.ByteArrayOutputStream()
+                val out = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.JPEG, currentQuality, out)
                 outputBytes = out.toByteArray()
                 currentQuality -= 10
@@ -1119,7 +1122,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
      */
     private suspend fun readOriginalContent(
         manga: Manga,
-        chapter: tachiyomi.domain.chapter.model.Chapter,
+        chapter: Chapter,
         source: eu.kanade.tachiyomi.source.Source,
     ): String? {
         return try {
@@ -1127,7 +1130,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                 return source.fetchNovelPageText(Page(0, chapter.url))
             }
 
-            val reader = eu.kanade.tachiyomi.data.download.ChapterContentReader(context, downloadProvider)
+            val reader = ChapterContentReader(context, downloadProvider)
             reader.readDownloadedContent(manga, chapter, source)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to read downloaded chapter: ${chapter.name}" }
@@ -1180,7 +1183,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                     response.body.bytes()
                 }
             } else {
-                context.contentResolver.openInputStream(Uri.parse(url))?.use { stream -> stream.readBytes() }
+                context.contentResolver.openInputStream(url.toUri())?.use { stream -> stream.readBytes() }
             }
         }.getOrNull()
     }

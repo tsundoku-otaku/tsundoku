@@ -49,12 +49,11 @@ import java.nio.charset.StandardCharsets
 import kotlin.time.Duration.Companion.days
 import tachiyomi.domain.source.model.Source as DomainSource
 
-actual class LocalNovelSource(
-    private val context: Context,
-    private val fileSystem: LocalNovelSourceFileSystem,
-    private val coverManager: LocalNovelCoverManager,
-) : CatalogueSource, NovelSource, UnmeteredSource {
+actual class LocalNovelSource : CatalogueSource, NovelSource, UnmeteredSource {
 
+    private val context: Context by injectLazy()
+    private val fileSystem: LocalNovelSourceFileSystem by injectLazy()
+    private val coverManager: LocalNovelCoverManager by injectLazy()
     private val json: Json by injectLazy()
     private val xml: XML by injectLazy()
 

@@ -2,10 +2,11 @@ package mihon.core.archive
 
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.DataNode
 import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
 import org.jsoup.parser.Parser
 import java.io.Closeable
-import java.io.File
 import java.io.InputStream
 import java.net.URLDecoder
 
@@ -63,7 +64,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                         return resolveZipPath(pageBasePath, src)
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Ignore parsing errors
             }
         }
@@ -547,7 +548,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                                 inlineAssetAsDataUri(assetPath)?.let { "url('$it')" } ?: match.value
                             }
 
-                            val style = org.jsoup.nodes.Element("style")
+                            val style = Element("style")
                             style.attr("data-epub-css", "true")
                             style.attr("data-file", href.substringAfterLast('/'))
                             style.text(cssText)
@@ -565,11 +566,11 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                     try {
                         getInputStream(jsPath)?.use { stream ->
                             val jsText = stream.reader().readText()
-                            val inlineScript = org.jsoup.nodes.Element("script")
+                            val inlineScript = Element("script")
                             inlineScript.attr("data-epub-js", "true")
                             inlineScript.attr("data-file", src.substringAfterLast('/'))
                             // Using dataNode for plain text in script to avoid weird HTML escaping.
-                            inlineScript.appendChild(org.jsoup.nodes.DataNode(jsText))
+                            inlineScript.appendChild(DataNode(jsText))
                             script.replaceWith(inlineScript)
                         }
                     } catch (_: Exception) { }
@@ -579,9 +580,9 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
             // Remove title to prevent bleeding into text viewers.
             document.getElementsByTag("title").remove()
 
-            val fragmentHtml = fragment?.let { extractFragmentHtml(document, it) }
+            val fragmentHtml = fragment?.let { extractFragmentHtml(document, it) }.orEmpty()
             when {
-                !fragmentHtml.isNullOrBlank() -> fragmentHtml
+                fragmentHtml.isNotBlank() -> fragmentHtml
                 bodyOnly -> document.body().html().ifBlank { document.outerHtml() }
                 else -> document.outerHtml()
             }
@@ -641,32 +642,34 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
             val primary = fragment.substringAfterLast("#").trim().removePrefix("#")
             if (primary.isNotBlank()) {
                 add(primary)
-                val decoded = runCatching { java.net.URLDecoder.decode(primary, "UTF-8") }.getOrNull()
-                if (!decoded.isNullOrBlank() && decoded != primary) {
+                val decoded = runCatching { URLDecoder.decode(primary, "UTF-8") }.getOrDefault("")
+                if (decoded.isNotBlank() && decoded != primary) {
                     add(decoded)
                 }
             }
         }.distinct()
 
         for (candidate in candidates) {
-            document.getElementById(candidate)?.let { element ->
-                materializeFragmentElement(element)?.let { return it }
+            val elementById = document.getElementById(candidate)
+            if (elementById != null) {
+                val materialized = materializeFragmentElement(elementById)
+                if (materialized.isNotBlank()) return materialized
             }
 
             val escaped = candidate
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
-            document
-                .selectFirst("*[id=\"$escaped\"], *[name=\"$escaped\"]")
-                ?.let { element ->
-                    materializeFragmentElement(element)?.let { return it }
-                }
+            val elementByName = document.selectFirst("*[id=\"$escaped\"], *[name=\"$escaped\"]")
+            if (elementByName != null) {
+                val materialized = materializeFragmentElement(elementByName)
+                if (materialized.isNotBlank()) return materialized
+            }
         }
 
         return null
     }
 
-    private fun materializeFragmentElement(element: Element): String? {
+    private fun materializeFragmentElement(element: Element): String {
         findHeadingElement(element)?.let { heading ->
             return extractHeadingSectionHtml(heading)
         }
@@ -675,7 +678,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
             return element.outerHtml()
         }
 
-        return null
+        return ""
     }
 
     private fun findHeadingElement(element: Element): Element? {
@@ -686,11 +689,11 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         }
     }
 
-    private fun extractHeadingSectionHtml(heading: Element): String? {
+    private fun extractHeadingSectionHtml(heading: Element): String {
         val headingLevel = heading.tagName().removePrefix("h").toIntOrNull() ?: return heading.outerHtml()
         val section = Element("div")
 
-        var node: org.jsoup.nodes.Node? = heading
+        var node: Node? = heading
         while (node != null) {
             if (node !== heading && node is Element && isHeadingTag(node.tagName())) {
                 val siblingHeadingLevel = node.tagName().removePrefix("h").toIntOrNull() ?: Int.MAX_VALUE
