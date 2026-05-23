@@ -17,9 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -40,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.tachiyomi.R
+import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.util.system.WebViewUtil
@@ -59,6 +64,7 @@ import uy.kohesive.injekt.injectLazy
 class TrackerWebViewLoginActivity : BaseActivity() {
 
     private val trackerManager: TrackerManager by injectLazy()
+    private val networkPreferences: NetworkPreferences by injectLazy()
 
     init {
         registerSecureActivity(this)
@@ -87,6 +93,7 @@ class TrackerWebViewLoginActivity : BaseActivity() {
         val trackerId = intent.extras?.getLong(TRACKER_ID_KEY, -1L) ?: -1L
         val trackerName = intent.extras?.getString(TRACKER_NAME_KEY) ?: return
         val loginUrl = intent.extras?.getString(LOGIN_URL_KEY) ?: return
+        val configuredUserAgent = networkPreferences.defaultUserAgent.get().trim().ifBlank { null }
 
         setContent {
             TachiyomiTheme {
@@ -94,6 +101,7 @@ class TrackerWebViewLoginActivity : BaseActivity() {
                     trackerId = trackerId,
                     trackerName = trackerName,
                     loginUrl = loginUrl,
+                    configuredUserAgent = configuredUserAgent,
                     onLoginSuccess = { token ->
                         val tracker = when (trackerId) {
                             10L -> trackerManager.novelUpdates
@@ -153,13 +161,17 @@ private fun TrackerWebViewLoginScreen(
     trackerId: Long,
     trackerName: String,
     loginUrl: String,
+    configuredUserAgent: String?,
     onLoginSuccess: (String) -> Unit,
     onNavigateUp: () -> Unit,
 ) {
     var currentUrl by remember { mutableStateOf(loginUrl) }
     var isLoading by remember { mutableStateOf(true) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var manualTokenInput by remember { mutableStateOf("") }
+    var showManualTokenDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val extractToken: () -> Unit = {
         scope.launch {
@@ -189,6 +201,14 @@ private fun TrackerWebViewLoginScreen(
                             contentDescription = "Refresh",
                         )
                     }
+                    if (trackerId == 11L) {
+                        IconButton(onClick = { showManualTokenDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Edit,
+                                contentDescription = "Enter token/cookie",
+                            )
+                        }
+                    }
                     IconButton(onClick = extractToken) {
                         Icon(
                             imageVector = Icons.Outlined.Check,
@@ -210,6 +230,7 @@ private fun TrackerWebViewLoginScreen(
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.databaseEnabled = true
+                        configuredUserAgent?.let { settings.userAgentString = it }
 
                         // Enable cookies
                         CookieManager.getInstance().setAcceptCookie(true)
@@ -258,7 +279,7 @@ private fun TrackerWebViewLoginScreen(
             ) {
                 val instructions = when (trackerId) {
                     10L -> "Login to NovelUpdates, then tap the ✓ button to complete login."
-                    11L -> "Login to NovelList, then tap the ✓ button to complete login."
+                    11L -> "Login to NovelList, then tap the ✓ button to complete login. Use the edit icon to paste token/cookie manually."
                     else -> "Login, then tap the ✓ button to complete."
                 }
                 Text(
@@ -268,8 +289,79 @@ private fun TrackerWebViewLoginScreen(
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }
+
+            if (showManualTokenDialog && trackerId == 11L) {
+                AlertDialog(
+                    onDismissRequest = { showManualTokenDialog = false },
+                    title = { Text("NovelList token/cookie") },
+                    text = {
+                        OutlinedTextField(
+                            value = manualTokenInput,
+                            onValueChange = { manualTokenInput = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Token or cookie") },
+                            placeholder = { Text("Paste JWT, novellist cookie, or full cookie header") },
+                            singleLine = false,
+                            maxLines = 4,
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                val token = normalizeNovelListToken(manualTokenInput)
+                                if (token != null) {
+                                    showManualTokenDialog = false
+                                    onLoginSuccess(token)
+                                } else {
+                                    context.toast("Could not extract access token from input")
+                                }
+                            },
+                        ) {
+                            Text("Use")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showManualTokenDialog = false }) {
+                            Text("Cancel")
+                        }
+                    },
+                )
+            }
         }
     }
+}
+
+private fun normalizeNovelListToken(input: String): String? {
+    val raw = input.trim()
+    if (raw.isEmpty()) return null
+
+    val extracted = run {
+        val cookieRegex = Regex("(?:^|[;\\s])novellist=([^;]+)")
+        val match = cookieRegex.find(raw)
+        match?.groupValues?.getOrNull(1) ?: raw
+    }
+
+    val candidate = extracted.trim().removePrefix("novellist=")
+
+    // If a direct JWT/token was pasted, use it as-is.
+    if (!candidate.startsWith("base64-")) {
+        val tokenInJson = Regex("\"access_token\"\\s*:\\s*\"([^\"]+)\"")
+            .find(candidate)
+            ?.groupValues
+            ?.getOrNull(1)
+        return tokenInJson ?: candidate.ifBlank { null }
+    }
+
+    val decoded = runCatching {
+        val encoded = candidate.removePrefix("base64-")
+        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+        String(bytes, Charsets.UTF_8)
+    }.getOrNull() ?: return null
+
+    return Regex("\"access_token\"\\s*:\\s*\"([^\"]+)\"")
+        .find(decoded)
+        ?.groupValues
+        ?.getOrNull(1)
 }
 
 private suspend fun extractTokenFromCookies(trackerId: Long, currentUrl: String): String? {
