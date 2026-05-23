@@ -10,10 +10,8 @@ import java.net.UnknownHostException
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.novel.TDMR
 
-/** Classifies and formats reader errors into user-readable strings. */
 object ErrorFormatter {
 
-    /** Error classification. [Unknown] carries the simple class name for display. */
     sealed class Category {
         object NetworkHostNotFound : Category()
         object NetworkTimeout : Category()
@@ -29,9 +27,7 @@ object ErrorFormatter {
 
     data class FormattedError(
         val category: Category,
-        /** One-line summary from the root cause message. */
         val summary: String,
-        /** Full chain suitable for a bug report / clipboard copy. */
         val stackTrace: String,
     )
 
@@ -44,10 +40,6 @@ object ErrorFormatter {
         )
     }
 
-    /**
-     * Unwraps reflection / bare runtime wrappers to the actual cause, e.g.
-     * `InvocationTargetException` → the extension exception it hides.
-     */
     fun unwrap(e: Throwable): Throwable {
         var t = e
         repeat(10) {
@@ -65,9 +57,9 @@ object ErrorFormatter {
         is UnknownHostException -> Category.NetworkHostNotFound
         is SocketTimeoutException -> Category.NetworkTimeout
         is ConnectException -> Category.NetworkRefused
+        is FileNotFoundException -> Category.FileNotFound
         is IOException -> Category.NetworkIO
         is SecurityException -> Category.StoragePermission
-        is FileNotFoundException -> Category.FileNotFound
         is IllegalStateException -> Category.SourceError
         is UnsupportedOperationException -> Category.SourceUnsupported
         is OutOfMemoryError -> Category.OutOfMemory

@@ -8,25 +8,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import logcat.logcat
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Disk-backed cache for chapter-archive images served to the WebView via the
- * `tsundoku-novel-image://` scheme.
- *
- * The WebView's WebViewClient calls [intercept] for every resource request;
- * matches against [URL_SCHEME_NOVEL_IMAGE] are answered from the on-disk cache
- * if available, otherwise a background prefetch is queued so the image is
- * ready on the next request. [schedulePrefetch] walks freshly-loaded chapter
- * HTML for the same scheme and queues every image it finds.
- *
- * Lifecycle: call [clear] when the viewer is destroyed or the chapter list
- * changes — cancels in-flight prefetches and deletes the on-disk files.
- */
 internal class NovelWebViewImageCache(
     private val context: Context,
     private val scope: CoroutineScope,
@@ -36,22 +24,10 @@ internal class NovelWebViewImageCache(
     private val prefetchJobs = ConcurrentHashMap<String, Job>()
     private val chapterLoaderMap = ConcurrentHashMap<Long, PageLoader>()
 
-    /**
-     * If [url] matches the novel-image scheme and the cache has a file for it,
-     * return a [WebResourceResponse] that the WebView will use directly.
-     * Otherwise queue a prefetch (so the next request hits the cache) and
-     * return `null` to let the WebView handle the request normally.
-     *
-     * Supports two URL formats:
-     * - `tsundoku-novel-image://filename` — legacy, single-chapter.
-     * - `tsundoku-novel-image://chapterId/filename` — used by infinite-scroll
-     *   appends so each chapter's images are unambiguously resolved.
-     */
     fun intercept(url: String, fallbackChapterId: Long?, fallbackLoader: PageLoader?): WebResourceResponse? {
         if (!url.startsWith(URL_SCHEME_NOVEL_IMAGE)) return null
         val rawPath = Uri.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE))
 
-        // Parse optional chapterId prefix: "12345/image_0.jpg"
         val slashIdx = rawPath.indexOf('/')
         val (chapterId, imagePath) = if (slashIdx > 0) {
             val possibleId = rawPath.substring(0, slashIdx).toLongOrNull()
@@ -77,14 +53,6 @@ internal class NovelWebViewImageCache(
         return null
     }
 
-    /**
-     * Scan [content] for `tsundoku-novel-image://` references and queue a
-     * prefetch for each distinct one. Also registers [loader] for [chapterId]
-     * so [intercept] can look it up when the WebView requests those images.
-     *
-     * Handles the chapter-ID-prefixed format introduced for infinite scroll:
-     * `tsundoku-novel-image://chapterId/filename`.
-     */
     fun schedulePrefetch(content: String, chapterId: Long?, loader: PageLoader?) {
         if (chapterId == null || loader == null) return
         chapterLoaderMap[chapterId] = loader
@@ -92,7 +60,6 @@ internal class NovelWebViewImageCache(
             .mapNotNull { match -> runCatching { Uri.decode(match.groupValues[1]) }.getOrNull() }
             .distinct()
             .forEach { rawPath ->
-                // Strip chapterId prefix if present
                 val imagePath = if (rawPath.startsWith("$chapterId/")) {
                     rawPath.removePrefix("$chapterId/")
                 } else {
@@ -102,9 +69,6 @@ internal class NovelWebViewImageCache(
             }
     }
 
-    /**
-     * Cancel all in-flight prefetches and delete every cached file. Idempotent.
-     */
     fun clear() {
         prefetchJobs.values.forEach { it.cancel() }
         prefetchJobs.clear()
@@ -117,7 +81,6 @@ internal class NovelWebViewImageCache(
         val cacheKey = buildCacheKey(chapterId, imagePath)
         if (cache[cacheKey]?.exists() == true) return
 
-        // Create lazily so no coroutine starts before the atomic slot claim.
         val job = scope.launch(start = CoroutineStart.LAZY, context = Dispatchers.IO) {
             try {
                 val stream = loader.getPageDataStream(imagePath) ?: return@launch
@@ -130,7 +93,7 @@ internal class NovelWebViewImageCache(
                 stream.use { input ->
                     cachedFile.outputStream().use { output -> input.copyTo(output) }
                 }
-                cache[cacheKey] = cachedFile
+                if (isActive) cache[cacheKey] = cachedFile else runCatching { cachedFile.delete() }
             } catch (e: Exception) {
                 logcat(LogPriority.DEBUG) { "NovelWebViewImageCache: prefetch $imagePath failed: ${e.message}" }
             } finally {
@@ -138,8 +101,6 @@ internal class NovelWebViewImageCache(
             }
         }
 
-        // Only the winner of the atomic slot claim starts the job; losers cancel
-        // without having executed any I/O.
         if (prefetchJobs.putIfAbsent(cacheKey, job) != null) {
             job.cancel()
             return

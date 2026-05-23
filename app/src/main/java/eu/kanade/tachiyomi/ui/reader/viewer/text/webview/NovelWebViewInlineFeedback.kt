@@ -5,15 +5,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/**
- * Inline UI feedback for [NovelWebViewViewer] — the "Loading…" banner and the
- * tappable error banner that get injected into the WebView's DOM via
- * `<div id="…">` elements. Pulled out so the viewer doesn't carry the JS
- * string templates inline.
- *
- * Idempotent: repeated [showInlineLoading] / [showInlineError] calls replace
- * the existing banner. [showInlineError] auto-dismisses after 8 s.
- */
 internal class NovelWebViewInlineFeedback(
     private val scope: CoroutineScope,
     private val evaluateJs: (String) -> Unit,

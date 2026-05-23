@@ -3,23 +3,13 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 import android.app.Activity
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 
-/**
- * Reader-theme resolution: background/text colors and Material 3 token export
- * for both TextView and WebView surfaces.
- */
 object ThemeUtils {
 
-    /**
-     * Holds CSS variable and JS-object representations of the theme tokens.
-     */
     data class ThemeTokens(
         val cssVariables: String,
         val jsObject: String,
     )
 
-    /**
-     * Resolves theme colors (background, text) for the requested [theme] key.
-     */
     fun getThemeColors(activity: Activity, preferences: ReaderPreferences, theme: String): Pair<Int, Int> {
         val backgroundColor = preferences.novelBackgroundColor.get()
         val fontColor = preferences.novelFontColor.get()
@@ -75,9 +65,6 @@ object ThemeUtils {
         }
     }
 
-    /**
-     * Generates Material Design and Tsundoku reader theme tokens for WebView use.
-     */
     fun getThemeTokens(activity: Activity, preferences: ReaderPreferences, theme: String): ThemeTokens {
         val (readerBgColor, readerTextColor) = getThemeColors(activity, preferences, theme)
 
@@ -198,12 +185,6 @@ object ThemeUtils {
         return ThemeTokens(cssVariables, jsObject)
     }
 
-    /**
-     * Converts an ARGB color int to a `#RRGGBB` hex string (alpha stripped).
-     * Extracted as `internal` so JVM unit tests can verify the formatting logic
-     * without an Android `Activity`. The rest of `ThemeUtils` requires Android
-     * framework objects and is covered by instrumented tests only.
-     */
     internal fun colorToHex(color: Int): String = String.format("#%06X", 0xFFFFFF and color)
 
     private fun resolveColorAttribute(

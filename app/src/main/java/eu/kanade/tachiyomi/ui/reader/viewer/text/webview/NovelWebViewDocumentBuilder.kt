@@ -14,23 +14,8 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.htmlAttributeEscape
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 
-/**
- * Assembles the complete `<!DOCTYPE html>… </html>` document that gets
- * loaded into the WebView via `loadDataWithBaseURL`. Pulled out of
- * [NovelWebViewViewer.loadHtmlContent] so the viewer no longer carries the
- * 170-line HTML skeleton inline.
- *
- * All inputs are passed in — the builder reads no viewer state. The viewer's
- * `loadHtmlContent` orchestrates the surrounding work (style payload, theme
- * tokens, image prefetch, queue reset) and then calls [assemble] to produce
- * the final HTML string.
- */
 internal object NovelWebViewDocumentBuilder {
 
-    /**
-     * Configuration for one document assembly. Snapshots viewer state at the
-     * moment of build so the builder stays stateless.
-     */
     data class DocumentInput(
         val processed: ProcessedContent,
         val chapter: ReaderChapter?,
@@ -41,10 +26,6 @@ internal object NovelWebViewDocumentBuilder {
         val blockMedia: Boolean,
     )
 
-    /**
-     * Build the document. The viewer hands the result directly to
-     * `webView.loadDataWithBaseURL`.
-     */
     fun assemble(input: DocumentInput): String {
         val chapterModel = input.chapter?.chapter
         val chapterId = chapterModel?.id ?: -1L
@@ -62,8 +43,6 @@ internal object NovelWebViewDocumentBuilder {
         }
 
         val finalContent = if (input.processed.isPlainText) {
-            // Inject as textContent (via JS) so plaintext can't accidentally
-            // be interpreted as HTML by the WebView.
             """
                 <pre class="$PLAIN_TEXT_CLASS" $ATTR_DATA_PLAIN_TEXT="1" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;"></pre>
                 <script>
@@ -89,10 +68,6 @@ internal object NovelWebViewDocumentBuilder {
         }
 
         val escapedInitialStyle = input.style.css.escapeForStyleTag()
-        // Scope to tsundoku-chapter so every chapter's first heading is hidden,
-        // not just the first heading in the entire document (which would break
-        // infinite-scroll with multiple chapters in the DOM). Matches the selector
-        // that NovelWebViewStyler.buildPayload() injects on subsequent CSS updates.
         val hideHeadingCss = if (input.style.hideChapterTitle) {
             "$CHAPTER_TAG_NAME h1:first-of-type, $CHAPTER_TAG_NAME h2:first-of-type, " +
                 "$CHAPTER_TAG_NAME h3:first-of-type, $CHAPTER_TAG_NAME h4:first-of-type, " +
@@ -151,11 +126,6 @@ internal object NovelWebViewDocumentBuilder {
         """.trimIndent()
     }
 
-    /**
-     * The `<div class="tsundoku-chapter-divider">` that the JS-side
-     * `updateChapterBoundaries()` keys off for multi-chapter scroll progress.
-     * Returns blank when infinite-scroll is off or no chapter id is available.
-     */
     private fun buildChapterDivider(
         chapterId: Long,
         chapterName: String,
@@ -190,16 +160,10 @@ internal object NovelWebViewDocumentBuilder {
         return start to end
     }
 
-    /**
-     * Re-extract the `<body>` contents to drop any leftover `<html>` /
-     * `<head>` wrappers from the source. Embedded CSS/JS handling was done
-     * by the pipeline; we only need the body slice here.
-     */
     internal fun extractBodyOrFallback(html: String): String = try {
         val doc = org.jsoup.Jsoup.parse(html)
         val body = doc.body()
         when {
-            body == null -> html
             body.hasText() -> body.html()
             body.children().isNotEmpty() -> body.html()
             else -> html
@@ -208,11 +172,9 @@ internal object NovelWebViewDocumentBuilder {
         html
     }
 
-    /** Escape `</style>` close tags so user CSS can't terminate the wrapping `<style>`. */
     internal fun String.escapeForStyleTag(): String =
         replace(Regex("</style>", RegexOption.IGNORE_CASE)) { "<\\/" + it.value.substring(2) }
 
-    // ── Constants the viewer also references ─────────────────────────────────
     const val PLAIN_TEXT_CLASS = "tsundoku-plain-text"
     const val ATTR_DATA_PLAIN_TEXT = "data-tsundoku-plain-text"
 }

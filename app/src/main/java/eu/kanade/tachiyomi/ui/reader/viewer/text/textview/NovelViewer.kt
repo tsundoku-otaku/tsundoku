@@ -37,7 +37,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,15 +62,6 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
 
-/**
- * NovelViewer renders novel content using a native TextView.
- * It supports custom parsing, styling, and pagination.
- *
- * Helper classes used by this viewer live in sibling files:
- *  - [ParagraphSpacingSpan], [ParagraphIndentSpan], [RoundedOutlineSpan]
- *  - [DrawableWrapper], [CoilImageGetter]
- *  - [LinkOnlyMovementMethod]
- */
 class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private val container = FrameLayout(activity)
@@ -97,7 +89,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var currentChapters: ViewerChapters? = null
     private var renderGeneration = 0L
 
-    // Track loaded chapters for infinite scroll
     private data class LoadedChapter(
         val chapter: ReaderChapter,
         val textView: TextView,
@@ -126,7 +117,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         set(value) { chapterQueue.currentIndex = value }
     private var disableScrollbarForSession = false
 
-    // For tracking scroll position and progress
     private var lastSavedProgress = 0f
 
     // Cache the last resolved custom-font so content:// URIs are not re-copied on every style refresh.
@@ -281,7 +271,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             val totalHeight = child.height - scrollView.height
             if (totalHeight <= 0) return@setOnScrollChangeListener
 
-            // Track chapter index before update to detect chapter change
             val previousChapterIndex = currentChapterIndex
 
             // Suppress chapter detection and progress saves for a grace period after
@@ -290,18 +279,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             // updateCurrentChapterFromScroll to detect the wrong chapter.
             val inGracePeriod = System.currentTimeMillis() - chapterEntryTime < CHAPTER_ENTRY_GRACE_MS
 
-            // Update current chapter based on scroll position first.
-            // Skip when isRestoringScroll (view hierarchy is being modified) or during
-            // the grace period (layout coordinates may still be stale).
             if (!isRestoringScroll && !inGracePeriod) {
                 updateCurrentChapterFromScroll(scrollY)
             }
 
-            // If chapter changed, skip progress update (onChapterChanged already sent initialProgress)
             val chapterChanged = previousChapterIndex != currentChapterIndex
             if (chapterChanged) return@setOnScrollChangeListener
 
-            // Calculate progress within the current chapter's text only
             val chapterProgress = calculateCurrentChapterProgress(scrollY)
 
             if (!inGracePeriod) {
@@ -309,7 +293,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 activity.onNovelProgressChanged(chapterProgress)
             }
 
-            // Check for infinite scroll
             if (!inGracePeriod && preferences.novelInfiniteScroll.get()) {
                 val autoLoadAt = preferences.novelAutoLoadNextChapterAt.get()
                 val effectiveThreshold = if (autoLoadAt > 0) autoLoadAt / 100f else 0.95f
@@ -331,17 +314,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
-    /**
-     * Calculates progress within the current chapter using only the text view bounds.
-     * The header and separator are excluded so that entering a chapter always reads 0%
-     *
-     * When the chapter text fits entirely within the viewport, returns 1.0 immediately
-     * since the user can see all content without scrolling.
-     *
-     * When scrollY < textTop  → 0%  (separator / heading still visible above text)
-     * When scrollY = textTop  → 0%
-     * When scrollY = textTop + scrollableHeight → 100%
-     */
     private fun calculateCurrentChapterProgress(scrollY: Int): Float {
         val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return 0f
         val textTop = loaded.textView.top
@@ -367,13 +339,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun scheduleProgressSave(progress: Float) {
-        // Convert to integer percentage to avoid excessive saves for sub-percent jitter.
         val intPercent = (progress * 100f).roundToInt().coerceIn(0, 100)
         val lastIntPercent = (lastSavedProgress * 100f).roundToInt().coerceIn(0, 100)
         if (intPercent == lastIntPercent) return
 
-        // Save immediately - every integer-percent change is persisted without debounce
-        // so the reader bar stays accurate and chapters are reliably marked as read.
         saveProgress(progress)
         lastSavedProgress = progress
     }
@@ -446,7 +415,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun onChapterChanged(oldIndex: Int, newIndex: Int) {
-        // Minimal guard to prevent re-entrant within the same scroll frame
         val now = System.currentTimeMillis()
         if (now - lastChapterSwitchTime < 50L) return
         lastChapterSwitchTime = now
@@ -457,7 +425,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         lastSavedProgress = initialProgress
         chapterEntryTime = now
 
-        // When moving forward, mark the previous chapter as complete
         if (newIndex > oldIndex) {
             loadedChapters.getOrNull(oldIndex)?.chapter?.pages?.firstOrNull()?.let { page ->
                 activity.saveNovelProgress(page, 100)
@@ -518,7 +485,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     "NovelViewer: prepared next=${preparedChapter.chapter.id}/${preparedChapter.chapter.name}"
                 }
 
-                // Prevent duplicates (e.g., if anchor gets out of sync)
                 if (loadedChapters.any { it.chapter.chapter.id == preparedChapter.chapter.id }) {
                     logcat(LogPriority.DEBUG) {
                         "NovelViewer: next chapter ${preparedChapter.chapter.id} already loaded"
@@ -559,7 +525,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
                 if (!loaded) return@launch
 
-                // Append seamlessly with no UI interruption.
                 logcat(LogPriority.DEBUG) { "NovelViewer: appending chapter ${preparedChapter.chapter.id}" }
                 displayChapter(preparedChapter, page)
                 logcat(LogPriority.INFO) {
@@ -632,7 +597,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             if (preferences.novelTextSelectable.get()) {
                 customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
                     override fun onCreateActionMode(mode: android.view.ActionMode, menu: Menu): Boolean {
-                        // Add "Remember" action
                         val rememberItem = menu.add(Menu.NONE, 1, Menu.NONE, activity.stringResource(TDMR.strings.action_remember))
                         rememberItem.setIcon(android.R.drawable.ic_menu_save)
                         rememberItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
@@ -645,7 +609,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
                     override fun onActionItemClicked(mode: android.view.ActionMode, item: MenuItem): Boolean {
                         return when (item.itemId) {
-                            1 -> { // Remember action
+                            1 -> {
                                 onRememberSelectedText()
                                 mode.finish()
                                 true
@@ -655,7 +619,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     }
 
                     override fun onDestroyActionMode(mode: android.view.ActionMode) {
-                        // Action mode finished, selection cleared
                     }
                 }
             }
@@ -683,16 +646,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         applyBackgroundColor()
     }
 
-    // TTS — delegates to TtsController for engine/state logic.
     private var pendingTtsAutoStart = false
 
-    /**
-     * TTS auto-advance handoff state machine. Replaces the previous
-     * `cachedNextChapterForTts` + `isFetchingNextChapterForTts` field pair.
-     * See [TtsHandoffState] for the legal transitions. The TextView reader
-     * has no JS append callback, so the [TtsHandoffState.Appending] state is
-     * unused on this surface.
-     */
     @Volatile private var handoffState: TtsHandoffState<LoadedChapter> = TtsHandoffState.Idle
 
     private val ttsController = TtsController(
@@ -813,8 +768,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val chapters = currentChapters ?: return
         chapters.nextChapter ?: return
 
-        // Mark pending so startTts() fires from setTextViewContent once the new chapter's
-        // text is actually set (avoids reading stale old-chapter text or empty text).
         pendingTtsAutoStart = true
         scope.launch {
             activity.loadNextChapter()
@@ -1084,8 +1037,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         loadedChapters.forEach { loaded ->
             if (!loaded.isLoaded) return@forEach
             val textView = loaded.textView
-            // textView.top and scrollView.scrollY are both in contentContainer coordinates —
-            // no paddingTop adjustment needed.
             val textViewTop = textView.top
             val textViewBottom = textViewTop + textView.height
 
@@ -1095,7 +1046,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     val textViewRelativeY = (viewportTop - textViewTop).coerceAtLeast(0)
                     val lineAtViewportTop = layout.getLineForVertical(textViewRelativeY.coerceAtMost(layout.height))
                     val charOffset = layout.getLineStart(lineAtViewportTop).coerceAtLeast(0)
-                    // Last paragraph whose start is at or before charOffset.
                     val pIdx = paragraphOffsets.indexOfLast { it <= charOffset }
                     return if (pIdx >= 0) pIdx else 0
                 }
@@ -1119,13 +1069,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         return container
     }
 
-    /**
-     * Reload content with current translation state.
-     * Re-renders all loaded chapters with or without translation.
-     */
     fun reloadWithTranslation() {
         val generation = ++renderGeneration
-        // Re-render all loaded chapters with new translation state
         loadedChapters.forEach { loadedChapter ->
             val page = loadedChapter.chapter.pages?.firstOrNull() ?: return@forEach
             val content = page.text ?: return@forEach
@@ -1163,26 +1108,21 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         currentPage = page
         currentChapters = chapters
 
-        // Check if chapter is already loaded to prevent a redundant clear+redraw.
         val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == chapters.currChapter.chapter.id }
 
-        // If already loaded in infinite scroll mode, nothing to do.
         if (preferences.novelInfiniteScroll.get() && loadedChapters.isNotEmpty() && isAlreadyLoaded) {
             return
         }
 
-        // Clear for manual navigation or initial load; preserve in infinite-scroll if already present.
         if (!preferences.novelInfiniteScroll.get() || !isAlreadyLoaded) {
             contentContainer.removeAllViews()
             chapterQueue.clear()
         }
 
-        // If page is already ready (downloaded chapter), display immediately.
         if (page.status == Page.State.Ready && !page.text.isNullOrEmpty()) {
             hideLoadingIndicator()
             displayChapter(chapters.currChapter, page)
             restoreProgress(page)
-            // Trigger download of next chapters (needed for non-infinite-scroll mode)
             activity.viewModel.setNovelVisibleChapter(page.chapter.chapter)
             return
         }
@@ -1199,21 +1139,27 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
             launch(Dispatchers.IO) { loader.loadPage(page) }
 
-            page.statusFlow.collectLatest { state ->
-                when (state) {
-                    Page.State.Ready -> {
-                        hideLoadingIndicator()
-                        displayChapter(chapters.currChapter, page)
-                        restoreProgress(page)
-                        // Trigger download of next chapters (needed for non-infinite-scroll mode)
-                        activity.viewModel.setNovelVisibleChapter(page.chapter.chapter)
-                    }
-                    is Page.State.Error -> {
-                        hideLoadingIndicator()
-                        displayError(state.error)
-                    }
-                    else -> {}
+            val state = try {
+                withTimeout(30_000L) {
+                    page.statusFlow.first { it == Page.State.Ready || it is Page.State.Error }
                 }
+            } catch (e: TimeoutCancellationException) {
+                hideLoadingIndicator()
+                displayError(e)
+                return@launch
+            }
+            when (state) {
+                Page.State.Ready -> {
+                    hideLoadingIndicator()
+                    displayChapter(chapters.currChapter, page)
+                    restoreProgress(page)
+                    activity.viewModel.setNovelVisibleChapter(page.chapter.chapter)
+                }
+                is Page.State.Error -> {
+                    hideLoadingIndicator()
+                    displayError(state.error)
+                }
+                else -> {}
             }
         }
     }
@@ -1226,7 +1172,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             return
         }
 
-        // Check if chapter is already loaded - return early to prevent duplicate adds
         val existingIndex = loadedChapters.indexOfFirst { it.chapter.chapter.id == chapter.chapter.id }
         if (existingIndex >= 0) {
             logcat(LogPriority.DEBUG) {
@@ -1240,7 +1185,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             "NovelViewer: Displaying chapter ${chapter.chapter.id}, infinite scroll enabled: ${preferences.novelInfiniteScroll.get()}, loaded count: ${loadedChapters.size}"
         }
 
-        // Create header for chapter (for infinite scroll mode)
         val headerView = TextView(activity).apply {
             text = chapter.chapter.name
             textSize = 18f
@@ -1251,7 +1195,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             isVisible = false
         }
 
-        // Create text view for content
         val textView = createSelectableTextView()
 
         applyTextViewStyles(textView)
@@ -1263,14 +1206,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             isLoaded = true,
         )
 
-        // Check if this is an append (infinite scroll) or new chapter (manual nav)
         val isAppend = loadedChapters.isNotEmpty() && preferences.novelInfiniteScroll.get()
 
-        // Add to end for infinite scroll
         chapterQueue.append(loadedChapter)
 
-        // Only update currentChapterIndex if this is not an append (manual navigation)
-        // For infinite scroll appends, keep reading the current chapter
         if (!isAppend) {
             currentChapterIndex = loadedChapters.size - 1
         }
@@ -1297,12 +1236,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             loadedChapter.separatorView = separator
         }
 
-        // Add views to container
         contentContainer.addView(headerView)
         contentContainer.addView(textView)
 
-        // Run the content pipeline on a worker, then render. Translation (if enabled)
-        // re-uses the cached pre-translate result so normalize + regex run only once.
         val cfg = ContentConfig.from(
             preferences,
             RenderTarget.TEXT_VIEW,
@@ -1312,8 +1248,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         scope.launch {
             val pre = withContext(Dispatchers.Default) { contentPipeline.preTranslate(rawContent, cfg) }
             if (activity.isTranslationEnabled() && !preferences.novelShowRawHtml.get()) {
-                // Show placeholder first, then set translated content in one shot.
-                // Avoids two full StaticLayout builds (untranslated then translated).
                 val savedGravity = textView.gravity
                 textView.gravity = Gravity.CENTER
                 textView.text = activity.stringResource(TDMR.strings.novel_chapter_translating)
@@ -1394,8 +1328,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun cleanupDistantChapters() {
-        // Keep at most 3 chapters loaded (current + 1 next+1prev)
-        // When at chapter x, unload chapter x-2
         val maxChapters = 3
         while (loadedChapters.size > maxChapters && currentChapterIndex > 0) {
             val toRemove = loadedChapters.first()
@@ -1418,11 +1350,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 }
             }
 
-            // Adjust scroll position to prevent visual jump.
-            // Content shifted UP by removedHeight, so we must scroll UP by the same amount
-            // to keep the viewport on the same content.
-            // isRestoringScroll is already true (set by displayChapter before addView calls)
-            // and will be reset by displayChapter's scrollView.post{} after the layout pass.
             scrollView.scrollBy(0, -removedHeight)
 
             logcat(LogPriority.DEBUG) { "NovelViewer: Removed distant chapter, adjusted scroll by -$removedHeight" }
@@ -1430,14 +1357,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun restoreProgress(page: ReaderPage) {
-        // Restore scroll position from lastPageRead (stored as percentage)
         val savedProgress = page.chapter.chapter.last_page_read
         val isRead = page.chapter.chapter.read
         logcat(LogPriority.DEBUG) {
             "NovelViewer: Restoring progress, savedProgress=$savedProgress, isRead=$isRead for ${page.chapter.chapter.name}"
         }
 
-        // If chapter is marked as read, start from top (0%) to avoid infinite scroll issues
         val shouldRestore = if (!isRead) {
             savedProgress in 1..100
         } else {
@@ -1445,10 +1370,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
         if (shouldRestore) {
             val progress = savedProgress / 100f
-            // Set lastSavedProgress BEFORE posting to prevent race condition with scroll listener
             lastSavedProgress = progress
 
-            // Wait for layout to complete before scrolling
             scrollView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
                 override fun onGlobalLayout() {
                     scrollView.viewTreeObserver.removeOnGlobalLayoutListener(this)
@@ -1457,7 +1380,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     val child = scrollView.getChildAt(0) ?: return
                     val totalHeight = child.height - scrollView.height
                     if (totalHeight <= 0) {
-                        // Content not ready yet, schedule a retry
                         scrollView.postDelayed({
                             isRestoringScroll = true
                             setScrollProgress(progress.coerceIn(0f, 1f))
@@ -1474,7 +1396,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 }
             })
         } else {
-            // Scroll to top for new chapters or already read chapters
             lastSavedProgress = 0f
             scrollView.post {
                 isRestoringScroll = true
@@ -1506,8 +1427,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         textView.textSize = fontSize.toFloat()
         textView.setLineSpacing(0f, lineHeight)
 
-        // Apply font family
-        // For custom fonts (file:// or content:// URIs), load the Typeface from file
         textView.typeface = when {
             fontFamily.startsWith("file://") || fontFamily.startsWith("content://") -> {
                 if (fontFamily == cachedFontUri && cachedTypeface != null) {
@@ -1541,7 +1460,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             else -> android.graphics.Typeface.SANS_SERIF
         }
 
-        // Apply text alignment
         textView.gravity = when (textAlign) {
             "center" -> Gravity.CENTER_HORIZONTAL
             "right" -> Gravity.END
@@ -1557,7 +1475,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
 
         val (_, themeTextColor) = getThemeColors(theme)
-        // 0 = default (use theme color)
         val finalTextColor = if (fontColor != 0) fontColor else themeTextColor
         textView.setTextColor(finalTextColor)
     }
@@ -1567,7 +1484,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val backgroundColor = preferences.novelBackgroundColor.get()
 
         val (themeBgColor, _) = getThemeColors(theme)
-        // 0 = default (use theme color)
         val finalBgColor = if (theme == "custom" && backgroundColor != 0) backgroundColor else themeBgColor
         scrollView.setBackgroundColor(finalBgColor)
     }
@@ -1575,11 +1491,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun getThemeColors(theme: String): Pair<Int, Int> =
         ThemeUtils.getThemeColors(activity, preferences, theme)
 
-    /**
-     * Render already-preprocessed content into [textView] via [NovelTextRenderer].
-     * The renderer launches its own coroutine for parsing; viewer-side bookkeeping
-     * (mark chapter as text-set, fire pending-TTS auto-start) runs in [onChapterTextSet].
-     */
     private fun setTextViewContent(textView: TextView, processed: ProcessedContent) {
         textRenderer.render(
             textView = textView,
@@ -1616,7 +1527,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var initialLoadingView: TextView? = null
 
     private fun showLoadingIndicator() {
-        // Use inline loading text instead of progress bar
         contentContainer.removeAllViews()
 
         initialLoadingView = TextView(activity).apply {
@@ -1632,7 +1542,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun hideLoadingIndicator() {
-        // Remove the initial loading view if still present
         initialLoadingView?.let { view ->
             contentContainer.removeView(view)
         }
@@ -1707,13 +1616,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         autoScrollJob?.cancel()
         autoScrollJob = scope.launch {
             while (isActive && isAutoScrolling) {
-                // Scroll amount per tick - higher speed = more scroll
-                val scrollAmount = speed // 1-10 pixels per tick
+                val scrollAmount = speed
                 scrollView.smoothScrollBy(0, scrollAmount)
-
-                // Fixed delay between scroll ticks
-                // At speed 1: scroll 1px every 50ms = ~20px/sec
-                // At speed 10: scroll 10px every 50ms = ~200px/sec
                 delay(50L)
             }
         }
@@ -1734,16 +1638,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     fun isAutoScrollActive(): Boolean = isAutoScrolling
 
-    /**
-     * Scrolls to the top of the page
-     */
     fun scrollToTop() {
         scrollView.scrollTo(0, 0)
     }
 
-    /**
-     * Gets the current scroll progress (0.0 to 1.0)
-     */
     fun getScrollProgress(callback: (Float) -> Unit) {
         val scrollY = scrollView.scrollY
         val child = scrollView.getChildAt(0)
@@ -1752,10 +1650,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         callback(progress)
     }
 
-    /**
-     * Gets the current scroll progress as percentage (0 to 100)
-     * In infinite scroll mode, returns progress within the current chapter.
-     */
     fun getProgressPercent(): Int {
         val scrollY = scrollView.scrollY
         if (loadedChapters.size > 1 && preferences.novelInfiniteScroll.get()) {
@@ -1773,16 +1667,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
         }
         val progress = scrollY.toFloat() / totalHeight
-        // Round up if very close to 100% (within 2%) to allow reaching 100%
         val percent = if (progress >= 0.98f) 100 else (progress * 100).toInt()
         return percent.coerceIn(0, 100)
     }
 
-    /**
-     * Sets the scroll position within the current chapter by progress (0.0 to 1.0)
-     */
     fun setScrollProgress(progress: Float) {
-        // For single chapter or no infinite scroll, use overall scroll
         if (loadedChapters.size <= 1 || !preferences.novelInfiniteScroll.get()) {
             val child = scrollView.getChildAt(0) ?: return
             val totalHeight = child.height - scrollView.height
@@ -1791,7 +1680,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             return
         }
 
-        // For infinite scroll with multiple chapters, scroll within current chapter
         var accumulatedHeight = 0
         for ((index, loadedChapter) in loadedChapters.withIndex()) {
             val separatorHeight = loadedChapter.separatorView?.height ?: 0
@@ -1807,17 +1695,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
-    /**
-     * Sets the scroll position by progress percentage (0 to 100)
-     */
     fun setProgressPercent(percent: Int) {
         val progress = percent.coerceIn(0, 100) / 100f
         setScrollProgress(progress)
     }
 
     override fun moveToPage(page: ReaderPage) {
-        // For novels, each chapter is one "page"
-        // If we need to support multi-page novels, implement navigation here
     }
 
     override fun handleKeyEvent(event: KeyEvent): Boolean {
@@ -1868,9 +1751,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         return false
     }
 
-    /**
-     * Get the currently selected text from the active chapter's TextView
-     */
     fun getSelectedText(): String? {
         val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return null
         val textView = loaded.textView
@@ -1884,17 +1764,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         return text.substring(start, end)
     }
 
-    /**
-     * Get the current chapter name for quote context
-     */
     fun getCurrentChapterName(): String? {
         val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return null
         return loaded.chapter.chapter.name
     }
 
-    /**
-     * Clear text selection
-     */
     fun clearTextSelection() {
         val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return
         val textView = loaded.textView
@@ -1903,16 +1777,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
-    /**
-     * Handle the "Remember" action from text selection menu
-     */
     private fun onRememberSelectedText() {
         val selectedText = getSelectedText()
         val chapterName = getCurrentChapterName()
 
         if (selectedText != null && chapterName != null) {
             activity.onRememberSelectedText()
-            // Clear selection after adding quote
             clearTextSelection()
         } else {
             activity.toast("No text selected")

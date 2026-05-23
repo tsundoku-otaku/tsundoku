@@ -7,18 +7,11 @@ private const val SWIPE_THRESHOLD = 150
 private const val SWIPE_VELOCITY_THRESHOLD = 200
 private const val DIRECTION_RATIO = 1.5f
 
-/**
- * Handles a fling gesture for novel chapter navigation. Returns `true` if the
- * gesture was consumed (horizontal swipe past the threshold).
- *
- * @param onPrevious Called when the user swipes right (previous chapter).
- * @param onNext     Called when the user swipes left (next chapter).
- */
 fun handleNovelFlingGesture(
     e1: MotionEvent?,
     e2: MotionEvent,
     velocityX: Float,
-    velocityY: Float,
+    _velocityY: Float,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
 ): Boolean {

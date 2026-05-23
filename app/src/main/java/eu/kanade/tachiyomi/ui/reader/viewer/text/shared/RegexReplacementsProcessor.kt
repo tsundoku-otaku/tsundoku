@@ -5,15 +5,8 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import logcat.LogPriority
 import logcat.logcat
 
-/**
- * Applies the user-defined Find / Replace rules stored as JSON in
- * [ReaderPreferences.novelRegexReplacements]. Compiled patterns are cached.
- */
 object RegexReplacementsProcessor {
 
-    // LRU cache capped at 16 entries. A user rarely has more than a handful of
-    // distinct rule-set JSONs; an unbounded ConcurrentHashMap would grow forever
-    // if rules are edited repeatedly.
     private val cache: MutableMap<String, List<Pair<Regex, String>>> =
         java.util.Collections.synchronizedMap(
             object : java.util.LinkedHashMap<String, List<Pair<Regex, String>>>(16, 0.75f, true) {
@@ -23,9 +16,6 @@ object RegexReplacementsProcessor {
             },
         )
 
-    /**
-     * Applies all enabled rules to [content] in declaration order.
-     */
     fun apply(content: String, preferences: ReaderPreferences): String {
         val rulesJson = preferences.novelRegexReplacements.get()
         if (rulesJson.isBlank() || rulesJson == "[]") return content

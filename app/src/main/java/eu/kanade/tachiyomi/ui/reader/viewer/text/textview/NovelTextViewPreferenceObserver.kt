@@ -7,18 +7,6 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
-/**
- * Wires reader-preference flows to [NovelViewer] actions.
- *
- * The viewer used to launch six `scope.launch { … merge(…).drop(N).collect … }`
- * blocks inline. They are noisy, easy to misorder, and easy to get wrong on
- * the drop-count side (drop the wrong number → spurious refresh on subscribe).
- * This class groups the prefs by reaction and lets the viewer supply each
- * reaction as a lambda.
- *
- * Call [observe] once during viewer construction. The block runs forever on
- * the supplied [scope] and is cancelled when the scope is.
- */
 internal class NovelTextViewPreferenceObserver(
     private val preferences: ReaderPreferences,
     private val scope: CoroutineScope,
@@ -29,7 +17,6 @@ internal class NovelTextViewPreferenceObserver(
 ) {
 
     fun observe() {
-        // Style-affecting preferences refresh in-place; no chapter reload.
         scope.launch {
             merge(
                 preferences.novelFontSize.changes(),
@@ -48,7 +35,6 @@ internal class NovelTextViewPreferenceObserver(
                 .collect { onStylePrefChanged() }
         }
 
-        // Content-affecting preferences require re-running the pipeline.
         scope.launch {
             merge(
                 preferences.novelParagraphIndent.changes(),
@@ -63,8 +49,6 @@ internal class NovelTextViewPreferenceObserver(
                 .collect { onContentReloadRequested() }
         }
 
-        // forceLowercase / hideChapterTitle also trigger a content reload, but
-        // they live on a separate flow so the drop count stays small.
         scope.launch {
             merge(
                 preferences.novelForceTextLowercase.changes(),
@@ -98,8 +82,7 @@ internal class NovelTextViewPreferenceObserver(
     }
 
     companion object {
-        // Drop counts match the number of merged flows so the initial
-        // emissions don't trigger a spurious refresh on subscribe.
+        // drop counts = number of merged flows, suppresses initial-emit spurious refresh
         private const val STYLE_PREF_COUNT = 11
         private const val CONTENT_PREF_COUNT = 7
         private const val LOWERCASE_AND_TITLE_PREF_COUNT = 2

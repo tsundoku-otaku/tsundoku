@@ -10,10 +10,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.logcat
-/**
- * Page-loading helpers used by both reader viewers: page-text awaits and
- * cached preference decoding.
- */
+
 object NovelPageLoader {
 
     private val intMapJsonCache: MutableMap<String, Map<String, Int>> =
@@ -25,23 +22,6 @@ object NovelPageLoader {
             },
         )
 
-    fun decodeIntMapPreference(json: String): MutableMap<String, Int> {
-        if (json.isBlank()) return mutableMapOf()
-        val cached = intMapJsonCache[json]
-        if (cached != null) return cached.toMutableMap()
-
-        return try {
-            val decoded = kotlinx.serialization.json.Json.decodeFromString<Map<String, Int>>(json)
-            intMapJsonCache[json] = decoded
-            decoded.toMutableMap()
-        } catch (_: Exception) {
-            mutableMapOf()
-        }
-    }
-
-    /**
-     * Waits for [page] to finish loading text, triggering the load if still queued.
-     */
     suspend fun awaitPageText(
         tag: String,
         page: ReaderPage,

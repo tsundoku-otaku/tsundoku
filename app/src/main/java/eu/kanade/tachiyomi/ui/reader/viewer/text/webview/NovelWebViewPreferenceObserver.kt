@@ -6,22 +6,6 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
-/**
- * Wires reader-preference flows to [NovelWebViewViewer] actions.
- *
- * Groups the prefs by reaction:
- * - **Styles** — refresh inline `<style>` via [onStyleChanged].
- * - **Scripts** — re-inject Tsundoku JS via [onScriptChanged].
- * - **Chapter reload** — embedded CSS/JS toggles, force-lowercase, regex
- *   rules — trigger a full chapter reload via [onChapterReloadRequested]
- *   because the pipeline re-sanitizes / re-transforms.
- * - **Media block** — set WebView's `blockNetworkImage` / reload via
- *   [onBlockMediaChanged] (the only reaction that touches WebView settings).
- * - **TTS** — apply engine settings via [onTtsSettingsChanged].
- *
- * Call [observe] once during viewer construction. The block runs forever on
- * the supplied [scope] and is cancelled when the scope is.
- */
 internal class NovelWebViewPreferenceObserver(
     private val preferences: ReaderPreferences,
     private val scope: CoroutineScope,
@@ -33,7 +17,6 @@ internal class NovelWebViewPreferenceObserver(
 ) {
 
     fun observe() {
-        // Style-affecting preferences re-inject the inline <style>; no chapter reload.
         scope.launch {
             merge(
                 preferences.novelFontSize.changes().drop(1),
@@ -63,16 +46,6 @@ internal class NovelWebViewPreferenceObserver(
             ).collect { onScriptChanged() }
         }
 
-        // Reload-requiring preferences:
-        //   - Embedded CSS/JS toggles → pipeline re-sanitizes
-        //   - Force-lowercase → pipeline re-transforms
-        //   - Regex rules → pipeline re-applies
-        //   - Source CSS priority → toggles !important on the inline reader
-        //     CSS, but embedded source CSS only takes effect once the
-        //     document is reloaded so the new specificity layers settle
-        //   - Use-original-fonts → the @font-face declaration is baked into
-        //     the document head at assemble time; only a reload picks up
-        //     the new font choice (cf. NovelWebViewDocumentBuilder)
         scope.launch {
             merge(
                 preferences.enableEpubStyles.changes().drop(1),

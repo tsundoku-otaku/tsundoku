@@ -2,15 +2,8 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import org.jsoup.Jsoup
 
-/**
- * Pure text utilities for TTS playback: chunking, paragraph indexing, and
- * step computation. No Android dependencies; safe to unit-test.
- */
 object TtsTextUtils {
 
-    /**
-     * Position metadata for a paragraph inside a chapter's plain-text projection.
-     */
     data class ParagraphInfo(
         val index: Int,
         val startChar: Int,
@@ -18,10 +11,6 @@ object TtsTextUtils {
         val text: String,
     )
 
-    /**
-     * Splits [text] into chunks suitable for TTS playback,
-     * breaking at sentence boundaries or spaces when possible.
-     */
     fun splitTextForTts(text: String, maxLength: Int): List<String> {
         val chunks = mutableListOf<String>()
         val hasSpaces = ' ' in text
@@ -48,7 +37,6 @@ object TtsTextUtils {
                     if (nextSpace > 0) {
                         breakPoint = nextSpace + 1
                     } else {
-                        // No more spaces — remaining is one unsplittable word; add as-is.
                         chunks.add(remaining.trim())
                         break
                     }
@@ -62,10 +50,6 @@ object TtsTextUtils {
         return chunks
     }
 
-    /**
-     * Finds all paragraph boundaries in [text] by parsing block elements or splitting
-     * on empty lines as a fallback.
-     */
     fun findParagraphs(text: String): List<ParagraphInfo> {
         val paragraphs = mutableListOf<ParagraphInfo>()
 
@@ -105,18 +89,6 @@ object TtsTextUtils {
         return paragraphs
     }
 
-    /**
-     * Finds the paragraph index for a given character offset in text.
-     * Used to resume TTS from a saved position.
-     */
-    fun findParagraphAtOffset(text: String, charOffset: Int, paragraphs: List<ParagraphInfo>): Int {
-        return paragraphs.indexOfFirst { it.startChar <= charOffset && charOffset < it.endChar }
-            .takeIf { it >= 0 } ?: 0
-    }
-
-    /**
-     * Converts a character offset into a chunk index based on cumulative chunk lengths.
-     */
     fun getChunkIndexFromOffset(charOffset: Int, ttsChunks: List<String>): Int {
         var currentOffset = 0
         for ((index, chunk) in ttsChunks.withIndex()) {
@@ -126,9 +98,6 @@ object TtsTextUtils {
         return (ttsChunks.size - 1).coerceAtLeast(0)
     }
 
-    /**
-     * Returns the chunk index to seek to after a +/- paragraph step.
-     */
     fun computeTtsStepTargetChunk(
         delta: Int,
         ttsPaused: Boolean,

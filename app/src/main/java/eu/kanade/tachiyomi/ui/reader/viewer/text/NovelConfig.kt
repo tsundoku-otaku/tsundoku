@@ -21,11 +21,7 @@ class NovelConfig(
     readerPreferences: ReaderPreferences = Injekt.get(),
 ) : ViewerConfig(readerPreferences, scope) {
 
-    // Tracks whether updateNavigation has been called at least once. The
-    // navigationModeNovel Preference fires its onChanged lambda on the initial
-    // flow emit during construction, which would otherwise trigger the
-    // tap-zone preview every time the reader opens. We only invoke the
-    // listener on subsequent emits — i.e. real user nav-mode changes.
+    // suppress tap-zone preview on initial flow emit during construction
     private var initialNavigationConsumed = false
 
     init {
@@ -34,9 +30,6 @@ class NovelConfig(
 
         readerPreferences.novelNavInverted
             .register({ tappingInverted = it }, { navigator.invertMode = it })
-        // Surface the preview overlay when the user flips the invert option
-        // — mirrors the pager/webtoon configs so the novel reader behaves
-        // consistently with the manga reader.
         readerPreferences.novelNavInverted.changes()
             .drop(1)
             .onEach { navigationModeChangedListener?.invoke() }

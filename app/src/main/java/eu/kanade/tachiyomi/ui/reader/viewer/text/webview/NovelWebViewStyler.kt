@@ -14,30 +14,9 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.logcat
+import androidx.core.net.toUri
 import java.io.File
 
-/**
- * Builds the CSS + JS that the WebView reader injects into every chapter page.
- *
- * Pulled out of [NovelWebViewViewer] so the page-side behavior (style sheet,
- * scroll-progress listener, chapter-boundary tracker, infinite-scroll trigger,
- * next-chapter button, custom-CSS/JS snippets) lives in one file instead of
- * being scattered across the viewer.
- *
- * Lifecycle is owned by the viewer:
- * - call [applyScrollbarSettings] when WebView is first attached and on
- *   relevant preference changes
- * - call [injectStyles] when style preferences change or after a fresh chapter
- *   load
- * - call [injectScript] + [injectScrollTracking] after `onPageFinished`
- *   (and after every append/prepend so newly-injected DOM picks up the user's
- *   custom JS)
- * - call [injectNextChapterButton] when the user has infinite scroll off
- *
- * The styler doesn't read viewer state directly — it asks the viewer for what
- * it needs via the supplied lambdas (`evaluateJs`, `buildTsundokuScript`,
- * `hasNextChapter`). This keeps the styler stateless and testable.
- */
 internal class NovelWebViewStyler(
     private val activity: ReaderActivity,
     private val preferences: ReaderPreferences,
@@ -46,13 +25,6 @@ internal class NovelWebViewStyler(
     private val evaluateJs: (String) -> Unit,
 ) {
 
-    /**
-     * Result of [buildPayload]. The CSS string is the entire `<style>` body
-     * (already minified to a single line). [backgroundColor] is the packed
-     * ARGB int used to set the WebView and container background — exposed
-     * separately because Android needs it as an int and the CSS uses it as
-     * hex.
-     */
     data class CustomStylePayload(
         val css: String,
         val hideChapterTitle: Boolean,
@@ -85,7 +57,6 @@ internal class NovelWebViewStyler(
         val hideChapterTitle = preferences.novelHideChapterTitle.get()
 
         val (themeBgColor, themeTextColor) = ThemeUtils.getThemeColors(activity, preferences, theme)
-        // Use 0 as default marker (not -1, since white = -1 as signed int)
         val finalBgColor = if (theme == "custom" && backgroundColor != 0) backgroundColor else themeBgColor
         val finalTextColor = if (fontColor != 0) fontColor else themeTextColor
 
@@ -104,7 +75,6 @@ internal class NovelWebViewStyler(
             ""
         }
 
-        // For URI-backed fonts, copy to cache and serve via file:// for WebView access.
         val (fontFaceDeclaration, effectiveFontFamily) = resolveFontFace(fontFamily, useOriginalFonts)
 
 
@@ -164,7 +134,7 @@ internal class NovelWebViewStyler(
         if (useOriginalFonts) return "" to fontFamily
         if (!(fontFamily.startsWith("file://") || fontFamily.startsWith("content://"))) return "" to fontFamily
         return try {
-            val fontUri = android.net.Uri.parse(fontFamily)
+            val fontUri = fontFamily.toUri()
             val inputStream = activity.contentResolver.openInputStream(fontUri)
                 ?: return "" to fontFamily
             val fontFile = File(activity.cacheDir, "custom_font.ttf")
@@ -198,11 +168,6 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
-    /**
-     * Push the global `window.Tsundoku` object and any user-defined custom-JS
-     * snippets into the page. [buildTsundokuScript] is a viewer-supplied
-     * closure that takes a fresh snapshot of viewer state.
-     */
     fun injectScript(buildTsundokuScript: () -> String) {
         evaluateJs(buildTsundokuScript())
 
@@ -220,11 +185,6 @@ internal class NovelWebViewStyler(
         if (enabledSnippetsJs.isNotBlank()) evaluateJs(enabledSnippetsJs)
     }
 
-    /**
-     * Inject a "Next Chapter" button at the bottom of the WebView content
-     * when infinite scroll is disabled. [hasNextChapter] is a viewer-supplied
-     * predicate (the styler can't know about the chapter graph).
-     */
     fun injectNextChapterButton(hasNextChapter: Boolean) {
         if (!hasNextChapter) return
         val js = NovelWebViewJsAssets.loadWith(
@@ -235,14 +195,6 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
-    /**
-     * Install the page-side scroll listener: throttled progress callbacks to
-     * the Android side, chapter-boundary tracking for multi-chapter infinite
-     * scroll, and the infinite-scroll auto-load trigger.
-     *
-     * Idempotent — uses `runtime.infiniteScrollInstalled` guard so repeated
-     * calls (after every append/prepend) are harmless.
-     */
     fun injectScrollTracking() {
         val autoLoadThreshold = preferences.novelAutoLoadNextChapterAt.get()
         val effectiveThreshold = if (autoLoadThreshold > 0) autoLoadThreshold / 100.0 else 0.95
@@ -264,17 +216,6 @@ internal class NovelWebViewStyler(
         const val STYLE_ID_CUSTOM = "tsundoku-custom-style"
         const val ID_NEXT_CHAPTER_BTN_CONTAINER = "next-chapter-btn-container"
 
-        /**
-         * Returns the CSS fragments that override inline `font-size` / `font-family`
-         * on source-HTML elements when the reader (not the source) takes priority.
-         *
-         * Both pieces are empty strings when [sourceCssPriority] is `true`.
-         *
-         * Extracted to a companion function so it can be unit-tested without Android.
-         *
-         * @return Pair(starRuleOverrides, headingSizeRules) — intended to be spliced
-         *   into the `* { … }` rule body and the top-level rule block respectively.
-         */
         internal fun fontOverrideCss(sourceCssPriority: Boolean, useOriginalFonts: Boolean): Pair<String, String> {
             if (sourceCssPriority) return "" to ""
             val ffInherit = if (useOriginalFonts) "" else " font-family: inherit !important;"

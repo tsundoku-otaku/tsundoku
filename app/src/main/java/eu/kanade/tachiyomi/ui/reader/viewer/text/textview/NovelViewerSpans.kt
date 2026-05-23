@@ -9,10 +9,6 @@ import android.text.style.LeadingMarginSpan
 import android.text.style.LineBackgroundSpan
 import android.text.style.LineHeightSpan
 
-/**
- * Custom span for paragraph spacing — adds vertical space after paragraphs
- * that end with a newline.
- */
 internal class ParagraphSpacingSpan(private val spacingPx: Int) : LineHeightSpan {
     override fun chooseHeight(
         text: CharSequence,
@@ -29,10 +25,6 @@ internal class ParagraphSpacingSpan(private val spacingPx: Int) : LineHeightSpan
     }
 }
 
-/**
- * Custom span for paragraph indent — adds a leading margin to the first line
- * of each paragraph it covers.
- */
 internal class ParagraphIndentSpan(private val indentPx: Int) : LeadingMarginSpan {
     override fun getLeadingMargin(first: Boolean): Int = if (first) indentPx else 0
 
@@ -50,19 +42,9 @@ internal class ParagraphIndentSpan(private val indentPx: Int) : LeadingMarginSpa
         first: Boolean,
         layout: Layout,
     ) {
-        // Margin only; no custom drawing.
     }
 }
 
-/**
- * Draws a rounded outline around the text covered by this span. Used for the
- * TTS highlight indicator on the active chunk.
- *
- * Rounds the corners only on the line where the span starts (top corners)
- * and the line where the span ends (bottom corners). Middle lines get
- * square corners so consecutive rects abut visually instead of pinching
- * apart at every line break.
- */
 internal class RoundedOutlineSpan(
     private val color: Int,
     private val strokeWidthPx: Float = 3f,

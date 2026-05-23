@@ -6,10 +6,6 @@ import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 
-/**
- * Pure HTML / plain-text / markdown content utilities shared by [NovelViewer] and
- * [NovelWebViewViewer]. No Android dependencies; safe to unit-test.
- */
 object HtmlUtils {
 
     private enum class ChapterTextKind { HTML, MARKDOWN, PLAIN_TEXT }
@@ -17,7 +13,6 @@ object HtmlUtils {
     private val frontMatterRegex = Regex("^\\uFEFF?---\\s*\\r?\\n([\\s\\S]*?)\\r?\\n---\\s*(\\r?\\n|$)")
     private const val CHAPTER_TITLE_SEARCH_LIMIT = 3000
 
-    // Precompiled so they are not re-allocated on every chapter load.
     private val htmlTagRegex = Regex(
         "<\\s*(html|head|body|div|p|span|br|h[1-6]|img|a|table|ul|ol|li|blockquote|article|section|!doctype)\\b",
         RegexOption.IGNORE_CASE,
@@ -39,7 +34,6 @@ object HtmlUtils {
         Regex("""part\s*\d+""", RegexOption.IGNORE_CASE),
     )
 
-    // sanitizeForRender patterns
     private val scriptTagRegex = Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val scriptSelfClosingRegex = Regex("<script[^>]*/>", RegexOption.IGNORE_CASE)
     private val styleTagRegex = Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
@@ -50,7 +44,6 @@ object HtmlUtils {
     private val htmlCommentRegex = Regex("<!--.*?-->", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val encodedCommentRegex = Regex("&lt;!--.*?--&gt;", RegexOption.DOT_MATCHES_ALL)
 
-    // stripMediaTags patterns
     private val imgTagRegex = Regex("<img[^>]*>", RegexOption.IGNORE_CASE)
     private val imageTagRegex = Regex("</?image[^>]*>", RegexOption.IGNORE_CASE)
     private val videoTagRegex = Regex("<video[^>]*>.*?</video>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
@@ -63,8 +56,6 @@ object HtmlUtils {
     }
 
     private fun extensionFor(chapterUrl: String?): String {
-        // substringAfterLast(c) returns the receiver unchanged when the delimiter
-        // is absent, so URLs without a slash (e.g. "chapter.txt") still match.
         return chapterUrl
             ?.substringBefore('#')
             ?.substringBefore('?')
@@ -91,10 +82,6 @@ object HtmlUtils {
         }
     }
 
-    /**
-     * Normalizes chapter content to HTML so both WebView and TextView pipelines
-     * can share rendering behavior for html/plain-text/markdown chapters.
-     */
     fun normalizeContentForHtml(content: String, chapterUrl: String?): String {
         val normalized = content.replace("\u0000", "")
         if (isPlainTextChapter(chapterUrl)) {
@@ -166,17 +153,10 @@ object HtmlUtils {
     }
 
     /**
-     * Strips the chapter title from the beginning of the content.
-     * Searches within the first ~3000 characters for chapter title or name matches.
-     *
-     * The first `<h1>–<h6>` tag is removed **unconditionally** (the `true` flag
-     * below). This is intentional: when the user enables "hide chapter title",
-     * any leading heading is treated as the chapter title regardless of whether
-     * its text matches the chapter name. Sources routinely embed a redundant
-     * heading at the top of the content that is identical to the chapter name
-     * already shown in the reader UI. Checking for a text match would silently
-     * keep headings whose text was formatted differently (different case, extra
-     * punctuation) — the unconditional removal is the safer default here.
+     * The first `<h1>–<h6>` tag is removed unconditionally (the `true` flag in
+     * [titlePatterns]). Sources routinely embed a redundant heading identical to
+     * the chapter name already shown in the reader UI; matching by text would
+     * silently keep headings with different casing or punctuation.
      */
     fun stripChapterTitle(content: String, chapterName: String): String {
         val normalizedChapterName = chapterName.trim().lowercase()
@@ -205,10 +185,6 @@ object HtmlUtils {
         return content
     }
 
-    /**
-     * Checks whether the given [text] is a title match for [chapterName].
-     * Both arguments should already be lowercased.
-     */
     fun isTitleMatch(text: String, chapterName: String): Boolean {
         if (text.isEmpty() || chapterName.isEmpty()) return false
         if (text == chapterName) return true
@@ -217,14 +193,6 @@ object HtmlUtils {
         return chapterNumPatterns.any { it.matches(text) && it.containsMatchIn(chapterName) }
     }
 
-    /**
-     * Strip elements that the renderer must never display: scripts, styles, comments,
-     * entity-encoded ad markers, and optionally media tags.
-     *
-     * For [RenderTarget.TEXT_VIEW] all scripts and styles are removed unconditionally
-     * (TextView would render them as visible text). For [RenderTarget.WEB_VIEW] the
-     * `keepEmbeddedCss` and `keepEmbeddedJs` flags decide whether to preserve them.
-     */
     fun sanitizeForRender(
         content: String,
         target: RenderTarget,
@@ -248,9 +216,6 @@ object HtmlUtils {
             if (target == RenderTarget.WEB_VIEW) {
                 result = result.replace(linkStylesheetRegex1, "")
                 result = result.replace(linkStylesheetRegex2, "")
-                // parseBodyFragment + body().html() preserves the fragment structure
-                // instead of wrapping it in a full <html><head><body> document,
-                // which would corrupt content inserted via infinite-scroll append.
                 try {
                     val doc = org.jsoup.Jsoup.parseBodyFragment(result)
                     doc.body().select("*").removeAttr("style")

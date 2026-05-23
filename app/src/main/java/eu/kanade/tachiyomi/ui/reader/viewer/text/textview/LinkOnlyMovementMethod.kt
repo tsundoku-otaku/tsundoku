@@ -7,15 +7,7 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.widget.TextView
 
-/**
- * A [MovementMethod] that handles [ClickableSpan] clicks without attempting
- * text selection.
- *
- * Unlike [android.text.method.LinkMovementMethod], this method never calls
- * `Selection.extendSelection` / `Selection.setSelection`, so it never triggers
- * the "TextView does not support text selection. Selection cancelled." warning
- * when [TextView.isTextSelectable] is false.
- */
+// Unlike LinkMovementMethod, never calls Selection.setSelection — avoids "Selection cancelled" on non-selectable TextViews.
 internal object LinkOnlyMovementMethod : MovementMethod {
     override fun initialize(widget: TextView, text: Spannable) {}
     override fun onKeyDown(widget: TextView, text: Spannable, keyCode: Int, event: KeyEvent) = false
