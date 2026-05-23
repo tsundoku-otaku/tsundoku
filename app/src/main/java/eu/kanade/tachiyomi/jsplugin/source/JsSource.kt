@@ -796,7 +796,7 @@ class JsSource(
                     val obj = item.jsonObject
                     SManga.create().apply {
                         title = obj["name"]?.jsonPrimitive?.content?.decodeEntities() ?: return@mapNotNull null
-                        url = obj["path"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                        url = (obj["path"]?.jsonPrimitive?.content ?: return@mapNotNull null).let { if (it.startsWith("/")) it else "/$it" }
                         // Ensure thumbnail_url is a valid URL or null
                         val coverUrl = obj["cover"]?.jsonPrimitive?.content
                         thumbnail_url = when {

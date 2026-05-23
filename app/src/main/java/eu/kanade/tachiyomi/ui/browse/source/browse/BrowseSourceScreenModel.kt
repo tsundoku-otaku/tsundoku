@@ -222,11 +222,13 @@ class BrowseSourceScreenModel(
      */
     private val hideInLibraryItems = sourcePreferences.hideInLibraryItems.get()
     private fun normalizeUrl(url: String): String = url.trimEnd('/').substringBefore('#')
+    private fun normalizeUrlForLookup(url: String): String =
+        normalizeUrl(eu.kanade.tachiyomi.util.source.normalizeSourcePath(source, url))
 
     // Cached library manga for this source - single subscription instead of per-item
     private val libraryMangaForSource: StateFlow<Map<String, Manga>> = getFavoritesEntry.subscribe(sourceId)
         .map { favorites ->
-            favorites.associateBy { normalizeUrl(it.url) }
+            favorites.associateBy { normalizeUrlForLookup(it.url) }
         }
         .stateIn(ioCoroutineScope, SharingStarted.Eagerly, emptyMap())
 
@@ -246,7 +248,7 @@ class BrowseSourceScreenModel(
         }.flow.map { pagingData ->
             pagingData.map { manga ->
                 // Normalize URL to prevent duplicates from trailing slashes/fragments
-                val normalizedUrl = normalizeUrl(manga.url)
+                val normalizedUrl = normalizeUrlForLookup(manga.url)
                 val normalizedManga = if (normalizedUrl != manga.url) {
                     manga.copy(url = normalizedUrl)
                 } else {

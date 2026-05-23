@@ -423,6 +423,14 @@ class MangaScreenModel(
                 val categories = allCategories.filter {
                     it.contentType == contentType || it.contentType == Category.CONTENT_TYPE_ALL
                 }
+                // Normalize URL to ensure leading slash for JsSource/HttpSource
+                state.source?.let { src ->
+                    val normalizedUrl = eu.kanade.tachiyomi.util.source.normalizeSourcePath(src, manga.url)
+                    if (normalizedUrl != manga.url) {
+                        updateManga.awaitUpdateUrl(manga.id, normalizedUrl)
+                    }
+                }
+
                 val defaultCategoryId = libraryPreferences.defaultCategory.get().toLong()
                 val defaultCategory = categories.find { it.id == defaultCategoryId }
                 when {
