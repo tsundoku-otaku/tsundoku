@@ -48,6 +48,8 @@ fun ExportEpubDialog(
     var includeChapterRange by remember { mutableStateOf(false) }
     var includeStatus by remember { mutableStateOf(false) }
     var includeVolumeNumber by remember { mutableStateOf(false) }
+    var includeCustomCss by remember { mutableStateOf(false) }
+    var includeCustomJs by remember { mutableStateOf(false) }
 
     // "Both" mode produces two EPUB files → request a ZIP container
     val mimeType = if (translationMode == TranslationMode.BOTH || !joinVolumes) {
@@ -70,6 +72,8 @@ fun ExportEpubDialog(
                     includeChapterRange = includeChapterRange,
                     includeStatus = includeStatus,
                     includeVolumeNumber = includeVolumeNumber,
+                    includeCustomCss = includeCustomCss,
+                    includeCustomJs = includeCustomJs,
                 ),
             )
             onDismissRequest()
@@ -178,6 +182,35 @@ fun ExportEpubDialog(
                     checked = includeVolumeNumber,
                     onClick = { includeVolumeNumber = !includeVolumeNumber },
                 )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(TDMR.strings.epub_include_custom_assets_section),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+
+                CheckboxItem(
+                    label = stringResource(TDMR.strings.epub_include_custom_css),
+                    checked = includeCustomCss,
+                    onClick = { includeCustomCss = !includeCustomCss },
+                )
+
+                CheckboxItem(
+                    label = stringResource(TDMR.strings.epub_include_custom_js),
+                    checked = includeCustomJs,
+                    onClick = { includeCustomJs = !includeCustomJs },
+                )
+
+                if (includeCustomCss || includeCustomJs) {
+                    Text(
+                        text = stringResource(TDMR.strings.epub_include_custom_assets_info),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 

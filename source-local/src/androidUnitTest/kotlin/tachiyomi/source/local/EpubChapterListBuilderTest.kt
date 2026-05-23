@@ -2,6 +2,7 @@ package tachiyomi.source.local
 
 import mihon.core.archive.EpubReader
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class EpubChapterListBuilderTest {
@@ -203,5 +204,126 @@ class EpubChapterListBuilderTest {
         assertEquals(100_002f, volume2[1].chapter_number)
         assertEquals("volume1 - CAPITOLO 1", volume1[0].name)
         assertEquals("volume2 - CAPITOLO 1", volume2[0].name)
+    }
+
+    @Test
+    fun `buildEpubChaptersFromToc three volumes with offsets produce non-colliding chapter numbers`() {
+        fun buildVolume(volumeIndex: Int, fileStem: String): List<eu.kanade.tachiyomi.source.model.SChapter> {
+            val toc = listOf(
+                EpubReader.EpubChapter(title = "Cover", href = "cover.xhtml", order = 0),
+                EpubReader.EpubChapter(title = "Chapter 1", href = "ch1.xhtml", order = 1),
+                EpubReader.EpubChapter(title = "Chapter 2", href = "ch2.xhtml", order = 2),
+            )
+            val spine = listOf(
+                "cover.xhtml",
+                "insert1.xhtml",
+                "ch1.xhtml",
+                "ch1-extra.xhtml",
+                "ch2.xhtml",
+            )
+            return buildEpubChaptersFromToc(
+                mangaUrl = "local-novels/series",
+                chapterFileName = "$fileStem.epub",
+                chapterFileNameWithoutExtension = fileStem,
+                chapterLastModified = 1_000L * (volumeIndex + 1),
+                tocChapters = toc,
+                spinePageHrefs = spine,
+                hasMultipleEpubFiles = true,
+                chapterNumberOffset = volumeIndex * 10_000f,
+            )
+        }
+
+        val volume1 = buildVolume(volumeIndex = 0, fileStem = "001 - Volume 1")
+        val volume2 = buildVolume(volumeIndex = 1, fileStem = "002 - Volume 2")
+        val volume3 = buildVolume(volumeIndex = 2, fileStem = "003 - Volume 3")
+
+        assertEquals(5, volume1.size)
+        assertEquals(5, volume2.size)
+        assertEquals(5, volume3.size)
+
+        val combined = (volume1 + volume2 + volume3)
+        val numbers = combined.map { it.chapter_number }
+        assertEquals(numbers.size, numbers.toSet().size)
+
+        val sortedNames = combined
+            .sortedBy { it.chapter_number }
+            .map { it.name }
+
+        val expected = (volume1 + volume2 + volume3).map { it.name }
+        assertEquals(expected, sortedNames)
+
+        assertTrue(volume1.last().chapter_number < volume2.first().chapter_number)
+        assertTrue(volume2.last().chapter_number < volume3.first().chapter_number)
+    }
+
+    @Test
+    fun `buildEpubChaptersFromToc emits spine pages when toc is empty`() {
+        val chapters = buildEpubChaptersFromToc(
+            mangaUrl = "local-novels/no-toc-book",
+            chapterFileName = "novel.epub",
+            chapterFileNameWithoutExtension = "novel",
+            chapterLastModified = 999L,
+            tocChapters = emptyList(),
+            spinePageHrefs = listOf(
+                "front.xhtml",
+                "OEBPS/Text/chapter-01.xhtml",
+                "OEBPS/Text/chapter-02.xhtml",
+                "back-matter.xhtml",
+            ),
+            hasMultipleEpubFiles = false,
+        )
+
+        assertEquals(4, chapters.size)
+        assertEquals("front", chapters[0].name)
+        assertEquals("chapter 01", chapters[1].name)
+        assertEquals("chapter 02", chapters[2].name)
+        assertEquals("back matter", chapters[3].name)
+        assertEquals((1..4).map { it.toFloat() }, chapters.map { it.chapter_number })
+        assertEquals("local-novels/no-toc-book/novel.epub#front.xhtml", chapters[0].url)
+        assertEquals(
+            "local-novels/no-toc-book/novel.epub#OEBPS/Text/chapter-02.xhtml",
+            chapters[2].url,
+        )
+    }
+
+    @Test
+    fun `running offset across volumes produces gapless contiguous chapter numbers`() {
+        fun toc(count: Int): List<EpubReader.EpubChapter> = (1..count).map { i ->
+            EpubReader.EpubChapter(title = "Chapter $i", href = "ch$i.xhtml", order = i - 1)
+        }
+
+        val volume1 = buildEpubChaptersFromToc(
+            mangaUrl = "local-novels/series",
+            chapterFileName = "001 - vol1.epub",
+            chapterFileNameWithoutExtension = "001 - vol1",
+            chapterLastModified = 100L,
+            tocChapters = toc(5),
+            hasMultipleEpubFiles = true,
+            chapterNumberOffset = 0f,
+        )
+        val volume2 = buildEpubChaptersFromToc(
+            mangaUrl = "local-novels/series",
+            chapterFileName = "002 - vol2.epub",
+            chapterFileNameWithoutExtension = "002 - vol2",
+            chapterLastModified = 200L,
+            tocChapters = toc(7),
+            hasMultipleEpubFiles = true,
+            chapterNumberOffset = volume1.size.toFloat(),
+        )
+        val volume3 = buildEpubChaptersFromToc(
+            mangaUrl = "local-novels/series",
+            chapterFileName = "003 - vol3.epub",
+            chapterFileNameWithoutExtension = "003 - vol3",
+            chapterLastModified = 300L,
+            tocChapters = toc(3),
+            hasMultipleEpubFiles = true,
+            chapterNumberOffset = (volume1.size + volume2.size).toFloat(),
+        )
+
+        val combined = volume1 + volume2 + volume3
+        val numbers = combined.map { it.chapter_number }
+
+        assertEquals((1..15).map { it.toFloat() }, numbers)
+        assertEquals(numbers.size, numbers.toSet().size)
     }
 }

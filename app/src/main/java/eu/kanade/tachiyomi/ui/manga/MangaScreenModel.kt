@@ -1635,6 +1635,8 @@ class MangaScreenModel(
             includeChapterRange = options.includeChapterRange,
             includeStatus = options.includeStatus,
             includeVolumeNumber = options.includeVolumeNumber,
+            includeCustomCss = options.includeCustomCss,
+            includeCustomJs = options.includeCustomJs,
         )
 
         screenModelScope.launchIO {

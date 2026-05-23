@@ -50,11 +50,16 @@ class EpubWriter(
         metadata: Metadata,
         chapters: List<Chapter>,
         coverImage: ByteArray? = null,
+        customCss: String? = null,
+        customJs: String? = null,
     ) {
         val bookId = UUID.randomUUID().toString()
 
         val (coverMimeType, coverExtension) = if (coverImage != null) detectImageType(coverImage) else "image/jpeg" to "jpg"
         val coverFileName = "cover.$coverExtension"
+
+        val cssBody = customCss?.takeIf { it.isNotBlank() }
+        val jsBody = customJs?.takeIf { it.isNotBlank() }
 
         ZipOutputStream(outputStream).use { zip ->
             zip.setLevel(deflateLevel)
@@ -63,6 +68,13 @@ class EpubWriter(
 
             if (coverImage != null) {
                 writeEntry(zip, "OEBPS/images/$coverFileName", coverImage)
+            }
+
+            if (cssBody != null) {
+                writeEntry(zip, "OEBPS/$CUSTOM_CSS_PATH", cssBody)
+            }
+            if (jsBody != null) {
+                writeEntry(zip, "OEBPS/$CUSTOM_JS_PATH", jsBody)
             }
 
             chapters.forEachIndexed { chIdx, chapter ->
@@ -74,11 +86,22 @@ class EpubWriter(
             }
 
             chapters.forEachIndexed { index, chapter ->
-                writeChapter(zip, index, chapter)
+                writeChapter(zip, index, chapter, includeCustomCss = cssBody != null, includeCustomJs = jsBody != null)
             }
 
             writeNavDocument(zip, chapters)
-            writePackageDocument(zip, metadata, chapters, coverImage != null, bookId, coverFileName, coverMimeType)
+            writeNcxDocument(zip, metadata, chapters, bookId)
+            writePackageDocument(
+                zip = zip,
+                metadata = metadata,
+                chapters = chapters,
+                hasCover = coverImage != null,
+                bookId = bookId,
+                coverFileName = coverFileName,
+                coverMimeType = coverMimeType,
+                hasCustomCss = cssBody != null,
+                hasCustomJs = jsBody != null,
+            )
         }
     }
 
@@ -105,9 +128,26 @@ class EpubWriter(
         writeEntry(zip, "META-INF/container.xml", content)
     }
 
-    private fun writeChapter(zip: ZipOutputStream, index: Int, chapter: Chapter) {
+    private fun writeChapter(
+        zip: ZipOutputStream,
+        index: Int,
+        chapter: Chapter,
+        includeCustomCss: Boolean,
+        includeCustomJs: Boolean,
+    ) {
         val chapterPrefix = chapterFilePrefix(index)
         val bodyContent = rewriteChapterHtml(chapter.content, chapterPrefix, chapter.images)
+
+        val customCssLink = if (includeCustomCss) {
+            "\n    <link rel=\"stylesheet\" type=\"text/css\" href=\"$CUSTOM_CSS_PATH\"/>"
+        } else {
+            ""
+        }
+        val customJsTag = if (includeCustomJs) {
+            "\n    <script type=\"text/javascript\" src=\"$CUSTOM_JS_PATH\"><!-- --></script>"
+        } else {
+            ""
+        }
 
         val content = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
@@ -121,7 +161,7 @@ class EpubWriter(
         p { margin: 0.5em 0; text-indent: 1em; }
         .chapter-title { text-align: center; margin-bottom: 2em; }
         img { max-width: 100%; height: auto; }
-    </style>
+    </style>$customCssLink$customJsTag
 </head>
 <body>
     <h1 class="chapter-title">${escapeXml(chapter.title)}</h1>
@@ -219,6 +259,36 @@ $tocItems
         writeEntry(zip, "OEBPS/nav.xhtml", content)
     }
 
+    private fun writeNcxDocument(
+        zip: ZipOutputStream,
+        metadata: Metadata,
+        chapters: List<Chapter>,
+        bookId: String,
+    ) {
+        val navPoints = chapters.mapIndexed { index, chapter ->
+            val filename = "${chapterFilePrefix(index)}.xhtml"
+            """        <navPoint id="navpoint-${index + 1}" playOrder="${index + 1}">
+            <navLabel><text>${escapeXml(chapter.title)}</text></navLabel>
+            <content src="$filename"/>
+        </navPoint>"""
+        }.joinToString("\n")
+
+        val content = """<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+    <head>
+        <meta name="dtb:uid" content="urn:uuid:$bookId"/>
+        <meta name="dtb:depth" content="1"/>
+        <meta name="dtb:totalPageCount" content="0"/>
+        <meta name="dtb:maxPageNumber" content="0"/>
+    </head>
+    <docTitle><text>${escapeXml(metadata.title)}</text></docTitle>
+    <navMap>
+$navPoints
+    </navMap>
+</ncx>"""
+        writeEntry(zip, "OEBPS/toc.ncx", content)
+    }
+
     private fun writePackageDocument(
         zip: ZipOutputStream,
         metadata: Metadata,
@@ -227,15 +297,26 @@ $tocItems
         bookId: String,
         coverFileName: String,
         coverMimeType: String,
+        hasCustomCss: Boolean,
+        hasCustomJs: Boolean,
     ) {
+        val chapterProperties = if (hasCustomJs) " properties=\"scripted\"" else ""
+
         val manifestItems = buildString {
             appendLine("""        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>""")
+            appendLine("""        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>""")
             if (hasCover) {
                 appendLine("""        <item id="cover-image" href="images/$coverFileName" media-type="$coverMimeType" properties="cover-image"/>""")
             }
+            if (hasCustomCss) {
+                appendLine("""        <item id="tsundoku-style" href="$CUSTOM_CSS_PATH" media-type="text/css"/>""")
+            }
+            if (hasCustomJs) {
+                appendLine("""        <item id="tsundoku-script" href="$CUSTOM_JS_PATH" media-type="application/javascript"/>""")
+            }
             chapters.forEachIndexed { chIdx, chapter ->
                 val prefix = chapterFilePrefix(chIdx)
-                appendLine("""        <item id="$prefix" href="$prefix.xhtml" media-type="application/xhtml+xml"/>""")
+                appendLine("""        <item id="$prefix" href="$prefix.xhtml" media-type="application/xhtml+xml"$chapterProperties/>""")
                 chapter.images.forEach { img ->
                     val epubFileName = chapterImageFileName(prefix, img)
                     val manifestId = "$prefix-img-${img.id.replace('.', '-').replace('_', '-')}"
@@ -274,7 +355,7 @@ $epub2CoverMeta
     <manifest>
 $manifestItems
     </manifest>
-    <spine>
+    <spine toc="ncx">
 $spineItems
     </spine>
 </package>"""
@@ -344,10 +425,21 @@ $spineItems
             chapters: List<Chapter>,
             coverImage: ByteArray? = null,
             deflateLevel: Int = java.util.zip.Deflater.DEFAULT_COMPRESSION,
+            customCss: String? = null,
+            customJs: String? = null,
         ) {
             file.outputStream().use { outputStream ->
-                EpubWriter(deflateLevel).write(outputStream, metadata, chapters, coverImage)
+                EpubWriter(deflateLevel).write(
+                    outputStream = outputStream,
+                    metadata = metadata,
+                    chapters = chapters,
+                    coverImage = coverImage,
+                    customCss = customCss,
+                    customJs = customJs,
+                )
             }
         }
+        const val CUSTOM_CSS_PATH = "styles/tsundoku-style.css"
+        const val CUSTOM_JS_PATH = "scripts/tsundoku-script.js"
     }
 }

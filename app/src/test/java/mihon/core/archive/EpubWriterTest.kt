@@ -19,9 +19,18 @@ class EpubWriterTest {
         ),
         coverImage: ByteArray? = null,
         metadata: EpubWriter.Metadata = EpubWriter.Metadata(title = "Test Book"),
+        customCss: String? = null,
+        customJs: String? = null,
     ): Map<String, ByteArray> {
         val out = ByteArrayOutputStream()
-        EpubWriter().write(out, metadata, chapters, coverImage)
+        EpubWriter().write(
+            outputStream = out,
+            metadata = metadata,
+            chapters = chapters,
+            coverImage = coverImage,
+            customCss = customCss,
+            customJs = customJs,
+        )
         val entries = mutableMapOf<String, ByteArray>()
         ZipInputStream(out.toByteArray().inputStream()).use { zip ->
             var entry = zip.nextEntry
@@ -238,7 +247,269 @@ class EpubWriterTest {
         assertNotNull(entries["META-INF/container.xml"], "container.xml must be present")
         assertNotNull(entries["OEBPS/content.opf"], "content.opf must be present")
         assertNotNull(entries["OEBPS/nav.xhtml"], "nav.xhtml must be present")
+        assertNotNull(entries["OEBPS/toc.ncx"], "toc.ncx must be present (EPUB 2 fallback)")
         assertNotNull(entries["OEBPS/chapter0000.xhtml"], "chapter0000.xhtml must be present")
         assertEquals("application/epub+zip", entries.text("mimetype"))
+    }
+
+
+    @Test
+    fun `toc ncx has one navPoint per chapter in order`() {
+        val chapters = (1..3).map { idx ->
+            EpubWriter.Chapter(title = "Ch $idx", content = "<p>$idx</p>")
+        }
+        val entries = buildEpub(chapters = chapters)
+        val ncx = entries.text("OEBPS/toc.ncx")
+
+        val navPointCount = "<navPoint ".toRegex().findAll(ncx).count()
+        assertEquals(3, navPointCount)
+        listOf(1, 2, 3).forEach { i ->
+            assertTrue(
+                ncx.contains("""playOrder="$i""""),
+                "playOrder=$i must appear in NCX",
+            )
+            assertTrue(ncx.contains("Ch $i"), "Chapter $i title must appear in NCX")
+            assertTrue(
+                ncx.contains("""src="chapter${(i - 1).toString().padStart(4, '0')}.xhtml""""),
+                "Chapter $i src must reference the correct XHTML file",
+            )
+        }
+    }
+
+    @Test
+    fun `toc ncx uses correct namespace and version`() {
+        val ncx = buildEpub().text("OEBPS/toc.ncx")
+        assertTrue(
+            ncx.contains("""xmlns="http://www.daisy.org/z3986/2005/ncx/""""),
+            "NCX must declare the DAISY namespace",
+        )
+        assertTrue(ncx.contains("""version="2005-1""""), "NCX must declare version 2005-1")
+    }
+
+    @Test
+    fun `toc ncx dtb uid matches package identifier`() {
+        val entries = buildEpub()
+        val opf = entries.text("OEBPS/content.opf")
+        val ncx = entries.text("OEBPS/toc.ncx")
+
+        val packageUid = Regex("""urn:uuid:[0-9a-f-]{36}""").find(opf)?.value
+        assertNotNull(packageUid, "OPF must contain a urn:uuid identifier")
+        assertTrue(
+            ncx.contains(packageUid!!),
+            "NCX dtb:uid must match the OPF identifier so EPUB 2 readers can cross-reference",
+        )
+    }
+
+    @Test
+    fun `OPF references NCX in manifest and spine`() {
+        val opf = buildEpub().text("OEBPS/content.opf")
+        assertTrue(
+            opf.contains("""<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>"""),
+            "Manifest must include NCX item with correct media-type",
+        )
+        assertTrue(
+            opf.contains("""<spine toc="ncx">"""),
+            "Spine must declare toc=\"ncx\" so EPUB 2 readers pick up the NCX",
+        )
+    }
+
+
+    @Test
+    fun `custom CSS body is written as standalone stylesheet entry`() {
+        val css = "body { background: #111; color: #eee; }"
+        val entries = buildEpub(customCss = css)
+
+        val stored = entries["OEBPS/${EpubWriter.CUSTOM_CSS_PATH}"]
+        assertNotNull(stored, "Custom CSS file must be written to the archive")
+        assertEquals(css, stored!!.decodeToString(), "Stored CSS body must match input verbatim")
+    }
+
+    @Test
+    fun `custom CSS manifest entry uses correct media type`() {
+        val opf = buildEpub(customCss = ".a{}").text("OEBPS/content.opf")
+        assertTrue(
+            opf.contains("""href="${EpubWriter.CUSTOM_CSS_PATH}""""),
+            "Manifest must reference stylesheet at the writer's fixed path",
+        )
+        assertTrue(opf.contains("""media-type="text/css""""), "Manifest entry must declare text/css")
+    }
+
+    @Test
+    fun `every chapter links to the custom stylesheet when CSS is embedded`() {
+        val chapters = listOf(
+            EpubWriter.Chapter(title = "A", content = "<p>a</p>"),
+            EpubWriter.Chapter(title = "B", content = "<p>b</p>"),
+        )
+        val entries = buildEpub(chapters = chapters, customCss = ".a{}")
+        val expectedHref = EpubWriter.CUSTOM_CSS_PATH
+        assertTrue(
+            entries.text("OEBPS/chapter0000.xhtml").contains("""href="$expectedHref""""),
+            "Chapter 0 must <link> the bundled stylesheet",
+        )
+        assertTrue(
+            entries.text("OEBPS/chapter0001.xhtml").contains("""href="$expectedHref""""),
+            "Chapter 1 must <link> the bundled stylesheet",
+        )
+    }
+
+    @Test
+    fun `chapter does not reference custom stylesheet when CSS is absent`() {
+        val xhtml = buildEpub(customCss = null).text("OEBPS/chapter0000.xhtml")
+        assertFalse(
+            xhtml.contains(EpubWriter.CUSTOM_CSS_PATH),
+            "Chapter must not link tsundoku-style.css when CSS embedding is disabled",
+        )
+    }
+
+    @Test
+    fun `blank custom CSS is treated as absent`() {
+        val entries = buildEpub(customCss = "   \n  ")
+        assertNull(
+            entries["OEBPS/${EpubWriter.CUSTOM_CSS_PATH}"],
+            "Blank CSS input must not produce a stylesheet entry",
+        )
+        val opf = entries.text("OEBPS/content.opf")
+        assertFalse(opf.contains(EpubWriter.CUSTOM_CSS_PATH), "OPF must omit stylesheet manifest entry")
+    }
+
+    @Test
+    fun `custom JS body is written as standalone script entry`() {
+        val js = "console.log('hi');"
+        val entries = buildEpub(customJs = js)
+
+        val stored = entries["OEBPS/${EpubWriter.CUSTOM_JS_PATH}"]
+        assertNotNull(stored, "Custom JS file must be written to the archive")
+        assertEquals(js, stored!!.decodeToString())
+    }
+
+    @Test
+    fun `custom JS manifest entry uses application javascript media type`() {
+        val opf = buildEpub(customJs = "void 0;").text("OEBPS/content.opf")
+        assertTrue(opf.contains("""href="${EpubWriter.CUSTOM_JS_PATH}""""))
+        assertTrue(opf.contains("""media-type="application/javascript""""))
+    }
+
+    @Test
+    fun `chapters marked scripted in OPF when JS is embedded`() {
+        val opf = buildEpub(customJs = "void 0;").text("OEBPS/content.opf")
+        assertTrue(
+            Regex("""<item id="chapter0000"[^>]*properties="scripted"""").containsMatchIn(opf),
+            "Chapter manifest items must carry properties=\"scripted\" when JS is bundled",
+        )
+    }
+
+    @Test
+    fun `chapters not marked scripted when JS is absent`() {
+        val opf = buildEpub(customJs = null).text("OEBPS/content.opf")
+        assertFalse(opf.contains("properties=\"scripted\""), "No scripted property when JS not bundled")
+    }
+
+    @Test
+    fun `every chapter includes script tag when JS is embedded`() {
+        val chapters = listOf(
+            EpubWriter.Chapter(title = "A", content = "<p>a</p>"),
+            EpubWriter.Chapter(title = "B", content = "<p>b</p>"),
+        )
+        val entries = buildEpub(chapters = chapters, customJs = "void 0;")
+        val expectedHref = EpubWriter.CUSTOM_JS_PATH
+        assertTrue(
+            entries.text("OEBPS/chapter0000.xhtml").contains("""src="$expectedHref""""),
+            "Chapter 0 must reference tsundoku-script.js",
+        )
+        assertTrue(
+            entries.text("OEBPS/chapter0001.xhtml").contains("""src="$expectedHref""""),
+            "Chapter 1 must reference tsundoku-script.js",
+        )
+    }
+
+    @Test
+    fun `script tag is non-self-closing for XHTML compatibility`() {
+        val xhtml = buildEpub(customJs = "void 0;").text("OEBPS/chapter0000.xhtml")
+        assertTrue(xhtml.contains("</script>"), "Script tag must use explicit closing tag")
+    }
+
+    @Test
+    fun `embedding both CSS and JS produces both files and references`() {
+        val entries = buildEpub(customCss = ".a{}", customJs = "void 0;")
+        assertNotNull(entries["OEBPS/${EpubWriter.CUSTOM_CSS_PATH}"])
+        assertNotNull(entries["OEBPS/${EpubWriter.CUSTOM_JS_PATH}"])
+        val xhtml = entries.text("OEBPS/chapter0000.xhtml")
+        assertTrue(xhtml.contains(EpubWriter.CUSTOM_CSS_PATH))
+        assertTrue(xhtml.contains(EpubWriter.CUSTOM_JS_PATH))
+    }
+
+    @Test
+    fun `bundled snippet paths match conventional EPUB layout`() {
+        // Files should land under OEBPS/styles/ and OEBPS/scripts/ — common EPUB convention.
+        assertTrue(EpubWriter.CUSTOM_CSS_PATH.startsWith("styles/"))
+        assertTrue(EpubWriter.CUSTOM_CSS_PATH.endsWith(".css"))
+        assertTrue(EpubWriter.CUSTOM_JS_PATH.startsWith("scripts/"))
+        assertTrue(EpubWriter.CUSTOM_JS_PATH.endsWith(".js"))
+    }
+
+
+    @Test
+    fun `joined multi-volume EPUB embeds CSS and JS for every chapter`() {
+        val chapters = (1..6).map { idx ->
+            EpubWriter.Chapter(title = "ch $idx", content = "<p>$idx</p>")
+        }
+        val entries = buildEpub(chapters = chapters, customCss = ".a{}", customJs = "void 0;")
+
+        assertNotNull(entries["OEBPS/${EpubWriter.CUSTOM_CSS_PATH}"])
+        assertNotNull(entries["OEBPS/${EpubWriter.CUSTOM_JS_PATH}"])
+        repeat(6) { i ->
+            val xhtml = entries.text("OEBPS/chapter${i.toString().padStart(4, '0')}.xhtml")
+            assertTrue(xhtml.contains(EpubWriter.CUSTOM_CSS_PATH), "chapter $i missing CSS link")
+            assertTrue(xhtml.contains(EpubWriter.CUSTOM_JS_PATH), "chapter $i missing JS reference")
+        }
+
+        val opf = entries.text("OEBPS/content.opf")
+        repeat(6) { i ->
+            val id = "chapter${i.toString().padStart(4, '0')}"
+            assertTrue(opf.contains("""<itemref idref="$id""""), "spine must reference $id")
+            assertTrue(
+                Regex("""<item id="$id"[^>]*properties="scripted"""").containsMatchIn(opf),
+                "$id must be marked scripted",
+            )
+        }
+    }
+
+    @Test
+    fun `split-volume export writes one self-contained EPUB per volume with CSS and JS`() {
+        data class Volume(val title: String, val chapters: List<EpubWriter.Chapter>)
+        val volumes = listOf(
+            Volume("Vol 1", listOf(EpubWriter.Chapter("v1c1", "<p>v1c1</p>"), EpubWriter.Chapter("v1c2", "<p>v1c2</p>"))),
+            Volume("Vol 2", listOf(EpubWriter.Chapter("v2c1", "<p>v2c1</p>"))),
+            Volume("Vol 3", listOf(EpubWriter.Chapter("v3c1", "<p>v3c1</p>"), EpubWriter.Chapter("v3c2", "<p>v3c2</p>"))),
+        )
+
+        volumes.forEach { volume ->
+            val entries = buildEpub(
+                chapters = volume.chapters,
+                metadata = EpubWriter.Metadata(title = volume.title),
+                customCss = ".a{}",
+                customJs = "void 0;",
+            )
+
+            assertNotNull(
+                entries["OEBPS/${EpubWriter.CUSTOM_CSS_PATH}"],
+                "${volume.title} must bundle its own CSS file",
+            )
+            assertNotNull(
+                entries["OEBPS/${EpubWriter.CUSTOM_JS_PATH}"],
+                "${volume.title} must bundle its own JS file",
+            )
+
+            val chapterEntryCount = entries.keys.count {
+                it.startsWith("OEBPS/chapter") && it.endsWith(".xhtml")
+            }
+            assertEquals(volume.chapters.size, chapterEntryCount, "${volume.title} chapter count mismatch")
+
+            volume.chapters.indices.forEach { i ->
+                val xhtml = entries.text("OEBPS/chapter${i.toString().padStart(4, '0')}.xhtml")
+                assertTrue(xhtml.contains(EpubWriter.CUSTOM_CSS_PATH))
+                assertTrue(xhtml.contains(EpubWriter.CUSTOM_JS_PATH))
+            }
+        }
     }
 }
