@@ -88,6 +88,7 @@ fun MassImportDialog(
     onImportComplete: (added: Int, skipped: Int, errored: Int) -> Unit,
     initialText: String = "",
     isNovelMode: Boolean = true, // Default to novel mode for backward compatibility
+    preferredSourceId: Long? = null,
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -627,6 +628,7 @@ fun MassImportDialog(
                                     categoryId = selectedCategoryId ?: 0L,
                                     fetchChapters = syncChapterList,
                                     rawText = combinedRawText,
+                                    preferredSourceId = preferredSourceId,
                                 )
                             } else {
                                 val uniqueUrls = LinkedHashSet<String>()
@@ -644,6 +646,7 @@ fun MassImportDialog(
                                     fetchDetails = fetchDetails,
                                     categoryId = selectedCategoryId ?: 0L,
                                     fetchChapters = syncChapterList,
+                                    preferredSourceId = preferredSourceId,
                                 )
                             }
                             urlText = ""
