@@ -1428,7 +1428,7 @@ class MangaRepositoryImpl(
                     version = it.version,
                     isNovel = it.isNovel,
                     updateTitle = it.title.isNotBlank(),
-                    updateCover = !it.thumbnailUrl.isNullOrBlank(),
+                    updateCover = !it.thumbnailUrl.isNullOrBlank() && it.thumbnailUrl!!.contains("://"),
                     updateDetails = it.initialized,
                     mapper = MangaMapper::mapMangaFull,
                 )

@@ -106,6 +106,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             .toSet()
 
         val urls = urlsArray?.toList()
+        val preferredSourceId = inputData.getLong(KEY_PREFERRED_SOURCE_ID, -1L).takeIf { it != -1L }
         // Shared host->source cache for the whole job to avoid repeated matching across chunks
         // Use canonical host keys (lowercase, no www.)
         val hostSourceCache = ConcurrentHashMap<String, CatalogueSource>()
@@ -138,6 +139,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                 excludedHostsSet,
                                 hostSourceCache,
                                 missingSourceHosts,
+                                preferredSourceId,
                             )
                             buffer.clear()
                         }
@@ -155,6 +157,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         excludedHostsSet,
                         hostSourceCache,
                         missingSourceHosts,
+                        preferredSourceId,
                     )
                     buffer.clear()
                 }
@@ -206,6 +209,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     excludedHostsSet,
                     hostSourceCache,
                     missingSourceHosts,
+                    preferredSourceId,
                 )
                 Result.success()
             } catch (e: Exception) {
@@ -247,6 +251,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         excludedHosts: Set<String> = emptySet(),
         hostSourceCache: ConcurrentHashMap<String, CatalogueSource> = ConcurrentHashMap(),
         missingSourceHosts: MutableSet<String> = ConcurrentHashMap.newKeySet(),
+        preferredSourceId: Long? = null,
     ): ImportResult {
         updateBatchStatus(batchId, BatchStatus.Running)
 
@@ -273,7 +278,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             sourceCache[host]?.let { return it }
             if (host in missingSourceHosts) return null
 
-            val matched = runCatching { findMatchingSource("https://$host/", importSources) }.getOrNull()
+            val matched = runCatching { findMatchingSource("https://$host/", importSources, preferredSourceId) }.getOrNull()
             if (matched != null) {
                 sourceCache[host] = matched
             } else {
@@ -939,7 +944,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
      * Find source that matches the given URL.
      * Prioritizes Kotlin extensions over JS plugins when multiple sources match the same URL.
      */
-    private fun findMatchingSource(url: String, sources: List<CatalogueSource>): CatalogueSource? {
+    private fun findMatchingSource(url: String, sources: List<CatalogueSource>, preferredSourceId: Long? = null): CatalogueSource? {
         val urlHost = try {
             URI(url).host?.lowercase()?.removePrefix("www.")
         } catch (_: Exception) {
@@ -976,6 +981,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         if (matchingSources.isEmpty()) return null
         if (matchingSources.size == 1) return matchingSources.first()
+
+        // If the caller has a preferred source (e.g. the currently browsed source) and it
+        // matches, use it — avoids picking KT source when user is browsing via JsSource.
+        if (preferredSourceId != null) {
+            matchingSources.firstOrNull { it.id == preferredSourceId }?.let { return it }
+        }
 
         val enabledLanguages = sourcePreferences.enabledLanguages.get()
         val disabledSources = sourcePreferences.disabledSources.get()
@@ -1048,6 +1059,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         const val KEY_FETCH_CHAPTERS = "fetchChapters"
         const val KEY_BATCH_ID = "batchId"
         const val KEY_EXCLUDED_HOSTS = "excludedHosts"
+        const val KEY_PREFERRED_SOURCE_ID = "preferredSourceId"
 
         // Shared state for UI to observe
         private val _sharedResult = MutableStateFlow<ImportResult?>(null)
@@ -1145,6 +1157,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             fetchChapters: Boolean = false,
             excludedHosts: List<String> = emptyList(),
             rawText: String? = null,
+            preferredSourceId: Long? = null,
         ) {
             val batchId = java.util.UUID.randomUUID().toString()
             // If offloading to file, avoid storing the full URL list in memory inside the Batch.
@@ -1202,6 +1215,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 // Normalize excluded hosts before passing to worker
                 val normalized = excludedHosts.map { it.trim().lowercase().removePrefix("www.") }
                 payload += KEY_EXCLUDED_HOSTS to normalized.joinToString(",")
+            }
+            if (preferredSourceId != null) {
+                payload += KEY_PREFERRED_SOURCE_ID to preferredSourceId
             }
 
             val workRequest = OneTimeWorkRequestBuilder<MassImportJob>()

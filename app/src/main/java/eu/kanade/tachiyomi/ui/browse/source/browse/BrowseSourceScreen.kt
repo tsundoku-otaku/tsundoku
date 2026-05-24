@@ -645,14 +645,17 @@ data class BrowseSourceScreen(
             val selected = screenModel.state.value.selection
             val initialText = selected.joinToString("\n") { manga ->
                 when (val resolvedSource = screenModel.source) {
-                    is eu.kanade.tachiyomi.jsplugin.source.JsSource -> manga.url
+                    is eu.kanade.tachiyomi.jsplugin.source.JsSource -> resolveRelativeUrl(resolvedSource.baseUrl, manga.url)
                     is HttpSource -> resolveRelativeUrl(resolvedSource.baseUrl, manga.url)
                     else -> manga.url
                 }
             }
 
             MassImportDialog(
-                onDismissRequest = { showMassImportDialog = false },
+                onDismissRequest = {
+                    showMassImportDialog = false
+                    screenModel.clearSelection()
+                },
                 onImportComplete = { added, skipped, errored ->
                     // Clear selection after import
                     screenModel.clearSelection()
@@ -661,6 +664,7 @@ data class BrowseSourceScreen(
                 },
                 initialText = initialText,
                 isNovelMode = screenModel.source.isNovelSource(),
+                preferredSourceId = screenModel.source.id,
             )
         }
 
