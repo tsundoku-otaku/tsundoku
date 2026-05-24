@@ -13,6 +13,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ## [Unreleased]
 ### Added
 - Tap zones for novels [@mrissaoussama](https://github.com/mrissaoussama) [#210](https://github.com/tsundoku-otaku/tsundoku/pull/210)
+- Open EPUBs with app, export with CSS/JS [@mrissaoussama](https://github.com/mrissaoussama) [#227](https://github.com/tsundoku-otaku/tsundoku/pull/227)
 
 ### Changed
 - Novel downloads will be saved as zip format [@mrissaoussama](https://github.com/mrissaoussama) [#202](https://github.com/tsundoku-otaku/tsundoku/pull/202)
