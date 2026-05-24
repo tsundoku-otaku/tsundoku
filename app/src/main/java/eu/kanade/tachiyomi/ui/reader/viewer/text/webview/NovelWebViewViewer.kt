@@ -45,7 +45,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.domain.translation.service.TranslationPreferences
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
 import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelConfig
@@ -86,7 +85,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private lateinit var webView: WebView
     private var loadingIndicator: ReaderProgressIndicator? = null
     private val preferences: ReaderPreferences by injectLazy()
-    private val translationPreferences: TranslationPreferences by injectLazy()
     private val libraryPreferences: tachiyomi.domain.library.service.LibraryPreferences by injectLazy()
     private val contentPipeline = ContentPipeline(preferences)
 
@@ -94,7 +92,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var loadJob: Job? = null
     private var currentPage: ReaderPage? = null
     private var currentChapters: ViewerChapters? = null
-    private val imageCache = NovelWebViewImageCache(activity, scope)
+    private val imageCache = NovelWebViewImageCache(activity.cacheDir, scope)
 
     private var lastSavedProgress = 0f
 
@@ -894,20 +892,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         val chapterId = chapter.chapter.id ?: return
 
-        val translator: (suspend (String) -> String)? = run {
-            val shouldTranslate = if (isAppendOrPrepend) {
-                translationPreferences.realTimeTranslation().get()
-            } else {
-                activity.isTranslationEnabled()
-            }
-            if (shouldTranslate) { c -> activity.translateContentIfEnabled(c) } else null
-        }
+        val translator: (suspend (String) -> String)? =
+            if (activity.isTranslationEnabled()) { c -> activity.translateContentIfEnabled(c, chapterId) } else null
         val cfg = ContentConfig.from(
             preferences,
             RenderTarget.WEB_VIEW,
             chapter.chapter.url,
             chapter.chapter.name,
         )
+
+        if (!isAppendOrPrepend && translator != null) {
+            showLoadingIndicator(activity.stringResource(TDMR.strings.novel_chapter_translating))
+        }
 
         scope.launch {
             val processed = withContext(Dispatchers.Default) {
@@ -1134,7 +1130,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         evaluateJavascriptSafe("(function(){$js})();", null)
     }
 
-    private fun showLoadingIndicator() {
+    private fun showLoadingIndicator(message: String = "Loading...") {
         val theme = preferences.novelTheme.get()
         val backgroundColor = preferences.novelBackgroundColor.get()
         val fontColor = preferences.novelFontColor.get()
@@ -1166,7 +1162,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 </style>
             </head>
             <body>
-                <div>Loading...</div>
+                <div>${message.replace("<", "&lt;").replace(">", "&gt;")}</div>
             </body>
             </html>
         """.trimIndent()
@@ -1528,6 +1524,20 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 saveProgress()
                 activity.onNovelProgressChanged(1f)
                 logcat(LogPriority.DEBUG) { "NovelWebViewViewer: Chapter marked as short (fits in viewport)" }
+
+                // Chapter fits in viewport → no scroll events fire → threshold never reached.
+                // Trigger infinite scroll append manually.
+                if (preferences.novelInfiniteScroll.get() && !isLoadingNext && !ttsController.isTtsAutoPlay) {
+                    isLoadingNext = true
+                    scope.launch {
+                        try {
+                            appendNextChapterIfAvailable()
+                        } finally {
+                            isLoadingNext = false
+                            setJsLoadingNext()
+                        }
+                    }
+                }
             }
         }
 
@@ -1579,13 +1589,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             chapter.chapter.url,
             chapter.chapter.name,
         )
-        val shouldTranslate = if (isAppendOrPrepend) {
-            translationPreferences.realTimeTranslation().get()
-        } else {
-            true
-        }
         val translator: (suspend (String) -> String)? =
-            if (shouldTranslate) { c -> activity.translateContentIfEnabled(c) } else null
+            if (activity.isTranslationEnabled()) { c -> activity.translateContentIfEnabled(c, chapterId) } else null
         val processed = withContext(Dispatchers.Default) {
             contentPipeline.process(rawContent, cfg, translator)
         }

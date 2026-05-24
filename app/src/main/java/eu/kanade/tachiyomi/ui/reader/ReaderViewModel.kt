@@ -1128,16 +1128,21 @@ class ReaderViewModel @JvmOverloads constructor(
     /**
      * Translate text content using the translation service.
      */
-    suspend fun translateContent(content: String): String {
+    suspend fun translateContent(content: String, overrideChapterId: Long? = null): String {
         val chapter = getCurrentChapter()
-        val chapterId = chapter?.chapter?.id
+        val chapterId = overrideChapterId ?: chapter?.chapter?.id
         val mangaId = manga?.id
 
         if (translationPreferences.smartAutoTranslate().get()) {
             val detected = translationService.detectLanguage(content, mangaId)
             val target = translationPreferences.targetLanguage().get()
 
+            logcat(LogPriority.DEBUG) {
+                "translateContent: smartAutoTranslate detected=$detected target=$target chapterId=$chapterId"
+            }
+
             if (detected != null && detected.equals(target, ignoreCase = true)) {
+                logcat(LogPriority.DEBUG) { "translateContent: skipping — source lang matches target ($detected)" }
                 return content
             }
         }

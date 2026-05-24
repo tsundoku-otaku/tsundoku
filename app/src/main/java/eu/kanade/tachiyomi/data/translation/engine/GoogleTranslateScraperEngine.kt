@@ -2,17 +2,18 @@ package eu.kanade.tachiyomi.data.translation.engine
 
 import eu.kanade.tachiyomi.data.translation.TranslationHtmlUtils
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import tachiyomi.domain.translation.model.TranslationEngine
 import tachiyomi.domain.translation.model.TranslationResult
 import uy.kohesive.injekt.injectLazy
-import java.net.URLEncoder
 
 class GoogleTranslateScraperEngine : TranslationEngine {
     override val id = 999L // Custom ID for scraper
@@ -154,69 +155,11 @@ class GoogleTranslateScraperEngine : TranslationEngine {
     }
 
     private suspend fun translateSingleInternal(text: String, source: String, target: String): String {
-        try {
-            val normalizedText = TranslationHtmlUtils.normalizeLineBreaks(text)
-            val paragraphs = TranslationHtmlUtils.splitParagraphsPreserving(normalizedText)
-
-            if (paragraphs.size > 1) {
-                val translatedParagraphs = mutableListOf<String>()
-                for (paragraph in paragraphs) {
-                    translatedParagraphs += translateRawText(paragraph, source, target)
-                }
-                return translatedParagraphs.joinToString("\n\n")
-            }
-
-            val token = calculateToken(normalizedText)
-            val url = "https://translate.google.com/translate_a/single".toHttpUrl().newBuilder()
-                .addQueryParameter("client", "gtx")
-                .addQueryParameter("sl", source)
-                .addQueryParameter("tl", target)
-                .addQueryParameter("hl", target)
-                .addQueryParameter("dt", "at")
-                .addQueryParameter("dt", "bd")
-                .addQueryParameter("dt", "ex")
-                .addQueryParameter("dt", "ld")
-                .addQueryParameter("dt", "md")
-                .addQueryParameter("dt", "qca")
-                .addQueryParameter("dt", "rw")
-                .addQueryParameter("dt", "rm")
-                .addQueryParameter("dt", "ss")
-                .addQueryParameter("dt", "t")
-                .addQueryParameter("ie", "UTF-8")
-                .addQueryParameter("oe", "UTF-8")
-                .addQueryParameter("otf", "1")
-                .addQueryParameter("ssel", "0")
-                .addQueryParameter("tsel", "0")
-                .addQueryParameter("kc", "7")
-                .addQueryParameter("tk", token)
-                .addQueryParameter("q", normalizedText)
-                .build()
-
-            val request = GET(url)
-            val response = client.newCall(request).execute()
-            val body = response.use { it.body.string() }
-
-            if (!response.isSuccessful) {
-                return normalizedText
-            }
-
-            val jsonArray = json.parseToJsonElement(body).jsonArray
-
-            val result = StringBuilder()
-            val sentences = jsonArray[0].jsonArray
-
-            for (sentence in sentences) {
-                val sentenceArray = sentence.jsonArray
-                if (sentenceArray.isNotEmpty()) {
-                    val translatedPart = sentenceArray[0].jsonPrimitive.content
-                    result.append(translatedPart)
-                }
-            }
-
-            return result.toString()
+        return try {
+            translateRawText(TranslationHtmlUtils.normalizeLineBreaks(text), source, target)
         } catch (e: Exception) {
             e.printStackTrace()
-            return text
+            text
         }
     }
 
@@ -244,10 +187,10 @@ class GoogleTranslateScraperEngine : TranslationEngine {
             .addQueryParameter("tsel", "0")
             .addQueryParameter("kc", "7")
             .addQueryParameter("tk", token)
-            .addQueryParameter("q", text)
             .build()
 
-        val request = GET(url)
+        val formBody = FormBody.Builder().add("q", text).build()
+        val request = POST(url.toString(), body = formBody)
         val response = client.newCall(request).execute()
         val body = response.use { it.body.string() }
 
@@ -262,10 +205,13 @@ class GoogleTranslateScraperEngine : TranslationEngine {
 
         for (sentence in sentences) {
             val sentenceArray = sentence.jsonArray
-            if (sentenceArray.isNotEmpty()) {
-                val translatedPart = sentenceArray[0].jsonPrimitive.content
-                result.append(translatedPart)
+            if (sentenceArray.isEmpty()) continue
+            val translatedPart = try {
+                sentenceArray[0].jsonPrimitive.content
+            } catch (_: Exception) {
+                continue
             }
+            result.append(translatedPart)
         }
 
         return result.toString()

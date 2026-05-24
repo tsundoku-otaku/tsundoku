@@ -125,6 +125,7 @@ class GeminiTranslateEngine(
     - Keep character names consistent
     - Every line break in the input MUST be preserved exactly in the output.
     - Do NOT wrap lines.
+    - Copy tokens like [IMG_PLACEHOLDER_0] verbatim — do not translate or alter them.
     Text:
     $text
 

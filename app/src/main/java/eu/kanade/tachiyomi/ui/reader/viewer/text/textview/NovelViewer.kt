@@ -395,6 +395,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         lastSavedProgress = 1f
         saveProgress(1f)
         activity.onNovelProgressChanged(1f)
+
+        // Trigger infinite scroll append manually.
+        val onLastLoaded = currentChapterIndex == (loadedChapters.size - 1).coerceAtLeast(0)
+        if (preferences.novelInfiniteScroll.get() && !ttsController.isTtsAutoPlay && onLastLoaded) {
+            loadNextChapterIfAvailable()
+        }
     }
 
     private fun updateCurrentChapterFromScroll(scrollY: Int) {

@@ -724,7 +724,19 @@ class TranslationService(
         val engine = translationEngineManager.getEngine()
             ?: return TranslationResult.Error("No translation engine available")
 
-        return engine.translateSingle(text, sourceLanguage, targetLanguage)
+        logcat(LogPriority.DEBUG) {
+            "Translation: sending ${text.length} chars via ${engine.name} ($sourceLanguage → $targetLanguage)"
+        }
+        val result = engine.translateSingle(text, sourceLanguage, targetLanguage)
+        when (result) {
+            is TranslationResult.Success -> logcat(LogPriority.DEBUG) {
+                "Translation: received ${result.translatedTexts.firstOrNull()?.length ?: 0} chars"
+            }
+            is TranslationResult.Error -> logcat(LogPriority.WARN) {
+                "Translation: engine error — ${result.message}"
+            }
+        }
+        return result
     }
 
     /**
@@ -765,6 +777,10 @@ class TranslationService(
 
         // Extract plain text from HTML for translation
         val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
+
+        logcat(LogPriority.DEBUG) {
+            "translateChapterContent: chapterId=$chapterId srcLang=$srcLang tgtLang=$tgtLang plainText=${plainText.length} chars"
+        }
 
         // Translate the plain text
         return when (val result = translateText(plainText, srcLang, tgtLang)) {
