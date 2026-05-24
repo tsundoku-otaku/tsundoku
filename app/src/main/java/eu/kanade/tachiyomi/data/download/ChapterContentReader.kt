@@ -99,6 +99,124 @@ class ChapterContentReader(
         return readContentFromCbz(matchingCbz)
     }
 
+    // ── Image reading ───────────────────────────────────────────────
+
+    /**
+     * Read all embedded images for [chapter] from its downloaded files.
+     * Returns a map of filename → bytes, e.g. `"image_0.jpg" → ByteArray`.
+     */
+    fun readChapterImages(
+        manga: Manga,
+        chapter: Chapter,
+        source: eu.kanade.tachiyomi.source.Source,
+    ): Map<String, ByteArray> {
+        return try {
+            readImagesFromChapterDir(manga, chapter, source)
+                ?: readImagesFromMangaDirCbz(manga, chapter, source)
+                ?: emptyMap()
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to read images for chapter: ${chapter.name}" }
+            emptyMap()
+        }
+    }
+
+    private fun readImagesFromChapterDir(
+        manga: Manga,
+        chapter: Chapter,
+        source: eu.kanade.tachiyomi.source.Source,
+    ): Map<String, ByteArray>? {
+        val chapterDirOrCbz = downloadProvider.findChapterDir(
+            chapter.name,
+            chapter.scanlator,
+            chapter.url,
+            manga.title,
+            source,
+        ) ?: return null
+
+        val isCbz = chapterDirOrCbz.name?.let { it.endsWith(".cbz") || it.endsWith(".zip") } == true
+        return if (isCbz) readImagesFromCbz(chapterDirOrCbz) else readImagesFromDirectory(chapterDirOrCbz)
+    }
+
+    private fun readImagesFromMangaDirCbz(
+        manga: Manga,
+        chapter: Chapter,
+        source: eu.kanade.tachiyomi.source.Source,
+    ): Map<String, ByteArray>? {
+        val mangaDir = downloadProvider.findMangaDir(manga.title, source) ?: return null
+        val cbzFiles = mangaDir.listFiles()?.filter {
+            it.isFile && (it.name?.endsWith(".cbz") == true || it.name?.endsWith(".zip") == true)
+        } ?: return null
+
+        val validNames = downloadProvider.getValidChapterDirNames(
+            chapter.name,
+            chapter.scanlator,
+            chapter.url,
+        )
+
+        val matchingCbz = cbzFiles.find { cbz ->
+            val base = cbz.name?.substringBeforeLast(".") ?: ""
+            validNames.any { it == base }
+        } ?: return null
+
+        return readImagesFromCbz(matchingCbz)
+    }
+
+    private fun readImagesFromDirectory(dir: UniFile): Map<String, ByteArray>? {
+        val allFiles = dir.listFiles() ?: return null
+        val imageFiles = allFiles.filter { file ->
+            file.isFile && IMAGE_EXTENSIONS.any { ext ->
+                file.name?.lowercase()?.endsWith(ext) == true
+            }
+        }
+        if (imageFiles.isEmpty()) return null
+
+        return imageFiles.mapNotNull { file ->
+            val name = file.name ?: return@mapNotNull null
+            val bytes = context.contentResolver.openInputStream(file.uri)?.use { it.readBytes() }
+                ?: return@mapNotNull null
+            name to bytes
+        }.toMap().ifEmpty { null }
+    }
+
+    private fun readImagesFromCbz(cbzFile: UniFile): Map<String, ByteArray>? {
+        val uri = cbzFile.uri
+        return try {
+            val pfd = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
+            pfd.use { descriptor ->
+                ArchiveReader(descriptor).use { reader ->
+                    val imageFileNames = mutableListOf<String>()
+                    reader.useEntries { seq ->
+                        seq.forEach { entry ->
+                            val name = entry.name.lowercase()
+                            if (entry.isFile && IMAGE_EXTENSIONS.any { name.endsWith(it) }) {
+                                imageFileNames.add(entry.name)
+                            }
+                        }
+                    }
+
+                    val result = mutableMapOf<String, ByteArray>()
+                    imageFileNames.forEach { fileName ->
+                        try {
+                            reader.getInputStream(fileName)?.use { stream ->
+                                result[fileName.substringAfterLast('/')] = stream.readBytes()
+                            }
+                        } catch (e: Exception) {
+                            logcat(LogPriority.ERROR, e) { "CBZ: failed to read image $fileName" }
+                        }
+                    }
+                    result.ifEmpty { null }
+                }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "CBZ: failed to read images from $uri" }
+            null
+        }
+    }
+
+    companion object {
+        private val IMAGE_EXTENSIONS = listOf(".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif")
+    }
+
     // ── File-type readers ───────────────────────────────────────────
 
     /**

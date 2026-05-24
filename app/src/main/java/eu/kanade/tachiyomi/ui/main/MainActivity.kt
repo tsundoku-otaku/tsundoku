@@ -61,6 +61,7 @@ import eu.kanade.presentation.components.IncognitoModeBannerBackgroundColor
 import eu.kanade.presentation.components.IndexingBannerBackgroundColor
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionReposScreen
 import eu.kanade.presentation.more.settings.screen.data.RestoreBackupScreen
+import eu.kanade.tachiyomi.ui.library.ImportEpubScreen
 import eu.kanade.presentation.util.AssistContentScreen
 import eu.kanade.presentation.util.DefaultNavigatorScreenTransition
 import eu.kanade.tachiyomi.BuildConfig
@@ -134,8 +135,9 @@ class MainActivity : BaseActivity() {
 
         val didMigration = Migrator.awaitAndRelease()
 
-        // Do not let the launcher create a new activity http://stackoverflow.com/questions/16283079
-        if (!isTaskRoot) {
+        // Only block duplicate launcher entries. External open/share intents may arrive in a
+        // non-root task and still need to be handled by this activity.
+        if (!isTaskRoot && intent.action == Intent.ACTION_MAIN && intent.hasCategory(Intent.CATEGORY_LAUNCHER)) {
             finish()
             return
         }
@@ -173,7 +175,7 @@ class MainActivity : BaseActivity() {
 
                     if (isLaunch) {
                         // Set start screen
-                        handleIntentAction(intent, navigator)
+                        handleIntentAction(intent, navigator, closeImportScreenOnDone = true)
 
                         // Reset Incognito Mode on relaunch
                         preferences.incognitoMode.set(false)
@@ -294,7 +296,7 @@ class MainActivity : BaseActivity() {
                 componentActivity.addOnNewIntentListener(consumer)
                 awaitClose { componentActivity.removeOnNewIntentListener(consumer) }
             }
-                .collectLatest { handleIntentAction(it, navigator) }
+                .collectLatest { handleIntentAction(it, navigator, closeImportScreenOnDone = false) }
         }
     }
 
@@ -388,7 +390,11 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun handleIntentAction(intent: Intent, navigator: Navigator): Boolean {
+    private fun handleIntentAction(
+        intent: Intent,
+        navigator: Navigator,
+        closeImportScreenOnDone: Boolean,
+    ): Boolean {
         val notificationId = intent.getIntExtra("notificationId", -1)
         if (notificationId > -1) {
             NotificationReceiver.dismissNotification(
@@ -396,6 +402,25 @@ class MainActivity : BaseActivity() {
                 notificationId,
                 intent.getIntExtra("groupId", 0),
             )
+        }
+
+        // Open / share-target EPUB files from outside the app. Detected by
+        // intent action + MIME (or filename extension) before the regular
+        // action dispatch so an EPUB ACTION_VIEW doesn't fall through to the
+        // backup-file branch and an EPUB ACTION_SEND doesn't trigger the
+        // global-search path.
+        val epubUris = extractIncomingEpubUris(intent)
+        if (epubUris.isNotEmpty()) {
+            persistEpubReadPermissions(epubUris)
+            navigator.popUntilRoot()
+            navigator.push(
+                ImportEpubScreen(
+                    initialUriStrings = epubUris.map { it.toString() },
+                    closeActivityOnDone = closeImportScreenOnDone,
+                ),
+            )
+            ready = true
+            return true
         }
 
         val tabToOpen = when (intent.action) {
@@ -465,6 +490,90 @@ class MainActivity : BaseActivity() {
 
         ready = true
         return true
+    }
+
+    /**
+     * Return the URIs of any EPUB files attached to [intent], or an empty list
+     * when the intent isn't an EPUB open/share request.
+     *
+     * Handles three shapes:
+     *  - `ACTION_VIEW` with a single URI in [Intent.getData]. Triggered by the
+     *    file-manager "open with…" flow.
+     *  - `ACTION_SEND` with one URI under [Intent.EXTRA_STREAM]. Triggered by
+     *    apps that share a single EPUB via the Android share sheet.
+     *  - `ACTION_SEND_MULTIPLE` with a list of URIs under
+     *    [Intent.EXTRA_STREAM]. Same share sheet, multiple files selected.
+     *
+     * The MIME-type check is loose (any type containing `"epub"`) because
+     * different senders report `application/epub+zip`, `application/epub`, or
+     * even `application/octet-stream`. The filename-extension fallback
+     * catches the octet-stream case.
+     */
+    private fun extractIncomingEpubUris(intent: Intent): List<android.net.Uri> {
+        fun isEpubMime(type: String?): Boolean = type?.contains("epub", ignoreCase = true) == true
+        fun looksLikeEpub(uri: android.net.Uri?): Boolean {
+            if (uri == null) return false
+            val path = (uri.lastPathSegment ?: uri.path ?: uri.toString()).lowercase()
+            if (path.endsWith(".epub")) return true
+            // Fallback for content URIs where the path has no extension (e.g. Downloads provider
+            // uses numeric IDs like content://…/document/12345). Query the display name instead.
+            if (uri.scheme == "content") {
+                val displayName = runCatching {
+                    contentResolver.query(
+                        uri,
+                        arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                        null, null, null,
+                    )?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0) else null
+                    }
+                }.getOrNull()
+                if (displayName?.lowercase()?.endsWith(".epub") == true) return true
+            }
+            return false
+        }
+
+        return when (intent.action) {
+            Intent.ACTION_VIEW -> {
+                val uri = intent.data ?: return emptyList()
+                if (isEpubMime(intent.type) || looksLikeEpub(uri)) listOf(uri) else emptyList()
+            }
+            Intent.ACTION_SEND -> {
+                if (!isEpubMime(intent.type)) return emptyList()
+                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                }
+                listOfNotNull(uri)
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                if (!isEpubMime(intent.type)) return emptyList()
+                val list = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM, android.net.Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableArrayListExtra<android.net.Uri>(Intent.EXTRA_STREAM)
+                }
+                list?.toList().orEmpty()
+            }
+            else -> emptyList()
+        }
+    }
+
+    /**
+     * Take a persistable read-permission grant on each URI so the
+     * EPUB-import flow can re-open it across coroutine launches without
+     * `SecurityException`. Sharing-side senders may not have set the
+     * persistable flag, so the call is wrapped in [runCatching] per-URI.
+     */
+    private fun persistEpubReadPermissions(uris: List<android.net.Uri>) {
+        val resolver = contentResolver
+        uris.forEach { uri ->
+            runCatching {
+                resolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
     }
 
     companion object {

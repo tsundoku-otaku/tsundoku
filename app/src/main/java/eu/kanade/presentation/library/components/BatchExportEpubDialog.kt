@@ -43,6 +43,9 @@ data class EpubExportOptions(
     val includeChapterRange: Boolean = false,
     val includeStatus: Boolean = false,
     val includeVolumeNumber: Boolean = false,
+    // Active reader CSS/JS snippets bundled into the EPUB output.
+    val includeCustomCss: Boolean = false,
+    val includeCustomJs: Boolean = false,
 )
 
 @Composable
@@ -68,6 +71,8 @@ fun BatchExportEpubDialog(
     var includeChapterRange by remember { mutableStateOf(false) }
     var includeStatus by remember { mutableStateOf(false) }
     var includeVolumeNumber by remember { mutableStateOf(false) }
+    var includeCustomCss by remember { mutableStateOf(false) }
+    var includeCustomJs by remember { mutableStateOf(false) }
 
     // "Both" mode produces two EPUBs → always ZIP; multi-novel → always ZIP
     val needsZip = !isSingleNovel || translationMode == TranslationMode.BOTH || !joinVolumes
@@ -87,6 +92,8 @@ fun BatchExportEpubDialog(
                     includeChapterRange = includeChapterRange,
                     includeStatus = includeStatus,
                     includeVolumeNumber = includeVolumeNumber,
+                    includeCustomCss = includeCustomCss,
+                    includeCustomJs = includeCustomJs,
                 ),
             )
             onDismissRequest()
@@ -213,6 +220,35 @@ fun BatchExportEpubDialog(
                     checked = includeVolumeNumber,
                     onClick = { includeVolumeNumber = !includeVolumeNumber },
                 )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(TDMR.strings.epub_include_custom_assets_section),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+
+                CheckboxItem(
+                    label = stringResource(TDMR.strings.epub_include_custom_css),
+                    checked = includeCustomCss,
+                    onClick = { includeCustomCss = !includeCustomCss },
+                )
+
+                CheckboxItem(
+                    label = stringResource(TDMR.strings.epub_include_custom_js),
+                    checked = includeCustomJs,
+                    onClick = { includeCustomJs = !includeCustomJs },
+                )
+
+                if (includeCustomCss || includeCustomJs) {
+                    Text(
+                        text = stringResource(TDMR.strings.epub_include_custom_assets_info),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 

@@ -117,6 +117,65 @@
                 <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.tachibk" />
             </intent-filter>
 
+            <!-- Open EPUB files via file manager / "Open with…" -->
+            <intent-filter android:label="@string/epub_import_title">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/epub" />
+            </intent-filter>
+
+            <!-- Fallback for file managers that report octet-stream / no mime -->
+            <intent-filter android:label="@string/epub_import_title">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:host="*" />
+                <data android:mimeType="*/*" />
+                <!--
+                Work around Android's primitive PatternMatcher implementation
+                that can't cope with finding a . early in the path unless it's
+                explicitly matched. Mirrors the .tachibk handling above.
+                -->
+                <data android:pathPattern=".*\\.epub" />
+                <data android:pathPattern=".*\\..*\\.epub" />
+                <data android:pathPattern=".*\\..*\\..*\\.epub" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.epub" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.epub" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.epub" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.epub" />
+            </intent-filter>
+
+            <!-- Share-target: a single EPUB sent via the system share sheet -->
+            <intent-filter android:label="@string/epub_import_title">
+                <action android:name="android.intent.action.SEND" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/epub" />
+            </intent-filter>
+
+            <!-- Share-target: multiple EPUBs sent via the system share sheet -->
+            <intent-filter android:label="@string/epub_import_title">
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="application/epub" />
+            </intent-filter>
+
             <!--suppress AndroidDomInspection -->
             <meta-data
                 android:name="android.app.shortcuts"

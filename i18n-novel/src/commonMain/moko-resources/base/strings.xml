@@ -45,6 +45,15 @@
     <string name="delete_local_novel_files">Delete local EPUB/HTML?</string>
     <!-- Browse Source -->
     <string name="local_novel_source">Local novels</string>
+    <string name="local_novel_source_open_folder">Open folder</string>
+    <string name="local_novel_source_refresh_covers">Refresh covers</string>
+    <string name="local_novel_source_delete_title">Delete novels?</string>
+    <string name="local_novel_source_delete_message">This will permanently delete the folder and all files for each selected novel, and remove them from the library. This cannot be undone.</string>
+    <string name="local_novel_source_add_to_library">Add to library</string>
+    <string name="local_novel_source_covers_refreshed">Covers refreshed for %d novel(s)</string>
+    <string name="local_novel_source_select_category">Select category</string>
+    <string name="local_novel_source_open_folder_error">Could not open folder — no file manager found</string>
+    <string name="local_novel_source_delete_failed">Failed to delete %d novel(s) — check permissions</string>
     <!-- History -->
     <string name="pref_clear_cover">Clear cover</string>
     <!-- Downloads activity and service
@@ -104,7 +113,7 @@
     <string name="mass_import_cd_details">Details</string>
     <string name="mass_import_pending_count">%d URL(s) pending</string>
     <string name="mass_import_toast_error_reading_file">Error reading file: %s</string>
-    <string name="mass_import_toast_added_urls_from_files">Added %d URLs from %d file(s)</string>
+    <string name="mass_import_toast_added_urls_from_files">Added %1$d URLs from %2$d file(s)</string>
     <string name="mass_import_toast_no_readable_urls">No readable URLs found in selected files</string>
     <string name="mass_import_toast_report_saved">Report saved successfully</string>
     <string name="mass_import_toast_error_saving_report">Error saving report: %s</string>
@@ -318,6 +327,10 @@
     <string name="epub_include_chapter_range">Include chapter range (e.g. [ch1-50])</string>
     <string name="epub_include_status">Include status (e.g. [Completed])</string>
     <string name="epub_include_volume_number">Include volume number (e.g. [v2])</string>
+    <string name="epub_include_custom_css">Embed active CSS snippets</string>
+    <string name="epub_include_custom_js">Embed active JS snippets</string>
+    <string name="epub_include_custom_assets_section">Embedded reader snippets</string>
+    <string name="epub_include_custom_assets_info">Bundles your enabled CSS/JS snippets.</string>
     <string name="epub_downloaded_only_info">Only downloaded chapters will be included.</string>
     <string name="epub_source_info">Downloaded chapters will be used. Undownloaded chapters will be fetched from source.</string>
     <string name="epub_translated_info"> Translated chapters will be used when available.</string>

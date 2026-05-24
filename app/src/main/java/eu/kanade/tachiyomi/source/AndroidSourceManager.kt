@@ -66,11 +66,7 @@ class AndroidSourceManager(
                             Injekt.get(),
                             Injekt.get(),
                         ),
-                        LocalNovelSource.ID to LocalNovelSource(
-                            context,
-                            Injekt.get(),
-                            Injekt.get(),
-                        ),
+                        LocalNovelSource.ID to LocalNovelSource(),
                     ),
                 )
 

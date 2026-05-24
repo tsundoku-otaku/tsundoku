@@ -4,7 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -95,13 +97,27 @@ import java.util.UUID
 private const val TOC_PREVIEW_SECTION_SIZE = 3
 private const val TOC_PREVIEW_ALL_THRESHOLD = TOC_PREVIEW_SECTION_SIZE * 3
 
-class ImportEpubScreen : Screen() {
+/**
+ * EPUB import screen.
+ *
+ * Accepts an optional list of pre-supplied URIs (as strings, so the Screen
+ * stays Serializable across process death) — used when the OS hands the app
+ * one or more `.epub` files via `ACTION_VIEW` / `ACTION_SEND` /
+ * `ACTION_SEND_MULTIPLE`. When non-empty, the listed files are parsed
+ * automatically on first composition; the user can still add more via the
+ * file picker.
+ */
+class ImportEpubScreen(
+    private val initialUriStrings: List<String> = emptyList(),
+    private val closeActivityOnDone: Boolean = false,
+) : Screen() {
 
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
+        val finishActivity = { (context as? Activity)?.finish() }
 
         val snackbarHostState = remember { SnackbarHostState() }
         val getCategories = remember { Injekt.get<GetCategories>() }
@@ -122,6 +138,18 @@ class ImportEpubScreen : Screen() {
         var successfullyImportedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
         var showDeleteImportedConfirm by remember { mutableStateOf(false) }
 
+        fun exitImportScreen() {
+            if (closeActivityOnDone) {
+                finishActivity()
+            } else {
+                navigator.pop()
+            }
+        }
+
+        BackHandler(enabled = closeActivityOnDone) {
+            if (importProgress?.isRunning != true) finishActivity()
+        }
+
         LaunchedEffect(Unit) {
             categories = withContext(Dispatchers.IO) {
                 getCategories.await().filter {
@@ -133,58 +161,73 @@ class ImportEpubScreen : Screen() {
             }
         }
 
+        // Shared parse routine used by the file-picker AND by the initial-URI
+        // intake path. Persists read permissions, parses on IO, merges results
+        // with anything already loaded, rebuilds volume groups, and reports
+        // back through the snackbar.
+        suspend fun parseAndIngest(uris: List<Uri>) {
+            if (uris.isEmpty()) return
+            persistImportUriPermissions(context, uris)
+
+            isParsing = true
+            importResult = null
+            successfullyImportedUris = emptyList()
+
+            val parsed = withContext(Dispatchers.IO) {
+                parseEpubPreview.parseSelected(context, uris)
+            }
+
+            isParsing = false
+
+            parsed.errors.forEach { snackbarHostState.showSnackbar(it) }
+
+            val parsedFiles = parsed.files.map {
+                EpubFileInfo(
+                    uri = it.uri,
+                    fileName = it.fileName,
+                    title = it.title,
+                    author = it.author,
+                    description = it.description,
+                    coverUri = it.coverUri,
+                    collection = it.collection,
+                    collectionPosition = it.collectionPosition,
+                    genres = it.genres,
+                    tableOfContents = it.tableOfContents,
+                )
+            }
+
+            val existingFiles = volumeGroups.flatMap { group ->
+                group.volumes.map { volume -> volume.file }
+            }
+            val allFiles = (existingFiles + parsedFiles)
+                .distinctBy { file -> "${file.uri}|${file.fileName}" }
+
+            volumeGroups.clear()
+            volumeGroups.addAll(buildVolumeGroups(allFiles))
+            expandedTocByVolume.clear()
+
+            if (allFiles.isNotEmpty()) {
+                snackbarHostState.showSnackbar(
+                    "Loaded ${allFiles.size} EPUB file(s) into ${volumeGroups.size} novel group(s)",
+                )
+            } else if (parsed.errors.isEmpty()) {
+                snackbarHostState.showSnackbar("No valid EPUB files were parsed")
+            }
+        }
+
+        // Auto-load any URIs passed to the screen on first composition (intent-
+        // delivered EPUBs from outside the app). Only fires once per instance.
+        LaunchedEffect(initialUriStrings) {
+            if (initialUriStrings.isEmpty()) return@LaunchedEffect
+            val initialUris = initialUriStrings.mapNotNull { runCatching { Uri.parse(it) }.getOrNull() }
+            parseAndIngest(initialUris)
+        }
+
         val filePickerLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.OpenMultipleDocuments(),
         ) { uris ->
             if (uris.isEmpty()) return@rememberLauncherForActivityResult
-            persistImportUriPermissions(context, uris)
-
-            scope.launch {
-                isParsing = true
-                importResult = null
-                successfullyImportedUris = emptyList()
-
-                val parsed = withContext(Dispatchers.IO) {
-                    parseEpubPreview.parseSelected(context, uris)
-                }
-
-                isParsing = false
-
-                parsed.errors.forEach { snackbarHostState.showSnackbar(it) }
-
-                val parsedFiles = parsed.files.map {
-                    EpubFileInfo(
-                        uri = it.uri,
-                        fileName = it.fileName,
-                        title = it.title,
-                        author = it.author,
-                        description = it.description,
-                        coverUri = it.coverUri,
-                        collection = it.collection,
-                        collectionPosition = it.collectionPosition,
-                        genres = it.genres,
-                        tableOfContents = it.tableOfContents,
-                    )
-                }
-
-                val existingFiles = volumeGroups.flatMap { group ->
-                    group.volumes.map { volume -> volume.file }
-                }
-                val allFiles = (existingFiles + parsedFiles)
-                    .distinctBy { file -> "${file.uri}|${file.fileName}" }
-
-                volumeGroups.clear()
-                volumeGroups.addAll(buildVolumeGroups(allFiles))
-                expandedTocByVolume.clear()
-
-                if (allFiles.isNotEmpty()) {
-                    snackbarHostState.showSnackbar(
-                        "Loaded ${allFiles.size} EPUB file(s) into ${volumeGroups.size} novel group(s)",
-                    )
-                } else if (parsed.errors.isEmpty()) {
-                    snackbarHostState.showSnackbar("No valid EPUB files were parsed")
-                }
-            }
+            scope.launch { parseAndIngest(uris) }
         }
 
         fun moveGroup(groupId: String, offset: Int) {
@@ -333,9 +376,9 @@ class ImportEpubScreen : Screen() {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues),
-                        canDeleteImportedFiles = successfullyImportedUris.isNotEmpty(),
+                        canDeleteImportedFiles = successfullyImportedUris.isNotEmpty() && successfullyImportedUris.none { it.scheme == "content" },
                         onDeleteImportedFiles = { showDeleteImportedConfirm = true },
-                        onDone = { navigator.pop() },
+                        onDone = { exitImportScreen() },
                     )
 
                     if (showDeleteImportedConfirm) {

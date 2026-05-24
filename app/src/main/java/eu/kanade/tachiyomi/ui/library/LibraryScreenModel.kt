@@ -13,7 +13,6 @@ import eu.kanade.core.preference.asState
 import eu.kanade.core.util.fastFilterNot
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.chapter.interactor.SetReadStatus
-import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
 import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
@@ -104,7 +103,6 @@ class LibraryScreenModel(
     private val setReadStatus: SetReadStatus = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
-    private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
     private val searchChapterNames: SearchChapterNames = Injekt.get(),
     private val preferences: BasePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
@@ -191,21 +189,19 @@ class LibraryScreenModel(
                 getLibraryManga.isLoading(),
             ) { categories, favorites, tracksAndFilters, itemPreferences, isLoading ->
                 val (tracksMap, trackingFilters) = tracksAndFilters
-                val castTracksMap = tracksMap as Map<Long, List<Track>>
-                val castTrackingFilters = trackingFilters as Map<Long, TriState>
 
                 val showSystemCategory = favorites.any { it.libraryManga.categories.contains(0L) }
 
                 val filteredFavorites = favorites
-                    .applyFilters(castTracksMap, castTrackingFilters, itemPreferences)
+                    .applyFilters(tracksMap, trackingFilters, itemPreferences)
 
                 LibraryData(
                     isInitialized = !isLoading,
                     showSystemCategory = showSystemCategory,
                     categories = categories,
                     favorites = filteredFavorites,
-                    tracksMap = castTracksMap,
-                    loggedInTrackerIds = castTrackingFilters.keys,
+                    tracksMap = tracksMap,
+                    loggedInTrackerIds = trackingFilters.keys,
                 )
             }
 
@@ -374,7 +370,7 @@ class LibraryScreenModel(
             if (!novelPasses) return@fastFilter false
 
             // Tags filter (more expensive, so do it last)
-            val tagsPasses = if (
+            if (
                 normalizedIncluded.isEmpty() &&
                 normalizedExcluded.isEmpty() &&
                 preferences.filterNoTags == TriState.DISABLED
@@ -389,7 +385,6 @@ class LibraryScreenModel(
                     when (noTagsFilter) {
                         TriState.ENABLED_IS -> if (!hasNoTags) return@fastFilter false
                         TriState.ENABLED_NOT -> if (hasNoTags) return@fastFilter false
-                        else -> {}
                     }
                 }
 
@@ -417,7 +412,6 @@ class LibraryScreenModel(
 
                 true
             }
-            if (!tagsPasses) return@fastFilter false
 
             // Chapter count filter
             val chapterCountPasses = applyFilter(preferences.filterChapterCount) {
@@ -863,7 +857,7 @@ class LibraryScreenModel(
                 )
             }
             val updates = selection.associate { manga ->
-                manga.id to { libraryManga: tachiyomi.domain.library.model.LibraryManga ->
+                manga.id to { libraryManga: LibraryManga ->
                     libraryManga.copy(
                         readCount = if (read) libraryManga.totalChapters else 0,
                         lastRead = if (read) System.currentTimeMillis() else libraryManga.lastRead,
@@ -942,47 +936,10 @@ class LibraryScreenModel(
             }
 
             // Refresh library UI after modifications
-            if (deleteFromLibrary) {
-            } else if (deleteChapters || clearChaptersFromDb || deleteTranslations || clearCovers || clearDescriptions || clearTags) {
+            if (!deleteFromLibrary && (deleteChapters || clearChaptersFromDb || deleteTranslations || clearCovers || clearDescriptions || clearTags)) {
                 getLibraryManga.notifyChanged()
             }
         }
-    }
-
-    /**
-     * Clear covers for selected manga.
-     */
-    fun clearCoversForSelection() {
-        val mangas = state.value.selectedManga
-        if (mangas.isEmpty()) return
-
-        val context = Injekt.get<android.app.Application>()
-        LibraryClearJob.start(context, mangas.map { it.id }, LibraryClearJob.OP_CLEAR_COVERS)
-        clearSelection()
-    }
-
-    /**
-     * Clear descriptions for selected manga.
-     */
-    fun clearDescriptionsForSelection() {
-        val mangas = state.value.selectedManga
-        if (mangas.isEmpty()) return
-
-        val context = Injekt.get<android.app.Application>()
-        LibraryClearJob.start(context, mangas.map { it.id }, LibraryClearJob.OP_CLEAR_DESCRIPTIONS)
-        clearSelection()
-    }
-
-    /**
-     * Clear tags/genres for selected manga.
-     */
-    fun clearTagsForSelection() {
-        val mangas = state.value.selectedManga
-        if (mangas.isEmpty()) return
-
-        val context = Injekt.get<android.app.Application>()
-        LibraryClearJob.start(context, mangas.map { it.id }, LibraryClearJob.OP_CLEAR_TAGS)
-        clearSelection()
     }
 
     /**
@@ -1217,22 +1174,12 @@ class LibraryScreenModel(
         mutableState.update { it.copy(dialog = Dialog.RemoveChapters(state.value.selectedManga)) }
     }
 
-    fun removeChaptersFromSelectedManga(mangaList: List<Manga>) {
-        val context = Injekt.get<android.app.Application>()
-        LibraryClearJob.start(context, mangaList.map { it.id }, LibraryClearJob.OP_CLEAR_CHAPTERS)
-        clearSelection()
-    }
-
     fun closeDialog() {
         mutableState.update { it.copy(dialog = null) }
     }
 
     fun openMassImportDialog() {
         mutableState.update { it.copy(dialog = Dialog.MassImport) }
-    }
-
-    fun openImportEpubDialog() {
-        mutableState.update { it.copy(dialog = Dialog.ImportEpub) }
     }
 
     fun openExportEpubDialog() {
@@ -1269,6 +1216,8 @@ class LibraryScreenModel(
             includeChapterRange = options.includeChapterRange,
             includeStatus = options.includeStatus,
             includeVolumeNumber = options.includeVolumeNumber,
+            includeCustomCss = options.includeCustomCss,
+            includeCustomJs = options.includeCustomJs,
         )
 
         screenModelScope.launchIO {
@@ -1408,7 +1357,7 @@ class LibraryScreenModel(
                             // Fetch from source if still no content
                             if (content == null && !options.downloadedOnly) {
                                 try {
-                                    if (source is eu.kanade.tachiyomi.source.online.HttpSource) {
+                                    if (source is HttpSource) {
                                         val pages = source.getPageList(chapter.toSChapter())
                                         if (pages.isNotEmpty()) {
                                             val page = pages.first()
@@ -1632,9 +1581,9 @@ class LibraryScreenModel(
 
     private fun normalizeTitle(title: String): String {
         return title.lowercase()
-            .replace(Regex("[\\[\\(].*?[\\]\\)]"), "") // Remove content in brackets/parentheses
-            .replace(Regex("[^a-z0-9\\s]"), "") // Remove non-alphanumeric except spaces
-            .replace(Regex("\\s+"), " ") // Normalize whitespace
+            .replace(Regex("""[\[\(].*?[\]\)]"""), "") // Remove content in brackets/parentheses
+            .replace(Regex("""[^a-z0-9\s]"""), "") // Remove non-alphanumeric except spaces
+            .replace(Regex("""\s+"""), " ") // Normalize whitespace
             .trim()
     }
 
@@ -1670,26 +1619,6 @@ class LibraryScreenModel(
         return dp[s1.length][s2.length]
     }
 
-    fun openDuplicateDetectionDialog() {
-        val duplicates = findDuplicates()
-        mutableState.update { it.copy(dialog = Dialog.DuplicateDetection(duplicates)) }
-    }
-
-    fun selectDuplicatesExceptFirst(groups: List<DuplicateGroup>) {
-        val toSelect = groups.flatMap { it.items.drop(1) }.map { it.id }.toSet()
-        mutableState.update { state ->
-            state.copy(selection = state.selection + toSelect)
-        }
-        closeDialog()
-    }
-
-    fun selectAllDuplicates(groups: List<DuplicateGroup>) {
-        val toSelect = groups.flatMap { it.items }.map { it.id }.toSet()
-        mutableState.update { state ->
-            state.copy(selection = state.selection + toSelect)
-        }
-        closeDialog()
-    }
 
     data class DuplicateGroup(val items: List<LibraryItem>)
 
