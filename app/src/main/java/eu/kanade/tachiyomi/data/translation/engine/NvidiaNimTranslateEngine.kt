@@ -138,7 +138,8 @@ Rules:
 - Preserve paragraph structure
 - Maintain the author's writing style and tone
 - Keep character names consistent
-- Do not add explanations or notes"""
+- Do not add explanations or notes
+- Copy tokens like [IMG_PLACEHOLDER_0] verbatim — do not translate or alter them"""
 
         val request = ChatRequest(
             model = model,

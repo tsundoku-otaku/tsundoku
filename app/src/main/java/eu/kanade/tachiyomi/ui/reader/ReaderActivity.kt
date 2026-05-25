@@ -1517,17 +1517,19 @@ class ReaderActivity : BaseActivity() {
      * Returns translated text if translation is enabled and successful,
      * otherwise returns original text.
      */
-    suspend fun translateContentIfEnabled(content: String): String {
+    suspend fun translateContentIfEnabled(content: String, chapterId: Long? = null): String {
         if (!isTranslationEnabled()) return content
         return try {
-            viewModel.translateContent(content)
+            viewModel.translateContent(content, chapterId)
         } catch (e: CancellationException) {
             logcat(LogPriority.DEBUG) { "Translation was cancelled" }
             content
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Translation failed" }
-            viewModel.disableTranslation()
-            toast(e.message ?: "Translation failed")
+            runOnUiThread {
+                viewModel.disableTranslation()
+                toast(e.message ?: "Translation failed")
+            }
             content
         }
     }

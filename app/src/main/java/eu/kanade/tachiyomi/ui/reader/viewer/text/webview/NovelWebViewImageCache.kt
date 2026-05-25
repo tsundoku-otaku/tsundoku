@@ -1,8 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
-import android.content.Context
-import android.net.Uri
 import android.webkit.WebResourceResponse
+import java.net.URLDecoder
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -10,13 +9,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import logcat.logcat
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 internal class NovelWebViewImageCache(
-    private val context: Context,
+    private val cacheDir: File,
     private val scope: CoroutineScope,
 ) {
 
@@ -26,7 +26,7 @@ internal class NovelWebViewImageCache(
 
     fun intercept(url: String, fallbackChapterId: Long?, fallbackLoader: PageLoader?): WebResourceResponse? {
         if (!url.startsWith(URL_SCHEME_NOVEL_IMAGE)) return null
-        val rawPath = Uri.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE))
+        val rawPath = URLDecoder.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE), "UTF-8")
 
         val slashIdx = rawPath.indexOf('/')
         val (chapterId, imagePath) = if (slashIdx > 0) {
@@ -40,24 +40,35 @@ internal class NovelWebViewImageCache(
             fallbackChapterId to rawPath
         }
 
-        val loader = chapterLoaderMap[chapterId] ?: fallbackLoader
+        val loader = chapterId?.let { chapterLoaderMap[it] } ?: fallbackLoader
         val cacheKey = buildCacheKey(chapterId, imagePath)
         cache[cacheKey]?.takeIf { it.exists() }?.let { cachedFile ->
             return WebResourceResponse(
                 guessMimeType(imagePath),
                 "UTF-8",
-                cachedFile.inputStream(),
+                cachedFile.readBytes().inputStream(),
             )
         }
-        if (loader != null && chapterId != null) prefetch(chapterId, imagePath, loader)
-        return null
+
+        if (loader == null) return null
+        prefetchJobs.remove(cacheKey)?.cancel()
+        return try {
+            val bytes = runBlocking { loader.getPageDataStream(imagePath)?.use { it.readBytes() } } ?: return null
+            val cachedFile = makeCachedFile(cacheKey, imagePath)
+            cachedFile.writeBytes(bytes)
+            cache[cacheKey] = cachedFile
+            WebResourceResponse(guessMimeType(imagePath), "UTF-8", bytes.inputStream())
+        } catch (e: Exception) {
+            logcat(LogPriority.DEBUG) { "NovelWebViewImageCache: sync load $imagePath failed: ${e.message}" }
+            null
+        }
     }
 
     fun schedulePrefetch(content: String, chapterId: Long?, loader: PageLoader?) {
         if (chapterId == null || loader == null) return
         chapterLoaderMap[chapterId] = loader
         IMAGE_URL_PATTERN.findAll(content)
-            .mapNotNull { match -> runCatching { Uri.decode(match.groupValues[1]) }.getOrNull() }
+            .mapNotNull { match -> runCatching { URLDecoder.decode(match.groupValues[1], "UTF-8") }.getOrNull() }
             .distinct()
             .forEach { rawPath ->
                 val imagePath = if (rawPath.startsWith("$chapterId/")) {
@@ -84,12 +95,7 @@ internal class NovelWebViewImageCache(
         val job = scope.launch(start = CoroutineStart.LAZY, context = Dispatchers.IO) {
             try {
                 val stream = loader.getPageDataStream(imagePath) ?: return@launch
-                val fileSuffix = imagePath.substringAfterLast('.', "bin").ifBlank { "bin" }
-                val keyHash = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(cacheKey.toByteArray())
-                    .take(16)
-                    .joinToString("") { "%02x".format(it) }
-                val cachedFile = File(context.cacheDir, "novel-image-$keyHash.$fileSuffix")
+                val cachedFile = makeCachedFile(cacheKey, imagePath)
                 stream.use { input ->
                     cachedFile.outputStream().use { output -> input.copyTo(output) }
                 }
@@ -110,6 +116,15 @@ internal class NovelWebViewImageCache(
 
     private fun buildCacheKey(chapterId: Long?, imagePath: String): String =
         "${chapterId ?: -1L}:$imagePath"
+
+    private fun makeCachedFile(cacheKey: String, imagePath: String): File {
+        val fileSuffix = imagePath.substringAfterLast('.', "bin").ifBlank { "bin" }
+        val keyHash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(cacheKey.toByteArray())
+            .take(16)
+            .joinToString("") { "%02x".format(it) }
+        return File(cacheDir, "novel-image-$keyHash.$fileSuffix")
+    }
 
     private fun guessMimeType(imagePath: String): String =
         when (imagePath.substringAfterLast('.', "").lowercase()) {
