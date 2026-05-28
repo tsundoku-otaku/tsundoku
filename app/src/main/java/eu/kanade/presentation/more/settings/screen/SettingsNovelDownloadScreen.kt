@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
@@ -38,7 +37,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.source.isNovelSource
-import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences
@@ -53,6 +51,9 @@ import uy.kohesive.injekt.api.get
 import kotlin.random.Random
 
 object SettingsNovelDownloadScreen : SearchableSettings {
+
+    @Suppress("unused")
+    private fun readResolve(): Any = this
 
     private const val LOW_DELAY_THRESHOLD_MS = 3000
 
@@ -121,7 +122,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         }
 
         return listOf(
-            getDownloadThrottlingGroup(novelDownloadPreferences, downloadPreferences),
+            getDownloadThrottlingGroup(novelDownloadPreferences),
             getImageEmbeddingGroup(novelDownloadPreferences),
             getUpdateThrottlingGroup(novelDownloadPreferences),
             getMassImportThrottlingGroup(novelDownloadPreferences),
@@ -132,7 +133,6 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     @Composable
     private fun getDownloadThrottlingGroup(
         prefs: NovelDownloadPreferences,
-        downloadPreferences: DownloadPreferences,
     ): Preference.PreferenceGroup {
         val downloadPreferences = Injekt.get<DownloadPreferences>()
         val enabled = prefs.enableThrottling().collectAsState().value
@@ -142,7 +142,6 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         val parallelDownloads = prefs.parallelNovelDownloads().collectAsState().value
         val compressionLevel = prefs.zipCompressionLevel().collectAsState().value
         val epubCompressionLevel = downloadPreferences.epubCompressionLevel.collectAsState().value
-        val resumeOnNew = prefs.resumeQueueOnNewChapters().collectAsState().value
 
         val lowDelayWarning = if (downloadDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
             stringResource(TDMR.strings.pref_novel_low_delay_warning)
@@ -288,7 +287,6 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     ): Preference.PreferenceGroup {
         val enabled = prefs.enableUpdateThrottling().collectAsState().value
         val updateDelay = prefs.updateDelay().collectAsState().value
-        val updateStagger = prefs.enableUpdateStaggering().collectAsState().value
         val parallelUpdates = prefs.parallelNovelUpdates().collectAsState().value
 
         val lowDelayWarning = if (updateDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
@@ -370,6 +368,14 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     subtitle = stringResource(TDMR.strings.pref_novel_concurrent_imports_summary),
                     valueString = "${prefs.parallelMassImport().collectAsState().value}",
                     onValueChanged = { prefs.parallelMassImport().set(it) },
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = prefs.skipSourceIfFailedXTimes().collectAsState().value,
+                    valueRange = 0..20,
+                    title = stringResource(TDMR.strings.skip_source_on_consecutive_errors),
+                    subtitle = stringResource(TDMR.strings.skip_source_on_consecutive_errors_description),
+                    valueString = if (prefs.skipSourceIfFailedXTimes().collectAsState().value == 0) "Disabled" else "After ${prefs.skipSourceIfFailedXTimes().collectAsState().value} errors",
+                    onValueChanged = { prefs.skipSourceIfFailedXTimes().set(it) },
                 ),
             ),
         )

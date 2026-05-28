@@ -43,6 +43,15 @@ class NovelDownloadPreferences(
     )
 
     /**
+     * Skip source if details fetch failed X times consecutively
+     * 0 implies disabled
+     */
+    fun skipSourceIfFailedXTimes() = preferenceStore.getInt(
+        "novel_mass_import_skip_source_failures",
+        0,
+    )
+
+    /**
      * Enable delay between library updates for novel sources
      */
     fun enableUpdateThrottling() = preferenceStore.getBoolean(
@@ -167,7 +176,7 @@ class NovelDownloadPreferences(
 
             val overrides = kotlinx.serialization.json.Json.decodeFromString<Map<String, SourceOverride>>(json)
             overrides[sourceId.toString()]
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
@@ -187,7 +196,7 @@ class NovelDownloadPreferences(
             overrides[override.sourceId.toString()] = override
             val newJson = kotlinx.serialization.json.Json.encodeToString(overrides)
             sourceOverrides().set(newJson)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Log error
         }
     }
@@ -211,7 +220,7 @@ class NovelDownloadPreferences(
                 kotlinx.serialization.json.Json.encodeToString(overrides)
             }
             sourceOverrides().set(newJson)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             // Log error
         }
     }
@@ -226,7 +235,7 @@ class NovelDownloadPreferences(
 
             val overrides = kotlinx.serialization.json.Json.decodeFromString<Map<String, SourceOverride>>(json)
             overrides.values.toList()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -246,3 +255,4 @@ class NovelDownloadPreferences(
         )
     }
 }
+

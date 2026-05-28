@@ -656,12 +656,6 @@ data class BrowseSourceScreen(
                     showMassImportDialog = false
                     screenModel.clearSelection()
                 },
-                onImportComplete = { added, skipped, errored ->
-                    // Clear selection after import
-                    screenModel.clearSelection()
-                    // Store result to trigger snackbar via LaunchedEffect
-                    lastImportResult = Triple(added, skipped, errored)
-                },
                 initialText = initialText,
                 isNovelMode = screenModel.source.isNovelSource(),
                 preferredSourceId = screenModel.source.id,

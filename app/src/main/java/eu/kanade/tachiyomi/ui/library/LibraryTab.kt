@@ -323,13 +323,6 @@ data object LibraryTab : Tab {
             is LibraryScreenModel.Dialog.MassImport -> {
                 MassImportDialog(
                     onDismissRequest = onDismissRequest,
-                    onImportComplete = { added, skipped, errored ->
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                "Imported: $added added, $skipped skipped, $errored errors",
-                            )
-                        }
-                    },
                     isNovelMode = false, // Manga mode for LibraryTab
                 )
             }

@@ -252,6 +252,9 @@
     <string name="pref_novel_mass_import_delay_subtitle">Delay between imports from the same source (different sources run concurrently)</string>
     <string name="pref_novel_concurrent_imports">Concurrent Mass Imports</string>
     <string name="pref_novel_concurrent_imports_summary">Number of different sources importing simultaneously (throttle between same source is in delay setting)</string>
+    <string name="skip_source_on_consecutive_errors">Skip source on consecutive errors</string>
+    <string name="skip_source_on_consecutive_errors_description">Skip processing remaining urls from a source if details fetch fails X times consecutively. 0 to disable.</string>
+
     <string name="pref_novel_deflate_level">Deflate level %d</string>
     <string name="pref_novel_parallel_downloads">Parallel novel downloads</string>
     <string name="pref_novel_resume_queue_on_new">Resume queue on new chapters</string>

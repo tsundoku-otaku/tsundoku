@@ -23,14 +23,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Cancel
+import androidx.compose.material.icons.outlined.ClearAll
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Pause
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.FileOpen
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -85,7 +86,6 @@ import uy.kohesive.injekt.api.get
 @Composable
 fun MassImportDialog(
     onDismissRequest: () -> Unit,
-    onImportComplete: (added: Int, skipped: Int, errored: Int) -> Unit,
     initialText: String = "",
     isNovelMode: Boolean = true, // Default to novel mode for backward compatibility
     preferredSourceId: Long? = null,
@@ -102,18 +102,12 @@ fun MassImportDialog(
     val toastErrorReadingFile = stringResource(TDMR.strings.mass_import_toast_error_reading_file)
     val toastAddedUrlsFromFiles = stringResource(TDMR.strings.mass_import_toast_added_urls_from_files)
     val toastNoReadableUrls = stringResource(TDMR.strings.mass_import_toast_no_readable_urls)
-    val toastReportSaved = stringResource(TDMR.strings.mass_import_toast_report_saved)
-    val toastErrorSavingReport = stringResource(TDMR.strings.mass_import_toast_error_saving_report)
     val toastExportedUrls = stringResource(TDMR.strings.mass_import_toast_exported_urls)
     val toastErrorExportingUrls = stringResource(TDMR.strings.mass_import_toast_error_exporting_urls)
     val toastCopiedUrls = stringResource(TDMR.strings.mass_import_toast_copied_urls)
     val toastCopiedErrors = stringResource(TDMR.strings.mass_import_toast_copied_errors)
-    val toastReportCopied = stringResource(TDMR.strings.mass_import_toast_report_copied)
-    val toastRequeuedErrors = stringResource(TDMR.strings.mass_import_toast_requeued_errors)
-    val toastRequeuedRemaining = stringResource(TDMR.strings.mass_import_toast_requeued_remaining)
     val clipboardUrlsLabel = stringResource(TDMR.strings.mass_import_clipboard_label_urls)
     val clipboardErrorsLabel = stringResource(TDMR.strings.mass_import_clipboard_label_errors)
-    val clipboardReportLabel = stringResource(TDMR.strings.mass_import_clipboard_label_report)
 
     // File picker launcher for reading URLs from files
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -166,35 +160,8 @@ fun MassImportDialog(
         },
     )
 
-    // State to track which batch report to save
-    var batchToSave by remember { mutableStateOf<MassImportJob.Batch?>(null) }
-
     // State to track which batch to export URLs from
     var batchToExport by remember { mutableStateOf<MassImportJob.Batch?>(null) }
-
-    // File save launcher for saving reports
-    val saveReportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/plain"),
-        onResult = { uri ->
-            uri?.let { outputUri ->
-                batchToSave?.let { batch ->
-                    try {
-                        val report = MassImportJob.generateReport(batch)
-                        context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
-                            outputStream.bufferedWriter().use { writer ->
-                                writer.write(report)
-                            }
-                        }
-                        context.toast(toastReportSaved)
-                    } catch (e: Exception) {
-                        context.toast("${toastErrorSavingReport}: ${e.message.orEmpty()}")
-                    } finally {
-                        batchToSave = null
-                    }
-                }
-            }
-        },
-    )
 
     // File save launcher for exporting URLs
     val exportUrlsLauncher = rememberLauncherForActivityResult(
@@ -209,9 +176,9 @@ fun MassImportDialog(
                                 writer.write(urls)
                             }
                         }
-                                    context.toast(String.format(toastExportedUrls, batch.urls.size))
+                        context.toast(String.format(toastExportedUrls, batch.sourceUrls.size))
                     } catch (e: Exception) {
-                                    context.toast("${toastErrorExportingUrls}: ${e.message.orEmpty()}")
+                        context.toast("${toastErrorExportingUrls}: ${e.message.orEmpty()}")
                     } finally {
                         batchToExport = null
                     }
@@ -260,28 +227,86 @@ fun MassImportDialog(
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Row {
-                            // Clear completed button
                             val hasCompleted = queue.any {
                                 it.status == MassImportJob.BatchStatus.Completed ||
                                     it.status == MassImportJob.BatchStatus.Cancelled
                             }
                             if (hasCompleted) {
-                                TextButton(
-                                    onClick = { showClearCompletedConfirm = true },
+                                TooltipBox(
+                                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                    tooltip = { PlainTooltip { Text(stringResource(TDMR.strings.mass_import_clear_done)) } },
+                                    state = rememberTooltipState(),
                                 ) {
-                                    Text(stringResource(TDMR.strings.mass_import_clear_done), style = MaterialTheme.typography.labelSmall)
+                                    IconButton(
+                                        onClick = { showClearCompletedConfirm = true },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ClearAll,
+                                            contentDescription = stringResource(TDMR.strings.mass_import_clear_done),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
-                            // Cancel all button
-                            val hasActive = queue.any {
+
+                            val hasRunningState = queue.any {
                                 it.status == MassImportJob.BatchStatus.Pending ||
                                     it.status == MassImportJob.BatchStatus.Running
                             }
-                            if (hasActive) {
-                                TextButton(
-                                    onClick = { showCancelAllConfirm = true },
+                            val hasPausedState = queue.any {
+                                it.status == MassImportJob.BatchStatus.Paused
+                            }
+
+                            if (hasRunningState) {
+                                TooltipBox(
+                                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                    tooltip = { PlainTooltip { Text("Pause All") } },
+                                    state = rememberTooltipState(),
                                 ) {
-                                    Text(stringResource(TDMR.strings.mass_import_cancel_all), style = MaterialTheme.typography.labelSmall)
+                                    IconButton(
+                                        onClick = { MassImportJob.pauseAll() },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Pause,
+                                            contentDescription = "Pause All",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                            if (hasPausedState) {
+                                TooltipBox(
+                                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                    tooltip = { PlainTooltip { Text("Resume All") } },
+                                    state = rememberTooltipState(),
+                                ) {
+                                    IconButton(
+                                        onClick = { MassImportJob.resumeAll() },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.PlayArrow,
+                                            contentDescription = "Resume All",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (hasRunningState || hasPausedState) {
+                                TooltipBox(
+                                    positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                    tooltip = { PlainTooltip { Text(stringResource(TDMR.strings.mass_import_cancel_all)) } },
+                                    state = rememberTooltipState(),
+                                ) {
+                                    IconButton(
+                                        onClick = { showCancelAllConfirm = true },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Cancel,
+                                            contentDescription = stringResource(TDMR.strings.mass_import_cancel_all),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -302,36 +327,20 @@ fun MassImportDialog(
                             BatchItem(
                                 batch = batch,
                                 onCancel = { MassImportJob.cancelBatch(context, batch.id) },
+                                onPause = { MassImportJob.pauseBatch(batch.id) },
+                                onResume = { MassImportJob.resumeBatch(batch.id) },
                                 onCopyUrls = {
-                                    context.copyToClipboard(clipboardUrlsLabel, batch.urls.joinToString("\n"))
-                                    context.toast(String.format(toastCopiedUrls, batch.urls.size))
+                                    val urls = MassImportJob.exportBatchUrls(batch)
+                                    context.copyToClipboard(clipboardUrlsLabel, urls)
+                                    context.toast(String.format(toastCopiedUrls, batch.sourceUrls.size))
                                 },
                                 onCopyErrors = {
-                                    // Include error messages with URLs
-                                    val errors = MassImportJob.generateErrorsWithMessages(batch)
-                                    if (errors.isNotBlank()) {
-                                        context.copyToClipboard(clipboardErrorsLabel, errors)
-                                        context.toast(String.format(toastCopiedErrors, batch.erroredUrls.size))
+                                    if (batch.erroredUrls.isNotEmpty()) {
+                                        context.copyToClipboard(clipboardErrorsLabel, batch.erroredUrls.joinToString("\n"))
+                                        context.toast(String.format(toastCopiedErrors, batch.errored))
                                     }
                                 },
-                                onCopyReport = {
-                                    val report = MassImportJob.generateReport(batch)
-                                    context.copyToClipboard(clipboardReportLabel, report)
-                                    context.toast(toastReportCopied)
-                                },
-                                onSaveReport = {
-                                    batchToSave = batch
-                                    val timestamp = java.text.SimpleDateFormat(
-                                        "yyyyMMdd_HHmmss",
-                                        java.util.Locale.getDefault(),
-                                    ).format(java.util.Date())
-                                    saveReportLauncher.launch("mass_import_report_$timestamp.txt")
-                                },
-                                onRemove = { MassImportJob.removeBatch(batch.id) },
-                                onReinsertErrors = {
-                                    MassImportJob.reinsertErrored(context, batch)
-                                    context.toast(String.format(toastRequeuedErrors, batch.erroredUrls.size))
-                                },
+                                onRemove = { MassImportJob.removeBatch(context, batch.id) },
                                 onExportUrls = {
                                     batchToExport = batch
                                     val timestamp = java.text.SimpleDateFormat(
@@ -339,10 +348,6 @@ fun MassImportDialog(
                                         java.util.Locale.getDefault(),
                                     ).format(java.util.Date())
                                     exportUrlsLauncher.launch("mass_import_urls_$timestamp.txt")
-                                },
-                                onRequeue = {
-                                    MassImportJob.requeueCancelled(context, batch)
-                                    context.toast(toastRequeuedRemaining)
                                 },
                             )
                         }
@@ -358,11 +363,11 @@ fun MassImportDialog(
                 )
 
                 // Category Selection
+                // categories already filtered by contentType from subscribeByContentType — just strip system categories
                 val userCategories = remember(categories) {
                     categories
                         .asSequence()
                         .filterNot(Category::isSystemCategory)
-                        .filter { it.contentType != Category.CONTENT_TYPE_MANGA }
                         .toList()
                 }
                 val defaultCategoryName = stringResource(MR.strings.default_category)
@@ -609,49 +614,45 @@ fun MassImportDialog(
 
             TextButton(
                 onClick = {
-                    // Run URL parsing and job enqueue off main thread
-                    dialogScope.launch(Dispatchers.Default) {
-                        withContext(Dispatchers.Main) {
-                            val combinedRawText = when {
-                                pendingUrls.isNotBlank() && urlText.isNotBlank() -> pendingUrls + "\n" + urlText
-                                pendingUrls.isNotBlank() -> pendingUrls
-                                else -> urlText
-                            }
-
-                            val useRawTextFastPath = combinedRawText.length > 100_000
-                            if (useRawTextFastPath) {
-                                MassImportJob.start(
-                                    context = context,
-                                    urls = emptyList(),
-                                    addToLibrary = true,
-                                    fetchDetails = fetchDetails,
-                                    categoryId = selectedCategoryId ?: 0L,
-                                    fetchChapters = syncChapterList,
-                                    rawText = combinedRawText,
-                                    preferredSourceId = preferredSourceId,
-                                )
-                            } else {
-                                val uniqueUrls = LinkedHashSet<String>()
-                                if (pendingUrls.isNotBlank()) {
-                                    uniqueUrls.addAll(massImportNovels.parseUrls(pendingUrls))
-                                }
-                                if (urlText.isNotBlank()) {
-                                    uniqueUrls.addAll(massImportNovels.parseUrls(urlText))
-                                }
-
-                                MassImportJob.start(
-                                    context = context,
-                                    urls = uniqueUrls.toList(),
-                                    addToLibrary = true,
-                                    fetchDetails = fetchDetails,
-                                    categoryId = selectedCategoryId ?: 0L,
-                                    fetchChapters = syncChapterList,
-                                    preferredSourceId = preferredSourceId,
-                                )
-                            }
-                            urlText = ""
-                            pendingUrls = ""
+                    dialogScope.launch {
+                        val combinedRawText = when {
+                            pendingUrls.isNotBlank() && urlText.isNotBlank() -> pendingUrls + "\n" + urlText
+                            pendingUrls.isNotBlank() -> pendingUrls
+                            else -> urlText
                         }
+
+                        val useRawTextFastPath = combinedRawText.length > 100_000
+                        if (useRawTextFastPath) {
+                            MassImportJob.start(
+                                context = context,
+                                urls = emptyList(),
+                                addToLibrary = true,
+                                fetchDetails = fetchDetails,
+                                categoryId = selectedCategoryId ?: 0L,
+                                fetchChapters = syncChapterList,
+                                rawText = combinedRawText,
+                                preferredSourceId = preferredSourceId,
+                            )
+                        } else {
+                            val uniqueUrls = withContext(Dispatchers.Default) {
+                                val set = LinkedHashSet<String>()
+                                if (pendingUrls.isNotBlank()) set.addAll(massImportNovels.parseUrls(pendingUrls))
+                                if (urlText.isNotBlank()) set.addAll(massImportNovels.parseUrls(urlText))
+                                set.toList()
+                            }
+
+                            MassImportJob.start(
+                                context = context,
+                                urls = uniqueUrls,
+                                addToLibrary = true,
+                                fetchDetails = fetchDetails,
+                                categoryId = selectedCategoryId ?: 0L,
+                                fetchChapters = syncChapterList,
+                                preferredSourceId = preferredSourceId,
+                            )
+                        }
+                        urlText = ""
+                        pendingUrls = ""
                     }
                 },
                 enabled = hasUrls,
@@ -674,7 +675,7 @@ fun MassImportDialog(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        MassImportJob.clearCompleted()
+                        MassImportJob.clearCompleted(context)
                         showClearCompletedConfirm = false
                     }
                 ) {
@@ -740,14 +741,12 @@ fun MassImportDialog(
 private fun BatchItem(
     batch: MassImportJob.Batch,
     onCancel: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
     onCopyUrls: () -> Unit,
     onCopyErrors: () -> Unit,
-    onCopyReport: () -> Unit,
-    onSaveReport: () -> Unit,
     onRemove: () -> Unit,
-    onReinsertErrors: () -> Unit,
     onExportUrls: () -> Unit,
-    onRequeue: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showRemoveConfirm by remember { mutableStateOf(false) }
@@ -775,12 +774,14 @@ private fun BatchItem(
                         text = when (batch.status) {
                             MassImportJob.BatchStatus.Pending -> "⏳ Pending"
                             MassImportJob.BatchStatus.Running -> "▶ Running"
+                            MassImportJob.BatchStatus.Paused -> "⏸ Paused"
                             MassImportJob.BatchStatus.Completed -> "✓ Completed"
                             MassImportJob.BatchStatus.Cancelled -> "✕ Cancelled"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = when (batch.status) {
                             MassImportJob.BatchStatus.Running -> MaterialTheme.colorScheme.primary
+                            MassImportJob.BatchStatus.Paused -> MaterialTheme.colorScheme.secondary
                             MassImportJob.BatchStatus.Completed -> MaterialTheme.colorScheme.tertiary
                             MassImportJob.BatchStatus.Cancelled -> MaterialTheme.colorScheme.error
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -817,8 +818,51 @@ private fun BatchItem(
                     }
 
                     if (batch.status == MassImportJob.BatchStatus.Pending ||
-                        batch.status == MassImportJob.BatchStatus.Running
+                        batch.status == MassImportJob.BatchStatus.Running ||
+                        batch.status == MassImportJob.BatchStatus.Paused
                     ) {
+                        if (batch.status == MassImportJob.BatchStatus.Paused) {
+                            TooltipBox(
+                                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                tooltip = {
+                                    PlainTooltip { Text("Resume Batch") }
+                                },
+                                state = rememberTooltipState(),
+                            ) {
+                                IconButton(
+                                    onClick = onResume,
+                                    modifier = Modifier.size(24.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.PlayArrow,
+                                        contentDescription = "Resume",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        } else {
+                            TooltipBox(
+                                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                                tooltip = {
+                                    PlainTooltip { Text("Pause Batch") }
+                                },
+                                state = rememberTooltipState(),
+                            ) {
+                                IconButton(
+                                    onClick = onPause,
+                                    modifier = Modifier.size(24.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Pause,
+                                        contentDescription = "Pause",
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+
                         TooltipBox(
                             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                             tooltip = {
@@ -845,29 +889,6 @@ private fun BatchItem(
                     if (batch.status == MassImportJob.BatchStatus.Completed ||
                         batch.status == MassImportJob.BatchStatus.Cancelled
                     ) {
-                        if (batch.status == MassImportJob.BatchStatus.Cancelled && batch.progress < batch.total) {
-                            TooltipBox(
-                                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                                tooltip = {
-                                    PlainTooltip {
-                                        Text(stringResource(TDMR.strings.mass_import_tooltip_requeue_failed))
-                                    }
-                                },
-                                state = rememberTooltipState(),
-                            ) {
-                                IconButton(
-                                    onClick = onRequeue,
-                                    modifier = Modifier.size(24.dp),
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Refresh,
-                                        contentDescription = stringResource(TDMR.strings.mass_import_cd_requeue),
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                                }
-                            }
-                        }
                         TooltipBox(
                             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                             tooltip = {
@@ -1003,98 +1024,26 @@ private fun BatchItem(
                         }
                     }
 
-                    // For completed batches: Copy Report, Save Report, Retry Errors
-                    if (batch.status == MassImportJob.BatchStatus.Completed ||
-                        batch.status == MassImportJob.BatchStatus.Cancelled
-                    ) {
-                        TooltipBox(
-                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                            tooltip = {
-                                PlainTooltip {
-                                    Text(stringResource(TDMR.strings.mass_import_tooltip_copy_report))
-                                }
-                            },
-                            state = rememberTooltipState(),
-                        ) {
-                            IconButton(onClick = onCopyReport, modifier = Modifier.size(32.dp)) {
-                                    Icon(
-                                        Icons.Outlined.Description,
-                                        contentDescription = stringResource(TDMR.strings.mass_import_cd_copy_report),
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                            }
-                        }
-
-                        TooltipBox(
-                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                            tooltip = {
-                                PlainTooltip {
-                                    Text(stringResource(TDMR.strings.mass_import_tooltip_save_report))
-                                }
-                            },
-                            state = rememberTooltipState(),
-                        ) {
-                            IconButton(onClick = onSaveReport, modifier = Modifier.size(32.dp)) {
-                                    Icon(
-                                        Icons.Outlined.Save,
-                                        contentDescription = stringResource(TDMR.strings.mass_import_cd_save_report),
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.primary,
-                                    )
-                            }
-                        }
-
-                        if (batch.errored > 0) {
-                            TooltipBox(
-                                positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                                tooltip = {
-                                    PlainTooltip {
-                                        Text(stringResource(TDMR.strings.mass_import_tooltip_retry_errors))
-                                    }
-                                },
-                                state = rememberTooltipState(),
-                            ) {
-                                IconButton(onClick = onReinsertErrors, modifier = Modifier.size(32.dp)) {
-                                        Icon(
-                                            Icons.Outlined.Refresh,
-                                            contentDescription = stringResource(TDMR.strings.mass_import_cd_retry_errors),
-                                            modifier = Modifier.size(18.dp),
-                                            tint = MaterialTheme.colorScheme.primary,
-                                        )
-                                }
-                            }
-                        }
-                    }
                 }
 
-                // Show first few URLs as preview
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(TDMR.strings.mass_import_urls_header, batch.urls.size),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                batch.urls.take(3).forEach { url ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = url.take(50) + if (url.length > 50) "..." else "",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Processed: ${batch.added}",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
                     )
-                }
-                if (batch.urls.size > 3) {
                     Text(
-                        text = "... and ${batch.urls.size - 3} more",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Skipped: ${batch.skipped}",
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
 
-                // Show errors if any
-                if (batch.erroredUrls.isNotEmpty()) {
+                if (batch.errored > 0) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = stringResource(TDMR.strings.mass_import_errors_header, batch.erroredUrls.size),
+                        text = stringResource(TDMR.strings.mass_import_errors_header, batch.errored),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -1106,9 +1055,9 @@ private fun BatchItem(
                             maxLines = 1,
                         )
                     }
-                    if (batch.erroredUrls.size > 3) {
+                    if (batch.errored > batch.erroredUrls.size) {
                         Text(
-                            text = "... and ${batch.erroredUrls.size - 3} more",
+                            text = "... and ${batch.errored - batch.erroredUrls.size} more",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -1141,3 +1090,4 @@ private fun BatchItem(
         )
     }
 }
+

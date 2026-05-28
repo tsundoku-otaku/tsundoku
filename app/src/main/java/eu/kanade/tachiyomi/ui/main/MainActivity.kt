@@ -174,6 +174,9 @@ class MainActivity : BaseActivity() {
                     this@MainActivity.navigator = navigator
 
                     if (isLaunch) {
+                        launchIO {
+                            eu.kanade.tachiyomi.data.massimport.MassImportJob.restoreActiveJobsFromWorkManager(context)
+                        }
                         // Set start screen
                         handleIntentAction(intent, navigator, closeImportScreenOnDone = true)
 
