@@ -307,6 +307,16 @@ class NovelList(id: Long) : BaseTracker(id, "NovelList") {
         saveCredentials(username.ifBlank { "NovelList User" }, password)
     }
 
+    override suspend fun setRemoteLastChapterRead(track: Track, chapterNumber: Int) {
+        if (!trackPreferences.novelListMarkChaptersAsRead.get()) return
+        super.setRemoteLastChapterRead(track, chapterNumber)
+    }
+
+    override suspend fun setRemoteStatus(track: Track, status: Long) {
+        if (!trackPreferences.novelListSyncReadingList.get()) return
+        super.setRemoteStatus(track, status)
+    }
+
     companion object {
         const val READING = 1L
         const val COMPLETED = 2L
