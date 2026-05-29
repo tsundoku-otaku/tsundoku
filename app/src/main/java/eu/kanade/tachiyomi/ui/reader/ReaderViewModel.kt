@@ -1424,7 +1424,6 @@ class ReaderViewModel @JvmOverloads constructor(
                 trackChapter.await(context, manga.id, readerChapter.chapter.chapter_number.toDouble())
             }
 
-            // Fan out to source trackers separately, so they sync even when autoUpdateTrack is off.
             try {
                 val chapter = getChaptersByMangaId.await(manga.id).find { it.id == chapterId }
                 if (chapter != null) {

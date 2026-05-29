@@ -33,11 +33,9 @@ import java.util.concurrent.ConcurrentHashMap
  * Fans out chapter-read / unread / favorite / unfavorite events to sources that
  * implement [SourceTracker].
  *
- * - Per-manga debounce (3 s tail) coalesces bulk operations into one callback.
+ * - Per-manga debounce (3s).
  * - Min-chapters preference gates chapter callbacks, as for first-party trackers.
- * - Failures are logged + toasted; never propagate to callers. UI is never blocked.
- * - Backup restore bypasses this dispatcher (restore writes the DB directly), so
- *   callbacks do not fire on restore.
+ * - Failures are logged + toasted.
  */
 class SourceTrackerDispatcher(
     private val sourceManager: SourceManager,
@@ -53,8 +51,6 @@ class SourceTrackerDispatcher(
         val changedChapterIds: MutableSet<Long> = mutableSetOf(),
     )
 
-    // Keyed by manga id: each manga debounces independently, so bulk-marking chapters
-    // across several manga of the same source coalesces per manga without dropping any.
     private val pendingChapterJobs = ConcurrentHashMap<Long, Job>()
     private val pendingChapterArgs = ConcurrentHashMap<Long, PendingChapterEvent>()
 
@@ -105,8 +101,6 @@ class SourceTrackerDispatcher(
             val allSChapters = allChapters.map { it.toSChapter() }
             val categories = loadCategoryNames(manga.id)
 
-            // On unread, re-point the remote cursor at the highest still-read chapter instead
-            // of un-ticking; only fire a genuine unread when nothing remains read.
             val (method, changedSChapters) = if (!args.read) {
                 val highestStillRead = allChapters
                     .filter { it.read && it.chapterNumber > 0.0 }

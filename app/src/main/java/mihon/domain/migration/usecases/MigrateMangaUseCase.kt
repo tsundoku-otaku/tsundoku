@@ -146,7 +146,6 @@ class MigrateMangaUseCase(
 
             updateManga.awaitAll(listOfNotNull(currentMangaUpdate, targetMangaUpdate))
 
-            // Dispatch SourceTracker events for the migrated target if the user opted in.
             if (trackPreferences.migrationTriggersSourceTracker.get()) {
                 val freshTarget = getMangaInteractor.await(target.id)
                 if (freshTarget != null) {

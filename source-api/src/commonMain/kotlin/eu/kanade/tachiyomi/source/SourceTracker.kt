@@ -10,17 +10,12 @@ import kotlin.coroutines.suspendCoroutine
 /**
  * Optional interface a [Source] can implement to react to user reading/library events.
  *
- * The app fans out events to sources that implement this interface for the relevant
- * manga (matched by [SManga.url] + source id). Callbacks run off the UI thread, are
- * debounced per-source (3s tail), are gated by the user's "minimum chapters before
- * tracking" preference, and never block reader/library UI.
- *
- * Implementations MUST be idempotent — the same event may be retried. Failures should
- * be raised as exceptions; the dispatcher logs them and shows a toast. Do NOT swallow
- * exceptions silently to signal "no-op".
+ * These are gated by the user's "minimum chapters before
+ * tracking" preference.
+ * Failures should be raised as exceptions; the dispatcher logs them and shows a toast.
  *
  * Most extensions don't need this — only those backed by a remote service that wants
- * to mirror local reading state (e.g. an OPDS-style hosted library).
+ * to mirror local reading state.
  *
  * @since extensions-lib 1.6
  */
@@ -73,16 +68,6 @@ interface SourceTracker {
         categories: List<String>,
     ) = Unit
 }
-
-// ============================================================================
-// Cross-classloader helpers
-//
-// Extensions are loaded with a ChildFirstPathClassLoader (see ExtensionLoader),
-// so their bundled copy of `SourceTracker` is a DIFFERENT java.lang.Class than
-// the app's copy. A plain `source is SourceTracker` cast checks identity and
-// returns false. Match the existing NovelSource pattern: detect by interface
-// name, invoke by reflection.
-// ============================================================================
 
 /**
  * True when [Source] implements [SourceTracker] under either classloader.
