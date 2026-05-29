@@ -106,6 +106,8 @@ class TrackerWebViewLoginActivity : BaseActivity() {
                         val tracker = when (trackerId) {
                             10L -> trackerManager.novelUpdates
                             11L -> trackerManager.novelList
+                            12L -> trackerManager.ranobeDb
+                            13L -> trackerManager.mangaBaka
                             else -> null
                         }
                         tracker?.let {
@@ -201,7 +203,7 @@ private fun TrackerWebViewLoginScreen(
                             contentDescription = "Refresh",
                         )
                     }
-                    if (trackerId == 11L) {
+                    if (trackerId == 11L || trackerId == 12L || trackerId == 13L) {
                         IconButton(onClick = { showManualTokenDialog = true }) {
                             Icon(
                                 imageVector = Icons.Outlined.Edit,
@@ -280,6 +282,8 @@ private fun TrackerWebViewLoginScreen(
                 val instructions = when (trackerId) {
                     10L -> "Login to NovelUpdates, then tap the ✓ button to complete login."
                     11L -> "Login to NovelList, then tap the ✓ button to complete login. Use the edit icon to paste token/cookie manually."
+                    12L -> "Login to RanobeDB, then tap the ✓ button to complete login. Use the edit icon to paste the auth_session cookie manually."
+                    13L -> "Login to MangaBaka, navigate to your API keys page, then paste the PAT (mb-...) via the edit icon. The ✓ button also tries to extract a session cookie."
                     else -> "Login, then tap the ✓ button to complete."
                 }
                 Text(
@@ -290,17 +294,34 @@ private fun TrackerWebViewLoginScreen(
                 )
             }
 
-            if (showManualTokenDialog && trackerId == 11L) {
+            if (showManualTokenDialog && (trackerId == 11L || trackerId == 12L || trackerId == 13L)) {
                 AlertDialog(
                     onDismissRequest = { showManualTokenDialog = false },
-                    title = { Text("NovelList token/cookie") },
+                    title = {
+                        Text(
+                            when (trackerId) {
+                                11L -> "NovelList token/cookie"
+                                12L -> "RanobeDB cookie"
+                                13L -> "MangaBaka PAT"
+                                else -> "Token"
+                            },
+                        )
+                    },
                     text = {
                         OutlinedTextField(
                             value = manualTokenInput,
                             onValueChange = { manualTokenInput = it },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("Token or cookie") },
-                            placeholder = { Text("Paste JWT, novellist cookie, or full cookie header") },
+                            placeholder = {
+                                val hint = when (trackerId) {
+                                    11L -> "Paste JWT, novellist cookie, or full cookie header"
+                                    12L -> "Paste auth_session value or full cookie header"
+                                    13L -> "Paste your mb-... PAT from mangabaka.org account"
+                                    else -> "Paste your token"
+                                }
+                                Text(hint)
+                            },
                             singleLine = false,
                             maxLines = 4,
                         )
@@ -308,12 +329,17 @@ private fun TrackerWebViewLoginScreen(
                     confirmButton = {
                         TextButton(
                             onClick = {
-                                val token = normalizeNovelListToken(manualTokenInput)
+                                val token = when (trackerId) {
+                                    11L -> normalizeNovelListToken(manualTokenInput)
+                                    12L -> normalizeRanobeDbCookie(manualTokenInput)
+                                    13L -> normalizeMangaBakaToken(manualTokenInput)
+                                    else -> null
+                                }
                                 if (token != null) {
                                     showManualTokenDialog = false
                                     onLoginSuccess(token)
                                 } else {
-                                    context.toast("Could not extract access token from input")
+                                    context.toast("Could not extract auth value from input")
                                 }
                             },
                         ) {
@@ -329,6 +355,23 @@ private fun TrackerWebViewLoginScreen(
             }
         }
     }
+}
+
+private fun normalizeMangaBakaToken(input: String): String? {
+    val raw = input.trim()
+    if (raw.isEmpty()) return null
+    // Accept a bare `mb-...` PAT, a `Bearer mb-...` header, or any cookie blob containing one.
+    val patMatch = Regex("mb-[A-Za-z0-9_\\-]+").find(raw)
+    if (patMatch != null) return patMatch.value
+    return raw.removePrefix("Bearer ").trim().ifBlank { null }
+}
+
+private fun normalizeRanobeDbCookie(input: String): String? {
+    val raw = input.trim()
+    if (raw.isEmpty()) return null
+    val match = Regex("(?:^|[;\\s])auth_session=([^;]+)").find(raw)
+    val value = match?.groupValues?.getOrNull(1) ?: raw.removePrefix("auth_session=")
+    return value.trim().ifBlank { null }?.let { "auth_session=$it" }
 }
 
 private fun normalizeNovelListToken(input: String): String? {
@@ -416,6 +459,43 @@ private suspend fun extractTokenFromCookies(trackerId: Long, currentUrl: String)
                         }
                     } else {
                         logcat(LogPriority.WARN) { "NovelList cookie not found" }
+                        null
+                    }
+                } else {
+                    null
+                }
+            }
+            // MangaBaka - prefer Better-Auth session cookies; fall back to PAT pattern.
+            13L -> {
+                val cookies = cookieManager.getCookie("https://mangabaka.org")
+                logcat(LogPriority.DEBUG) { "MangaBaka cookies: $cookies" }
+                if (cookies != null) {
+                    val sessionData = Regex("__Secure-better-auth\\.session_data=([^;]+)").find(cookies)?.groupValues?.get(1)
+                    val sessionToken = Regex("__Secure-better-auth\\.session_token=([^;]+)").find(cookies)?.groupValues?.get(1)
+                    when {
+                        sessionData != null || sessionToken != null -> buildString {
+                            if (sessionData != null) append("__Secure-better-auth.session_data=$sessionData")
+                            if (sessionData != null && sessionToken != null) append("; ")
+                            if (sessionToken != null) append("__Secure-better-auth.session_token=$sessionToken")
+                        }
+                        else -> Regex("mb-[A-Za-z0-9_\\-]+").find(cookies)?.value
+                    }
+                } else {
+                    null
+                }
+            }
+            // RanobeDB - extract auth_session cookie
+            12L -> {
+                val cookies = cookieManager.getCookie("https://ranobedb.org")
+                logcat(LogPriority.DEBUG) { "RanobeDB cookies: $cookies" }
+                if (cookies != null) {
+                    val regex = Regex("auth_session=([^;]+)")
+                    val match = regex.find(cookies)
+                    val authSession = match?.groupValues?.get(1)
+                    if (authSession != null) {
+                        "auth_session=$authSession"
+                    } else {
+                        logcat(LogPriority.WARN) { "RanobeDB auth_session cookie not found" }
                         null
                     }
                 } else {
