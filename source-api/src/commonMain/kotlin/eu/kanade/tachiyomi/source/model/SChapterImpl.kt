@@ -15,4 +15,8 @@ class SChapterImpl : SChapter {
     override var scanlator: String? = null
 
     override var locked: Boolean = false
+
+    override var read: Boolean = false
+
+    override var last_page_read: Int = 0
 }

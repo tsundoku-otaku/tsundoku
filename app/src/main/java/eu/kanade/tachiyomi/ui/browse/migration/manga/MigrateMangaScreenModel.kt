@@ -4,6 +4,8 @@ import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.track.service.TrackPreferences
+import eu.kanade.tachiyomi.data.track.source.SourceTrackerDispatcher
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isNovelSource
@@ -39,6 +41,9 @@ class MigrateMangaScreenModel(
     private val getCategories: tachiyomi.domain.category.interactor.GetCategories = Injekt.get(),
     private val createCategoryWithName: tachiyomi.domain.category.interactor.CreateCategoryWithName = Injekt.get(),
     private val setMangaCategories: tachiyomi.domain.category.interactor.SetMangaCategories = Injekt.get(),
+    private val sourceTrackerDispatcher: SourceTrackerDispatcher = Injekt.get(),
+    private val trackPreferences: TrackPreferences = Injekt.get(),
+    private val getManga: tachiyomi.domain.manga.interactor.GetManga = Injekt.get(),
 ) : StateScreenModel<MigrateMangaScreenModel.State>(State()) {
 
     private val _events: Channel<MigrationMangaEvent> = Channel()
@@ -155,6 +160,13 @@ class MigrateMangaScreenModel(
                         migratedIds.add(manga.id)
                     } catch (_: Exception) {
                         // If check fails, proceed with migration
+                    }
+                }
+
+                if (migratedIds.isNotEmpty() && trackPreferences.migrationTriggersSourceTracker.get()) {
+                    migratedIds.forEach { id ->
+                        val freshManga = getManga.await(id) ?: return@forEach
+                        sourceTrackerDispatcher.notifyFavorited(freshManga)
                     }
                 }
 

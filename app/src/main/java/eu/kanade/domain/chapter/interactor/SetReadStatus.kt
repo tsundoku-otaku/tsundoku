@@ -1,6 +1,7 @@
 package eu.kanade.domain.chapter.interactor
 
 import eu.kanade.domain.download.interactor.DeleteDownload
+import eu.kanade.tachiyomi.data.track.source.SourceTrackerDispatcher
 import logcat.LogPriority
 import tachiyomi.core.common.util.lang.withNonCancellableContext
 import tachiyomi.core.common.util.system.logcat
@@ -11,6 +12,8 @@ import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class SetReadStatus(
     private val downloadPreferences: DownloadPreferences,
@@ -19,6 +22,8 @@ class SetReadStatus(
     private val chapterRepository: ChapterRepository,
     private val translatedChapterRepository: TranslatedChapterRepository,
 ) {
+
+    private val sourceTrackerDispatcher: SourceTrackerDispatcher by lazy { Injekt.get() }
 
     private val mapper = { chapter: Chapter, read: Boolean ->
         ChapterUpdate(
@@ -63,6 +68,19 @@ class SetReadStatus(
                         chapters = chapters.toTypedArray(),
                     )
                 }
+        }
+
+        try {
+            chaptersToUpdate.groupBy { it.mangaId }.forEach { (mangaId, chapters) ->
+                val manga = mangaRepository.getMangaById(mangaId)
+                if (read) {
+                    sourceTrackerDispatcher.notifyChaptersRead(manga, chapters)
+                } else {
+                    sourceTrackerDispatcher.notifyChaptersUnread(manga, chapters)
+                }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "SourceTrackerDispatcher fan-out failed" }
         }
 
         Result.Success

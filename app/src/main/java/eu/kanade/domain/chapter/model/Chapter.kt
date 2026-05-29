@@ -14,6 +14,8 @@ fun Chapter.toSChapter(): SChapter {
         it.chapter_number = chapterNumber.toFloat()
         it.scanlator = scanlator
         it.locked = locked
+        it.read = read
+        it.last_page_read = lastPageRead.toInt()
     }
 }
 

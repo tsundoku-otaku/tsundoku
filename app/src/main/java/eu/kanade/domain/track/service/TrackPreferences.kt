@@ -90,4 +90,11 @@ class TrackPreferences(
         "min_chapters_before_tracking_novel",
         "0",
     )
+
+    // Source-defined trackers (SourceTracker interface)
+    val migrationTriggersSourceTracker: Preference<Boolean> = preferenceStore.getBoolean(
+        "source_tracker_run_on_migration",
+        true,
+    )
+
 }

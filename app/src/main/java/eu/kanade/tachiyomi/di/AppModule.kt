@@ -19,6 +19,7 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.data.track.source.SourceTrackerDispatcher
 import eu.kanade.tachiyomi.data.translation.TranslationCache
 import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
 import eu.kanade.tachiyomi.data.translation.TranslationService
@@ -134,6 +135,7 @@ class AppModule(val app: Application) : InjektModule {
 
         addSingletonFactory { TrackerManager() }
         addSingletonFactory { DelayedTrackingStore(app) }
+        addSingletonFactory { SourceTrackerDispatcher(get(), get(), get(), get()) }
 
         addSingletonFactory { ImageSaver(app) }
 

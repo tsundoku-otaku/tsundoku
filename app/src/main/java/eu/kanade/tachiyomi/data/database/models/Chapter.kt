@@ -12,11 +12,11 @@ interface Chapter : SChapter, Serializable {
 
     var manga_id: Long?
 
-    var read: Boolean
+    override var read: Boolean
 
     var bookmark: Boolean
 
-    var last_page_read: Int
+    override var last_page_read: Int
 
     var date_fetch: Long
 

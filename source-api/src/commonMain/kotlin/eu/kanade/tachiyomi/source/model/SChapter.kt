@@ -18,6 +18,22 @@ interface SChapter : Serializable {
 
     var locked: Boolean
 
+    /**
+     * Local read state. Source implementations should NOT set this — it is populated
+     * by the app only when delivering SChapter instances to [SourceTracker] callbacks.
+     */
+    var read: Boolean
+        get() = false
+        set(_) {}
+
+    /**
+     * Local last-page-read position. Source implementations should NOT set this — it is
+     * populated by the app only when delivering SChapter instances to [SourceTracker] callbacks.
+     */
+    var last_page_read: Int
+        get() = 0
+        set(_) {}
+
     fun copyFrom(other: SChapter) {
         name = other.name
         url = other.url

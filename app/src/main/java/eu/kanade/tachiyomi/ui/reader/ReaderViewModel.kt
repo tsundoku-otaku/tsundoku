@@ -118,6 +118,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
     private val trackPreferences: TrackPreferences = Injekt.get(),
     private val trackChapter: TrackChapter = Injekt.get(),
+    private val sourceTrackerDispatcher: eu.kanade.tachiyomi.data.track.source.SourceTrackerDispatcher = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
     private val getNextChapters: GetNextChapters = Injekt.get(),
@@ -1413,13 +1414,25 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun updateTrackChapterRead(readerChapter: ReaderChapter) {
         if (incognitoMode) return
-        if (!trackPreferences.autoUpdateTrack.get()) return
 
         val manga = manga ?: return
+        val chapterId = readerChapter.chapter.id ?: return
         val context = Injekt.get<Application>()
 
         viewModelScope.launchNonCancellable {
-            trackChapter.await(context, manga.id, readerChapter.chapter.chapter_number.toDouble())
+            if (trackPreferences.autoUpdateTrack.get()) {
+                trackChapter.await(context, manga.id, readerChapter.chapter.chapter_number.toDouble())
+            }
+
+            // Fan out to source trackers separately, so they sync even when autoUpdateTrack is off.
+            try {
+                val chapter = getChaptersByMangaId.await(manga.id).find { it.id == chapterId }
+                if (chapter != null) {
+                    sourceTrackerDispatcher.notifyChaptersRead(manga, listOf(chapter))
+                }
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "Reader SourceTrackerDispatcher dispatch failed" }
+            }
         }
     }
 

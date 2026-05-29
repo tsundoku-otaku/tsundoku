@@ -3,6 +3,7 @@ package eu.kanade.domain.manga.interactor
 import eu.kanade.domain.manga.model.hasCustomCover
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.data.track.source.SourceTrackerDispatcher
 import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
 import eu.kanade.tachiyomi.source.model.SManga
 import logcat.LogPriority
@@ -10,6 +11,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -27,6 +29,22 @@ class UpdateManga(
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
 ) {
 
+    private val sourceTrackerDispatcher: SourceTrackerDispatcher by lazy { Injekt.get() }
+    private val getManga: GetManga by lazy { Injekt.get() }
+
+    private suspend fun notifySourceTrackerFavorite(mangaId: Long, favorite: Boolean) {
+        try {
+            val manga = getManga.await(mangaId) ?: return
+            if (favorite) {
+                sourceTrackerDispatcher.notifyFavorited(manga)
+            } else {
+                sourceTrackerDispatcher.notifyUnfavorited(manga)
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "SourceTrackerDispatcher favorite fan-out failed" }
+        }
+    }
+
     suspend fun await(mangaUpdate: MangaUpdate): Boolean {
         return mangaRepository.update(mangaUpdate)
     }
@@ -43,6 +61,8 @@ class UpdateManga(
             if (toRemove.isNotEmpty()) {
                 getLibraryManga.removeFromLibrary(toRemove)
             }
+            toAdd.forEach { notifySourceTrackerFavorite(it, true) }
+            toRemove.forEach { notifySourceTrackerFavorite(it, false) }
         }
         return result
     }
@@ -150,6 +170,7 @@ class UpdateManga(
             } else {
                 getLibraryManga.removeFromLibrary(mangaId)
             }
+            notifySourceTrackerFavorite(mangaId, favorite)
         }
         return result
     }

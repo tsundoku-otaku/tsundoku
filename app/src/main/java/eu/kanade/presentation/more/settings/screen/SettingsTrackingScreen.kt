@@ -274,6 +274,20 @@ object SettingsTrackingScreen : SearchableSettings {
                 ),
             ),
             Preference.PreferenceGroup(
+                title = "Source-defined trackers",
+                preferenceItems = persistentListOf(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = trackPreferences.migrationTriggersSourceTracker,
+                        title = "Run source trackers on migration",
+                        subtitle = "Fire source-defined tracker events when migrating or quick-migrating an entry",
+                    ),
+                    Preference.PreferenceItem.InfoPreference(
+                        "Some sources implement their own tracking. They are notified when you mark chapters read, " +
+                            "favorite/unfavorite, or migrate. Failures don't block reading and don't affect the regular trackers above.",
+                    ),
+                ),
+            ),
+            Preference.PreferenceGroup(
                 title = stringResource(MR.strings.enhanced_services),
                 preferenceItems = (
                     enhancedTrackers.first
