@@ -15,7 +15,6 @@ import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.logcat
 import androidx.core.net.toUri
-import java.io.File
 
 internal class NovelWebViewStyler(
     private val activity: ReaderActivity,
@@ -133,25 +132,38 @@ internal class NovelWebViewStyler(
     private fun resolveFontFace(fontFamily: String, useOriginalFonts: Boolean): Pair<String, String> {
         if (useOriginalFonts) return "" to fontFamily
         if (!(fontFamily.startsWith("file://") || fontFamily.startsWith("content://"))) return "" to fontFamily
+
+        // Embed bytes as a base64 data URI inside @font-face. The chapter HTML loads with
+        // an https:// base URL (loadDataWithBaseURL), and modern WebView blocks https:// →
+        // file:// font fetches as a cross-origin violation regardless of setAllowFileAccess.
+        // A data: URI sidesteps that — the bytes are part of the document.
+        val cached = cachedFontFace
+        if (cached != null && cached.first == fontFamily) return cached.second
+
         return try {
             val fontUri = fontFamily.toUri()
-            val inputStream = activity.contentResolver.openInputStream(fontUri)
+            val bytes = activity.contentResolver.openInputStream(fontUri)?.use { it.readBytes() }
                 ?: return "" to fontFamily
-            val fontFile = File(activity.cacheDir, "custom_font.ttf")
-            inputStream.use { input -> fontFile.outputStream().use { output -> input.copyTo(output) } }
-            val fontUrl = "file://" + fontFile.absolutePath
+            val mime = if (fontFamily.endsWith(".otf", ignoreCase = true)) "font/otf" else "font/ttf"
+            val format = if (fontFamily.endsWith(".otf", ignoreCase = true)) "opentype" else "truetype"
+            val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
             val declaration = """
                 @font-face {
                     font-family: 'CustomFont';
-                    src: url('$fontUrl');
+                    src: url('data:$mime;base64,$base64') format('$format');
+                    font-display: swap;
                 }
             """.trimIndent()
-            declaration to "'CustomFont', sans-serif"
+            val pair = declaration to "'CustomFont', sans-serif"
+            cachedFontFace = fontFamily to pair
+            pair
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "Failed to load custom font: ${e.message}" }
+            logcat(LogPriority.ERROR) { "Failed to embed custom font: ${e.message}" }
             "" to fontFamily
         }
     }
+
+    private var cachedFontFace: Pair<String, Pair<String, String>>? = null
 
     fun injectStyles() {
         val payload = buildPayload()
