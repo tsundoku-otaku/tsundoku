@@ -97,4 +97,26 @@ class TrackPreferences(
         true,
     )
 
+    // RanobeDB Settings
+    val ranobeDbMarkChaptersAsRead: Preference<Boolean> = preferenceStore.getBoolean(
+        "ranobedb_mark_chapters_read",
+        true,
+    )
+
+    val ranobeDbSyncReadingList: Preference<Boolean> = preferenceStore.getBoolean(
+        "ranobedb_sync_reading_list",
+        true,
+    )
+
+    // MangaBaka Settings
+    val mangaBakaMarkChaptersAsRead: Preference<Boolean> = preferenceStore.getBoolean(
+        "mangabaka_mark_chapters_read",
+        true,
+    )
+
+    val mangaBakaSyncReadingList: Preference<Boolean> = preferenceStore.getBoolean(
+        "mangabaka_sync_reading_list",
+        true,
+    )
+
 }

@@ -195,6 +195,29 @@ object SettingsTrackingScreen : SearchableSettings {
                         logout = { dialog = LogoutDialog(trackerManager.mangaUpdates) },
                     ),
                     Preference.PreferenceItem.TrackerPreference(
+                        tracker = trackerManager.mangaBaka,
+                        login = {
+                            val intent = TrackerWebViewLoginActivity.newIntent(
+                                context,
+                                trackerId = 13L,
+                                trackerName = "MangaBaka",
+                                loginUrl = "https://mangabaka.org/login",
+                            )
+                            context.startActivity(intent)
+                        },
+                        logout = { dialog = LogoutDialog(trackerManager.mangaBaka) },
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = trackPreferences.mangaBakaMarkChaptersAsRead,
+                        title = "Mark chapters as read on MangaBaka",
+                        subtitle = "Automatically mark chapters as read when you read them in the app",
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = trackPreferences.mangaBakaSyncReadingList,
+                        title = "Sync reading list",
+                        subtitle = "Keep reading list status in sync with MangaBaka",
+                    ),
+                    Preference.PreferenceItem.TrackerPreference(
                         tracker = trackerManager.shikimori,
                         login = { context.openInBrowser(ShikimoriApi.authUrl(), forceDefaultBrowser = true) },
                         logout = { dialog = LogoutDialog(trackerManager.shikimori) },
@@ -267,6 +290,29 @@ object SettingsTrackingScreen : SearchableSettings {
                         preference = trackPreferences.novelListSyncReadingList,
                         title = "Sync reading list",
                         subtitle = "Keep reading list status in sync with NovelList",
+                    ),
+                    Preference.PreferenceItem.TrackerPreference(
+                        tracker = trackerManager.ranobeDb,
+                        login = {
+                            val intent = TrackerWebViewLoginActivity.newIntent(
+                                context,
+                                trackerId = 12L,
+                                trackerName = "RanobeDB",
+                                loginUrl = "https://ranobedb.org/login",
+                            )
+                            context.startActivity(intent)
+                        },
+                        logout = { dialog = LogoutDialog(trackerManager.ranobeDb) },
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = trackPreferences.ranobeDbMarkChaptersAsRead,
+                        title = "Mark chapters as read on RanobeDB",
+                        subtitle = "Automatically mark chapters/volumes as read when you read them in the app",
+                    ),
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = trackPreferences.ranobeDbSyncReadingList,
+                        title = "Sync reading list",
+                        subtitle = "Keep reading list status in sync with RanobeDB",
                     ),
                     Preference.PreferenceItem.InfoPreference(
                         "Login via WebView. Cookies will be automatically extracted after successful login.",
