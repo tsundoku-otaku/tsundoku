@@ -5,10 +5,12 @@ import eu.kanade.tachiyomi.data.track.bangumi.Bangumi
 import eu.kanade.tachiyomi.data.track.kavita.Kavita
 import eu.kanade.tachiyomi.data.track.kitsu.Kitsu
 import eu.kanade.tachiyomi.data.track.komga.Komga
+import eu.kanade.tachiyomi.data.track.mangabaka.MangaBaka
 import eu.kanade.tachiyomi.data.track.mangaupdates.MangaUpdates
 import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeList
 import eu.kanade.tachiyomi.data.track.novellist.NovelList
 import eu.kanade.tachiyomi.data.track.novelupdates.NovelUpdates
+import eu.kanade.tachiyomi.data.track.ranobedb.RanobeDb
 import eu.kanade.tachiyomi.data.track.shikimori.Shikimori
 import eu.kanade.tachiyomi.data.track.suwayomi.Suwayomi
 import kotlinx.coroutines.flow.combine
@@ -32,6 +34,8 @@ class TrackerManager {
     val suwayomi = Suwayomi(9L)
     val novelUpdates = NovelUpdates(10L)
     val novelList = NovelList(11L)
+    val ranobeDb = RanobeDb(12L)
+    val mangaBaka = MangaBaka(13L)
 
     val trackers = listOf(
         myAnimeList,
@@ -45,12 +49,14 @@ class TrackerManager {
         suwayomi,
         novelUpdates,
         novelList,
+        ranobeDb,
+        mangaBaka,
     )
 
     /**
      * Trackers that support novel tracking.
-     * - NovelUpdates & NovelList: Novel-specific trackers
-     * - MyAnimeList, Anilist, MangaUpdates: Support both manga and novels
+     * - NovelUpdates & NovelList & RanobeDB: Novel-specific trackers
+     * - MyAnimeList, Anilist, MangaUpdates, MangaBaka: Support both manga and novels
      */
     val novelTrackers = trackers
 
@@ -64,7 +70,7 @@ class TrackerManager {
      * Trackers that are only for novels.
      * These should be hidden when tracking manga.
      */
-    val novelOnlyTrackers = listOf(novelUpdates, novelList)
+    val novelOnlyTrackers = listOf(novelUpdates, novelList, ranobeDb)
 
     fun loggedInTrackers() = trackers.filter { it.isLoggedIn }
 
