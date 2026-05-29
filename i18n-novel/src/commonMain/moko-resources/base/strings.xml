@@ -819,6 +819,8 @@
     <string name="quotes_copy">Copy</string>
     <string name="novel_chapter_loading">Loading…</string>
     <string name="novel_chapter_translating">Translating…</string>
+    <string name="novel_chapter_translating_from_api">Translating from API…</string>
+    <string name="novel_chapter_translating_from_cache">Loading translation from downloads…</string>
     <string name="novel_chapter_next">Next Chapter →</string>
     <string name="novel_chapter_error">Error loading chapter: %s</string>
     <string name="novel_error_copy_details">Copy error details</string>

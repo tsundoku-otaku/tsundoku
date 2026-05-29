@@ -1092,9 +1092,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 val pre = withContext(Dispatchers.Default) { contentPipeline.preTranslate(content, cfg) }
                 val processed = if (activity.isTranslationEnabled()) {
                     textView.gravity = Gravity.CENTER
-                    textView.text = activity.stringResource(TDMR.strings.novel_chapter_translating)
+                    val chapterId = loadedChapter.chapter.chapter.id
+                    val labelRes = if (activity.hasCachedTranslation(chapterId)) {
+                        TDMR.strings.novel_chapter_translating_from_cache
+                    } else {
+                        TDMR.strings.novel_chapter_translating_from_api
+                    }
+                    textView.text = activity.stringResource(labelRes)
                     withContext(Dispatchers.Default) {
-                        contentPipeline.finalize(pre, cfg) { activity.translateContentIfEnabled(it) }
+                        contentPipeline.finalize(pre, cfg) { activity.translateContentIfEnabled(it, chapterId) }
                     }
                 } else {
                     withContext(Dispatchers.Default) { contentPipeline.finalize(pre, cfg) }
@@ -1256,9 +1262,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             if (activity.isTranslationEnabled() && !preferences.novelShowRawHtml.get()) {
                 val savedGravity = textView.gravity
                 textView.gravity = Gravity.CENTER
-                textView.text = activity.stringResource(TDMR.strings.novel_chapter_translating)
+                val chapterId = chapter.chapter.id
+                val labelRes = if (activity.hasCachedTranslation(chapterId)) {
+                    TDMR.strings.novel_chapter_translating_from_cache
+                } else {
+                    TDMR.strings.novel_chapter_translating_from_api
+                }
+                textView.text = activity.stringResource(labelRes)
                 val translated = withContext(Dispatchers.Default) {
-                    contentPipeline.finalize(pre, cfg) { activity.translateContentIfEnabled(it) }
+                    contentPipeline.finalize(pre, cfg) { activity.translateContentIfEnabled(it, chapterId) }
                 }
                 textView.gravity = savedGravity
                 setTextViewContent(textView, translated)

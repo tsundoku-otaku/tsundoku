@@ -1494,6 +1494,17 @@ class ReaderActivity : BaseActivity() {
         return viewModel.state.value.isTranslating
     }
 
+    /** Whether a cached translation exists for [chapterId]; viewers use it to pick the loading label. */
+    suspend fun hasCachedTranslation(chapterId: Long?): Boolean {
+        if (chapterId == null || !isTranslationEnabled()) return false
+        return try {
+            viewModel.hasCachedTranslation(chapterId)
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "hasCachedTranslation lookup failed" }
+            false
+        }
+    }
+
     /**
      * Reload content with current translation state.
      * Called when translation is toggled to re-render existing content.

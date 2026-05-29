@@ -901,11 +901,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             chapter.chapter.name,
         )
 
-        if (!isAppendOrPrepend && translator != null) {
-            showLoadingIndicator(activity.stringResource(TDMR.strings.novel_chapter_translating))
-        }
-
         scope.launch {
+            if (!isAppendOrPrepend && translator != null) {
+                val labelRes = if (activity.hasCachedTranslation(chapterId)) {
+                    TDMR.strings.novel_chapter_translating_from_cache
+                } else {
+                    TDMR.strings.novel_chapter_translating_from_api
+                }
+                showLoadingIndicator(activity.stringResource(labelRes))
+            }
+
             val processed = withContext(Dispatchers.Default) {
                 contentPipeline.process(rawContent, cfg, translator)
             }

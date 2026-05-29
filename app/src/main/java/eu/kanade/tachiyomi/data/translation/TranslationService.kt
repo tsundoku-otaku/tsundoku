@@ -42,7 +42,6 @@ import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.domain.translation.service.TranslationPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -763,12 +762,11 @@ class TranslationService(
             return content
         }
 
-        // Check for existing translation in database
         if (chapterId != null) {
             val existingTranslation = translatedChapterRepository.getTranslatedChapter(chapterId, tgtLang)
-            if (existingTranslation != null && isCachedTranslationCompatible(existingTranslation.translatedContent, content)) {
+            if (TranslationCachePolicy.shouldServeCached(existingTranslation)) {
                 logcat(LogPriority.DEBUG) { "Using cached translation for chapter $chapterId (lang: $tgtLang)" }
-                return existingTranslation.translatedContent
+                return existingTranslation!!.translatedContent
             }
         }
 
@@ -793,8 +791,6 @@ class TranslationService(
                     translatedHtml = TranslationHtmlUtils.reinsertImages(translatedHtml, preservedImages)
                 }
 
-                val cachedTranslatedHtml = wrapTranslatedHtmlWithSourceHash(content, translatedHtml)
-
                 // Save translation to database
                 if (chapterId != null && mangaId != null) {
                     val engine = translationEngineManager.getEngine()
@@ -803,7 +799,7 @@ class TranslationService(
                         mangaId = mangaId,
                         targetLanguage = tgtLang,
                         engineId = engine?.id?.toString() ?: "unknown",
-                        translatedContent = cachedTranslatedHtml,
+                        translatedContent = translatedHtml,
                         dateTranslated = System.currentTimeMillis(),
                     )
                     try {
@@ -817,38 +813,12 @@ class TranslationService(
                     }
                 }
 
-                cachedTranslatedHtml
+                translatedHtml
             }
             is TranslationResult.Error -> {
                 logcat(LogPriority.WARN) { "Translation failed: ${result.message}" }
                 throw IllegalStateException(result.message)
             }
-        }
-    }
-
-    private fun isCachedTranslationCompatible(cachedContent: String, sourceContent: String): Boolean {
-        val cachedHash = extractSourceHash(cachedContent) ?: return false
-        return cachedHash == computeSourceHash(sourceContent)
-    }
-
-    private fun wrapTranslatedHtmlWithSourceHash(sourceContent: String, translatedHtml: String): String {
-        val hash = computeSourceHash(sourceContent)
-        return "<!-- tsundoku-source-hash:$hash -->\n$translatedHtml"
-    }
-
-    private fun extractSourceHash(cachedContent: String): String? {
-        val prefix = "<!-- tsundoku-source-hash:"
-        val start = cachedContent.indexOf(prefix)
-        if (start < 0) return null
-        val end = cachedContent.indexOf("-->", start)
-        if (end < 0) return null
-        return cachedContent.substring(start + prefix.length, end).trim().takeIf { it.isNotEmpty() }
-    }
-
-    private fun computeSourceHash(content: String): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(content.toByteArray(Charsets.UTF_8))
-        return buildString(digest.size * 2) {
-            digest.forEach { byte -> append("%02x".format(byte)) }
         }
     }
 
