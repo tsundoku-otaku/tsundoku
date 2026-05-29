@@ -32,6 +32,7 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -98,6 +99,7 @@ fun TrackerSearch(
     onConfirmSelection: (private: Boolean) -> Unit,
     onDismissRequest: () -> Unit,
     supportsPrivateTracking: Boolean,
+    altTitles: List<String> = emptyList(),
 ) {
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
@@ -157,6 +159,38 @@ fun TrackerSearch(
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+                        }
+                        if (altTitles.isNotEmpty()) {
+                            var altMenuExpanded by remember { mutableStateOf(false) }
+                            IconButton(onClick = { altMenuExpanded = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Pick alt title",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = altMenuExpanded,
+                                onDismissRequest = { altMenuExpanded = false },
+                            ) {
+                                altTitles.forEach { title ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = title,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        },
+                                        onClick = {
+                                            state.clearText()
+                                            state.edit { append(title) }
+                                            altMenuExpanded = false
+                                            dispatchQueryAndClearFocus()
+                                        },
+                                    )
+                                }
                             }
                         }
                     },
