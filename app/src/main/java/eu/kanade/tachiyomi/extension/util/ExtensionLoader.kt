@@ -48,7 +48,7 @@ internal object ExtensionLoader {
     }
 
     private const val EXTENSION_FEATURE = "tachiyomi.extension"
-    private const val EXTENSION_FEATURE_NOVEL = "app.tsundoku.extension.novel"
+    private const val EXTENSION_FEATURE_NOVEL = "tachiyomi.novelextension"
     private val EXTENSION_FEATURES = setOf(EXTENSION_FEATURE, EXTENSION_FEATURE_NOVEL)
     private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
     private const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
