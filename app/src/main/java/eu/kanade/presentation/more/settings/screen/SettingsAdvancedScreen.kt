@@ -1514,6 +1514,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                         context.toast(MR.strings.requires_app_restart)
                     },
                 ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = basePreferences.jsPluginNativeCheerio,
+                    title = stringResource(TDMR.strings.pref_js_plugin_native_cheerio),
+                    subtitle = stringResource(TDMR.strings.pref_js_plugin_native_cheerio_summary),
+                ),
             ),
         )
     }

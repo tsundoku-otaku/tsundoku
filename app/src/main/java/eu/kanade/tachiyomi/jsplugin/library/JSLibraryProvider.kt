@@ -7,6 +7,7 @@ import android.webkit.CookieManager
 import com.dokar.quickjs.QuickJs
 import com.dokar.quickjs.binding.asyncFunction
 import com.dokar.quickjs.binding.function
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,6 +53,12 @@ class JSLibraryProvider(
     private val client = networkHelper.client
     private val context: Context = Injekt.get()
 
+    // Experimental: parse plugin HTML with bundled real cheerio (native JS) instead of the
+    // Jsoup-backed wrapper. Read once per runtime.
+    private val useNativeCheerio: Boolean = runCatching {
+        Injekt.get<BasePreferences>().jsPluginNativeCheerio.get()
+    }.getOrDefault(false)
+
     // Persistent storage per plugin via SharedPreferences
     private val prefs: SharedPreferences by lazy {
         context.getSharedPreferences("jsplugin_storage_$pluginId", Context.MODE_PRIVATE)
@@ -75,15 +82,41 @@ class JSLibraryProvider(
         setupStorage(runtime)
         setupCacheManagement(runtime)
 
-        // Inject the protobuf runtime bundle first, then the minimal JS runtime (polyfills + require)
+        // Inject the protobuf runtime bundle, then the minimal JS runtime (polyfills + require).
+        // require('cheerio') prefers the native bundle once globalThis.__useNativeCheerio is set.
         val runtimeJs = buildString {
             append(loadProtobufJsBundle())
             append('\n')
+            append("globalThis.__useNativeCheerio = false;\n")
             append(getMinimalRuntime())
         }
         runtime.evaluate<Any?>(runtimeJs, "runtime.js", asModule = false)
 
-        logcat(LogPriority.DEBUG) { "[$pluginId] JSLibraryProvider setup complete" }
+        // Optionally eval the real-cheerio bundle AFTER the polyfills above (it relies on Array.from,
+        // Object.fromEntries, etc.). Isolated in its own try/catch so a parse/eval failure degrades
+        // gracefully to the Jsoup wrapper instead of killing the runtime. Only flip the flag once the
+        // bundle actually exported globalThis.__realCheerio.
+        var nativeCheerioActive = false
+        if (useNativeCheerio) {
+            val bundle = loadCheerioBundle()
+            if (bundle.isNotEmpty()) {
+                nativeCheerioActive = try {
+                    runtime.evaluate<Any?>(bundle, "cheerio.bundle.js", asModule = false)
+                    val loaded = (runtime.evaluate<Any?>("!!globalThis.__realCheerio") as? Boolean) == true
+                    if (loaded) {
+                        runtime.evaluate<Any?>("globalThis.__useNativeCheerio = true;")
+                    }
+                    loaded
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN, e) { "[$pluginId] cheerio bundle eval failed; using Jsoup wrapper" }
+                    false
+                }
+            }
+        }
+
+        logcat(LogPriority.DEBUG) {
+            "[$pluginId] JSLibraryProvider setup complete (nativeCheerio=$nativeCheerioActive)"
+        }
     }
 
     // ============ Cache Management ============
@@ -119,6 +152,29 @@ class JSLibraryProvider(
         } catch (e: Exception) {
             logcat(LogPriority.WARN, e) { "[$pluginId] Failed to load protobufjs bundle from assets" }
             ""
+        }
+    }
+
+    /**
+     * Load the bundled real-cheerio IIFE from assets. The bundle string is read once and cached in
+     * memory (it is ~330 KB); each QuickJS runtime still re-evaluates it since JS heaps are not
+     * shared across runtimes. Returns "" if the asset is missing so the caller falls back to the
+     * Jsoup wrapper. The bundle sets globalThis.__realCheerio = { load }.
+     */
+    private fun loadCheerioBundle(): String {
+        cachedCheerioBundle?.let { return it }
+        return synchronized(cheerioBundleLock) {
+            cachedCheerioBundle?.let { return it }
+            val loaded = try {
+                context.assets.open("js/vendor/cheerio.bundle.js")
+                    .bufferedReader(StandardCharsets.UTF_8)
+                    .use { it.readText() }
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "[$pluginId] Failed to load cheerio bundle from assets" }
+                ""
+            }
+            cachedCheerioBundle = loaded
+            loaded
         }
     }
 
@@ -1581,6 +1637,10 @@ class JSLibraryProvider(
         function require(name) {
             switch(name) {
                 case 'cheerio':
+                    // Experimental: hand plugins the bundled real cheerio when enabled and loaded.
+                    if (globalThis.__useNativeCheerio && globalThis.__realCheerio) {
+                        return globalThis.__realCheerio;
+                    }
                     return {
                         load: function(html) {
                             var docId = __cheerioLoad(html);
@@ -2199,4 +2259,11 @@ class JSLibraryProvider(
         }
         globalThis.resolveUrl = resolveUrl;
     """.trimIndent()
+
+    companion object {
+        // Real-cheerio bundle string, read from assets once and reused across plugin runtimes.
+        @Volatile
+        private var cachedCheerioBundle: String? = null
+        private val cheerioBundleLock = Any()
+    }
 }

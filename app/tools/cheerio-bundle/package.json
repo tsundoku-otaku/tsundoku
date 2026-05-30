@@ -1,0 +1,12 @@
+{
+  "name": "cheerio-bundle",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "esbuild": "^0.28.0"
+  }
+}

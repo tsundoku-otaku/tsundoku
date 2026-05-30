@@ -800,6 +800,8 @@
     <string name="action_sort_source_name">Source name</string>
     <string name="pref_show_manga_source_name">Show source name in manga details</string>
     <string name="pref_show_manga_source_name_summary">Display source name under status on manga details screen</string>
+    <string name="pref_js_plugin_native_cheerio">Use native cheerio for JS plugins</string>
+    <string name="pref_js_plugin_native_cheerio_summary">Experimental: parse plugin HTML with bundled real cheerio (full API) instead of the Jsoup wrapper. Slower but more compatible. Reopen the chapter to apply.</string>
     <string name="action_hide_source_name">Hide source name</string>
     <string name="action_show_source_name">Show source name</string>
     <string name="prompt_save_changes">Save changes?</string>
