@@ -635,7 +635,10 @@ class JsSource(
             val result = executePluginMethod("plugin.parseChapter('$path')")
             listOf(Page(0, chapter.url, "").also { it.text = extractChapterText(result) })
         } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Error in getPageList for ${plugin.name}" }
+            logcat(LogPriority.ERROR, e) {
+                "Error in getPageList for ${plugin.name}: chapter='${chapter.name}' url='${chapter.url}' " +
+                    "site='$baseUrl' cause='${e.message}'"
+            }
             emptyList()
         }
     }

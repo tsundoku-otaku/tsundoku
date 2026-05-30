@@ -582,6 +582,13 @@ class JSLibraryProvider(
             val handle = args.getOrNull(0)?.toString()?.toIntOrNull() ?: -1
             cheerioEmpty(handle)
         }
+
+        // Wrap each matched element with the given HTML structure
+        runtime.function("__cheerioWrap") { args ->
+            val handle = args.getOrNull(0)?.toString()?.toIntOrNull() ?: -1
+            val html = args.getOrNull(1)?.toString() ?: ""
+            cheerioWrap(handle, html)
+        }
     }
 
     private fun cheerioLoad(html: String): Int {
@@ -846,6 +853,15 @@ class JSLibraryProvider(
             is Document -> el.body().empty()
             is Element -> el.empty()
             is Elements -> el.forEach { it.empty() }
+            else -> {}
+        }
+    }
+
+    private fun cheerioWrap(handle: Int, html: String) {
+        if (html.isBlank()) return
+        when (val el = elementCache[handle]) {
+            is Element -> if (el !is Document) el.wrap(html)
+            is Elements -> el.forEach { it.wrap(html) }
             else -> {}
         }
     }
@@ -1373,6 +1389,7 @@ class JSLibraryProvider(
                 append: function(content) { __cheerioAppend(h, typeof content === 'string' ? content : ''); return this; },
                 prepend: function(content) { __cheerioPrepend(h, typeof content === 'string' ? content : ''); return this; },
                 empty: function() { __cheerioEmpty(h); return this; },
+                wrap: function(content) { __cheerioWrap(h, typeof content === 'string' ? content : ''); return this; },
                 clone: function() { return this; },
                 addClass: function() { return this; },
                 removeClass: function() { return this; },
@@ -1527,7 +1544,8 @@ class JSLibraryProvider(
                 prepend: function(content) { arr.forEach(function(el) { if (el && el.prepend) el.prepend(content); }); return this; },
                 before: function(content) { arr.forEach(function(el) { if (el && el.before) el.before(content); }); return this; },
                 after: function(content) { arr.forEach(function(el) { if (el && el.after) el.after(content); }); return this; },
-                empty: function() { arr.forEach(function(el) { if (el && el.empty) el.empty(); }); return this; }
+                empty: function() { arr.forEach(function(el) { if (el && el.empty) el.empty(); }); return this; },
+                wrap: function(content) { arr.forEach(function(el) { if (el && el.wrap) el.wrap(content); }); return this; }
             };
             return obj;
         }
@@ -1551,6 +1569,7 @@ class JSLibraryProvider(
                 contents: function() { return this; }, siblings: function() { return this; }, closest: function() { return this; },
                 remove: function() { return this; }, after: function() { return this; }, before: function() { return this; },
                 append: function() { return this; }, prepend: function() { return this; }, empty: function() { return this; },
+                wrap: function() { return this; },
                 clone: function() { return this; },
                 addClass: function() { return this; }, removeClass: function() { return this; },
                 replaceWith: function() { return this; }, addBack: function() { return this; },
