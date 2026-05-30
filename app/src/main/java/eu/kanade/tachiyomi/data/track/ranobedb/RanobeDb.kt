@@ -321,7 +321,7 @@ class RanobeDb(id: Long) : BaseTracker(id, "RanobeDB"), DeletableTracker {
     }
 
     /**
-     * RanobeDB reading-list label IDs (extracted from user-supplied curl examples):
+     * RanobeDB reading-list label IDs:
      *  1 = Reading, 2 = Finished, 3 = Plan to read, 4 = Stalled, 5 = Dropped, 6 = Other
      */
     private fun mapStatusToLabelId(status: Long): Int = when (status) {
@@ -391,28 +391,26 @@ internal object RanobeDbSuperForm {
                     put("type", 11)
                 },
             )
-            // 1: labels array referencing slot 2
             add(buildJsonArray { add(JsonPrimitive(2)) })
-            // 2: label object referencing slot 3 (id) and slot 4 (label name)
             add(
                 buildJsonObject {
                     put("id", 3)
                     put("label", 4)
                 },
             )
-            add(JsonPrimitive(labelId))         // 3 label id
-            add(JsonPrimitive(statusName))      // 4 label name
-            add(buildJsonArray { })             // 5 selectedCustLabels
-            add(JsonPrimitive(statusName))      // 6 readingStatus
-            if (scoreInt in 1..10) {            // 7 score
+            add(JsonPrimitive(labelId))
+            add(JsonPrimitive(statusName))
+            add(buildJsonArray { })
+            add(JsonPrimitive(statusName))
+            if (scoreInt in 1..10) {
                 add(JsonPrimitive(scoreInt))
             } else {
                 add(JsonNull)
             }
-            add(JsonPrimitive(started ?: ""))   // 8 started
-            add(JsonPrimitive(finished ?: ""))  // 9 finished
-            add(JsonPrimitive(notes))           // 10 notes
-            add(JsonPrimitive(action))          // 11 type
+            add(JsonPrimitive(started ?: ""))
+            add(JsonPrimitive(finished ?: ""))
+            add(JsonPrimitive(notes))
+            add(JsonPrimitive(action))
         }
         return Json.encodeToString(JsonArray.serializer(), arr)
     }
@@ -449,32 +447,32 @@ internal object RanobeDbSuperForm {
                     put("type", 17)
                 },
             )
-            add(buildJsonArray { add(JsonPrimitive(2)) })   // 1 labels -> [2]
-            add(                                            // 2 label object
+            add(buildJsonArray { add(JsonPrimitive(2)) })
+            add(
                 buildJsonObject {
                     put("id", 3)
                     put("label", 4)
                 },
             )
-            add(JsonPrimitive(labelId))         // 3 label id
-            add(JsonPrimitive(statusName))      // 4 label name
-            add(JsonPrimitive(false))           // 5 notify_book
-            add(JsonPrimitive(false))           // 6 notify_when_released
-            add(JsonPrimitive(false))           // 7 show_upcoming
-            add(JsonPrimitive(0))               // 8 volumes_read
-            add(buildJsonArray { })             // 9 selectedCustLabels
-            add(buildJsonArray { })             // 10 langs
-            add(buildJsonArray { })             // 11 formats
-            add(JsonPrimitive(statusName))      // 12 readingStatus
-            if (scoreInt in 1..10) {            // 13 score
+            add(JsonPrimitive(labelId))
+            add(JsonPrimitive(statusName))
+            add(JsonPrimitive(false))
+            add(JsonPrimitive(false))
+            add(JsonPrimitive(false))
+            add(JsonPrimitive(0))
+            add(buildJsonArray { })
+            add(buildJsonArray { })
+            add(buildJsonArray { })
+            add(JsonPrimitive(statusName))
+            if (scoreInt in 1..10) {
                 add(JsonPrimitive(scoreInt))
             } else {
                 add(JsonNull)
             }
-            add(JsonPrimitive(""))              // 14 started
-            add(JsonPrimitive(""))              // 15 finished
-            add(JsonPrimitive(notes))           // 16 notes
-            add(JsonPrimitive(action))          // 17 type
+            add(JsonPrimitive(""))
+            add(JsonPrimitive(""))
+            add(JsonPrimitive(notes))
+            add(JsonPrimitive(action))
         }
         return Json.encodeToString(JsonArray.serializer(), arr)
     }

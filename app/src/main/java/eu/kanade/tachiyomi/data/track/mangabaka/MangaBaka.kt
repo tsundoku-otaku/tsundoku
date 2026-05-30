@@ -149,31 +149,24 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
         val track = TrackSearch.create(this.id)
         track.remote_id = id
         track.title = title
-        // Canonical website URL is `https://mangabaka.org/{id}` (no `/series/` prefix).
         track.tracking_url = "$webUrl/$id"
-        // Cover may be a string OR a nested object with size variants. Defend against both shapes.
         track.cover_url = extractCoverUrl(obj["cover"])
         track.summary = obj.prim("description")?.contentOrNull ?: ""
         // status enum: cancelled | completed | hiatus | releasing | unknown | upcoming
         track.publishing_status = obj.prim("status")?.contentOrNull?.replaceFirstChar { it.uppercase() } ?: ""
-        // type enum: manga | novel | manhwa | manhua | oel | other
         track.publishing_type = obj.prim("type")?.contentOrNull?.replaceFirstChar { it.uppercase() } ?: ""
-        // total_chapters / final_volume are strings per schema.
         obj.prim("total_chapters")?.contentOrNull?.toLongOrNull()?.let { track.total_chapters = it }
         if (track.total_chapters == 0L) {
             obj.prim("final_volume")?.contentOrNull?.toLongOrNull()?.let { track.total_chapters = it }
         }
         obj.prim("rating")?.doubleOrNull?.let { track.score = it }
-        // published.start_date
         (obj["published"] as? JsonObject)?.prim("start_date")?.contentOrNull?.let { track.start_date = it }
-        // authors / artists arrays of strings.
-        track.authors = (obj["authors"] as? kotlinx.serialization.json.JsonArray)
+        track.authors = (obj["authors"] as? JsonArray)
             ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
-        track.artists = (obj["artists"] as? kotlinx.serialization.json.JsonArray)
+        track.artists = (obj["artists"] as? JsonArray)
             ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList()
-        // Alternative titles: collect `titles[]` plus the deprecated singletons.
         val synonyms = mutableListOf<String>()
-        (obj["titles"] as? kotlinx.serialization.json.JsonArray)?.forEach { entry ->
+        (obj["titles"] as? JsonArray)?.forEach { entry ->
             (entry as? JsonObject)?.prim("title")?.contentOrNull?.let { synonyms += it }
         }
         listOf("native_title", "romanized_title").forEach { key ->
@@ -199,11 +192,9 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
      */
     private fun extractCoverUrl(element: JsonElement?): String {
         if (element == null) return ""
-        // Cover sometimes serialized as a flat URL string.
         (element as? JsonPrimitive)?.contentOrNull?.let { return it }
         val obj = element as? JsonObject ?: return ""
 
-        // Preferred order: x150 → x250 → x350 → raw.url → raw (string).
         listOf("x150", "x250", "x350").forEach { key ->
             (obj[key] as? JsonObject)?.let { sized ->
                 sized.prim("x1")?.contentOrNull?.let { return it }
@@ -264,7 +255,6 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
         track.remote_id = seriesId
         fetchLibraryEntry(seriesId)?.applyTo(track)
 
-        // Series metadata
         try {
             val response = client.newCall(GET("$apiUrl/v1/series/$seriesId", authHeaders())).awaitSuccess()
             val body = response.body.string()
@@ -289,7 +279,6 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
     }
 
     override suspend fun delete(track: DomainTrack) {
-        // No generic DELETE form-action; mirror the site's "drop" by submitting state=dropped.
         val seriesId = track.remoteId.takeIf { it > 0 } ?: return
         submitLibraryForm(
             seriesId = seriesId,
@@ -305,7 +294,6 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
     }
 
     override suspend fun login(username: String, password: String) {
-        // Login form passes the PAT as `password`. Username is a placeholder.
         saveCredentials(username.ifBlank { "api_user" }, password)
     }
 
@@ -337,14 +325,12 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
             LibraryEntry(
                 state = data.prim("state")?.contentOrNull?.let(::statusFromApi),
                 progressChapter = data.prim("progress_chapter")?.doubleOrNull,
-                // 0..100 → 0..10
                 rating = data.prim("rating")?.doubleOrNull?.let { it / 10.0 },
                 startDate = data.prim("start_date")?.contentOrNull?.parseIsoDateTime(),
                 finishDate = data.prim("finish_date")?.contentOrNull?.parseIsoDateTime(),
                 isPrivate = data.prim("is_private")?.contentOrNull?.toBooleanStrictOrNull(),
             )
         } catch (e: Exception) {
-            // 404 is a normal "not in library yet" signal; downgrade noise.
             logcat(LogPriority.WARN) { "MangaBaka fetchLibraryEntry $seriesId: ${e.message}" }
             null
         }
@@ -457,7 +443,6 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
         }
         val payloadStr = payload.toString()
         val body = payloadStr.toRequestBody(JSON_MEDIA)
-        // Try PATCH first; on 404 (entry missing), fall back to POST.
         val attempt = { method: String ->
             val builder = Request.Builder()
                 .url("$apiUrl/v1/my/library/$seriesId")
@@ -487,7 +472,6 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
     }
 
     private fun extractSeriesId(url: String): Long? {
-        // Accept both new canonical `mangabaka.org/{id}` and legacy `/series/{id}`.
         Regex("mangabaka\\.org/(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull()?.let { return it }
         Regex("/series/(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull()?.let { return it }
         return null
@@ -521,7 +505,6 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
         return try {
             val fmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ROOT)
             fmt.timeZone = TimeZone.getTimeZone("UTC")
-            // Trim fractional seconds + Z suffix tolerantly.
             val clean = substringBefore('.').removeSuffix("Z")
             fmt.parse(clean)?.time
         } catch (_: Exception) {
@@ -547,7 +530,6 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
  * Encodes the Svelte SuperForms payload accepted by
  * `POST https://mangabaka.org/my/library/{id}?no_redirect=true&added_source=manual`.
  *
- * Wire layout (per user-supplied curl trace):
  *  Slot 0: schema {note,state,priority,is_private,lists,progress_chapter,progress_volume,
  *                  finish_date,start_date,rating}
  *  Slot 1: note (string)
@@ -571,8 +553,6 @@ internal object MangaBakaSuperForm {
         startDateIso: String?,
         finishDateIso: String?,
     ): String {
-        // Progress reads use a single shared slot per user's example. Prefer the higher of
-        // the two so unread/read sync from either chapter or volume doesn't regress state.
         val progress = maxOf(progressChapter, progressVolume).coerceAtLeast(0.0)
         val arr = buildJsonArray {
             add(
@@ -589,21 +569,20 @@ internal object MangaBakaSuperForm {
                     put("rating", 9)
                 },
             )
-            add(JsonPrimitive(note))           // 1 note
-            add(JsonPrimitive(state))          // 2 state
-            add(JsonPrimitive(20))             // 3 priority (default)
-            add(JsonPrimitive(isPrivate))      // 4 is_private
-            add(buildJsonArray { })            // 5 lists
-            // Slot 6 — encode as Int when possible so 2 stays "2" not "2.0".
+            add(JsonPrimitive(note))
+            add(JsonPrimitive(state))
+            add(JsonPrimitive(20))
+            add(JsonPrimitive(isPrivate))
+            add(buildJsonArray { })
             if (progress == progress.toLong().toDouble()) {
                 add(JsonPrimitive(progress.toLong()))
             } else {
                 add(JsonPrimitive(progress))
             }
-            add(dateValue(finishDateIso))      // 7 finish_date
-            add(dateValue(startDateIso))       // 8 start_date
+            add(dateValue(finishDateIso))
+            add(dateValue(startDateIso))
             if (rating != null && rating > 0) {
-                add(JsonPrimitive(rating))     // 9 rating
+                add(JsonPrimitive(rating))
             } else {
                 add(JsonNull)
             }
