@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
@@ -111,48 +112,29 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             val file = File(streamFilePath)
             if (!file.exists()) return Result.failure()
 
-            val chunkSize = 50_000 // ~50k URLs per chunk to bound memory usage
             val batchId = inputData.getString(KEY_BATCH_ID) ?: ""
             val categoryId = inputData.getLong(KEY_CATEGORY_ID, 0L)
             val addToLibrary = inputData.getBoolean(KEY_ADD_TO_LIBRARY, true)
             val fetchDetails = inputData.getBoolean(KEY_FETCH_DETAILS, true)
             val fetchChapters = inputData.getBoolean(KEY_FETCH_CHAPTERS, false)
 
-            val aggErroredUrls = mutableListOf<String>()
-
             try {
-                file.bufferedReader().useLines { lines ->
-                    val buffer = mutableListOf<String>()
-                    lines.forEach { raw ->
-                        val tokens = if (raw.contains(',') || raw.contains(';')) {
-                            raw.split(',', ';').map { it.trim() }.filter { it.isNotBlank() }
+                val allTokens = file.bufferedReader().useLines { lines ->
+                    lines.flatMap { raw ->
+                        if (raw.contains(',') || raw.contains(';')) {
+                            raw.split(',', ';').map { it.trim() }.filter { it.isNotBlank() }.asSequence()
                         } else {
                             val t = raw.trim()
-                            if (t.isNotBlank()) listOf(t) else emptyList()
+                            if (t.isNotBlank()) sequenceOf(t) else emptySequence()
                         }
-                        for (token in tokens) {
-                            buffer.add(token)
-                            if (buffer.size >= chunkSize) {
-                                val chunkResult = performImport(
-                                    buffer.toList(),
-                                    categoryId, addToLibrary, fetchDetails, fetchChapters, batchId,
-                                    excludedHostsSet, hostSourceCache, missingSourceHosts, preferredSourceId,
-                                )
-                                aggErroredUrls.addAll(chunkResult.erroredUrls)
-                                buffer.clear()
-                            }
-                        }
-                    }
-
-                    if (buffer.isNotEmpty()) {
-                        val chunkResult = performImport(
-                            buffer.toList(),
-                            categoryId, addToLibrary, fetchDetails, fetchChapters, batchId,
-                            excludedHostsSet, hostSourceCache, missingSourceHosts, preferredSourceId,
-                        )
-                        aggErroredUrls.addAll(chunkResult.erroredUrls)
-                    }
+                    }.distinct().toList()
                 }
+
+                performImport(
+                    allTokens,
+                    categoryId, addToLibrary, fetchDetails, fetchChapters, batchId,
+                    excludedHostsSet, hostSourceCache, missingSourceHosts, preferredSourceId,
+                )
 
                 return Result.success()
             } finally {
@@ -221,7 +203,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         missingSourceHosts: MutableSet<String> = ConcurrentHashMap.newKeySet(),
         preferredSourceId: Long? = null,
     ): ImportResult {
-        updateBatchStatus(batchId, BatchStatus.Running)
+        hydrateBatchFromStore(batchId)
+        startRunningUnlessPaused(batchId)
 
         val importSources = getImportSources()
         if (importSources.isEmpty()) {
@@ -301,7 +284,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             return Pair(globalBaseDelay, globalRandomRange)
         }
 
-        val sourceSemaphores = ConcurrentHashMap<Long, Semaphore>()
+        val sourceSemaphores = globalSourceSemaphores
 
         val sourceConsecutiveFailures = ConcurrentHashMap<Long, AtomicInteger>()
         val maxSourceFailures = novelDownloadPreferences.skipSourceIfFailedXTimes().get()
@@ -329,19 +312,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         erroredUrls.add(url)
                         errorMessages[url] = "Source skipped: $failures consecutive failures"
                         val done = completedCount.incrementAndGet()
-                        updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get(), erroredUrls = erroredUrls.take(10))
+                        updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get(), erroredUrls = synchronized(erroredUrls) { erroredUrls.take(10) })
                         return@flow
-                    }
-
-                    if (shouldThrottle) {
-                        val sourceId = source.id
-                        val sourceSemaphore = sourceSemaphores.computeIfAbsent(sourceId) { Semaphore(1) }
-                        val (baseDelay, randomRange) = getDelayForSource(sourceId)
-                        val delayMs = baseDelay + if (randomRange > 0) Random.nextLong(0, randomRange) else 0L
-
-                        sourceSemaphore.withPermit {
-                            delay(delayMs)
-                        }
                     }
 
                     waitForMemoryPressure()
@@ -354,17 +326,26 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     )
 
                     try {
-                        val success = processUrlWithSource(
-                            url,
-                            source,
-                            addToLibrary,
-                            fetchDetails,
-                            categoryId,
-                            fetchChapters,
-                            pendingAddIds,
-                            flushBatchSize,
-                            dbCache,
-                        )
+                        // Hold the per-source permit across delay + fetch so same-source
+                        // requests run serially spaced by delayMs, not just spaced at start.
+                        // Different sources keep their own permit and stay parallel.
+                        val success = if (shouldThrottle) {
+                            val sourceSemaphore = sourceSemaphores.computeIfAbsent(source.id) { Semaphore(1) }
+                            val (baseDelay, randomRange) = getDelayForSource(source.id)
+                            val delayMs = baseDelay + if (randomRange > 0) Random.nextLong(0, randomRange) else 0L
+                            sourceSemaphore.withPermit {
+                                delay(delayMs)
+                                processUrlWithSource(
+                                    url, source, addToLibrary, fetchDetails, categoryId,
+                                    fetchChapters, pendingAddIds, flushBatchSize, dbCache,
+                                )
+                            }
+                        } else {
+                            processUrlWithSource(
+                                url, source, addToLibrary, fetchDetails, categoryId,
+                                fetchChapters, pendingAddIds, flushBatchSize, dbCache,
+                            )
+                        }
                         if (success) {
                             sourceConsecutiveFailures[source.id]?.set(0)
                             addedCount.incrementAndGet()
@@ -389,7 +370,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                             addedCount.get(),
                             skippedCount.get(),
                             erroredCount.get(),
-                            erroredUrls = erroredUrls.take(10),
+                            erroredUrls = synchronized(erroredUrls) { erroredUrls.take(10) },
                         )
                         if (!shouldThrottle) {
                             delay(10)
@@ -438,6 +419,24 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         _sharedQueue.update { list ->
             list.map { if (it.id == batchId) it.copy(status = status) else it }
         }
+        persistMeta(context, batchId, force = true)
+    }
+
+    private fun hydrateBatchFromStore(batchId: String) {
+        if (batchId.isEmpty()) return
+        if (_sharedQueue.value.any { it.id == batchId }) return
+        val meta = MassImportStore.loadMeta(context, batchId) ?: return
+        val urls = MassImportStore.loadUrls(context, batchId)
+        val restored = meta.toBatch(urls)
+        _sharedQueue.update { list -> if (list.any { it.id == batchId }) list else list + restored }
+    }
+
+
+    private fun startRunningUnlessPaused(batchId: String) {
+        if (batchId.isEmpty()) return
+        val current = _sharedQueue.value.find { it.id == batchId }?.status
+        if (current == BatchStatus.Paused) return
+        updateBatchStatus(batchId, BatchStatus.Running)
     }
 
     private fun updateBatchProgress(
@@ -466,6 +465,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 }
             }
         }
+        persistMeta(context, batchId, force = false)
     }
 
     private suspend fun processUrlWithSource(
@@ -504,8 +504,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                             finalUrl = "/$finalUrl"
                         }
                     }
-                } catch (e: UninitializedPropertyAccessException) {
-                    // Ignore uninitialized URL
+                } catch (_: UninitializedPropertyAccessException) {
                 }
             }
         }
@@ -533,7 +532,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         ),
                     )
                     dbCache[source.id to finalUrl] = true
-                    // Buffer for batched library updates to reduce reactive churn
                     pendingAddIds.add(manga.id)
                     if (pendingAddIds.size >= flushBatchSize) {
                         flushPendingToLibrary(pendingAddIds)
@@ -702,7 +700,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
     private suspend fun waitForMemoryPressure() {
         val runtime = Runtime.getRuntime()
         val maxMemRaw = runtime.maxMemory()
-        val maxMem = maxMemRaw.coerceAtMost(MAX_HEAP_BYTES) // Clamp to 512MB
+        val maxMem = maxMemRaw.coerceAtMost(MAX_HEAP_BYTES)
         val usedMem = runtime.totalMemory() - runtime.freeMemory()
         val freeMem = maxMem - usedMem
 
@@ -723,8 +721,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
     }
 
     private suspend fun flushPendingToLibrary(pendingIds: MutableList<Long>) {
-        if (pendingIds.isEmpty()) return
-        val toFlush = pendingIds.toList()
+        val toFlush = synchronized(pendingIds) {
+            if (pendingIds.isEmpty()) return
+            val copy = pendingIds.toList()
+            pendingIds.clear()
+            copy
+        }
         try {
             getLibraryManga.addToLibraryBulk(toFlush)
             logcat(LogPriority.DEBUG) { "Flushed ${toFlush.size} manga IDs to library" }
@@ -736,7 +738,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 logcat(LogPriority.ERROR, inner) { "Even refresh failed" }
             }
         }
-        pendingIds.clear()
     }
 
     private fun findMatchingSource(url: String, sources: List<CatalogueSource>, preferredSourceId: Long? = null): CatalogueSource? {
@@ -819,6 +820,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val errored: Int = 0,
         val erroredUrls: List<String> = emptyList(),
         val errorMessages: Map<String, String> = emptyMap(),
+        val preferredSourceId: Long? = null,
+        val excludedHosts: List<String> = emptyList(),
     )
 
     enum class BatchStatus {
@@ -845,6 +848,71 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         private val _sharedQueue = MutableStateFlow<List<Batch>>(emptyList())
         val sharedQueue = _sharedQueue.asStateFlow()
 
+        private val persistScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob(),
+        )
+
+        private val lastMetaWrite = ConcurrentHashMap<String, Long>()
+        private const val META_WRITE_THROTTLE_MS = 2000L
+
+        private val globalSourceSemaphores = ConcurrentHashMap<Long, Semaphore>()
+
+        private fun Batch.toMeta() = MassImportStore.PersistedMeta(
+            id = id,
+            status = status.name,
+            progress = progress,
+            total = total,
+            added = added,
+            skipped = skipped,
+            errored = errored,
+            erroredUrls = erroredUrls,
+            errorMessages = errorMessages,
+            categoryId = categoryId,
+            addToLibrary = addToLibrary,
+            fetchDetails = fetchDetails,
+            fetchChapters = fetchChapters,
+            preferredSourceId = preferredSourceId,
+            excludedHosts = excludedHosts,
+        )
+
+        private fun MassImportStore.PersistedMeta.toBatch(urls: List<String>): Batch {
+            val parsedStatus = runCatching { BatchStatus.valueOf(status) }.getOrDefault(BatchStatus.Pending)
+            return Batch(
+                id = id,
+                urls = urls.take(100),
+                sourceUrls = urls,
+                categoryId = categoryId,
+                addToLibrary = addToLibrary,
+                fetchChapters = fetchChapters,
+                fetchDetails = fetchDetails,
+                status = parsedStatus,
+                progress = progress,
+                total = total,
+                added = added,
+                skipped = skipped,
+                errored = errored,
+                erroredUrls = erroredUrls,
+                errorMessages = errorMessages,
+                preferredSourceId = preferredSourceId,
+                excludedHosts = excludedHosts,
+            )
+        }
+
+        private fun persistMeta(context: Context, batchId: String, force: Boolean = true) {
+            if (batchId.isEmpty()) return
+            if (!force) {
+                val now = System.currentTimeMillis()
+                val last = lastMetaWrite[batchId] ?: 0L
+                if (now - last < META_WRITE_THROTTLE_MS) return
+                lastMetaWrite[batchId] = now
+            } else {
+                lastMetaWrite[batchId] = System.currentTimeMillis()
+            }
+            val meta = _sharedQueue.value.find { it.id == batchId }?.toMeta() ?: return
+            val appContext = context.applicationContext
+            persistScope.launch { MassImportStore.saveMeta(appContext, meta) }
+        }
+
         private fun tokenizeRawText(rawText: String): List<String> {
             return rawText.lineSequence()
                 .flatMap { line ->
@@ -857,6 +925,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         sequenceOf(trimmed)
                     }
                 }
+                .distinct()
                 .toList()
         }
 
@@ -865,26 +934,54 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 context.workManager.getWorkInfosByTag(TAG).get()
             }.getOrDefault(emptyList())
 
+            val wmStateById = HashMap<String, WorkInfo.State>()
+            for (info in workInfos) {
+                val id = info.tags.firstOrNull { it.startsWith("batch_") }?.removePrefix("batch_") ?: continue
+                wmStateById[id] = info.state
+            }
+
+            val persisted = MassImportStore.loadAll(context)
+
             _sharedQueue.update { current ->
-                val existingIds = current.map { it.id }.toSet()
-                val stubs = workInfos.mapNotNull { info ->
-                    if (info.state == WorkInfo.State.SUCCEEDED ||
-                        info.state == WorkInfo.State.FAILED ||
-                        info.state == WorkInfo.State.CANCELLED
-                    ) return@mapNotNull null
-                    val batchId = info.tags.firstOrNull { it.startsWith("batch_") }
-                        ?.removePrefix("batch_") ?: return@mapNotNull null
-                    if (batchId in existingIds) return@mapNotNull null
-                    Batch(
-                        id = batchId,
+                val existingIds = current.map { it.id }.toMutableSet()
+                val additions = mutableListOf<Batch>()
+
+                for (meta in persisted) {
+                    if (meta.id in existingIds) continue
+                    val urls = MassImportStore.loadUrls(context, meta.id)
+                    var batch = meta.toBatch(urls)
+                    val wmState = wmStateById[meta.id]
+                    val wmActive = wmState == WorkInfo.State.RUNNING ||
+                        wmState == WorkInfo.State.ENQUEUED ||
+                        wmState == WorkInfo.State.BLOCKED
+                    val terminal = batch.status == BatchStatus.Completed || batch.status == BatchStatus.Cancelled
+                    if (!terminal && !wmActive) {
+                        batch = batch.copy(status = BatchStatus.Completed)
+                    }
+                    additions += batch
+                    existingIds += meta.id
+                }
+
+                for ((id, state) in wmStateById) {
+                    if (id in existingIds) continue
+                    if (state == WorkInfo.State.SUCCEEDED ||
+                        state == WorkInfo.State.FAILED ||
+                        state == WorkInfo.State.CANCELLED
+                    ) {
+                        continue
+                    }
+                    additions += Batch(
+                        id = id,
                         urls = emptyList(),
                         categoryId = 0L,
                         addToLibrary = true,
                         fetchChapters = false,
-                        status = if (info.state == WorkInfo.State.RUNNING) BatchStatus.Running else BatchStatus.Pending,
+                        status = if (state == WorkInfo.State.RUNNING) BatchStatus.Running else BatchStatus.Pending,
                     )
+                    existingIds += id
                 }
-                current + stubs
+
+                current + additions
             }
         }
 
@@ -919,6 +1016,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 rawText != null -> sourceUrls.size
                 else -> sourceUrls.size
             }
+            val normalizedExcludedHosts = excludedHosts
+                .map { it.trim().lowercase().removePrefix("www.") }
+                .filter { it.isNotBlank() }
             val batch = Batch(
                 id = batchId,
                 urls = batchUrlsForQueue,
@@ -928,12 +1028,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 fetchChapters = fetchChapters,
                 fetchDetails = fetchDetails,
                 total = batchTotal,
+                preferredSourceId = preferredSourceId,
+                excludedHosts = normalizedExcludedHosts,
             )
 
             _sharedQueue.update { it + batch }
 
-            // Offload to file if URL list is large to avoid TransactionTooLargeException
-            // Transaction limit is ~1MB, be conservative and offload at 500KB
+            val appContext = context.applicationContext
+            persistScope.launch { MassImportStore.saveUrls(appContext, batchId, sourceUrls) }
+            persistMeta(context, batchId, force = true)
+
             val payload = mutableListOf<Pair<String, Any?>>(
                 KEY_CATEGORY_ID to categoryId,
                 KEY_ADD_TO_LIBRARY to addToLibrary,
@@ -982,10 +1086,18 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         fun stop(context: Context) {
             context.workManager.cancelAllWorkByTag(TAG)
+            val affected = _sharedQueue.value
+                .filter {
+                    it.status == BatchStatus.Pending ||
+                        it.status == BatchStatus.Running ||
+                        it.status == BatchStatus.Paused
+                }
+                .map { it.id }
             _sharedQueue.update { list ->
                 list.map {
                     if (it.status == BatchStatus.Pending ||
-                        it.status == BatchStatus.Running
+                        it.status == BatchStatus.Running ||
+                        it.status == BatchStatus.Paused
                     ) {
                         it.copy(status = BatchStatus.Cancelled)
                     } else {
@@ -993,6 +1105,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     }
                 }
             }
+            affected.forEach { persistMeta(context, it, force = true) }
         }
 
         fun cancelBatch(context: Context, batchId: String) {
@@ -1000,7 +1113,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             _sharedQueue.update { list ->
                 list.map {
                     if (it.id == batchId &&
-                        (it.status == BatchStatus.Pending || it.status == BatchStatus.Running)
+                        (it.status == BatchStatus.Pending || it.status == BatchStatus.Running || it.status == BatchStatus.Paused)
                     ) {
                         it.copy(status = BatchStatus.Cancelled)
                     } else {
@@ -1008,9 +1121,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     }
                 }
             }
+            persistMeta(context, batchId, force = true)
         }
 
-        fun pauseBatch(batchId: String) {
+        fun pauseBatch(context: Context, batchId: String) {
             _sharedQueue.update { list ->
                 list.map {
                     if (it.id == batchId && (it.status == BatchStatus.Pending || it.status == BatchStatus.Running)) {
@@ -1020,9 +1134,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     }
                 }
             }
+            persistMeta(context, batchId, force = true)
         }
 
-        fun resumeBatch(batchId: String) {
+        fun resumeBatch(context: Context, batchId: String) {
             _sharedQueue.update { list ->
                 list.map {
                     if (it.id == batchId && it.status == BatchStatus.Paused) {
@@ -1032,9 +1147,13 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     }
                 }
             }
+            persistMeta(context, batchId, force = true)
         }
 
-        fun pauseAll() {
+        fun pauseAll(context: Context) {
+            val affected = _sharedQueue.value
+                .filter { it.status == BatchStatus.Pending || it.status == BatchStatus.Running }
+                .map { it.id }
             _sharedQueue.update { list ->
                 list.map {
                     if (it.status == BatchStatus.Pending || it.status == BatchStatus.Running) {
@@ -1044,9 +1163,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     }
                 }
             }
+            affected.forEach { persistMeta(context, it, force = true) }
         }
 
-        fun resumeAll() {
+        fun resumeAll(context: Context) {
+            val affected = _sharedQueue.value.filter { it.status == BatchStatus.Paused }.map { it.id }
             _sharedQueue.update { list ->
                 list.map {
                     if (it.status == BatchStatus.Paused) {
@@ -1056,12 +1177,15 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     }
                 }
             }
+            affected.forEach { persistMeta(context, it, force = true) }
         }
 
 
         fun removeBatch(context: Context, batchId: String) {
             context.workManager.cancelUniqueWork("${TAG}_$batchId")
             runCatching { File(context.cacheDir, "mass_import_$batchId.txt").delete() }
+            MassImportStore.delete(context, batchId)
+            lastMetaWrite.remove(batchId)
             _sharedQueue.update { list ->
                 list.filter { it.id != batchId }
             }
@@ -1071,7 +1195,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             _sharedQueue.update { list ->
                 list.filter { batch ->
                     val done = batch.status == BatchStatus.Completed || batch.status == BatchStatus.Cancelled
-                    if (done) runCatching { File(context.cacheDir, "mass_import_${batch.id}.txt").delete() }
+                    if (done) {
+                        runCatching { File(context.cacheDir, "mass_import_${batch.id}.txt").delete() }
+                        MassImportStore.delete(context, batch.id)
+                        lastMetaWrite.remove(batch.id)
+                    }
                     !done
                 }
             }
@@ -1079,6 +1207,30 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         fun exportBatchUrls(batch: Batch): String {
             return batch.sourceUrls.joinToString("\n")
+        }
+
+
+        fun retryFailed(context: Context, batchId: String) {
+            val appContext = context.applicationContext
+            val inMemory = _sharedQueue.value.find { it.id == batchId }
+            persistScope.launch {
+                val batch = inMemory
+                    ?: MassImportStore.loadMeta(appContext, batchId)
+                        ?.toBatch(MassImportStore.loadUrls(appContext, batchId))
+                    ?: return@launch
+                val failed = batch.erroredUrls.map { it.trim() }.filter { it.isNotEmpty() }
+                if (failed.isEmpty()) return@launch
+                start(
+                    context = appContext,
+                    urls = failed,
+                    categoryId = batch.categoryId,
+                    addToLibrary = batch.addToLibrary,
+                    fetchDetails = batch.fetchDetails,
+                    fetchChapters = batch.fetchChapters,
+                    excludedHosts = batch.excludedHosts,
+                    preferredSourceId = batch.preferredSourceId,
+                )
+            }
         }
 
     }

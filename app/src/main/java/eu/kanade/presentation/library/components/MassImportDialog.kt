@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.AlertDialog
@@ -106,6 +107,7 @@ fun MassImportDialog(
     val toastErrorExportingUrls = stringResource(TDMR.strings.mass_import_toast_error_exporting_urls)
     val toastCopiedUrls = stringResource(TDMR.strings.mass_import_toast_copied_urls)
     val toastCopiedErrors = stringResource(TDMR.strings.mass_import_toast_copied_errors)
+    val toastRequeuedErrors = stringResource(TDMR.strings.mass_import_toast_requeued_errors)
     val clipboardUrlsLabel = stringResource(TDMR.strings.mass_import_clipboard_label_urls)
     val clipboardErrorsLabel = stringResource(TDMR.strings.mass_import_clipboard_label_errors)
 
@@ -264,7 +266,7 @@ fun MassImportDialog(
                                     state = rememberTooltipState(),
                                 ) {
                                     IconButton(
-                                        onClick = { MassImportJob.pauseAll() },
+                                        onClick = { MassImportJob.pauseAll(context) },
                                     ) {
                                         Icon(
                                             imageVector = Icons.Outlined.Pause,
@@ -281,7 +283,7 @@ fun MassImportDialog(
                                     state = rememberTooltipState(),
                                 ) {
                                     IconButton(
-                                        onClick = { MassImportJob.resumeAll() },
+                                        onClick = { MassImportJob.resumeAll(context) },
                                     ) {
                                         Icon(
                                             imageVector = Icons.Outlined.PlayArrow,
@@ -327,8 +329,12 @@ fun MassImportDialog(
                             BatchItem(
                                 batch = batch,
                                 onCancel = { MassImportJob.cancelBatch(context, batch.id) },
-                                onPause = { MassImportJob.pauseBatch(batch.id) },
-                                onResume = { MassImportJob.resumeBatch(batch.id) },
+                                onPause = { MassImportJob.pauseBatch(context, batch.id) },
+                                onResume = { MassImportJob.resumeBatch(context, batch.id) },
+                                onRetryFailed = {
+                                    MassImportJob.retryFailed(context, batch.id)
+                                    context.toast(String.format(toastRequeuedErrors, batch.errored))
+                                },
                                 onCopyUrls = {
                                     val urls = MassImportJob.exportBatchUrls(batch)
                                     context.copyToClipboard(clipboardUrlsLabel, urls)
@@ -747,6 +753,7 @@ private fun BatchItem(
     onCopyErrors: () -> Unit,
     onRemove: () -> Unit,
     onExportUrls: () -> Unit,
+    onRetryFailed: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showRemoveConfirm by remember { mutableStateOf(false) }
@@ -1020,6 +1027,30 @@ private fun BatchItem(
                                         modifier = Modifier.size(18.dp),
                                         tint = MaterialTheme.colorScheme.error,
                                     )
+                            }
+                        }
+                    }
+
+                    // Retry failed: re-queue the errored URLs as a new batch (terminal batches only)
+                    val isTerminal = batch.status == MassImportJob.BatchStatus.Completed ||
+                        batch.status == MassImportJob.BatchStatus.Cancelled
+                    if (batch.errored > 0 && isTerminal && batch.erroredUrls.isNotEmpty()) {
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = {
+                                PlainTooltip {
+                                    Text(stringResource(TDMR.strings.mass_import_tooltip_retry_errors))
+                                }
+                            },
+                            state = rememberTooltipState(),
+                        ) {
+                            IconButton(onClick = onRetryFailed, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    Icons.Outlined.Refresh,
+                                    contentDescription = stringResource(TDMR.strings.mass_import_cd_retry_errors),
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
                             }
                         }
                     }

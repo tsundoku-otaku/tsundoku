@@ -153,7 +153,7 @@ class DomainModule : InjektModule {
         addFactory { SetMangaCategories(get(), get()) }
         addFactory { GetExcludedScanlators(get()) }
         addFactory { SetExcludedScanlators(get()) }
-        addSingletonFactory { MassImport(get(), get(), get(), get(), get(), get(), get()) }
+        addSingletonFactory { MassImport(get(), get(), get(), get()) }
         addFactory {
             MigrateMangaUseCase(
                 get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
