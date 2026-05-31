@@ -14,6 +14,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Added
 - Tap zones for novels [@mrissaoussama](https://github.com/mrissaoussama) [#210](https://github.com/tsundoku-otaku/tsundoku/pull/210)
 - Open EPUBs with app, export with CSS/JS [@mrissaoussama](https://github.com/mrissaoussama) [#227](https://github.com/tsundoku-otaku/tsundoku/pull/227)
+- Sources can now integrate with SourceTracker, so the sources can add/remove content, or mark it as read, based on tracker [@mrissaoussama](https://github.com/mrissaoussama) [#232](https://github.com/tsundoku-otaku/tsundoku/pull/232)
 
 ### Changed
 - Novel downloads will be saved as zip format [@mrissaoussama](https://github.com/mrissaoussama) [#202](https://github.com/tsundoku-otaku/tsundoku/pull/202)
