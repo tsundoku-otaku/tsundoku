@@ -691,6 +691,7 @@ data class TrackerSearchScreen(
             },
             onDismissRequest = navigator::pop,
             supportsPrivateTracking = screenModel.supportsPrivateTracking,
+            altTitles = state.altTitles,
         )
     }
 
@@ -712,6 +713,16 @@ data class TrackerSearchScreen(
             // Run search on first launch
             if (initialQuery.isNotBlank()) {
                 trackingSearch(initialQuery)
+            }
+            // Load alt titles from local manga record.
+            screenModelScope.launchNonCancellable {
+                val manga = Injekt.get<GetManga>().await(mangaId)
+                val titles = manga?.alternativeTitles
+                    ?.filter { it.isNotBlank() }
+                    ?.distinct()
+                    ?.sorted()
+                    .orEmpty()
+                mutableState.update { it.copy(altTitles = titles) }
             }
         }
 
@@ -754,6 +765,7 @@ data class TrackerSearchScreen(
         data class State(
             val queryResult: Result<List<TrackSearch>>? = null,
             val selected: TrackSearch? = null,
+            val altTitles: List<String> = emptyList(),
         )
     }
 }
