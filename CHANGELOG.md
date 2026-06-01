@@ -36,6 +36,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Encoding issues when parsing jssource chapters [@mrissaoussama](https://github.com/mrissaoussama) [#224](https://github.com/tsundoku-otaku/tsundoku/pull/224)
 - Properly remove TTS notification when stopped, more TTS states [@mrissaoussama](https://github.com/mrissaoussama) [#217](https://github.com/tsundoku-otaku/tsundoku/pull/217)
 - Manga mass import URL with JS plugins [@mrissaoussama](https://github.com/mrissaoussama) [#197](https://github.com/tsundoku-otaku/tsundoku/pull/197)
+- Fix custom fonts not working with local files [@mrissaoussama](https://github.com/mrissaoussama) [#237](https://github.com/tsundoku-otaku/tsundoku/pull/237)
 - Correctly recognize .zip archives [@mrissaoussama](https://github.com/mrissaoussama) [#226](https://github.com/tsundoku-otaku/tsundoku/pull/226)
 - Improve translation reliability and interactions with images; Bug with short chapters [@mrissaoussama](https://github.com/mrissaoussama) [#232](https://github.com/tsundoku-otaku/tsundoku/pull/232)
 - Make Grid items better respect max lines limits in library [@mrissaoussama](https://github.com/mrissaoussama) [#216](https://github.com/tsundoku-otaku/tsundoku/pull/216)
