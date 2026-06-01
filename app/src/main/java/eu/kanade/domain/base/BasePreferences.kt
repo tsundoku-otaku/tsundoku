@@ -51,4 +51,14 @@ class BasePreferences(
     )
 
     val installationId: Preference<String> = preferenceStore.getString(Preference.appStateKey("installation_id"), "")
+
+    /**
+     * When true, JS novel plugins parse HTML with the bundled real cheerio (native JS) instead of
+     * the lightweight Jsoup-backed wrapper. Experimental — full API parity at the cost of slower,
+     * interpreted parsing. Requires reopening a chapter to take effect (plugin runtime is recreated).
+     */
+    val jsPluginNativeCheerio: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_js_plugin_native_cheerio",
+        false,
+    )
 }

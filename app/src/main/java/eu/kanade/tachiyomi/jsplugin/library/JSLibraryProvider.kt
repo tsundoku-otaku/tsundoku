@@ -7,6 +7,7 @@ import android.webkit.CookieManager
 import com.dokar.quickjs.QuickJs
 import com.dokar.quickjs.binding.asyncFunction
 import com.dokar.quickjs.binding.function
+import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,6 +53,12 @@ class JSLibraryProvider(
     private val client = networkHelper.client
     private val context: Context = Injekt.get()
 
+    // Experimental: parse plugin HTML with bundled real cheerio (native JS) instead of the
+    // Jsoup-backed wrapper. Read once per runtime.
+    private val useNativeCheerio: Boolean = runCatching {
+        Injekt.get<BasePreferences>().jsPluginNativeCheerio.get()
+    }.getOrDefault(false)
+
     // Persistent storage per plugin via SharedPreferences
     private val prefs: SharedPreferences by lazy {
         context.getSharedPreferences("jsplugin_storage_$pluginId", Context.MODE_PRIVATE)
@@ -75,15 +82,41 @@ class JSLibraryProvider(
         setupStorage(runtime)
         setupCacheManagement(runtime)
 
-        // Inject the protobuf runtime bundle first, then the minimal JS runtime (polyfills + require)
+        // Inject the protobuf runtime bundle, then the minimal JS runtime (polyfills + require).
+        // require('cheerio') prefers the native bundle once globalThis.__useNativeCheerio is set.
         val runtimeJs = buildString {
             append(loadProtobufJsBundle())
             append('\n')
+            append("globalThis.__useNativeCheerio = false;\n")
             append(getMinimalRuntime())
         }
         runtime.evaluate<Any?>(runtimeJs, "runtime.js", asModule = false)
 
-        logcat(LogPriority.DEBUG) { "[$pluginId] JSLibraryProvider setup complete" }
+        // Optionally eval the real-cheerio bundle AFTER the polyfills above (it relies on Array.from,
+        // Object.fromEntries, etc.). Isolated in its own try/catch so a parse/eval failure degrades
+        // gracefully to the Jsoup wrapper instead of killing the runtime. Only flip the flag once the
+        // bundle actually exported globalThis.__realCheerio.
+        var nativeCheerioActive = false
+        if (useNativeCheerio) {
+            val bundle = loadCheerioBundle()
+            if (bundle.isNotEmpty()) {
+                nativeCheerioActive = try {
+                    runtime.evaluate<Any?>(bundle, "cheerio.bundle.js", asModule = false)
+                    val loaded = (runtime.evaluate<Any?>("!!globalThis.__realCheerio") as? Boolean) == true
+                    if (loaded) {
+                        runtime.evaluate<Any?>("globalThis.__useNativeCheerio = true;")
+                    }
+                    loaded
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN, e) { "[$pluginId] cheerio bundle eval failed; using Jsoup wrapper" }
+                    false
+                }
+            }
+        }
+
+        logcat(LogPriority.DEBUG) {
+            "[$pluginId] JSLibraryProvider setup complete (nativeCheerio=$nativeCheerioActive)"
+        }
     }
 
     // ============ Cache Management ============
@@ -119,6 +152,29 @@ class JSLibraryProvider(
         } catch (e: Exception) {
             logcat(LogPriority.WARN, e) { "[$pluginId] Failed to load protobufjs bundle from assets" }
             ""
+        }
+    }
+
+    /**
+     * Load the bundled real-cheerio IIFE from assets. The bundle string is read once and cached in
+     * memory (it is ~330 KB); each QuickJS runtime still re-evaluates it since JS heaps are not
+     * shared across runtimes. Returns "" if the asset is missing so the caller falls back to the
+     * Jsoup wrapper. The bundle sets globalThis.__realCheerio = { load }.
+     */
+    private fun loadCheerioBundle(): String {
+        cachedCheerioBundle?.let { return it }
+        return synchronized(cheerioBundleLock) {
+            cachedCheerioBundle?.let { return it }
+            val loaded = try {
+                context.assets.open("js/vendor/cheerio.bundle.js")
+                    .bufferedReader(StandardCharsets.UTF_8)
+                    .use { it.readText() }
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "[$pluginId] Failed to load cheerio bundle from assets" }
+                ""
+            }
+            cachedCheerioBundle = loaded
+            loaded
         }
     }
 
@@ -582,6 +638,13 @@ class JSLibraryProvider(
             val handle = args.getOrNull(0)?.toString()?.toIntOrNull() ?: -1
             cheerioEmpty(handle)
         }
+
+        // Wrap each matched element with the given HTML structure
+        runtime.function("__cheerioWrap") { args ->
+            val handle = args.getOrNull(0)?.toString()?.toIntOrNull() ?: -1
+            val html = args.getOrNull(1)?.toString() ?: ""
+            cheerioWrap(handle, html)
+        }
     }
 
     private fun cheerioLoad(html: String): Int {
@@ -846,6 +909,15 @@ class JSLibraryProvider(
             is Document -> el.body().empty()
             is Element -> el.empty()
             is Elements -> el.forEach { it.empty() }
+            else -> {}
+        }
+    }
+
+    private fun cheerioWrap(handle: Int, html: String) {
+        if (html.isBlank()) return
+        when (val el = elementCache[handle]) {
+            is Element -> if (el !is Document) el.wrap(html)
+            is Elements -> el.forEach { it.wrap(html) }
             else -> {}
         }
     }
@@ -1373,6 +1445,7 @@ class JSLibraryProvider(
                 append: function(content) { __cheerioAppend(h, typeof content === 'string' ? content : ''); return this; },
                 prepend: function(content) { __cheerioPrepend(h, typeof content === 'string' ? content : ''); return this; },
                 empty: function() { __cheerioEmpty(h); return this; },
+                wrap: function(content) { __cheerioWrap(h, typeof content === 'string' ? content : ''); return this; },
                 clone: function() { return this; },
                 addClass: function() { return this; },
                 removeClass: function() { return this; },
@@ -1527,7 +1600,8 @@ class JSLibraryProvider(
                 prepend: function(content) { arr.forEach(function(el) { if (el && el.prepend) el.prepend(content); }); return this; },
                 before: function(content) { arr.forEach(function(el) { if (el && el.before) el.before(content); }); return this; },
                 after: function(content) { arr.forEach(function(el) { if (el && el.after) el.after(content); }); return this; },
-                empty: function() { arr.forEach(function(el) { if (el && el.empty) el.empty(); }); return this; }
+                empty: function() { arr.forEach(function(el) { if (el && el.empty) el.empty(); }); return this; },
+                wrap: function(content) { arr.forEach(function(el) { if (el && el.wrap) el.wrap(content); }); return this; }
             };
             return obj;
         }
@@ -1551,6 +1625,7 @@ class JSLibraryProvider(
                 contents: function() { return this; }, siblings: function() { return this; }, closest: function() { return this; },
                 remove: function() { return this; }, after: function() { return this; }, before: function() { return this; },
                 append: function() { return this; }, prepend: function() { return this; }, empty: function() { return this; },
+                wrap: function() { return this; },
                 clone: function() { return this; },
                 addClass: function() { return this; }, removeClass: function() { return this; },
                 replaceWith: function() { return this; }, addBack: function() { return this; },
@@ -1562,6 +1637,10 @@ class JSLibraryProvider(
         function require(name) {
             switch(name) {
                 case 'cheerio':
+                    // Experimental: hand plugins the bundled real cheerio when enabled and loaded.
+                    if (globalThis.__useNativeCheerio && globalThis.__realCheerio) {
+                        return globalThis.__realCheerio;
+                    }
                     return {
                         load: function(html) {
                             var docId = __cheerioLoad(html);
@@ -2180,4 +2259,11 @@ class JSLibraryProvider(
         }
         globalThis.resolveUrl = resolveUrl;
     """.trimIndent()
+
+    companion object {
+        // Real-cheerio bundle string, read from assets once and reused across plugin runtimes.
+        @Volatile
+        private var cachedCheerioBundle: String? = null
+        private val cheerioBundleLock = Any()
+    }
 }
