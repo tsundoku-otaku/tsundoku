@@ -32,6 +32,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Fix
 - Make JS scripts regardless of inf scroll [@mrissaoussama](https://github.com/mrissaoussama) [#220](https://github.com/tsundoku-otaku/tsundoku/pull/220)
+- Always serve cached translations [@mrissaoussama](https://github.com/mrissaoussama) [#236](https://github.com/tsundoku-otaku/tsundoku/pull/236)
 - JS Source URL normalization [@mrissaoussama](https://github.com/mrissaoussama) [#231](https://github.com/tsundoku-otaku/tsundoku/pull/231)
 - Encoding issues when parsing jssource chapters [@mrissaoussama](https://github.com/mrissaoussama) [#224](https://github.com/tsundoku-otaku/tsundoku/pull/224)
 - Properly remove TTS notification when stopped, more TTS states [@mrissaoussama](https://github.com/mrissaoussama) [#217](https://github.com/tsundoku-otaku/tsundoku/pull/217)
