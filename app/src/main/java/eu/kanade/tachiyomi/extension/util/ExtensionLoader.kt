@@ -48,6 +48,8 @@ internal object ExtensionLoader {
     }
 
     private const val EXTENSION_FEATURE = "tachiyomi.extension"
+    private const val EXTENSION_FEATURE_NOVEL = "tachiyomi.novelextension"
+    private val EXTENSION_FEATURES = setOf(EXTENSION_FEATURE, EXTENSION_FEATURE_NOVEL)
     private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
     private const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
     private const val METADATA_NSFW = "tachiyomi.extension.nsfw"
@@ -420,9 +422,10 @@ internal object ExtensionLoader {
      * @param pkgInfo The package info of the application.
      */
     private fun isPackageAnExtension(pkgInfo: PackageInfo): Boolean {
-        val hasFeature = pkgInfo.reqFeatures.orEmpty().any { it.name == EXTENSION_FEATURE }
+        val hasFeature = pkgInfo.reqFeatures.orEmpty().any { it.name in EXTENSION_FEATURES }
         if (pkgInfo.packageName.contains("extension", ignoreCase = true) ||
-            pkgInfo.packageName.contains("mihon", ignoreCase = true)
+            pkgInfo.packageName.contains("mihon", ignoreCase = true) ||
+            pkgInfo.packageName.contains("tsundoku", ignoreCase = true)
         ) {
             android.util.Log.d(
                 "ExtensionLoader",
