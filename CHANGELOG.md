@@ -40,6 +40,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Improve translation reliability and interactions with images; Bug with short chapters [@mrissaoussama](https://github.com/mrissaoussama) [#232](https://github.com/tsundoku-otaku/tsundoku/pull/232)
 - Make Grid items better respect max lines limits in library [@mrissaoussama](https://github.com/mrissaoussama) [#216](https://github.com/tsundoku-otaku/tsundoku/pull/216)
 - TextView Regex; Short chapter detection false positives [@mrissaoussama](https://github.com/mrissaoussama) [#225](https://github.com/tsundoku-otaku/tsundoku/pull/225)
+- Update library unread counts when marking chapters as read [@mrissaoussama](https://github.com/mrissaoussama) [#240](https://github.com/tsundoku-otaku/tsundoku/pull/240)
 - Fix HTML vs plain text detection [@mrissaoussama](https://github.com/mrissaoussama) [#223](https://github.com/tsundoku-otaku/tsundoku/pull/223)
 
 ### Other
