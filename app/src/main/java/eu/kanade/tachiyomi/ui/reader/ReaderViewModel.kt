@@ -901,8 +901,9 @@ class ReaderViewModel @JvmOverloads constructor(
             // Marking complete via page-index would always fire on selection.
             // Novel completion is handled by saveNovelProgress (marks at >=95%).
             val isNovelChapter = manga?.isNovel == true && (readerChapter.pages?.size ?: 0) <= 1
-            if (!isNovelChapter && readerChapter.pages?.lastIndex == pageIndex) {
-                updateChapterProgressOnComplete(readerChapter)
+            val isComplete = !isNovelChapter && readerChapter.pages?.lastIndex == pageIndex
+            if (isComplete) {
+                readerChapter.chapter.read = true
             }
 
             updateChapter.await(
@@ -912,6 +913,10 @@ class ReaderViewModel @JvmOverloads constructor(
                     lastPageRead = readerChapter.chapter.last_page_read.toLong(),
                 ),
             )
+
+            if (isComplete) {
+                updateChapterProgressOnComplete(readerChapter)
+            }
         }
     }
 

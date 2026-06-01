@@ -44,9 +44,12 @@ import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChapter
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.ChapterUpdate
+import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.source.service.SourceManager
@@ -93,6 +96,8 @@ class UpdatesScreenModel(
     private val clearUpdatesCache: ClearUpdatesCache = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val getChapter: GetChapter = Injekt.get(),
+    private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
+    private val getLibraryManga: GetLibraryManga = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val updatesPreferences: UpdatesPreferences = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
@@ -348,6 +353,20 @@ class UpdatesScreenModel(
                 read = read,
                 chapters = chapters.toTypedArray(),
             )
+
+            // Notify the library of badge changes so unread counts update immediately.
+            // GetLibraryManga is a manual StateFlow that isn't DB-reactive, so each
+            // affected manga's read count must be recomputed and pushed explicitly.
+            val mangaIds = updates.map { it.update.mangaId }.distinct()
+            val batch = mangaIds.associateWith { mangaId ->
+                val mangaChapters = getChaptersByMangaId.await(mangaId)
+                val readCount = mangaChapters.count { it.read }.toLong()
+                val totalCount = mangaChapters.size.toLong();
+                { libraryManga: LibraryManga ->
+                    libraryManga.copy(totalChapters = totalCount, readCount = readCount)
+                }
+            }
+            getLibraryManga.applyBatchChapterUpdates(batch)
         }
         toggleAllSelection(false)
     }

@@ -21,10 +21,12 @@ import kotlinx.coroutines.runBlocking
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.chapter.interactor.GetChapter
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.toChapterUpdate
 import tachiyomi.domain.download.service.DownloadPreferences
+import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
@@ -44,7 +46,9 @@ class NotificationReceiver : BroadcastReceiver() {
 
     private val getManga: GetManga by injectLazy()
     private val getChapter: GetChapter by injectLazy()
+    private val getChaptersByMangaId: GetChaptersByMangaId by injectLazy()
     private val updateChapter: UpdateChapter by injectLazy()
+    private val getLibraryManga: GetLibraryManga by injectLazy()
     private val downloadManager: DownloadManager by injectLazy()
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -225,6 +229,13 @@ class NotificationReceiver : BroadcastReceiver() {
                     chapter.toChapterUpdate()
                 }
             updateChapter.awaitAll(toUpdate)
+
+            val chapters = getChaptersByMangaId.await(mangaId)
+            getLibraryManga.applyChapterUpdates(
+                mangaId = mangaId,
+                totalChapters = chapters.size.toLong(),
+                readCount = chapters.count { it.read }.toLong(),
+            )
         }
     }
 
