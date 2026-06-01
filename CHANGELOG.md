@@ -44,6 +44,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Other
 - Internationalize mass-import strings, add confirmation dialogues [@mrissaoussama](https://github.com/mrissaoussama) [#206](https://github.com/tsundoku-otaku/tsundoku/pull/206)
+- Added tsundoku specific extensions, so apps can avoid appearing as manga sources in other apps [@mrissaoussama](https://github.com/mrissaoussama) [#238](https://github.com/tsundoku-otaku/tsundoku/pull/238)
 
 
 ## [v0.1.4] - 2026-05-09
