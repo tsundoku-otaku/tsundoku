@@ -363,7 +363,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = prefs.parallelMassImport().collectAsState().value,
-                    valueRange = 1..15,
+                    valueRange = 1..30,
                     title = stringResource(TDMR.strings.pref_novel_concurrent_imports),
                     subtitle = stringResource(TDMR.strings.pref_novel_concurrent_imports_summary),
                     valueString = "${prefs.parallelMassImport().collectAsState().value}",

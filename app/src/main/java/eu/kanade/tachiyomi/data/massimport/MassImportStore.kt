@@ -66,10 +66,53 @@ object MassImportStore {
         }
         synchronized(ioLock) {
             runCatching {
-                overwrite(dir, urlsName(batchId), urls.joinToString("\n"))
-                logcat(LogPriority.DEBUG) { "MassImportStore: saved ${urls.size} urls -> ${urlsName(batchId)}" }
+                // Stream each URL instead of joinToString: a single joined String would
+                // duplicate the whole (possibly multi-MB) list in memory before writing.
+                val name = urlsName(batchId)
+                dir.findFile(name)?.delete()
+                val file = dir.createFile(name) ?: return@runCatching
+                file.openOutputStream().bufferedWriter().use { writer ->
+                    var first = true
+                    for (url in urls) {
+                        if (!first) writer.write("\n")
+                        writer.write(url)
+                        first = false
+                    }
+                }
+                logcat(LogPriority.DEBUG) { "MassImportStore: saved ${urls.size} urls -> $name" }
             }.onFailure { logcat(LogPriority.WARN, it) { "MassImportStore: failed to save urls for $batchId" } }
         }
+    }
+
+    /**
+     * Stream a (possibly lazy, single-use) sequence of URLs to disk without materializing it as a
+     * List or joined String. Returns the number of URLs written.
+     */
+    fun saveUrlsStreaming(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, urls: Sequence<String>): Int {
+        if (batchId.isEmpty()) return 0
+        val dir = dir() ?: run {
+            logcat(LogPriority.WARN) {
+                "MassImportStore: no mass_import directory; skipped streaming urls for $batchId"
+            }
+            return 0
+        }
+        var count = 0
+        synchronized(ioLock) {
+            runCatching {
+                val name = urlsName(batchId)
+                dir.findFile(name)?.delete()
+                val file = dir.createFile(name) ?: return@runCatching
+                file.openOutputStream().bufferedWriter().use { writer ->
+                    for (url in urls) {
+                        if (count > 0) writer.write("\n")
+                        writer.write(url)
+                        count++
+                    }
+                }
+                logcat(LogPriority.DEBUG) { "MassImportStore: streamed $count urls -> $name" }
+            }.onFailure { logcat(LogPriority.WARN, it) { "MassImportStore: failed to stream urls for $batchId" } }
+        }
+        return count
     }
 
     fun saveMeta(@Suppress("UNUSED_PARAMETER") context: Context, meta: PersistedMeta) {
