@@ -84,6 +84,19 @@ interface MangaRepository {
     suspend fun findDuplicatesContains(): List<DuplicatePair>
 
     /**
+     * Stream favorites' (author, artist, description) through the given predicates and collect
+     * the matching IDs per field. Single cursor scan; rows are decoded and discarded one at a
+     * time, so nothing per-favorite is retained. A null predicate skips that field.
+     *
+     * @return matching favorite IDs as (author, artist, description) sets.
+     */
+    suspend fun findFavoriteIdsMatchingMetadata(
+        matchAuthor: ((String) -> Boolean)?,
+        matchArtist: ((String) -> Boolean)?,
+        matchDescription: ((String) -> Boolean)?,
+    ): Triple<Set<Long>, Set<Long>, Set<Long>>
+
+    /**
      * Get ID + title pairs for all favorites.
      */
     suspend fun getFavoriteIdAndTitle(): List<Pair<Long, String>>
@@ -105,6 +118,20 @@ interface MangaRepository {
      * Returns list of (mangaId, sourceId, genreList) triples.
      */
     suspend fun getFavoriteGenresWithSource(): List<Triple<Long, Long, List<String>?>>
+
+    /**
+     * Aggregate favorite genre tag counts without materializing the full per-manga genre list.
+     * Folds the DB cursor row-by-row into a small (rawTag -> count) map, so a 200k library can't
+     * OOM the way loading every genre row at once does.
+     *
+     * @param novelSourceIds source IDs considered novel sources (for content-type filtering).
+     * @param wantNovel null = all, true = novel-source favorites only, false = manga-source only.
+     * @return (rawTag -> count) and the number of included favorites with no tags.
+     */
+    suspend fun getFavoriteGenreTagCounts(
+        novelSourceIds: Set<Long>,
+        wantNovel: Boolean?,
+    ): Pair<Map<String, Int>, Int>
 
     /**
      * Get ultra-lightweight source + url pairs for duplicate checking.

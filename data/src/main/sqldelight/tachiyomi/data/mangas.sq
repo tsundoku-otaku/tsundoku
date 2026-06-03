@@ -242,6 +242,15 @@ GROUP BY lower(trim(title))
 HAVING count(*) > 1
 ORDER BY duplicate_count DESC;
 
+-- Author/artist/description are not loaded into the in-memory library list (they'd add
+-- two-to-three strings per favorite for a 200k library). Search over those fields streams
+-- this cursor and matches in Kotlin (one scan covers all three fields, supports regex, and
+-- avoids LIKE wildcard/escaping pitfalls).
+getFavoriteMetadataForSearch:
+SELECT _id, author, artist, description
+FROM mangas
+WHERE favorite = 1;
+
 -- Find all duplicate groups with contains match (one title contains another)
 -- Optimized: use substr index and smaller comparisons to avoid full table scans
 findDuplicatesContains:

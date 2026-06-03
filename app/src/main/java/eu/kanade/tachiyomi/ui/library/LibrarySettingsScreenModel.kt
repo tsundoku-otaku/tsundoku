@@ -289,55 +289,30 @@ class LibrarySettingsScreenModel(
                     }
                 }
 
-                // Load from DB with source IDs for filtering by content type
-                logcat(LogPriority.INFO) { "LibrarySettingsScreenModel: Loading tags from database (lightweight query with source filtering)..." }
-                val genresList = getLibraryManga.awaitGenresWithSource()
-                logcat(LogPriority.DEBUG) { "LibrarySettingsScreenModel: Got ${genresList.size} manga from library" }
+                // Aggregate tag counts in the DB layer (folds the cursor) instead of loading every
+                // favorite's genres into memory at once — the old full-list load could OOM a large
+                // library, especially while a mass import already had the heap under pressure.
+                logcat(LogPriority.INFO) { "LibrarySettingsScreenModel: Loading tags from database (streaming aggregation)..." }
+                // Classify via getOrStub so favorites from uninstalled extensions keep their DB
+                // is_novel flag; getCatalogueSources() only sees loaded sources.
+                val novelSourceIds = getLibraryManga.awaitSourceIds()
+                    .filter { sourceManager.getOrStub(it).isNovelSource() }
+                    .toSet()
+                val wantNovel = when (type) {
+                    LibraryScreenModel.LibraryType.All -> null
+                    LibraryScreenModel.LibraryType.Manga -> false
+                    LibraryScreenModel.LibraryType.Novel -> true
+                }
+                val (rawCounts, noTagsCount) = getLibraryManga.awaitGenreTagCounts(novelSourceIds, wantNovel)
 
-                // Calculate tag counts, filtering by type
+                // Merge raw tags into their normalized (title-cased) form. Operates on the small
+                // distinct-tag map, not the full library.
                 val tagCounts = mutableMapOf<String, Int>()
-                var noTagsCount = 0
                 val tagCache = mutableMapOf<String, String>()
-
-                genresList.forEach { (_, sourceId, genres) ->
-                    // Filter by content type
-                    val source = sourceManager.getOrStub(sourceId)
-                    val isNovel = source.isNovelSource()
-                    val shouldInclude = when (type) {
-                        LibraryScreenModel.LibraryType.All -> true
-                        LibraryScreenModel.LibraryType.Manga -> !isNovel
-                        LibraryScreenModel.LibraryType.Novel -> isNovel
-                    }
-
-                    if (shouldInclude) {
-                        if (genres.isNullOrEmpty()) {
-                            noTagsCount++
-                        } else {
-                            genres.forEach { rawTag ->
-                                val tag = rawTag.trim()
-                                val normalizedTag = tagCache.getOrPut(tag) {
-                                    val lowered = tag.lowercase()
-                                    val result = java.lang.StringBuilder(lowered.length)
-                                    var capitalizeNext = true
-                                    for (i in lowered.indices) {
-                                        val c = lowered[i]
-                                        if (c.isWhitespace()) {
-                                            capitalizeNext = true
-                                            result.append(c)
-                                        } else if (capitalizeNext) {
-                                            result.append(c.titlecaseChar())
-                                            capitalizeNext = false
-                                        } else {
-                                            result.append(c)
-                                        }
-                                    }
-                                    result.toString()
-                                }
-                                if (normalizedTag.isNotBlank()) {
-                                    tagCounts[normalizedTag] = (tagCounts[normalizedTag] ?: 0) + 1
-                                }
-                            }
-                        }
+                for ((rawTag, count) in rawCounts) {
+                    val normalizedTag = tagCache.getOrPut(rawTag) { normalizeTag(rawTag) }
+                    if (normalizedTag.isNotBlank()) {
+                        tagCounts[normalizedTag] = (tagCounts[normalizedTag] ?: 0) + count
                     }
                 }
 
@@ -362,5 +337,24 @@ class LibrarySettingsScreenModel(
                 _isLoading.value = false
             }
         }
+    }
+
+    /** Title-case a raw genre tag for display ("dark fantasy" -> "Dark Fantasy"). */
+    private fun normalizeTag(tag: String): String {
+        val lowered = tag.lowercase()
+        val result = StringBuilder(lowered.length)
+        var capitalizeNext = true
+        for (c in lowered) {
+            if (c.isWhitespace()) {
+                capitalizeNext = true
+                result.append(c)
+            } else if (capitalizeNext) {
+                result.append(c.titlecaseChar())
+                capitalizeNext = false
+            } else {
+                result.append(c)
+            }
+        }
+        return result.toString()
     }
 }

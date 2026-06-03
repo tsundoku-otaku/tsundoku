@@ -408,6 +408,17 @@ class GetLibraryManga(
     }
 
     /**
+     * Memory-safe tag counting: aggregates in the DB layer instead of loading every favorite's
+     * genres into memory at once. Returns (rawTag -> count) and the no-tags count.
+     */
+    suspend fun awaitGenreTagCounts(
+        novelSourceIds: Set<Long>,
+        wantNovel: Boolean?,
+    ): Pair<Map<String, Int>, Int> {
+        return mangaRepository.getFavoriteGenreTagCounts(novelSourceIds, wantNovel)
+    }
+
+    /**
      * Get just the distinct source IDs from favorites - ultra-lightweight for extension listing.
      * This avoids the expensive libraryView JOIN and only fetches source IDs.
      */

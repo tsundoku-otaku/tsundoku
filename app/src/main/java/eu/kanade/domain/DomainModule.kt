@@ -90,6 +90,7 @@ import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
 import tachiyomi.domain.manga.interactor.GetMangaWithChapters
 import tachiyomi.domain.manga.interactor.NetworkToLocalManga
 import tachiyomi.domain.manga.interactor.ResetViewerFlags
+import tachiyomi.domain.manga.interactor.SearchMangaMetadata
 import tachiyomi.domain.manga.interactor.SetMangaChapterFlags
 import tachiyomi.domain.manga.interactor.UpdateMangaNotes
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -131,6 +132,7 @@ class DomainModule : InjektModule {
         addSingletonFactory<MangaRepository> { MangaRepositoryImpl(get()) }
         addFactory { GetDuplicateLibraryManga(get()) }
         addFactory { FindDuplicateNovels(get()) }
+        addFactory { SearchMangaMetadata(get()) }
         addFactory { GetFavorites(get()) }
         addFactory { GetFavoritesEntry(get()) }
         // Singleton so all screens share the same cached SharedFlow for library queries

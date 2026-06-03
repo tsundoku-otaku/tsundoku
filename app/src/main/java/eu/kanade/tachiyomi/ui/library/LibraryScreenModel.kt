@@ -77,6 +77,8 @@ import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.model.sort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.interactor.SearchMangaMetadata
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.applyFilter
@@ -104,6 +106,8 @@ class LibraryScreenModel(
     private val updateManga: UpdateManga = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
     private val searchChapterNames: SearchChapterNames = Injekt.get(),
+    private val searchMangaMetadata: SearchMangaMetadata = Injekt.get(),
+    private val getManga: GetManga = Injekt.get(),
     private val preferences: BasePreferences = Injekt.get(),
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val coverCache: CoverCache = Injekt.get(),
@@ -171,14 +175,62 @@ class LibraryScreenModel(
                 }
             }
 
-            // Combine search query with chapter match IDs
+            // Author/artist/description aren't loaded into the in-memory library list (they'd add
+            // strings per favorite on a 200k library), so resolve those matches by streaming the
+            // DB cursor. Author and artist are always searchable; description stays gated behind
+            // the content pref in default search.
+            val metadataMatchIdsFlow = combine(
+                searchQueryFlow,
+                libraryPreferences.searchChapterContent.changes(),
+                libraryPreferences.useRegexSearch.changes(),
+            ) { query, searchContent, useRegex ->
+                if (query.isNullOrEmpty()) {
+                    MetadataMatchIds()
+                } else {
+                    val parsed = LibrarySearchSpec.parse(query, useRegex, searchByUrl = false)
+                    suspend fun ids(
+                        author: Boolean = false,
+                        artist: Boolean = false,
+                        description: Boolean = false,
+                    ): MetadataMatchIds {
+                        val matches = withIOContext {
+                            searchMangaMetadata.await(
+                                term = parsed.term,
+                                regex = parsed.termRegex,
+                                searchAuthor = author,
+                                searchArtist = artist,
+                                searchDescription = description,
+                            )
+                        }
+                        return MetadataMatchIds(
+                            author = matches.author,
+                            artist = matches.artist,
+                            description = matches.description,
+                        )
+                    }
+                    when (parsed.field) {
+                        LibrarySearchSpec.Field.AUTHOR -> ids(author = true)
+                        LibrarySearchSpec.Field.ARTIST -> ids(artist = true)
+                        // Explicit desc:/description: prefix is an unambiguous request, so it runs
+                        // regardless of the content checkbox. The checkbox only gates description in
+                        // default (non-prefixed) search, where it adds an expensive full-text scan.
+                        LibrarySearchSpec.Field.DESCRIPTION -> ids(description = true)
+                        LibrarySearchSpec.Field.DEFAULT ->
+                            ids(author = true, artist = true, description = searchContent)
+                        else -> MetadataMatchIds()
+                    }
+                }
+            }
+
             val searchWithChapterMatchesFlow = combine(
                 searchQueryFlow,
                 chapterMatchIdsFlow,
+                metadataMatchIdsFlow,
                 libraryPreferences.searchByUrl.changes(),
                 libraryPreferences.useRegexSearch.changes(),
-            ) { query, chapterMatchIds, searchByUrl, useRegex ->
-                SearchConfig(query, chapterMatchIds, searchByUrl, useRegex)
+            ) { query, chapterMatchIds, metadataMatchIds, searchByUrl, useRegex ->
+                val spec = query?.let { LibrarySearchSpec.parse(it, useRegex, searchByUrl) }
+                SearchConfig(spec, chapterMatchIds, metadataMatchIds)
             }
 
             val filteredLibraryDataFlow = combine(
@@ -206,11 +258,12 @@ class LibraryScreenModel(
             }
 
             combine(filteredLibraryDataFlow, searchWithChapterMatchesFlow) { filteredData, searchConfig ->
-                val searchedFavorites = if (searchConfig.query == null) {
+                val spec = searchConfig.spec
+                val searchedFavorites = if (spec == null) {
                     filteredData.favorites
                 } else {
                     filteredData.favorites.fastFilter { manga ->
-                        manga.matches(searchConfig.query, searchConfig.chapterMatchIds, searchConfig.searchByUrl, searchConfig.useRegex)
+                        manga.matches(spec, searchConfig.chapterMatchIds, searchConfig.metadataMatchIds)
                     }
                 }
 
@@ -277,6 +330,8 @@ class LibraryScreenModel(
                 prefs.filterCompleted,
                 prefs.filterIntervalCustom,
                 prefs.filterNoTags,
+                prefs.filterNovel,
+                prefs.filterChapterCount,
                 *trackFilters.values.toTypedArray(),
             )
                 .any { it != TriState.DISABLED } ||
@@ -319,13 +374,19 @@ class LibraryScreenModel(
         val tagIncludeModeAnd = preferences.tagIncludeModeAnd
         val tagExcludeModeAnd = preferences.tagExcludeModeAnd
 
+        val downloadCounts = if (filterDownloaded != TriState.DISABLED) {
+            downloadManager.getDownloadCounts(map { it.libraryManga.manga })
+        } else {
+            emptyMap()
+        }
+
         val result = fastFilter {
             // Quick exit for some checks that are fast
             val downloadPasses = applyFilter(filterDownloaded) {
                 it.libraryManga.manga.isLocal() ||
                     it.libraryManga.manga.isLocalNovel() ||
                     it.downloadCount > 0 ||
-                    downloadManager.getDownloadCount(it.libraryManga.manga) > 0
+                    (downloadCounts[it.id] ?: 0) > 0
             }
             if (!downloadPasses) return@fastFilter false
 
@@ -638,6 +699,12 @@ class LibraryScreenModel(
                 itemCachePrefs = preferences
             }
 
+            val downloadCounts = if (preferences.downloadBadge) {
+                downloadManager.getDownloadCounts(libraryManga.map { it.manga })
+            } else {
+                emptyMap()
+            }
+
             val result = ArrayList<LibraryItem>(libraryManga.size)
             for (manga in libraryManga) {
                 // Filter by library type
@@ -651,7 +718,7 @@ class LibraryScreenModel(
                 val cachedRef = itemCacheMangaRef[manga.id]
 
                 val dlCount = if (preferences.downloadBadge) {
-                    downloadManager.getDownloadCount(manga.manga).toLong()
+                    (downloadCounts[manga.id] ?: 0).toLong()
                 } else {
                     0L
                 }
@@ -1267,6 +1334,10 @@ class LibraryScreenModel(
                             continue
                         }
 
+                        // The selected library Manga omits author/description (not kept resident);
+                        // fetch the full record so the EPUB metadata is complete.
+                        val exportManga = getManga.await(manga.id) ?: manga
+
                         val chapters = getChaptersByMangaId.await(manga.id)
                             .sortedBy { it.chapterNumber }
 
@@ -1408,7 +1479,7 @@ class LibraryScreenModel(
 
                         // Get cover image
                         val coverImage = try {
-                            manga.thumbnailUrl?.let { url ->
+                            exportManga.thumbnailUrl?.let { url ->
                                 val request = okhttp3.Request.Builder().url(url).build()
                                 networkHelper.client.newCall(request).execute().use { it.body.bytes() }
                             }
@@ -1418,11 +1489,11 @@ class LibraryScreenModel(
 
                         // Create EPUB metadata
                         val metadata = mihon.core.archive.EpubWriter.Metadata(
-                            title = manga.title,
-                            author = manga.author,
-                            description = manga.description,
+                            title = exportManga.title,
+                            author = exportManga.author,
+                            description = exportManga.description,
                             language = "en",
-                            genres = manga.genre ?: emptyList(),
+                            genres = exportManga.genre ?: emptyList(),
                             publisher = source.name,
                         )
 
@@ -1677,10 +1748,16 @@ class LibraryScreenModel(
      * Configuration for library search.
      */
     private data class SearchConfig(
-        val query: String?,
+        val spec: LibrarySearchSpec?,
         val chapterMatchIds: Set<Long>,
-        val searchByUrl: Boolean,
-        val useRegex: Boolean,
+        val metadataMatchIds: MetadataMatchIds,
+    )
+
+    /** DB-resolved match id-sets for fields not held in the in-memory library list. */
+    data class MetadataMatchIds(
+        val author: Set<Long> = emptySet(),
+        val artist: Set<Long> = emptySet(),
+        val description: Set<Long> = emptySet(),
     )
 
     @Immutable

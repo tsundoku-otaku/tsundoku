@@ -38,142 +38,70 @@ data class LibraryItem(
     }
 
     /**
-     * Checks if a query matches the manga
+     * Checks if a parsed query matches this manga.
      *
-     * @param constraint the query to check.
-     * @param chapterMatchIds optional set of manga IDs that have chapters matching the query.
-     *                        When provided, manga with matching chapters are included in results.
-     * @param searchByUrl whether to include URL in search.
-     * @param useRegex whether to use regex matching.
-     * @return true if the manga matches the query, false otherwise.
+     * Author/artist/description matches are resolved via [metadataMatchIds] and chapter-name
+     * matches via [chapterMatchIds] because those fields are not loaded into the in-memory
+     * library list (they'd add strings per favorite on a large library).
      */
     fun matches(
-        constraint: String,
+        spec: LibrarySearchSpec,
         chapterMatchIds: Set<Long> = emptySet(),
-        searchByUrl: Boolean = false,
-        useRegex: Boolean = false,
+        metadataMatchIds: LibraryScreenModel.MetadataMatchIds = LibraryScreenModel.MetadataMatchIds(),
     ): Boolean {
-        val regexCache = if (useRegex) HashMap<String, Regex?>(4) else null
-        val sourceName by lazy { sourceManager.getOrStub(libraryManga.manga.source).getNameForMangaInfo() }
-
-        // Special prefixes for searching specific fields
-        if (constraint.startsWith("id:", true)) {
-            val q = constraint.substring("id:".length).trim()
-            return id == q.toLongOrNull()
+        val manga = libraryManga.manga
+        return when (spec.field) {
+            LibrarySearchSpec.Field.ID -> id == spec.term.toLongOrNull()
+            LibrarySearchSpec.Field.TITLE -> matchField(manga.title, spec.term, spec.termRegex, spec.useRegex)
+            LibrarySearchSpec.Field.AUTHOR -> metadataMatchIds.author.contains(id)
+            LibrarySearchSpec.Field.ARTIST -> metadataMatchIds.artist.contains(id)
+            LibrarySearchSpec.Field.DESCRIPTION -> metadataMatchIds.description.contains(id)
+            LibrarySearchSpec.Field.TAG ->
+                manga.genre?.any { matchField(it, spec.term, spec.termRegex, spec.useRegex) } ?: false
+            LibrarySearchSpec.Field.SOURCE -> matchField(sourceName, spec.term, spec.termRegex, spec.useRegex)
+            LibrarySearchSpec.Field.URL -> matchField(manga.url, spec.term, spec.termRegex, spec.useRegex)
+            LibrarySearchSpec.Field.CHAPTER -> chapterMatchIds.contains(id)
+            LibrarySearchSpec.Field.DEFAULT -> matchesDefault(spec, chapterMatchIds, metadataMatchIds)
         }
-        if (constraint.startsWith("title:", true)) {
-            val query = constraint.substring("title:".length).trim()
-            return matchString(libraryManga.manga.title, query, useRegex, regexCache)
-        }
-        if (constraint.startsWith("author:", true)) {
-            val query = constraint.substring("author:".length).trim()
-            return libraryManga.manga.author?.let { matchString(it, query, useRegex, regexCache) } ?: false
-        }
-        if (constraint.startsWith("artist:", true)) {
-            val query = constraint.substring("artist:".length).trim()
-            return libraryManga.manga.artist?.let { matchString(it, query, useRegex, regexCache) } ?: false
-        }
-        if (constraint.startsWith("desc:", true) || constraint.startsWith("description:", true)) {
-            val query = if (constraint.startsWith("desc:", true)) {
-                constraint.substring("desc:".length).trim()
-            } else {
-                constraint.substring("description:".length).trim()
-            }
-            return libraryManga.manga.description?.let { matchString(it, query, useRegex, regexCache) } ?: false
-        }
-        if (constraint.startsWith("tag:", true) || constraint.startsWith("genre:", true)) {
-            val query = if (constraint.startsWith("tag:", true)) {
-                constraint.substring("tag:".length).trim()
-            } else {
-                constraint.substring("genre:".length).trim()
-            }
-            return libraryManga.manga.genre?.any { matchString(it, query, useRegex, regexCache) } ?: false
-        }
-        if (constraint.startsWith("source:", true)) {
-            val query = constraint.substring("source:".length).trim()
-            return matchString(sourceName, query, useRegex, regexCache)
-        }
-        if (constraint.startsWith("url:", true)) {
-            val query = constraint.substring("url:".length).trim()
-            return matchString(libraryManga.manga.url, query, useRegex, regexCache)
-        }
-        // Search for chapter names explicitly
-        if (constraint.startsWith("chapter:", true)) {
-            return chapterMatchIds.contains(id)
-        }
-
-        // Default: search title, author, artist, description, source, tags, URL (if enabled), and optionally chapters
-        val basicMatch = matchString(libraryManga.manga.title, constraint, useRegex, regexCache) ||
-            (libraryManga.manga.author?.let { matchString(it, constraint, useRegex, regexCache) } ?: false) ||
-            (libraryManga.manga.artist?.let { matchString(it, constraint, useRegex, regexCache) } ?: false) ||
-            (libraryManga.manga.description?.let { matchString(it, constraint, useRegex, regexCache) } ?: false) ||
-            (searchByUrl && matchString(libraryManga.manga.url, constraint, useRegex, regexCache)) ||
-            constraint.split(",").map { it.trim() }.all { subconstraint ->
-                checkNegatableConstraint(subconstraint) {
-                    matchString(sourceName, it, useRegex, regexCache) ||
-                        (
-                            libraryManga.manga.genre?.any { genre -> matchString(genre, it, useRegex, regexCache) }
-                                ?: false
-                            )
-                }
-            }
-
-        // Include chapter name matches if available
-        return basicMatch || chapterMatchIds.contains(id)
     }
 
-    /**
-     * Match a string against a query, optionally using regex.
-     */
-    private fun matchString(text: String, query: String, useRegex: Boolean): Boolean {
+    // Memoized: source resolution + name build is otherwise repeated per sub-term per item,
+    // which is wasteful when filtering a 200k library.
+    private val sourceName: String by lazy {
+        sourceManager.getOrStub(libraryManga.manga.source).getNameForMangaInfo()
+    }
+
+    private fun matchesDefault(
+        spec: LibrarySearchSpec,
+        chapterMatchIds: Set<Long>,
+        metadataMatchIds: LibraryScreenModel.MetadataMatchIds,
+    ): Boolean {
+        if (spec.subTerms.isEmpty()) return true
+        val manga = libraryManga.manga
+
+        // Every comma sub-term must match some in-memory field (negatable per sub-term). Author,
+        // artist and description aren't resident, so they're handled via the DB id-sets below.
+        val inMemoryMatch = spec.subTerms.all { sub ->
+            val hit = matchField(manga.title, sub.text, sub.regex, spec.useRegex) ||
+                (spec.searchByUrl && matchField(manga.url, sub.text, sub.regex, spec.useRegex)) ||
+                matchField(sourceName, sub.text, sub.regex, spec.useRegex) ||
+                (manga.genre?.any { matchField(it, sub.text, sub.regex, spec.useRegex) } ?: false)
+            if (sub.negate) !hit else hit
+        }
+        if (inMemoryMatch) return true
+
+        // Author/artist/description/chapter live in the DB; their id-sets cover the whole query.
+        return metadataMatchIds.author.contains(id) ||
+            metadataMatchIds.artist.contains(id) ||
+            metadataMatchIds.description.contains(id) ||
+            chapterMatchIds.contains(id)
+    }
+
+    private fun matchField(text: String, term: String, regex: Regex?, useRegex: Boolean): Boolean {
         return if (useRegex) {
-            try {
-                Regex(query, RegexOption.IGNORE_CASE).containsMatchIn(text)
-            } catch (e: Exception) {
-                // Invalid regex, fall back to simple contains
-                text.contains(query, ignoreCase = true)
-            }
+            regex?.containsMatchIn(text) ?: text.contains(term, ignoreCase = true)
         } else {
-            text.contains(query, ignoreCase = true)
-        }
-    }
-
-    private fun matchString(
-        text: String,
-        query: String,
-        useRegex: Boolean,
-        regexCache: MutableMap<String, Regex?>?,
-    ): Boolean {
-        return if (useRegex) {
-            val cachedRegex = regexCache?.getOrPut(query) {
-                try {
-                    Regex(query, RegexOption.IGNORE_CASE)
-                } catch (_: Exception) {
-                    null
-                }
-            }
-            cachedRegex?.containsMatchIn(text) ?: text.contains(query, ignoreCase = true)
-        } else {
-            text.contains(query, ignoreCase = true)
-        }
-    }
-
-    /**
-     * Checks a predicate on a negatable constraint. If the constraint starts with a minus character,
-     * the minus is stripped and the result of the predicate is inverted.
-     *
-     * @param constraint the argument to the predicate. Inverts the predicate if it starts with '-'.
-     * @param predicate the check to be run against the constraint.
-     * @return !predicate(x) if constraint = "-x", otherwise predicate(constraint)
-     */
-    private fun checkNegatableConstraint(
-        constraint: String,
-        predicate: (String) -> Boolean,
-    ): Boolean {
-        return if (constraint.startsWith("-")) {
-            !predicate(constraint.substringAfter("-").trimStart())
-        } else {
-            predicate(constraint)
+            text.contains(term, ignoreCase = true)
         }
     }
 }

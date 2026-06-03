@@ -1056,6 +1056,28 @@ class MangaRepositoryImpl(
         }
     }
 
+    override suspend fun findFavoriteIdsMatchingMetadata(
+        matchAuthor: ((String) -> Boolean)?,
+        matchArtist: ((String) -> Boolean)?,
+        matchDescription: ((String) -> Boolean)?,
+    ): Triple<Set<Long>, Set<Long>, Set<Long>> {
+        return handler.await {
+            val authorIds = HashSet<Long>()
+            val artistIds = HashSet<Long>()
+            val descriptionIds = HashSet<Long>()
+            // Side-effecting mapper: each row's strings are matched and discarded as the cursor
+            // streams, so the full favorite metadata is never held in memory at once.
+            mangasQueries.getFavoriteMetadataForSearch { id, author, artist, description ->
+                if (matchAuthor != null && author != null && matchAuthor(author)) authorIds.add(id)
+                if (matchArtist != null && artist != null && matchArtist(artist)) artistIds.add(id)
+                if (matchDescription != null && description != null && matchDescription(description)) {
+                    descriptionIds.add(id)
+                }
+            }.executeAsList()
+            Triple(authorIds, artistIds, descriptionIds)
+        }
+    }
+
     override suspend fun getFavoriteIdAndTitle(): List<Pair<Long, String>> {
         return handler.awaitList {
             mangasQueries.getFavoriteIdAndTitle { id, title ->
@@ -1107,6 +1129,33 @@ class MangaRepositoryImpl(
             "MangaRepositoryImpl.getFavoriteGenresWithSource: Query completed in ${queryDuration}ms, returned ${result.size} items"
         }
         return result
+    }
+
+    override suspend fun getFavoriteGenreTagCounts(
+        novelSourceIds: Set<Long>,
+        wantNovel: Boolean?,
+    ): Pair<Map<String, Int>, Int> {
+        return handler.await {
+            val counts = HashMap<String, Int>()
+            var noTagsCount = 0
+            // Side-effecting mapper: fold each row as the cursor streams it. executeAsList still
+            // builds a List<Unit> (one cheap singleton ref per row), but the genre sublists are
+            // decoded and discarded per row instead of all being held simultaneously.
+            mangasQueries.getFavoriteGenresWithSource { _, source, genre ->
+                val isNovel = source in novelSourceIds
+                if (wantNovel == null || wantNovel == isNovel) {
+                    if (genre.isNullOrEmpty()) {
+                        noTagsCount++
+                    } else {
+                        for (raw in genre) {
+                            val tag = raw.trim()
+                            if (tag.isNotEmpty()) counts[tag] = (counts[tag] ?: 0) + 1
+                        }
+                    }
+                }
+            }.executeAsList()
+            counts to noTagsCount
+        }
     }
 
     override suspend fun getFavoriteSourceUrlPairs(): List<Pair<Long, String>> {
