@@ -18,6 +18,9 @@ import uy.kohesive.injekt.api.get
 import java.util.SortedMap
 
 class SourcesFilterScreenModel(
+    // The filter is opened from either the novel or the manga sources tab; show only that tab's
+    // sources instead of every online source regardless of which tab launched it.
+    private val isNovel: Boolean,
     private val preferences: SourcePreferences = Injekt.get(),
     private val getLanguagesWithSources: GetLanguagesWithSources = Injekt.get(),
     private val toggleSource: ToggleSource = Injekt.get(),
@@ -39,9 +42,15 @@ class SourcesFilterScreenModel(
                     }
                 }
                 .collectLatest { (languagesWithSources, enabledLanguages, disabledSources) ->
+                    // Keep the language ordering from the source map; drop the other content type.
+                    val filtered = java.util.TreeMap<String, List<Source>>(languagesWithSources.comparator())
+                    for ((language, sources) in languagesWithSources) {
+                        val matching = sources.filter { it.isNovelSource == isNovel }
+                        if (matching.isNotEmpty()) filtered[language] = matching
+                    }
                     mutableState.update {
                         State.Success(
-                            items = languagesWithSources,
+                            items = filtered,
                             enabledLanguages = enabledLanguages,
                             disabledSources = disabledSources,
                         )

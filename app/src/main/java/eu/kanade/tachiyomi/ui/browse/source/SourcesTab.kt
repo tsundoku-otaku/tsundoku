@@ -41,7 +41,7 @@ fun Screen.sourcesTab(): TabContent {
             AppBar.Action(
                 title = stringResource(MR.strings.action_filter),
                 icon = Icons.Outlined.FilterList,
-                onClick = { navigator.push(SourcesFilterScreen()) },
+                onClick = { navigator.push(SourcesFilterScreen(isNovel = false)) },
             ),
         ),
         content = { contentPadding, snackbarHostState ->
