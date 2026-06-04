@@ -80,6 +80,7 @@
     <string name="mass_import_tooltip_copy_urls">Copy all URLs to clipboard</string>
     <string name="mass_import_tooltip_export_urls">Save all URLs to a text file</string>
     <string name="mass_import_tooltip_copy_errors">Copy failed URLs to clipboard</string>
+    <string name="mass_import_tooltip_export_errors">Save failed URLs to a text file</string>
     <string name="mass_import_tooltip_copy_report">Copy import report (added, skipped, errors) to clipboard</string>
     <string name="mass_import_tooltip_save_report">Save import report to a text file</string>
     <string name="mass_import_tooltip_retry_errors">Retry importing the failed URLs</string>
@@ -118,6 +119,7 @@
     <string name="mass_import_toast_report_saved">Report saved successfully</string>
     <string name="mass_import_toast_error_saving_report">Error saving report: %s</string>
     <string name="mass_import_toast_exported_urls">Exported %d URLs</string>
+    <string name="mass_import_toast_exported_errors">Exported %d failed URLs</string>
     <string name="mass_import_toast_error_exporting_urls">Error exporting URLs: %s</string>
     <string name="mass_import_toast_copied_urls">Copied %d URLs</string>
     <string name="mass_import_toast_copied_errors">Copied %d errors with messages</string>
@@ -143,6 +145,7 @@
     <string name="mass_import_cd_copy_urls">Copy URLs</string>
     <string name="mass_import_cd_export_urls">Export URLs</string>
     <string name="mass_import_cd_copy_errors">Copy Errors</string>
+    <string name="mass_import_cd_export_errors">Export Errors</string>
     <string name="mass_import_cd_copy_report">Copy Report</string>
     <string name="mass_import_cd_save_report">Save Report</string>
     <string name="mass_import_cd_retry_errors">Retry Errors</string>

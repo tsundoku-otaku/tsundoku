@@ -11,13 +11,15 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 /**
- * Per batch: `mi_<batchId>.txt` (URL list) + `mi_<batchId>.json` (metadata).
+ * Per batch: `mi_<batchId>.txt` (URL list) + `mi_<batchId>.json` (metadata)
+ * + `mi_<batchId>_errors.txt` (error log, `url<TAB>message` per line).
  */
 object MassImportStore {
 
     private const val URLS_PREFIX = "mi_"
     private const val URLS_SUFFIX = ".txt"
     private const val META_SUFFIX = ".json"
+    private const val ERRORS_INFIX = "_errors"
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -48,6 +50,7 @@ object MassImportStore {
 
     private fun urlsName(batchId: String) = "$URLS_PREFIX$batchId$URLS_SUFFIX"
     private fun metaName(batchId: String) = "$URLS_PREFIX$batchId$META_SUFFIX"
+    private fun errorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$URLS_SUFFIX"
 
     private fun overwrite(dir: UniFile, name: String, content: String) {
         dir.findFile(name)?.delete()
@@ -158,6 +161,67 @@ object MassImportStore {
         }.getOrNull()
     }
 
+    /**
+     * Streaming access to the persisted URL list. Returns null when the batch has no list on
+     * disk. The caller owns the reader.
+     */
+    fun openUrlsReader(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String): java.io.BufferedReader? {
+        if (batchId.isEmpty()) return null
+        val dir = dir() ?: return null
+        return runCatching {
+            dir.findFile(urlsName(batchId))?.openInputStream()?.bufferedReader()
+        }.getOrNull()
+    }
+
+    /** Truncate the error log; each worker run re-evaluates every URL, so old entries are stale. */
+    fun clearErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) {
+        if (batchId.isEmpty()) return
+        val dir = dir() ?: return
+        synchronized(ioLock) {
+            runCatching { dir.findFile(errorsName(batchId))?.delete() }
+        }
+    }
+
+    /** Append `url<TAB>message` lines to the error log. Messages are flattened to one line. */
+    fun appendErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, entries: List<Pair<String, String>>) {
+        if (batchId.isEmpty() || entries.isEmpty()) return
+        val dir = dir() ?: return
+        synchronized(ioLock) {
+            runCatching {
+                val name = errorsName(batchId)
+                val file = dir.findFile(name) ?: dir.createFile(name) ?: return@runCatching
+                file.openOutputStream(true).bufferedWriter().use { writer ->
+                    for ((url, message) in entries) {
+                        writer.write(url)
+                        writer.write("\t")
+                        writer.write(message.replace('\t', ' ').replace('\n', ' ').take(200))
+                        writer.write("\n")
+                    }
+                }
+            }.onFailure { logcat(LogPriority.WARN, it) { "MassImportStore: failed to append errors for $batchId" } }
+        }
+    }
+
+    /** Load the full error log as (url, message) pairs, deduped by url keeping first message. */
+    fun loadErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String): List<Pair<String, String>> {
+        if (batchId.isEmpty()) return emptyList()
+        val dir = dir() ?: return emptyList()
+        return runCatching {
+            dir.findFile(errorsName(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
+                val seen = LinkedHashMap<String, String>()
+                reader.lineSequence().forEach { line ->
+                    if (line.isBlank()) return@forEach
+                    val sep = line.indexOf('\t')
+                    val url = (if (sep >= 0) line.substring(0, sep) else line).trim()
+                    if (url.isEmpty()) return@forEach
+                    val msg = if (sep >= 0) line.substring(sep + 1) else ""
+                    seen.putIfAbsent(url, msg)
+                }
+                seen.map { it.key to it.value }
+            } ?: emptyList()
+        }.getOrDefault(emptyList())
+    }
+
     fun delete(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) {
         if (batchId.isEmpty()) return
         val dir = dir() ?: return
@@ -165,6 +229,7 @@ object MassImportStore {
             runCatching {
                 dir.findFile(urlsName(batchId))?.delete()
                 dir.findFile(metaName(batchId))?.delete()
+                dir.findFile(errorsName(batchId))?.delete()
             }
         }
     }

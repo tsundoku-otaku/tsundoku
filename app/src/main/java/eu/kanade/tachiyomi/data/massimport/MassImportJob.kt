@@ -121,58 +121,75 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         val streamFilePath = urlsFilePath ?: rawTextFilePath
         if (urls == null && streamFilePath != null) {
-            val file = File(streamFilePath)
-            if (!file.exists()) return Result.failure()
-
             val batchId = inputData.getString(KEY_BATCH_ID) ?: ""
+            val file = File(streamFilePath)
+            if (!file.exists()) {
+                // Staged file gone (cache cleared) — leave the batch resumable instead of stuck
+                // Running with no worker; resume restages from MassImportStore.
+                markBatchInterrupted(batchId)
+                return Result.failure()
+            }
+
             val categoryId = inputData.getLong(KEY_CATEGORY_ID, 0L)
             val addToLibrary = inputData.getBoolean(KEY_ADD_TO_LIBRARY, true)
             val fetchDetails = inputData.getBoolean(KEY_FETCH_DETAILS, true)
             val fetchChapters = inputData.getBoolean(KEY_FETCH_CHAPTERS, false)
 
-            try {
-                // Cheap streaming pass for the progress denominator — never materializes the
-                // tokens (a 2M-line file would OOM otherwise).
-                val totalCount = file.bufferedReader().useLines { lines ->
-                    lines.sumOf { raw ->
-                        if (raw.contains(',') || raw.contains(';')) {
-                            raw.split(',', ';').count { it.isNotBlank() }
-                        } else if (raw.trim().isNotBlank()) {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                }
-
-                // Cold flow re-reads the file line-by-line on collection; O(1) memory, no dedup
-                // (duplicates are skipped downstream by the already-favorite check).
-                val urlFlow = kotlinx.coroutines.flow.flow {
-                    file.bufferedReader().useLines { lines ->
-                        for (raw in lines) {
+            return withIOContext {
+                try {
+                    // Cheap streaming pass for the progress denominator — never materializes the
+                    // tokens (a 2M-line file would OOM otherwise).
+                    val totalCount = file.bufferedReader().useLines { lines ->
+                        lines.sumOf { raw ->
                             if (raw.contains(',') || raw.contains(';')) {
-                                for (part in raw.split(',', ';')) {
-                                    val t = part.trim()
-                                    if (t.isNotBlank()) emit(t)
-                                }
+                                raw.split(',', ';').count { it.isNotBlank() }
+                            } else if (raw.trim().isNotBlank()) {
+                                1
                             } else {
-                                val t = raw.trim()
-                                if (t.isNotBlank()) emit(t)
+                                0
                             }
                         }
                     }
+
+                    // Cold flow re-reads the file line-by-line on collection; O(1) memory, no dedup
+                    // (duplicates are skipped downstream by the already-favorite check).
+                    val urlFlow = kotlinx.coroutines.flow.flow {
+                        file.bufferedReader().useLines { lines ->
+                            for (raw in lines) {
+                                if (raw.contains(',') || raw.contains(';')) {
+                                    for (part in raw.split(',', ';')) {
+                                        val t = part.trim()
+                                        if (t.isNotBlank()) emit(t)
+                                    }
+                                } else {
+                                    val t = raw.trim()
+                                    if (t.isNotBlank()) emit(t)
+                                }
+                            }
+                        }
+                    }
+
+                    performImport(
+                        urlFlow, totalCount,
+                        categoryId, addToLibrary, fetchDetails, fetchChapters, batchId,
+                        excludedHostsSet, hostSourceCache, missingSourceHosts, preferredSourceId,
+                    )
+
+                    Result.success()
+                } catch (e: Exception) {
+                    if (e is CancellationException) {
+                        Result.success()
+                    } else {
+                        // Don't leave the batch stuck "Running" with no worker behind it; Paused
+                        // keeps it resumable from the persisted store.
+                        logcat(LogPriority.ERROR, e)
+                        markBatchInterrupted(batchId)
+                        Result.failure()
+                    }
+                } finally {
+                    context.cancelNotification(Notifications.ID_MASS_IMPORT_PROGRESS)
+                    runCatching { File(streamFilePath).delete() }
                 }
-
-                performImport(
-                    urlFlow, totalCount,
-                    categoryId, addToLibrary, fetchDetails, fetchChapters, batchId,
-                    excludedHostsSet, hostSourceCache, missingSourceHosts, preferredSourceId,
-                )
-
-                return Result.success()
-            } finally {
-                context.cancelNotification(Notifications.ID_MASS_IMPORT_PROGRESS)
-                runCatching { File(streamFilePath).delete() }
             }
         }
         if (urls == null) return Result.failure()
@@ -203,6 +220,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     Result.success()
                 } else {
                     logcat(LogPriority.ERROR, e)
+                    markBatchInterrupted(batchId)
                     Result.failure()
                 }
             } finally {
@@ -240,10 +258,13 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
     ): ImportResult {
         hydrateBatchFromStore(batchId)
         startRunningUnlessPaused(batchId)
+        // Every run re-walks the full URL list, so prior entries are stale (a previously-errored
+        // URL may succeed this time). Errors are re-appended as they re-occur.
+        if (batchId.isNotEmpty()) MassImportStore.clearErrors(context, batchId)
 
         val importSources = getImportSources()
         if (importSources.isEmpty()) {
-            showCompletionNotification(0, 0, totalCount, "No compatible sources installed")
+            showCompletionNotification(batchId, 0, 0, totalCount, "No compatible sources installed")
             updateBatchStatus(batchId, BatchStatus.Completed)
             return ImportResult(added = 0, skipped = 0, errored = totalCount)
         }
@@ -295,6 +316,39 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         val erroredUrls = java.util.Collections.synchronizedList(mutableListOf<String>())
         val errorMessages = ConcurrentHashMap<String, String>()
+        // Every error also goes to the on-disk error log (uncapped) so "copy/export errors" and
+        // retry survive truncation, process death, and resume. Buffered so a mostly-failing
+        // import doesn't do one SAF write per URL.
+        val errorLogBuffer = mutableListOf<Pair<String, String>>()
+        fun recordError(url: String, message: String) {
+            val toFlush: List<Pair<String, String>>?
+            synchronized(erroredUrls) {
+                if (erroredUrls.size < MAX_TRACKED_ERRORS) {
+                    erroredUrls.add(url)
+                    errorMessages[url] = message
+                }
+                errorLogBuffer.add(url to message)
+                toFlush = if (errorLogBuffer.size >= 25) {
+                    val copy = errorLogBuffer.toList()
+                    errorLogBuffer.clear()
+                    copy
+                } else {
+                    null
+                }
+            }
+            if (toFlush != null && batchId.isNotEmpty()) {
+                MassImportStore.appendErrors(context, batchId, toFlush)
+            }
+        }
+        fun flushErrorLog() {
+            val toFlush = synchronized(erroredUrls) {
+                if (errorLogBuffer.isEmpty()) return
+                val copy = errorLogBuffer.toList()
+                errorLogBuffer.clear()
+                copy
+            }
+            if (batchId.isNotEmpty()) MassImportStore.appendErrors(context, batchId, toFlush)
+        }
 
         updateNotification(0, totalCount, "Starting import...")
 
@@ -335,24 +389,17 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 }
 
                 flow {
-                    while (_sharedQueue.value.find { it.id == batchId }?.status == BatchStatus.Paused) {
-                        delay(1000L)
-                    }
-                    if (_sharedQueue.value.find { it.id == batchId }?.status == BatchStatus.Cancelled) {
-                        return@flow
-                    }
+                    if (!awaitResumed(batchId)) return@flow
 
                     val failures = sourceConsecutiveFailures.computeIfAbsent(source.id) { AtomicInteger(0) }.get()
                     if (maxSourceFailures > 0 && failures >= maxSourceFailures) {
                         erroredCount.incrementAndGet()
-                        synchronized(erroredUrls) {
-                            if (erroredUrls.size < MAX_TRACKED_ERRORS) {
-                                erroredUrls.add(url)
-                                errorMessages[url] = "Source skipped: $failures consecutive failures"
-                            }
-                        }
+                        recordError(url, "Source skipped: $failures consecutive failures")
                         val done = completedCount.incrementAndGet()
-                        updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get(), erroredUrls = synchronized(erroredUrls) { erroredUrls.take(10) })
+                        updateBatchProgress(
+                            batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get(),
+                            erroredUrlsPreview = synchronized(erroredUrls) { erroredUrls.take(10) },
+                        )
                         return@flow
                     }
 
@@ -365,15 +412,21 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         "Processing: ${activeImports.size} active",
                     )
 
+                    var erroredThisUrl = false
                     try {
                         // Hold the per-source permit across delay + fetch so same-source
                         // requests run serially spaced by delayMs, not just spaced at start.
                         // Different sources keep their own permit and stay parallel.
+                        // Pause is re-checked after acquiring the permit: with throttling, up to
+                        // `concurrency` URLs are already past the flow-start check waiting on
+                        // their source semaphore, and would otherwise keep importing serially
+                        // long after the user hit pause.
                         val success = if (shouldThrottle) {
                             val sourceSemaphore = sourceSemaphores.computeIfAbsent(source.id) { Semaphore(1) }
                             val (baseDelay, randomRange) = getDelayForSource(source.id)
                             val delayMs = baseDelay + if (randomRange > 0) Random.nextLong(0, randomRange) else 0L
                             sourceSemaphore.withPermit {
+                                if (!awaitResumed(batchId)) return@withPermit null
                                 delay(delayMs)
                                 processUrlWithSource(
                                     url, source, addToLibrary, fetchDetails, categoryId,
@@ -381,31 +434,31 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                 )
                             }
                         } else {
-                            processUrlWithSource(
-                                url, source, addToLibrary, fetchDetails, categoryId,
-                                fetchChapters, pendingAddIds, flushBatchSize,
-                            )
+                            if (!awaitResumed(batchId)) {
+                                null
+                            } else {
+                                processUrlWithSource(
+                                    url, source, addToLibrary, fetchDetails, categoryId,
+                                    fetchChapters, pendingAddIds, flushBatchSize,
+                                )
+                            }
                         }
-                        if (success) {
-                            sourceConsecutiveFailures[source.id]?.set(0)
-                            addedCount.incrementAndGet()
-                        } else {
-                            skippedCount.incrementAndGet()
+                        when (success) {
+                            true -> {
+                                sourceConsecutiveFailures[source.id]?.set(0)
+                                addedCount.incrementAndGet()
+                            }
+                            false -> skippedCount.incrementAndGet()
+                            // null: batch was cancelled while queued — nothing processed.
+                            null -> return@flow
                         }
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         sourceConsecutiveFailures[source.id]?.incrementAndGet()
                         logcat(LogPriority.ERROR, e) { "Error importing $url" }
                         erroredCount.incrementAndGet()
-                        // Cap the tracked detail to bound memory: a mostly-failing huge import
-                        // would otherwise pin one String per URL (plus a map entry) in the
-                        // worker and in the persisted/serialized batch meta.
-                        synchronized(erroredUrls) {
-                            if (erroredUrls.size < MAX_TRACKED_ERRORS) {
-                                erroredUrls.add(url)
-                                errorMessages[url] = e.message ?: "Unknown error"
-                            }
-                        }
+                        erroredThisUrl = true
+                        recordError(url, e.message ?: "Unknown error")
                     } finally {
                         activeImports.remove(url)
                         val done = completedCount.incrementAndGet()
@@ -417,7 +470,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                             addedCount.get(),
                             skippedCount.get(),
                             erroredCount.get(),
-                            erroredUrls = synchronized(erroredUrls) { erroredUrls.take(10) },
+                            erroredUrlsPreview = if (erroredThisUrl) synchronized(erroredUrls) { erroredUrls.take(10) } else null,
                         )
                         if (!shouldThrottle) {
                             delay(10)
@@ -428,10 +481,15 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             }
             .collect()
         } catch (e: CancellationException) {
+            // Non-suspending IO: safe in a cancelled coroutine. Keeps the buffered tail of the
+            // error log from being lost on cancel/stop.
+            flushErrorLog()
             throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Unexpected error during import collection for batch $batchId" }
         }
+
+        flushErrorLog()
 
         val finalResult = ImportResult(
             added = addedCount.get(),
@@ -450,7 +508,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         try {
             if (pendingAddIds.isNotEmpty()) flushPendingToLibrary(pendingAddIds)
             updateBatchStatus(batchId, BatchStatus.Completed)
-            showCompletionNotification(addedCount.get(), skippedCount.get(), erroredCount.get(), null)
+            showCompletionNotification(batchId, addedCount.get(), skippedCount.get(), erroredCount.get(), null)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -467,6 +525,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             list.map { if (it.id == batchId) it.copy(status = status) else it }
         }
         persistMeta(context, batchId, force = true)
+    }
+
+    // Worker died abnormally (lost staged file, unexpected exception): flip a non-terminal batch
+    // to Paused so it stays resumable instead of stuck Running with nothing executing.
+    private fun markBatchInterrupted(batchId: String) {
+        if (batchId.isEmpty()) return
+        hydrateBatchFromStore(batchId)
+        val status = _sharedQueue.value.find { it.id == batchId }?.status ?: return
+        if (status == BatchStatus.Completed || status == BatchStatus.Cancelled) return
+        updateBatchStatus(batchId, BatchStatus.Paused)
     }
 
     private fun hydrateBatchFromStore(batchId: String) {
@@ -486,14 +554,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         updateBatchStatus(batchId, BatchStatus.Running)
     }
 
+    // null erroredUrlsPreview/errorMessages = keep what the batch already holds. The old
+    // behavior of defaulting to empty wiped the error detail on every per-URL progress tick.
     private fun updateBatchProgress(
         batchId: String,
         progress: Int,
         added: Int,
         skipped: Int,
         errored: Int,
-        erroredUrls: List<String> = emptyList(),
-        errorMessages: Map<String, String> = emptyMap(),
+        erroredUrlsPreview: List<String>? = null,
+        errorMessages: Map<String, String>? = null,
     ) {
         if (batchId.isEmpty()) return
         _sharedQueue.update { list ->
@@ -504,8 +574,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         added = added,
                         skipped = skipped,
                         errored = errored,
-                        erroredUrls = erroredUrls,
-                        errorMessages = errorMessages,
+                        erroredUrls = erroredUrlsPreview ?: it.erroredUrls,
+                        errorMessages = errorMessages ?: it.errorMessages,
                     )
                 } else {
                     it
@@ -513,6 +583,17 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             }
         }
         persistMeta(context, batchId, force = false)
+    }
+
+    // Parks while the batch is Paused; returns false when it was cancelled instead of resumed.
+    private suspend fun awaitResumed(batchId: String): Boolean {
+        if (batchId.isEmpty()) return true
+        while (true) {
+            val status = _sharedQueue.value.find { it.id == batchId }?.status
+            if (status == BatchStatus.Cancelled) return false
+            if (status != BatchStatus.Paused) return true
+            delay(500L)
+        }
     }
 
     private suspend fun processUrlWithSource(
@@ -677,10 +758,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
     }
 
-    private fun showCompletionNotification(added: Int, skipped: Int, errored: Int, message: String?) {
+    private fun showCompletionNotification(batchId: String, added: Int, skipped: Int, errored: Int, message: String?) {
         val text = message ?: "Added: $added, Skipped: $skipped, Errors: $errored"
 
-        val resultFile = writeResultFile(added, skipped, errored)
+        val resultFile = writeResultFile(batchId, added, skipped, errored)
 
         val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_MASS_IMPORT) {
             setSmallIcon(android.R.drawable.stat_sys_download_done)
@@ -701,7 +782,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         context.notify(Notifications.ID_MASS_IMPORT_COMPLETE, notificationBuilder.build())
     }
 
-    private fun writeResultFile(added: Int, skipped: Int, errored: Int): File? {
+    private fun writeResultFile(batchId: String, added: Int, skipped: Int, errored: Int): File? {
         try {
             val file = context.createFileInCacheDir("tsundoku_mass_import_results.txt")
             file.bufferedWriter().use { out ->
@@ -717,26 +798,17 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 out.write("  Skipped: $skipped\n")
                 out.write("  Errors: $errored\n\n")
 
-                val currentBatch = _sharedQueue.value.lastOrNull {
-                    it.status == BatchStatus.Completed ||
-                        it.status == BatchStatus.Running
-                }
-
-                if (currentBatch != null) {
-                    if (currentBatch.erroredUrls.isNotEmpty()) {
-                        out.write("=== Failed URLs (${currentBatch.erroredUrls.size}) ===\n")
-                        currentBatch.erroredUrls.forEach { url ->
-                            out.write("$url\n")
-                            val msg = currentBatch.errorMessages[url]
-                            if (!msg.isNullOrBlank()) out.write("  Error: $msg\n")
-                        }
-                        out.write("\n")
-                    }
-
-                    out.write("=== All Input URLs (${currentBatch.urls.size}) ===\n")
-                    currentBatch.urls.forEach { url ->
+                // Read from this batch's persisted error log, not the shared queue: picking a
+                // batch by status grabs the wrong one when several run, and the in-memory list
+                // is only a preview.
+                val errors = if (batchId.isNotEmpty()) MassImportStore.loadErrors(context, batchId) else emptyList()
+                if (errors.isNotEmpty()) {
+                    out.write("=== Failed URLs (${errors.size}) ===\n")
+                    errors.forEach { (url, msg) ->
                         out.write("$url\n")
+                        if (msg.isNotBlank()) out.write("  Error: $msg\n")
                     }
+                    out.write("\n")
                 }
             }
             return file
@@ -920,10 +992,22 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob(),
         )
 
+        // Meta saves must land on disk in submission order: a throttled progress save (status
+        // Running) executing after a pause save would otherwise restore the wrong status after a
+        // process restart. Single lane = FIFO.
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        private val metaPersistScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.Dispatchers.IO.limitedParallelism(1) + kotlinx.coroutines.SupervisorJob(),
+        )
+
         private val lastMetaWrite = ConcurrentHashMap<String, Long>()
         private const val META_WRITE_THROTTLE_MS = 2000L
 
         private val globalSourceSemaphores = ConcurrentHashMap<Long, Semaphore>()
+
+        // Meta keeps only an error preview — the full error log lives in the store's per-batch
+        // errors file, so the json stays small no matter how many URLs fail.
+        private const val META_ERROR_PREVIEW = 100
 
         private fun Batch.toMeta() = MassImportStore.PersistedMeta(
             id = id,
@@ -933,8 +1017,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             added = added,
             skipped = skipped,
             errored = errored,
-            erroredUrls = erroredUrls,
-            errorMessages = errorMessages,
+            erroredUrls = erroredUrls.take(META_ERROR_PREVIEW),
+            errorMessages = erroredUrls.take(META_ERROR_PREVIEW)
+                .mapNotNull { url -> errorMessages[url]?.let { url to it } }
+                .toMap(),
             categoryId = categoryId,
             addToLibrary = addToLibrary,
             fetchDetails = fetchDetails,
@@ -979,7 +1065,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             }
             val meta = _sharedQueue.value.find { it.id == batchId }?.toMeta() ?: return
             val appContext = context.applicationContext
-            persistScope.launch { MassImportStore.saveMeta(appContext, meta) }
+            metaPersistScope.launch { MassImportStore.saveMeta(appContext, meta) }
         }
 
         // Lazily tokenizes rawText. No dedup: the worker counts tokens the same way for the
@@ -1078,7 +1164,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             preferredSourceId: Long? = null,
         ) {
             val batchId = java.util.UUID.randomUUID().toString()
-            val offloadToFile = rawText != null || urls.size > 50 || urls.sumOf { it.length } > 500_000
+            // WorkManager Data has a hard ~10KB limit and throws on enqueue past it; even 50
+            // long URLs can exceed that, so the byte threshold must stay well under the cap.
+            val offloadToFile = rawText != null || urls.size > 50 || urls.sumOf { it.length + 4 } > 8_000
             // For rawText the token list is built lazily off-thread (see below) so the full
             // multi-MB list never lives in the UI process; the urls path already has the list.
             val sourceUrls = if (rawText != null) emptyList() else urls
@@ -1374,24 +1462,47 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 }
                 if (active) return@launch
 
+                // Resume already flipped the status to Running; if we can't actually start a
+                // worker, revert so the batch doesn't sit "Running" with nothing executing.
+                fun abortResume(reason: String) {
+                    logcat(LogPriority.WARN) { "MassImport: cannot resume $batchId: $reason" }
+                    _sharedQueue.update { list ->
+                        list.map {
+                            if (it.id == batchId && it.status == BatchStatus.Running) {
+                                it.copy(status = BatchStatus.Paused)
+                            } else {
+                                it
+                            }
+                        }
+                    }
+                    persistMeta(appContext, batchId, force = true)
+                }
+
                 val batch = _sharedQueue.value.find { it.id == batchId }
                     ?: MassImportStore.loadMeta(appContext, batchId)
                         ?.toBatch(emptyList())
-                    ?: return@launch
-                val urls = MassImportStore.loadUrls(appContext, batchId)
-                if (urls.isEmpty()) return@launch
-
+                    ?: return@launch abortResume("no batch state")
                 val cacheFile = File(appContext.cacheDir, "mass_import_$batchId.txt")
-                runCatching {
-                    cacheFile.bufferedWriter().use { w ->
-                        for (u in urls) {
-                            w.write(u)
-                            w.newLine()
+                // Stream store -> cache file; the url list can be huge.
+                val staged = runCatching {
+                    MassImportStore.openUrlsReader(appContext, batchId)?.use { reader ->
+                        var any = false
+                        cacheFile.bufferedWriter().use { w ->
+                            reader.lineSequence().forEach { line ->
+                                val t = line.trim()
+                                if (t.isNotEmpty()) {
+                                    w.write(t)
+                                    w.newLine()
+                                    any = true
+                                }
+                            }
                         }
-                    }
-                }.onFailure {
-                    logcat(LogPriority.WARN, it) { "MassImport: failed to stage urls for resume of $batchId" }
-                    return@launch
+                        any
+                    } ?: false
+                }.getOrDefault(false)
+                if (!staged) {
+                    runCatching { cacheFile.delete() }
+                    return@launch abortResume("no persisted urls")
                 }
 
                 val payload = mutableListOf<Pair<String, Any?>>(
@@ -1486,16 +1597,60 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             return MassImportStore.loadUrls(context, batchId).joinToString("\n")
         }
 
+        // Stream store -> output without materializing the list; returns lines written.
+        fun exportBatchUrlsTo(context: Context, batchId: String, output: java.io.OutputStream): Int {
+            var count = 0
+            MassImportStore.openUrlsReader(context, batchId)?.use { reader ->
+                output.bufferedWriter().use { writer ->
+                    reader.lineSequence().forEach { line ->
+                        val t = line.trim()
+                        if (t.isNotEmpty()) {
+                            writer.write(t)
+                            writer.write("\n")
+                            count++
+                        }
+                    }
+                }
+            }
+            return count
+        }
+
+        // Full errored-url set: persisted error log merged with whatever the live run has
+        // tracked but not flushed yet. The in-memory batch list alone is only a preview.
+        fun getErroredUrls(context: Context, batchId: String): List<String> {
+            val merged = LinkedHashSet<String>()
+            MassImportStore.loadErrors(context, batchId).forEach { (url, _) -> merged.add(url) }
+            _sharedQueue.value.find { it.id == batchId }?.erroredUrls?.forEach { merged.add(it) }
+            if (merged.isEmpty()) {
+                // Batches persisted before the error log existed only have the meta preview.
+                MassImportStore.loadMeta(context, batchId)?.erroredUrls?.forEach { merged.add(it) }
+            }
+            return merged.toList()
+        }
+
+        fun exportBatchErrorsTo(context: Context, batchId: String, output: java.io.OutputStream): Int {
+            val errors = getErroredUrls(context, batchId)
+            output.bufferedWriter().use { writer ->
+                errors.forEach { url ->
+                    writer.write(url)
+                    writer.write("\n")
+                }
+            }
+            return errors.size
+        }
 
         fun retryFailed(context: Context, batchId: String) {
             val appContext = context.applicationContext
             val inMemory = _sharedQueue.value.find { it.id == batchId }
             persistScope.launch {
                 val batch = inMemory
-                    ?: MassImportStore.loadMeta(appContext, batchId)
-                        ?.toBatch(MassImportStore.loadUrls(appContext, batchId))
+                    ?: MassImportStore.loadMeta(appContext, batchId)?.toBatch(emptyList())
                     ?: return@launch
-                val failed = batch.erroredUrls.map { it.trim() }.filter { it.isNotEmpty() }
+                // Error log first (complete), in-memory preview as fallback for batches that
+                // predate the log.
+                val failed = getErroredUrls(appContext, batchId)
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
                 if (failed.isEmpty()) return@launch
                 start(
                     context = appContext,

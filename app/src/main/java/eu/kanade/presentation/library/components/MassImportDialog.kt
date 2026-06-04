@@ -120,6 +120,7 @@ fun MassImportDialog(
     val toastAddedUrlsFromFiles = stringResource(TDMR.strings.mass_import_toast_added_urls_from_files)
     val toastNoReadableUrls = stringResource(TDMR.strings.mass_import_toast_no_readable_urls)
     val toastExportedUrls = stringResource(TDMR.strings.mass_import_toast_exported_urls)
+    val toastExportedErrors = stringResource(TDMR.strings.mass_import_toast_exported_errors)
     val toastErrorExportingUrls = stringResource(TDMR.strings.mass_import_toast_error_exporting_urls)
     val toastCopiedUrls = stringResource(TDMR.strings.mass_import_toast_copied_urls)
     val toastCopiedErrors = stringResource(TDMR.strings.mass_import_toast_copied_errors)
@@ -193,17 +194,41 @@ fun MassImportDialog(
             uri?.let { outputUri ->
                 batchToExport?.let { batch ->
                     batchToExport = null
-                    // Off the main thread: the url list is read from disk (MassImportStore).
+                    // Off the main thread; streamed disk -> output, never materialized.
                     dialogScope.launch(Dispatchers.IO) {
                         try {
-                            val urls = MassImportJob.exportBatchUrls(context, batch.id)
-                            context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
-                                outputStream.bufferedWriter().use { writer ->
-                                    writer.write(urls)
-                                }
-                            }
+                            val count = context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
+                                MassImportJob.exportBatchUrlsTo(context, batch.id, outputStream)
+                            } ?: 0
                             withContext(Dispatchers.Main) {
-                                context.toast(String.format(toastExportedUrls, batch.total))
+                                context.toast(String.format(toastExportedUrls, count))
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                context.toast("${toastErrorExportingUrls}: ${e.message.orEmpty()}")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
+
+    // State + launcher for exporting only the failed URLs of a batch
+    var batchToExportErrors by remember { mutableStateOf<MassImportJob.Batch?>(null) }
+    val exportErrorsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain"),
+        onResult = { uri ->
+            uri?.let { outputUri ->
+                batchToExportErrors?.let { batch ->
+                    batchToExportErrors = null
+                    dialogScope.launch(Dispatchers.IO) {
+                        try {
+                            val count = context.contentResolver.openOutputStream(outputUri)?.use { outputStream ->
+                                MassImportJob.exportBatchErrorsTo(context, batch.id, outputStream)
+                            } ?: 0
+                            withContext(Dispatchers.Main) {
+                                context.toast(String.format(toastExportedErrors, count))
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
@@ -373,9 +398,16 @@ fun MassImportDialog(
                                     }
                                 },
                                 onCopyErrors = {
-                                    if (batch.erroredUrls.isNotEmpty()) {
-                                        context.copyToClipboard(clipboardErrorsLabel, batch.erroredUrls.joinToString("\n"))
-                                        context.toast(String.format(toastCopiedErrors, batch.errored))
+                                    // Full set lives in the on-disk error log; the in-memory
+                                    // batch list is only a preview.
+                                    dialogScope.launch(Dispatchers.IO) {
+                                        val errors = MassImportJob.getErroredUrls(context, batch.id)
+                                        withContext(Dispatchers.Main) {
+                                            if (errors.isNotEmpty()) {
+                                                context.copyToClipboard(clipboardErrorsLabel, errors.joinToString("\n"))
+                                                context.toast(String.format(toastCopiedErrors, errors.size))
+                                            }
+                                        }
                                     }
                                 },
                                 onRemove = { MassImportJob.removeBatch(context, batch.id) },
@@ -386,6 +418,14 @@ fun MassImportDialog(
                                         java.util.Locale.getDefault(),
                                     ).format(java.util.Date())
                                     exportUrlsLauncher.launch("mass_import_urls_$timestamp.txt")
+                                },
+                                onExportErrors = {
+                                    batchToExportErrors = batch
+                                    val timestamp = java.text.SimpleDateFormat(
+                                        "yyyyMMdd_HHmmss",
+                                        java.util.Locale.getDefault(),
+                                    ).format(java.util.Date())
+                                    exportErrorsLauncher.launch("mass_import_errors_$timestamp.txt")
                                 },
                             )
                         }
@@ -841,6 +881,7 @@ private fun BatchItem(
     onCopyErrors: () -> Unit,
     onRemove: () -> Unit,
     onExportUrls: () -> Unit,
+    onExportErrors: () -> Unit,
     onRetryFailed: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1117,12 +1158,34 @@ private fun BatchItem(
                                     )
                             }
                         }
+
+                        // Export errors to file
+                        TooltipBox(
+                            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+                            tooltip = {
+                                PlainTooltip {
+                                    Text(stringResource(TDMR.strings.mass_import_tooltip_export_errors))
+                                }
+                            },
+                            state = rememberTooltipState(),
+                        ) {
+                            IconButton(onClick = onExportErrors, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    Icons.Outlined.Save,
+                                    contentDescription = stringResource(TDMR.strings.mass_import_cd_export_errors),
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
                     }
 
-                    // Retry failed: re-queue the errored URLs as a new batch (terminal batches only)
+                    // Retry failed: re-queue the errored URLs as a new batch (terminal batches only).
+                    // Gate on the count, not the in-memory url list — after a restart the live
+                    // list may be empty while the persisted error log still has everything.
                     val isTerminal = batch.status == MassImportJob.BatchStatus.Completed ||
                         batch.status == MassImportJob.BatchStatus.Cancelled
-                    if (batch.errored > 0 && isTerminal && batch.erroredUrls.isNotEmpty()) {
+                    if (batch.errored > 0 && isTerminal) {
                         TooltipBox(
                             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                             tooltip = {
