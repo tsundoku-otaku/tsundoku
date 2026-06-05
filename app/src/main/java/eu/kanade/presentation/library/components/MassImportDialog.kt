@@ -135,7 +135,6 @@ fun MassImportDialog(
     val clipboardUrlsLabel = stringResource(TDMR.strings.mass_import_clipboard_label_urls)
     val clipboardErrorsLabel = stringResource(TDMR.strings.mass_import_clipboard_label_errors)
 
-    // File picker launcher for reading URLs from files
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments(),
         onResult = { uris ->
@@ -205,10 +204,8 @@ fun MassImportDialog(
         },
     )
 
-    // State to track which batch to export URLs from
     var batchToExport by remember { mutableStateOf<MassImportJob.Batch?>(null) }
 
-    // File save launcher for exporting URLs
     val exportUrlsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/plain"),
         onResult = { uri ->
@@ -235,7 +232,6 @@ fun MassImportDialog(
         },
     )
 
-    // State + launcher for exporting only the failed URLs of a batch
     var batchToExportErrors by remember { mutableStateOf<MassImportJob.Batch?>(null) }
     val exportErrorsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/plain"),
@@ -272,7 +268,6 @@ fun MassImportDialog(
     val queue by MassImportJob.sharedQueue.collectAsState()
 
     val getCategories = remember { Injekt.get<GetCategories>() }
-    // Filter categories by content type (manga vs novel)
     val contentType = if (isNovelMode) Category.CONTENT_TYPE_NOVEL else Category.CONTENT_TYPE_MANGA
     val categories by getCategories.subscribeByContentType(contentType).collectAsState(initial = emptyList())
 
@@ -290,7 +285,6 @@ fun MassImportDialog(
                     .wrapContentHeight()
                     .verticalScroll(rememberScrollState()),
             ) {
-                // Queue Section
                 if (queue.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -393,7 +387,6 @@ fun MassImportDialog(
                             .padding(bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        // Use distinct batch IDs to prevent duplicates
                         val distinctBatches = queue.distinctBy { it.id }.reversed()
                         items(
                             items = distinctBatches,
@@ -463,14 +456,12 @@ fun MassImportDialog(
                     HorizontalDivider(modifier = Modifier.padding(bottom = 16.dp))
                 }
 
-                // Add New Section
                 Text(
                     text = stringResource(TDMR.strings.mass_import_add_new_batch),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
 
-                // Category Selection
                 // categories already filtered by contentType from subscribeByContentType — just strip system categories
                 val userCategories = remember(categories) {
                     categories
@@ -537,7 +528,6 @@ fun MassImportDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Sync chapter list checkbox with description
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Top,
@@ -562,7 +552,6 @@ fun MassImportDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Fetch metadata checkbox with description
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Top,
@@ -587,7 +576,6 @@ fun MassImportDialog(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Pending URLs section (URLs waiting to be queued)
                 if (pendingUrls.isNotBlank()) {
                     val pendingCount = pendingUrls.lines().filter { it.isNotBlank() }.size
                     Row(
@@ -607,7 +595,6 @@ fun MassImportDialog(
                     Spacer(modifier = Modifier.height(8.dp))
                 }
 
-                // URL Input
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -649,7 +636,6 @@ fun MassImportDialog(
                         if (urlText.isNotBlank()) {
                             IconButton(
                                 onClick = {
-                                    // Add to pending URLs
                                     pendingUrls = if (pendingUrls.isBlank()) {
                                         urlText
                                     } else {
@@ -692,7 +678,6 @@ fun MassImportDialog(
                     }
                 }
 
-                // Analysis
                 var analysisResult by remember { mutableStateOf<MassImport.UrlAnalysisResult?>(null) }
                 var isAnalyzing by remember { mutableStateOf(false) }
 
@@ -959,7 +944,6 @@ private fun BatchItem(
                     )
                 }
 
-                // Action buttons
                 Row(horizontalArrangement = Arrangement.End) {
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
@@ -1129,7 +1113,6 @@ private fun BatchItem(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    // Copy URLs
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                         tooltip = {
@@ -1148,7 +1131,6 @@ private fun BatchItem(
                         }
                     }
 
-                    // Export URLs
                     TooltipBox(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                         tooltip = {
@@ -1167,7 +1149,6 @@ private fun BatchItem(
                         }
                     }
 
-                    // Copy Errors (if any)
                     if (batch.errored > 0) {
                         TooltipBox(
                             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
@@ -1188,7 +1169,6 @@ private fun BatchItem(
                             }
                         }
 
-                        // Export errors to file
                         TooltipBox(
                             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                             tooltip = {
