@@ -70,16 +70,6 @@ fun normalizeSourcePath(source: Source, pathOrUrl: String): String {
     }
 }
 
-fun toggleLeadingSlash(pathOrUrl: String): String {
-    if (pathOrUrl.isBlank()) {
-        return pathOrUrl
-    }
-    if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
-        return pathOrUrl
-    }
-    return if (pathOrUrl.startsWith("/")) pathOrUrl.removePrefix("/") else "/$pathOrUrl"
-}
-
 fun Source.getMangaUrlOrNull(manga: SManga): String? {
     return when (this) {
         is CustomNovelSource -> resolveRelativeUrl(baseUrl, manga.url)

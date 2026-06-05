@@ -12,7 +12,7 @@ import uy.kohesive.injekt.api.get
 
 /**
  * Per batch: `mi_<batchId>.txt` (URL list) + `mi_<batchId>.json` (metadata)
- * + `mi_<batchId>_errors.txt` (error log, `url<TAB>message` per line).
+ * + `mi_<batchId>_errors.txt` / `mi_<batchId>_skipped.txt` (logs, `url<TAB>message` per line).
  */
 object MassImportStore {
 
@@ -20,6 +20,7 @@ object MassImportStore {
     private const val URLS_SUFFIX = ".txt"
     private const val META_SUFFIX = ".json"
     private const val ERRORS_INFIX = "_errors"
+    private const val SKIPPED_INFIX = "_skipped"
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
@@ -51,6 +52,7 @@ object MassImportStore {
     private fun urlsName(batchId: String) = "$URLS_PREFIX$batchId$URLS_SUFFIX"
     private fun metaName(batchId: String) = "$URLS_PREFIX$batchId$META_SUFFIX"
     private fun errorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$URLS_SUFFIX"
+    private fun skippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$URLS_SUFFIX"
 
     private fun overwrite(dir: UniFile, name: String, content: String) {
         dir.findFile(name)?.delete()
@@ -188,22 +190,34 @@ object MassImportStore {
         }.getOrNull()
     }
 
-    /** Truncate the error log; each worker run re-evaluates every URL, so old entries are stale. */
-    fun clearErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) {
+    /** Truncate a log; each worker run re-evaluates every URL, so old entries are stale. */
+    fun clearErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) = clearLog(batchId, ::errorsName)
+    fun clearSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) = clearLog(batchId, ::skippedName)
+
+    /** Append `url<TAB>message` lines. Messages are flattened to one line. */
+    fun appendErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, entries: List<Pair<String, String>>) =
+        appendLog(batchId, ::errorsName, entries)
+    fun appendSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, entries: List<Pair<String, String>>) =
+        appendLog(batchId, ::skippedName, entries)
+
+    /** Load a full log as (url, message) pairs, deduped by url keeping first message. */
+    fun loadErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) = loadLog(batchId, ::errorsName)
+    fun loadSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) = loadLog(batchId, ::skippedName)
+
+    private fun clearLog(batchId: String, name: (String) -> String) {
         if (batchId.isEmpty()) return
         val dir = dir() ?: return
         synchronized(ioLock) {
-            runCatching { dir.findFile(errorsName(batchId))?.delete() }
+            runCatching { dir.findFile(name(batchId))?.delete() }
         }
     }
 
-    /** Append `url<TAB>message` lines to the error log. Messages are flattened to one line. */
-    fun appendErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, entries: List<Pair<String, String>>) {
+    private fun appendLog(batchId: String, nameFor: (String) -> String, entries: List<Pair<String, String>>) {
         if (batchId.isEmpty() || entries.isEmpty()) return
         val dir = dir() ?: return
         synchronized(ioLock) {
             runCatching {
-                val name = errorsName(batchId)
+                val name = nameFor(batchId)
                 val file = dir.findFile(name) ?: dir.createFile(name) ?: return@runCatching
                 file.openOutputStream(true).bufferedWriter().use { writer ->
                     for ((url, message) in entries) {
@@ -213,16 +227,15 @@ object MassImportStore {
                         writer.write("\n")
                     }
                 }
-            }.onFailure { logcat(LogPriority.WARN, it) { "MassImportStore: failed to append errors for $batchId" } }
+            }.onFailure { logcat(LogPriority.WARN, it) { "MassImportStore: failed to append log for $batchId" } }
         }
     }
 
-    /** Load the full error log as (url, message) pairs, deduped by url keeping first message. */
-    fun loadErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String): List<Pair<String, String>> {
+    private fun loadLog(batchId: String, nameFor: (String) -> String): List<Pair<String, String>> {
         if (batchId.isEmpty()) return emptyList()
         val dir = dir() ?: return emptyList()
         return runCatching {
-            dir.findFile(errorsName(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
+            dir.findFile(nameFor(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
                 val seen = LinkedHashMap<String, String>()
                 reader.lineSequence().forEach { line ->
                     if (line.isBlank()) return@forEach
@@ -245,6 +258,7 @@ object MassImportStore {
                 dir.findFile(urlsName(batchId))?.delete()
                 dir.findFile(metaName(batchId))?.delete()
                 dir.findFile(errorsName(batchId))?.delete()
+                dir.findFile(skippedName(batchId))?.delete()
             }
         }
     }

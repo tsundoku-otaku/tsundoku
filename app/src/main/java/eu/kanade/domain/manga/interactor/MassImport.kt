@@ -5,7 +5,6 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.source.normalizeSourcePath
-import eu.kanade.tachiyomi.util.source.toggleLeadingSlash
 import eu.kanade.domain.source.service.SourcePreferences
 import kotlinx.coroutines.Dispatchers
 import logcat.LogPriority
@@ -34,40 +33,21 @@ class MassImport(
 
     suspend fun resolveMangaUrl(url: String, path: String, source: CatalogueSource): Manga {
         val inputUrl = normalizeSourcePath(source, path)
-        val sManga = runCatching {
-            var resolved: eu.kanade.tachiyomi.source.model.SManga? = null
-            if (source is eu.kanade.tachiyomi.source.online.ResolvableSource &&
-                source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga
-            ) {
-                resolved = runCatching { source.getManga(url) }.getOrNull()
-            }
-
-            resolved ?: source.getMangaDetails(
-                eu.kanade.tachiyomi.source.model.SManga.create().apply {
-                    this.url = inputUrl
-                },
-            )
-        }.getOrElse { firstError ->
-            if (source is HttpSource) {
-                val fallback = runCatching {
-                    val page = source.getSearchManga(1, url, eu.kanade.tachiyomi.source.model.FilterList())
-                    page.mangas.firstOrNull()?.let { firstManga ->
-                        source.getMangaDetails(firstManga).apply { this.url = firstManga.url }
-                    }
-                }.getOrNull()
-
-                fallback ?: run {
-                    val fallbackUrl = toggleLeadingSlash(inputUrl)
-                    source.getMangaDetails(
-                        eu.kanade.tachiyomi.source.model.SManga.create().apply { this.url = fallbackUrl },
-                    ).apply {
-                        this.url = fallbackUrl
-                    }
-                }
-            } else {
-                throw firstError
-            }
+        // No search-by-URL or slash-toggle fallbacks here: they never resolved anything reliably
+        // and their failures (e.g. UnknownHostException from a slash-less baseUrl + url concat)
+        // masked the real error from the direct details fetch.
+        var resolved: eu.kanade.tachiyomi.source.model.SManga? = null
+        if (source is eu.kanade.tachiyomi.source.online.ResolvableSource &&
+            source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga
+        ) {
+            resolved = runCatching { source.getManga(url) }.getOrNull()
         }
+
+        val sManga = resolved ?: source.getMangaDetails(
+            eu.kanade.tachiyomi.source.model.SManga.create().apply {
+                this.url = inputUrl
+            },
+        )
 
         try {
             val resolvedUrl = runCatching { sManga.url }.getOrNull().orEmpty()
@@ -134,14 +114,13 @@ class MassImport(
     }
 
     fun extractPathFromUrl(url: String, baseUrl: String, source: CatalogueSource? = null): String {
+        // The source was already matched to this URL by the caller, so whenever the URL parses
+        // as an absolute URL just take its path + query. Comparing hosts here breaks on
+        // www./mirror-subdomain mismatches (e.g. sonicmtl.com vs www.sonicmtl.com) and used to
+        // leak the host into the path, producing requests like "https://www.sonicmtl.comsonicmtl.com/...".
         val extractedPath = try {
-            val baseUri = URI(baseUrl)
             val urlUri = URI(url)
-
-            val baseHost = baseUri.host?.lowercase()
-            val urlHost = urlUri.host?.lowercase()
-
-            if (baseHost != null && urlHost != null && baseHost == urlHost) {
+            if (urlUri.host != null) {
                 buildString {
                     append(urlUri.rawPath ?: "")
                     val q = urlUri.rawQuery
@@ -151,26 +130,35 @@ class MassImport(
                     }
                 }
             } else {
-                val normalizedBase = stripScheme(baseUrl).removeSuffix("/")
-                val normalizedUrl = stripScheme(url)
-                if (normalizedUrl.startsWith(normalizedBase)) {
-                    normalizedUrl.removePrefix(normalizedBase)
-                } else {
-                    normalizedUrl
-                }
+                extractPathFallback(url, baseUrl)
             }
         } catch (_: Exception) {
-            val normalizedBase = stripScheme(baseUrl).removeSuffix("/")
-            val normalizedUrl = stripScheme(url)
-            if (normalizedUrl.startsWith(normalizedBase)) {
-                normalizedUrl.removePrefix(normalizedBase)
-            } else {
-                normalizedUrl
-            }
+            extractPathFallback(url, baseUrl)
         }
 
         val rawPath = source?.let { normalizeSourcePath(it, extractedPath) } ?: extractedPath
         return normalizeUrl(rawPath)
+    }
+
+    /**
+     * String-based path extraction for URLs that [URI] can't parse. Preserves path casing and
+     * never leaks the host into the returned path even when it doesn't match [baseUrl].
+     */
+    private fun extractPathFallback(url: String, baseUrl: String): String {
+        val schemeRegex = Regex("^[a-zA-Z][a-zA-Z0-9+\\-.]*://")
+        val rawUrl = url.trim().replace(schemeRegex, "")
+        val normalizedUrl = rawUrl.removePrefix("www.")
+        val normalizedBase = baseUrl.trim().replace(schemeRegex, "")
+            .removePrefix("www.")
+            .removeSuffix("/")
+
+        if (normalizedUrl.startsWith(normalizedBase, ignoreCase = true)) {
+            return normalizedUrl.substring(normalizedBase.length)
+        }
+
+        // Host mismatch (mirror/subdomain): drop everything before the first slash.
+        val slashIndex = normalizedUrl.indexOf('/')
+        return if (slashIndex >= 0) normalizedUrl.substring(slashIndex) else normalizedUrl
     }
 
     fun normalizeUrl(url: String): String {

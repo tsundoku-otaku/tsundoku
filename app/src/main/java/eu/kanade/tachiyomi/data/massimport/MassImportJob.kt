@@ -310,8 +310,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
 
         // Each run re-walks the full URL list, so prior log entries are stale. Cleared only once
-        // processing actually starts — the degenerate aborts above keep the previous log intact.
-        if (batchId.isNotEmpty()) MassImportStore.clearErrors(context, batchId)
+        // processing actually starts — the degenerate aborts above keep the previous logs intact.
+        if (batchId.isNotEmpty()) {
+            MassImportStore.clearErrors(context, batchId)
+            MassImportStore.clearSkipped(context, batchId)
+        }
 
         val sourceCache = hostSourceCache
         fun getCachedSource(url: String): CatalogueSource? {
@@ -395,6 +398,35 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             if (batchId.isNotEmpty()) MassImportStore.appendErrors(context, batchId, toFlush)
         }
 
+        // Skipped URLs get the same disk log treatment as errors (`mi_<id>_skipped.txt`),
+        // with the skip reason as the message.
+        val skipLogBuffer = mutableListOf<Pair<String, String>>()
+        fun recordSkip(url: String, reason: String) {
+            val toFlush: List<Pair<String, String>>?
+            synchronized(skipLogBuffer) {
+                skipLogBuffer.add(url to reason)
+                toFlush = if (skipLogBuffer.size >= 100) {
+                    val copy = skipLogBuffer.toList()
+                    skipLogBuffer.clear()
+                    copy
+                } else {
+                    null
+                }
+            }
+            if (toFlush != null && batchId.isNotEmpty()) {
+                MassImportStore.appendSkipped(context, batchId, toFlush)
+            }
+        }
+        fun flushSkipLog() {
+            val toFlush = synchronized(skipLogBuffer) {
+                if (skipLogBuffer.isEmpty()) return
+                val copy = skipLogBuffer.toList()
+                skipLogBuffer.clear()
+                copy
+            }
+            if (batchId.isNotEmpty()) MassImportStore.appendSkipped(context, batchId, toFlush)
+        }
+
         updateNotification(0, totalCount, "Starting import...")
 
         val throttlingEnabled = novelDownloadPreferences.enableMassImportThrottling().get()
@@ -423,12 +455,14 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
                     return@flatMapMerge flow {
                         skippedCount.incrementAndGet()
+                        recordSkip(url, "Not a valid URL")
                         val done = completedCount.incrementAndGet()
                         updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get())
                     }
                 }
                 val source = getCachedSource(url) ?: return@flatMapMerge flow {
                     skippedCount.incrementAndGet()
+                    recordSkip(url, "No matching source installed (or host excluded)")
                     val done = completedCount.incrementAndGet()
                     updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get())
                 }
@@ -438,6 +472,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     // "added" (the insert itself is insert-if-not-exists, so no corruption).
                     if (!inFlightUrls.add(url)) {
                         skippedCount.incrementAndGet()
+                        recordSkip(url, "Duplicate")
                         val done = completedCount.incrementAndGet()
                         updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get())
                         return@flow
@@ -456,6 +491,32 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                             batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get(),
                             erroredUrlsPreview = synchronized(erroredUrls) { erroredUrls.take(10) },
                         )
+                        inFlightUrls.remove(url)
+                        return@flow
+                    }
+
+                    // Cheap DB pre-check before the throttle queue: on re-runs most URLs are
+                    // already in the library and would otherwise each pay the per-source delay
+                    // plus a network resolve just to be skipped one by one. A miss (resolved DB
+                    // url differs from the normalized input) falls through to the full path,
+                    // which re-checks after resolving.
+                    val preMatch = runCatching {
+                        val raw = massImportInteractor.extractPathFromUrl(
+                            url,
+                            massImportInteractor.getSourceBaseUrl(source),
+                            source,
+                        )
+                        if (raw.isEmpty()) {
+                            null
+                        } else {
+                            getMangaByUrlAndSourceId.await(massImportInteractor.normalizeUrl(raw), source.id)
+                        }
+                    }.getOrNull()
+                    if (preMatch?.favorite == true) {
+                        skippedCount.incrementAndGet()
+                        recordSkip(url, "Already in library")
+                        val done = completedCount.incrementAndGet()
+                        updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get())
                         inFlightUrls.remove(url)
                         return@flow
                     }
@@ -517,7 +578,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                 sourceConsecutiveFailures[source.id]?.set(0)
                                 addedCount.incrementAndGet()
                             }
-                            false -> skippedCount.incrementAndGet()
+                            false -> {
+                                skippedCount.incrementAndGet()
+                                recordSkip(url, "Already in library")
+                            }
                             // null: batch was cancelled while queued — nothing processed.
                             null -> {
                                 cancelledWhileQueued = true
@@ -557,14 +621,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             }
             .collect()
         } catch (e: CancellationException) {
-            // Non-suspending IO, safe in a cancelled coroutine; keeps the buffered log tail.
+            // Non-suspending IO, safe in a cancelled coroutine; keeps the buffered log tails.
             flushErrorLog()
+            flushSkipLog()
             throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Unexpected error during import collection for batch $batchId" }
         }
 
         flushErrorLog()
+        flushSkipLog()
 
         val finalResult = ImportResult(
             added = addedCount.get(),
@@ -694,13 +760,13 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         var finalUrl = normalizedPath
         if (url.startsWith("http", ignoreCase = true)) {
+            // Only ResolvableSource gets a canonical-URL resolve; searching with the raw URL as a
+            // query never matched anything reliably and just burned a request per import.
             val resolvedManga = runCatching {
                 withTimeoutOrNull(FETCH_TIMEOUT_MS) {
                     if (source is eu.kanade.tachiyomi.source.online.ResolvableSource &&
                         source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga) {
                         source.getManga(url)
-                    } else if (source is HttpSource) {
-                        source.getSearchManga(1, url, eu.kanade.tachiyomi.source.model.FilterList()).mangas.firstOrNull()
                     } else {
                         null
                     }
