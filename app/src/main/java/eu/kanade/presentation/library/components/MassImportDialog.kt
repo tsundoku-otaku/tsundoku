@@ -75,7 +75,9 @@ import eu.kanade.presentation.category.visualName
 import eu.kanade.tachiyomi.data.massimport.MassImportJob
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -86,6 +88,10 @@ import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+
+// Clipboard crosses a binder transaction (~1MB cap); past this count a huge list would throw
+// TransactionTooLargeException, so the user is pointed at export-to-file instead.
+private const val CLIPBOARD_COPY_LIMIT = 5_000
 
 @Composable
 fun MassImportDialog(
@@ -124,6 +130,7 @@ fun MassImportDialog(
     val toastErrorExportingUrls = stringResource(TDMR.strings.mass_import_toast_error_exporting_urls)
     val toastCopiedUrls = stringResource(TDMR.strings.mass_import_toast_copied_urls)
     val toastCopiedErrors = stringResource(TDMR.strings.mass_import_toast_copied_errors)
+    val toastCopyTooLarge = stringResource(TDMR.strings.mass_import_toast_copy_too_large)
     val toastRequeuedErrors = stringResource(TDMR.strings.mass_import_toast_requeued_errors)
     val clipboardUrlsLabel = stringResource(TDMR.strings.mass_import_clipboard_label_urls)
     val clipboardErrorsLabel = stringResource(TDMR.strings.mass_import_clipboard_label_errors)
@@ -134,51 +141,65 @@ fun MassImportDialog(
         onResult = { uris ->
             if (uris.isEmpty()) return@rememberLauncherForActivityResult
 
-            // Stream picked files straight to a temp file on disk instead of accumulating their
-            // full content in memory + the text field. A large URL list would otherwise build a
-            // multi-hundred-MB String and OOM before the import even starts.
+            // Stream picked files to a temp file instead of accumulating in memory + the text
+            // field — a large URL list would OOM before the import even starts.
             dialogScope.launch(Dispatchers.IO) {
                 val tmp = File(context.cacheDir, "mass_import_pick_${System.nanoTime()}.txt")
-                var count = 0
-                var loadedFiles = 0
-                var readError = false
                 try {
-                    tmp.bufferedWriter().use { writer ->
-                        for (uri in uris) {
-                            var hadContent = false
-                            runCatching {
-                                context.contentResolver.openInputStream(uri)?.bufferedReader()?.useLines { lines ->
-                                    for (raw in lines) {
-                                        val line = raw.trim()
-                                        if (line.isNotBlank()) {
-                                            writer.write(line)
-                                            writer.write("\n")
-                                            count++
-                                            hadContent = true
+                    var count = 0
+                    var loadedFiles = 0
+                    var readError = false
+                    try {
+                        tmp.bufferedWriter().use { writer ->
+                            for (uri in uris) {
+                                var hadContent = false
+                                runCatching {
+                                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.useLines { lines ->
+                                        for (raw in lines) {
+                                            val line = raw.trim()
+                                            if (line.isNotBlank()) {
+                                                writer.write(line)
+                                                writer.write("\n")
+                                                count++
+                                                hadContent = true
+                                            }
                                         }
                                     }
+                                }.onFailure {
+                                    if (it is CancellationException) throw it
+                                    readError = true
                                 }
-                            }.onFailure { readError = true }
-                            if (hadContent) loadedFiles++
+                                if (hadContent) loadedFiles++
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        readError = true
+                    }
+
+                    // Dialog disposed mid-read: the loop has no suspension points, so the scope's
+                    // cancellation surfaces here — treat the pick as abandoned (tmp deleted below).
+                    ensureActive()
+
+                    if (count > 0) {
+                        pickedFile?.let { old -> runCatching { old.delete() } }
+                        pickedFile = tmp
+                        pickedFileCount = count
+                        pickedFileLoadedFiles = loadedFiles
+                        withContext(Dispatchers.Main) {
+                            context.toast(String.format(toastAddedUrlsFromFiles, count, loadedFiles))
+                        }
+                    } else {
+                        runCatching { tmp.delete() }
+                        withContext(Dispatchers.Main) {
+                            context.toast(if (readError) toastErrorReadingFile else toastNoReadableUrls)
                         }
                     }
-                } catch (_: Exception) {
-                    readError = true
-                }
-
-                if (count > 0) {
-                    pickedFile?.let { old -> runCatching { old.delete() } }
-                    pickedFile = tmp
-                    pickedFileCount = count
-                    pickedFileLoadedFiles = loadedFiles
-                    withContext(Dispatchers.Main) {
-                        context.toast(String.format(toastAddedUrlsFromFiles, count, loadedFiles))
-                    }
-                } else {
+                } catch (e: CancellationException) {
+                    // Not staged yet, so the DisposableEffect can't clean it up.
                     runCatching { tmp.delete() }
-                    withContext(Dispatchers.Main) {
-                        context.toast(if (readError) toastErrorReadingFile else toastNoReadableUrls)
-                    }
+                    throw e
                 }
             }
         },
@@ -388,12 +409,16 @@ fun MassImportDialog(
                                     context.toast(String.format(toastRequeuedErrors, batch.errored))
                                 },
                                 onCopyUrls = {
-                                    // Off the main thread: the url list is read from disk.
-                                    dialogScope.launch(Dispatchers.IO) {
-                                        val urls = MassImportJob.exportBatchUrls(context, batch.id)
-                                        withContext(Dispatchers.Main) {
-                                            context.copyToClipboard(clipboardUrlsLabel, urls)
-                                            context.toast(String.format(toastCopiedUrls, batch.total))
+                                    if (batch.total > CLIPBOARD_COPY_LIMIT) {
+                                        context.toast(toastCopyTooLarge)
+                                    } else {
+                                        // Off the main thread: the url list is read from disk.
+                                        dialogScope.launch(Dispatchers.IO) {
+                                            val urls = MassImportJob.exportBatchUrls(context, batch.id)
+                                            withContext(Dispatchers.Main) {
+                                                context.copyToClipboard(clipboardUrlsLabel, urls)
+                                                context.toast(String.format(toastCopiedUrls, batch.total))
+                                            }
                                         }
                                     }
                                 },
@@ -403,9 +428,14 @@ fun MassImportDialog(
                                     dialogScope.launch(Dispatchers.IO) {
                                         val errors = MassImportJob.getErroredUrls(context, batch.id)
                                         withContext(Dispatchers.Main) {
-                                            if (errors.isNotEmpty()) {
-                                                context.copyToClipboard(clipboardErrorsLabel, errors.joinToString("\n"))
-                                                context.toast(String.format(toastCopiedErrors, errors.size))
+                                            when {
+                                                errors.isEmpty() -> {}
+                                                errors.size > CLIPBOARD_COPY_LIMIT ->
+                                                    context.toast(toastCopyTooLarge)
+                                                else -> {
+                                                    context.copyToClipboard(clipboardErrorsLabel, errors.joinToString("\n"))
+                                                    context.toast(String.format(toastCopiedErrors, errors.size))
+                                                }
                                             }
                                         }
                                     }
@@ -752,9 +782,8 @@ fun MassImportDialog(
 
                         val useRawTextFastPath = combinedRawText.length > 100_000
                         if (useRawTextFastPath) {
-                            // Drop the text-field copies before tokenizing: combinedRawText
-                            // already holds the data, so this lets the (possibly multi-MB)
-                            // Compose-state strings be reclaimed instead of coexisting.
+                            // combinedRawText already holds the data; drop the (possibly
+                            // multi-MB) Compose-state copies so they can be reclaimed.
                             urlText = ""
                             pendingUrls = ""
                             MassImportJob.start(
@@ -1180,9 +1209,9 @@ private fun BatchItem(
                         }
                     }
 
-                    // Retry failed: re-queue the errored URLs as a new batch (terminal batches only).
-                    // Gate on the count, not the in-memory url list — after a restart the live
-                    // list may be empty while the persisted error log still has everything.
+                    // Retry failed (terminal batches only). Gate on the count, not the in-memory
+                    // list — after a restart the persisted error log may have entries the live
+                    // list lost.
                     val isTerminal = batch.status == MassImportJob.BatchStatus.Completed ||
                         batch.status == MassImportJob.BatchStatus.Cancelled
                     if (batch.errored > 0 && isTerminal) {

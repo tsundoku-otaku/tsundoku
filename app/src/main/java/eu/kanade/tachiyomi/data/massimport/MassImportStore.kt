@@ -100,9 +100,9 @@ object MassImportStore {
             return 0
         }
         var count = 0
+        val name = urlsName(batchId)
         synchronized(ioLock) {
             runCatching {
-                val name = urlsName(batchId)
                 dir.findFile(name)?.delete()
                 val file = dir.createFile(name) ?: return@runCatching
                 file.openOutputStream().bufferedWriter().use { writer ->
@@ -113,7 +113,11 @@ object MassImportStore {
                     }
                 }
                 logcat(LogPriority.DEBUG) { "MassImportStore: streamed $count urls -> $name" }
-            }.onFailure { logcat(LogPriority.WARN, it) { "MassImportStore: failed to stream urls for $batchId" } }
+            }.onFailure {
+                logcat(LogPriority.WARN, it) { "MassImportStore: failed to stream urls for $batchId" }
+                runCatching { dir.findFile(name)?.delete() }
+                count = -1
+            }
         }
         return count
     }
@@ -132,6 +136,17 @@ object MassImportStore {
         return runCatching {
             dir.findFile(urlsName(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
                 reader.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+            } ?: emptyList()
+        }.getOrDefault(emptyList())
+    }
+
+    /** First [limit] URLs only — for queue previews */
+    fun loadUrlsPreview(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, limit: Int): List<String> {
+        if (batchId.isEmpty()) return emptyList()
+        val dir = dir() ?: return emptyList()
+        return runCatching {
+            dir.findFile(urlsName(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
+                reader.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.take(limit).toList()
             } ?: emptyList()
         }.getOrDefault(emptyList())
     }

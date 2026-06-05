@@ -123,6 +123,7 @@
     <string name="mass_import_toast_error_exporting_urls">Error exporting URLs: %s</string>
     <string name="mass_import_toast_copied_urls">Copied %d URLs</string>
     <string name="mass_import_toast_copied_errors">Copied %d errors with messages</string>
+    <string name="mass_import_toast_copy_too_large">Too many URLs to copy — use export to file instead</string>
     <string name="mass_import_toast_report_copied">Report copied to clipboard</string>
     <string name="mass_import_toast_requeued_errors">Re-queued %d URLs</string>
     <string name="mass_import_toast_requeued_remaining">Re-queued remaining URLs</string>
