@@ -215,7 +215,7 @@ class LibrarySettingsScreenModel(
             try {
                 // Try loading from disk cache first if not forced and not loaded yet
                 if (!forceRefresh && !_extensionsLoaded.get()) {
-                    val cached = librarySettingsCache.loadExtensions()
+                    val cached = librarySettingsCache.loadExtensions(type.name)
                     if (cached != null && cached.isNotEmpty()) {
                         _extensionsFlow.value = cached
                         _extensionsLoaded.set(true)
@@ -253,7 +253,7 @@ class LibrarySettingsScreenModel(
                 )
 
                 _extensionsFlow.value = extensions
-                librarySettingsCache.saveExtensions(extensions)
+                librarySettingsCache.saveExtensions(type.name, extensions)
                 _extensionsLoaded.set(true)
             } catch (e: Exception) {
                 // Ignore error, keep empty list

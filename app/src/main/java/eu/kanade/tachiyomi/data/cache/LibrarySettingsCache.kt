@@ -19,26 +19,32 @@ class LibrarySettingsCache(private val context: Context) {
         File(context.filesDir, "library_cache").apply { mkdirs() }
     }
 
-    private val extensionsFile by lazy { File(cacheDir, "extensions.json") }
     private val tagsFile by lazy { File(cacheDir, "tags.json") }
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun saveExtensions(extensions: List<ExtensionInfo>) {
+    // The list is saved already filtered by library type (manga/novel/all), so each type needs
+    // its own file: a shared one served the manga tab's list to the novel tab until a manual
+    // refresh, and vice versa. The pre-split "extensions.json" is removed on first save.
+    private fun extensionsFile(typeKey: String) = File(cacheDir, "extensions_$typeKey.json")
+
+    fun saveExtensions(typeKey: String, extensions: List<ExtensionInfo>) {
         try {
-            val data = extensions.map { ExtensionData(it.sourceId, it.sourceName, it.isStub) }
-            extensionsFile.writeText(json.encodeToString(data))
+            val data = extensions.map { ExtensionData(it.sourceId, it.sourceName, it.isStub, it.isNovel, it.isCustom) }
+            File(cacheDir, "extensions.json").delete()
+            extensionsFile(typeKey).writeText(json.encodeToString(data))
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to save extensions cache" }
         }
     }
 
-    fun loadExtensions(): List<ExtensionInfo>? {
+    fun loadExtensions(typeKey: String): List<ExtensionInfo>? {
         return try {
-            if (!extensionsFile.exists()) return null
-            val text = extensionsFile.readText()
+            val file = extensionsFile(typeKey)
+            if (!file.exists()) return null
+            val text = file.readText()
             val data = json.decodeFromString<List<ExtensionData>>(text)
-            data.map { ExtensionInfo(it.id, it.name, it.isStub) }
+            data.map { ExtensionInfo(it.id, it.name, it.isStub, it.isNovel, it.isCustom) }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to load extensions cache" }
             null
@@ -74,6 +80,8 @@ class LibrarySettingsCache(private val context: Context) {
         val id: Long,
         val name: String,
         val isStub: Boolean = false,
+        val isNovel: Boolean = false,
+        val isCustom: Boolean = false,
     )
 
     @Serializable
