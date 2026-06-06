@@ -374,37 +374,44 @@ private fun normalizeRanobeDbCookie(input: String): String? {
     return value.trim().ifBlank { null }?.let { "auth_session=$it" }
 }
 
+private val novelListAccessTokenRegex = Regex("\"access_token\"\\s*:\\s*\"([^\"]+)\"")
+private val jwtRegex = Regex("eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+")
+
+/**
+ * Accepts any of: a raw JWT, `Bearer <jwt>`, the session JSON, a `novellist` cookie,
+ * a full cookie header, or a localStorage entry like `novellist.0:"base64-..."`.
+ * Returns the JWT access token, or null if none can be extracted.
+ */
 private fun normalizeNovelListToken(input: String): String? {
     val raw = input.trim()
     if (raw.isEmpty()) return null
 
-    val extracted = run {
-        val cookieRegex = Regex("(?:^|[;\\s])novellist=([^;]+)")
-        val match = cookieRegex.find(raw)
-        match?.groupValues?.getOrNull(1) ?: raw
+    // base64-encoded session blob anywhere in the input (cookie value or
+    // localStorage chunk; chunked entries may be truncated mid-blob).
+    Regex("base64-([A-Za-z0-9+/=_-]+)").find(raw)?.groupValues?.get(1)?.let { blob ->
+        decodeNovelListBase64(blob)?.let { decoded ->
+            novelListAccessTokenRegex.find(decoded)?.groupValues?.get(1)?.let { return it }
+        }
     }
 
-    val candidate = extracted.trim().removePrefix("novellist=")
+    // Plain session JSON.
+    novelListAccessTokenRegex.find(raw)?.groupValues?.get(1)?.let { return it }
 
-    // If a direct JWT/token was pasted, use it as-is.
-    if (!candidate.startsWith("base64-")) {
-        val tokenInJson = Regex("\"access_token\"\\s*:\\s*\"([^\"]+)\"")
-            .find(candidate)
-            ?.groupValues
-            ?.getOrNull(1)
-        return tokenInJson ?: candidate.ifBlank { null }
-    }
+    // Raw JWT, optionally prefixed with "Bearer ".
+    return jwtRegex.find(raw)?.value
+}
 
-    val decoded = runCatching {
-        val encoded = candidate.removePrefix("base64-")
-        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
-        String(bytes, Charsets.UTF_8)
-    }.getOrNull() ?: return null
-
-    return Regex("\"access_token\"\\s*:\\s*\"([^\"]+)\"")
-        .find(decoded)
-        ?.groupValues
-        ?.getOrNull(1)
+/**
+ * Decode a base64/base64url blob, tolerating truncation from localStorage chunking
+ * (`novellist.0`, `novellist.1`, ...). The access_token sits at the start of the
+ * session JSON, so a partial first chunk still decodes far enough to find it.
+ */
+private fun decodeNovelListBase64(encoded: String): String? {
+    var cleaned = encoded.replace('-', '+').replace('_', '/').replace("=", "")
+    cleaned = cleaned.dropLast(cleaned.length % 4)
+    return runCatching {
+        String(android.util.Base64.decode(cleaned, android.util.Base64.NO_PADDING), Charsets.UTF_8)
+    }.getOrNull()
 }
 
 private suspend fun extractTokenFromCookies(trackerId: Long, currentUrl: String): String? {
@@ -429,34 +436,16 @@ private suspend fun extractTokenFromCookies(trackerId: Long, currentUrl: String)
                 val cookies = cookieManager.getCookie("https://www.novellist.co")
                 logcat(LogPriority.DEBUG) { "NovelList cookies: $cookies" }
                 if (cookies != null) {
-                    // Try to find the novellist cookie which contains the JWT
-                    val regex = Regex("novellist=([^;]+)")
-                    val match = regex.find(cookies)
-                    val novellistCookie = match?.groupValues?.get(1)
-
-                    if (novellistCookie != null) {
-                        // Decode base64 if needed
-                        val decoded = try {
-                            if (novellistCookie.startsWith("base64-")) {
-                                val base64Part = novellistCookie.removePrefix("base64-")
-                                val decoded = android.util.Base64.decode(base64Part, android.util.Base64.DEFAULT)
-                                String(decoded)
-                            } else {
-                                novellistCookie
-                            }
-                        } catch (e: Exception) {
-                            logcat(LogPriority.ERROR, e) { "Failed to decode NovelList cookie" }
-                            novellistCookie
-                        }
-
-                        // Extract access_token from JSON if present
-                        try {
-                            val jsonRegex = Regex("\"access_token\"\\s*:\\s*\"([^\"]+)\"")
-                            val tokenMatch = jsonRegex.find(decoded)
-                            tokenMatch?.groupValues?.get(1) ?: decoded
-                        } catch (e: Exception) {
-                            decoded
-                        }
+                    // Session is either a single `novellist` cookie or chunked
+                    // across `novellist.0`, `novellist.1`, ...
+                    val single = Regex("novellist=([^;]+)").find(cookies)?.groupValues?.get(1)
+                    val chunked = Regex("novellist\\.(\\d+)=([^;]+)").findAll(cookies)
+                        .sortedBy { it.groupValues[1].toInt() }
+                        .joinToString("") { it.groupValues[2] }
+                        .ifEmpty { null }
+                    val cookieValue = single ?: chunked
+                    if (cookieValue != null) {
+                        normalizeNovelListToken(cookieValue)
                     } else {
                         logcat(LogPriority.WARN) { "NovelList cookie not found" }
                         null

@@ -1,7 +1,5 @@
 package eu.kanade.tachiyomi.data.track.novellist
 
-import android.graphics.Color
-import android.util.Base64
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.database.models.Track
@@ -182,12 +180,11 @@ class NovelList(id: Long) : BaseTracker(id, "NovelList") {
         // Send OPTIONS preflight first
         sendOptionsRequest(url, "PUT")
 
-        // NovelList uses PUT to the same endpoint for both adding and updating
+        // NovelList uses PUT to the same endpoint for both adding and updating.
+        // rating must be omitted unless >= 1, the API rejects 0 with a 422.
         val requestBody = buildJsonObject {
             put("status", if (hasReadChapters) "IN_PROGRESS" else "PLANNED")
             put("chapter_count", track.last_chapter_read.toInt())
-            put("rating", 0)
-            put("note", "")
         }.toString().toRequestBody("application/json".toMediaType())
 
         val request = buildAuthenticatedRequest(url)
@@ -241,7 +238,7 @@ class NovelList(id: Long) : BaseTracker(id, "NovelList") {
                 val slug = obj["slug"]?.jsonPrimitive?.contentOrNull ?: idString
                 // Store UUID in tracking_url - use special format to preserve both slug and id
                 // Format: https://www.novellist.co/novel/slug#uuid
-                track.tracking_url = "https://www.novellist.co/novel/$slug#$idString"
+                track.tracking_url = "https://www.novellist.co/novels/$slug#$idString"
                 track.publishing_status = obj["status"]?.jsonPrimitive?.contentOrNull ?: ""
                 track
             }
@@ -272,27 +269,6 @@ class NovelList(id: Long) : BaseTracker(id, "NovelList") {
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "NovelList refresh failed" }
             track
-        }
-    }
-
-    /**
-     * Extract JWT token from novellist cookie.
-     * Cookie format: base64-{base64 encoded JSON containing access_token}
-     */
-    fun extractTokenFromCookie(cookieValue: String): String? {
-        return try {
-            if (cookieValue.startsWith("base64-")) {
-                val base64Part = cookieValue.removePrefix("base64-")
-                val decodedBytes = Base64.decode(base64Part, Base64.DEFAULT)
-                val decodedString = String(decodedBytes, Charsets.UTF_8)
-                val jsonObj = json.decodeFromString<JsonObject>(decodedString)
-                jsonObj["access_token"]?.jsonPrimitive?.contentOrNull
-            } else {
-                null
-            }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to extract token from cookie" }
-            null
         }
     }
 
