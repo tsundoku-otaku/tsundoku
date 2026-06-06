@@ -71,21 +71,20 @@ class JsSource(
     private val instanceMutex = kotlinx.coroutines.sync.Mutex()
     private var lastUsed = System.currentTimeMillis()
 
-    // Kept (unlike the removed details cache) because the chapter list may aggregate
-    // parseNovel + N parsePage calls; re-deriving it would refetch every page.
+    // Chapter list may aggregate parseNovel + N parsePage calls; re-deriving it would refetch every page.
     private val chaptersCache = java.util.concurrent.ConcurrentHashMap<String, Pair<List<SChapter>, Long>>()
-    private val cacheTimeout = 300_000L // 5 minutes
 
-    // The Source API forces separate getMangaDetails/getChapterList calls, but both map to one
-    // plugin.parseNovel; likewise parseChapter serves the reader and the translation/download
-    // paths. One fetch per path serves all consumers; the mutex makes concurrent callers share it.
+    // Short so a manual details/chapter-list refresh actually refetches.
+    private val cacheTimeout = 60_000L
+
+    // getMangaDetails and getChapterList both map to one plugin.parseNovel; parseChapter serves
+    // reader, translation and download paths. Mutex makes concurrent callers share one fetch.
     private val parseNovelCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
     private val parseNovelMutex = kotlinx.coroutines.sync.Mutex()
     private val chapterTextCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
     private val chapterTextMutex = kotlinx.coroutines.sync.Mutex()
 
-    // Holds the result of an inferHasNextPage probe so the user actually paging forward
-    // reuses it instead of refetching the same page.
+    // inferHasNextPage probe result, reused when the user pages forward.
     private val browseProbeCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
 
     // Raw JSON of plugin.filters / plugin.pluginSettings. Static per plugin version; caching it
@@ -181,10 +180,8 @@ class JsSource(
     private suspend fun getOrCreateInstance(): eu.kanade.tachiyomi.jsplugin.runtime.PluginInstance = withContext(
         jsDispatcher,
     ) {
-        // Mutex serializes the whole check-create-assign so concurrent callers can't
-        // both build a runtime while one is suspended in executePlugin(). All reads/writes
-        // of cachedInstance additionally go through instanceLock so invalidateInstance()
-        // (callable from any thread) stays mutually exclusive with them.
+        // instanceMutex serializes check-create-assign; instanceLock additionally guards
+        // cachedInstance so invalidateInstance (any thread) can't race these accesses.
         instanceMutex.withLock {
             val now = System.currentTimeMillis()
             val existing = synchronized(instanceLock) {
@@ -247,8 +244,7 @@ class JsSource(
 
     /**
      * Close the cached QuickJS runtime to free native memory without killing the executor.
-     * Safe while the source may still be referenced (e.g. an open screen after a plugin
-     * update replaced it) — the next call simply recreates the runtime.
+     * Safe while the source may still be referenced; the next call recreates the runtime.
      */
     suspend fun releaseRuntime() = withContext(jsDispatcher) {
         invalidateInstance()
@@ -284,8 +280,7 @@ class JsSource(
             executePluginMethodAttempt(methodCall)
         } catch (e: Exception) {
             // The runtime can be closed under an in-flight call (releaseRuntime after a plugin
-            // update, instance timeout). The attempt already invalidated it — retry once on a
-            // fresh runtime instead of surfacing the error.
+            // update, instance timeout); the attempt already invalidated it, so retry once.
             if (e.message.orEmpty().contains("context is destroyed", ignoreCase = true)) {
                 logcat(LogPriority.WARN) { "JsSource[$pluginId]: runtime closed mid-call, retrying: $methodCall" }
                 executePluginMethodAttempt(methodCall)
@@ -681,17 +676,14 @@ class JsSource(
             logcat(LogPriority.ERROR) { "[$id] getPageList: chapter.url is blank, cannot parse chapter" }
             return emptyList()
         }
-        // A novel chapter is always a single page; no network here. The one fetch happens in
-        // fetchPageText, which every consumer (reader, translator, downloader, EPUB export)
-        // goes through — parseChapterCached then dedupes them onto the same result.
+        // A novel chapter is always one page; the single fetch happens in fetchPageText.
         return listOf(Page(0, chapter.url, ""))
     }
 
     override fun getFilterList(): FilterList {
         return try {
-            // The interface is synchronous, so the first call must runBlocking into JS.
-            // Cache the raw JSON (static per plugin version) and re-parse per call —
-            // Filter instances are stateful and must stay fresh per invocation.
+            // Synchronous interface, so the first call must runBlocking into JS. Cache the raw
+            // JSON but re-parse per call; Filter instances are stateful.
             val result = filtersJsonCache
                 ?: runBlocking { executePluginMethod("plugin.filters || {}") }
                     .also { filtersJsonCache = it }
@@ -843,7 +835,7 @@ class JsSource(
         }
     }
 
-    /** Keep raw caches small — chapter HTML payloads can be large. */
+    /** Keep raw caches small; chapter HTML payloads can be large. */
     private fun trimRawCache(cache: java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>) {
         val maxEntries = 8
         if (cache.size <= maxEntries) return

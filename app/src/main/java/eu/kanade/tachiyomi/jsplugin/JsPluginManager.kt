@@ -553,8 +553,7 @@ class JsPluginManager(
     private fun rebuildSources() {
         val oldSources = _jsSources.value.filterIsInstance<JsSource>()
         val oldById = oldSources.associateBy { it.id }
-        // Reuse sources whose plugin didn't change: rebuilds fire on every storage change, and
-        // recreating (then releasing) untouched sources would kill their in-flight calls.
+        // Rebuilds fire on every storage change; recreating untouched sources kills their in-flight calls.
         val sources = _installedPlugins.value.map { installedPlugin ->
             val existing = oldById[installedPlugin.plugin.sourceId()]
             if (existing != null && existing.isSamePlugin(installedPlugin)) {
@@ -574,8 +573,7 @@ class JsPluginManager(
             "JsPluginManager: rebuildSources() - _jsSources.value updated, new count: ${_jsSources.value.size}"
         }
 
-        // Free native QuickJS runtimes held by the replaced sources only. Screens still holding
-        // an old reference keep working — the runtime is recreated on demand.
+        // Release only replaced runtimes; old references keep working, the runtime recreates on demand.
         val kept = sources.toHashSet()
         val replaced = oldSources.filterNot { it in kept }
         if (replaced.isNotEmpty()) {
@@ -682,8 +680,7 @@ class JsPluginManager(
                 logcat(LogPriority.WARN) { "Plugins directory not available for saving repositories.json" }
                 return
             }
-            // replaceFile: non-truncating SAF overwrite is what produced the concatenated-JSON
-            // repositories.json files that loadRepositories() has to repair.
+            // replaceFile: non-truncating overwrite produced the concatenated JSON loadRepositories() repairs
             val reposFile = dir.replaceFile("repositories.json")
             if (reposFile == null) {
                 logcat(LogPriority.ERROR) { "Failed to create repositories.json file" }
@@ -780,10 +777,8 @@ class JsPluginManager(
     // UniFile helpers
 
     /**
-     * Delete-then-create to guarantee truncation. SAF's openOutputStream uses "w" mode, which
-     * many document providers do NOT truncate: overwriting a file with shorter content leaves
-     * stale tail bytes from the old version. For plugin .js files that yields a permanent
-     * SyntaxError after updates (and reinstalls over the same file never heal it).
+     * Delete-then-create to guarantee truncation. SAF "w" mode does not truncate on many
+     * providers, so a shorter overwrite leaves stale tail bytes (permanent SyntaxError for .js).
      */
     private fun UniFile.replaceFile(name: String): UniFile? {
         findFile(name)?.delete()

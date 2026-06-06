@@ -73,9 +73,8 @@ internal class HttpPageLoader(
      */
     override suspend fun getPages(): List<ReaderPage> {
         val pages = if (source.isNovelSource()) {
-            // Novel getPageList is metadata-only (single page, no network); the text itself
-            // is fetched once in internalLoadPage via fetchNovelPageText. Skip the page-list
-            // cache — text is @Transient so cached entries carry nothing useful anyway.
+            // Novel getPageList is metadata-only; the text is fetched once in internalLoadPage.
+            // Skip the page-list cache, text is @Transient so cached entries are useless.
             source.getPageList(chapter.chapter)
         } else {
             try {

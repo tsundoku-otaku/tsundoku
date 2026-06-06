@@ -300,12 +300,9 @@ abstract class HttpSource : CatalogueSource {
      */
     @Suppress("DEPRECATION")
     override suspend fun getPageList(chapter: SChapter): List<Page> {
-        // Novel chapters are a single text page whose content is fetched once in
-        // fetchPageText. Every novel source's pageListParse just rebuilds
-        // Page(0, chapter.url) from the URL, so the page-list request would fetch
-        // the chapter page and throw the body away — skip the network entirely.
-        // Extensions load this class from the app at runtime, so this covers all
-        // installed novel extensions. Sources overriding getPageList are unaffected.
+        // Novel chapters are a single text page fetched once in fetchPageText; the page-list
+        // request would fetch the chapter page only for pageListParse to discard the body.
+        // Sources overriding getPageList are unaffected.
         if (isNovelSource()) {
             return listOf(Page(0, chapter.url))
         }
