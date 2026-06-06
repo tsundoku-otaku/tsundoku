@@ -1178,8 +1178,11 @@
     <string name="pref_translation_api_key">API Key</string>
     <string name="pref_translation_api_url">API URL</string>
     <string name="pref_translation_custom_prompt">Custom Prompt</string>
+    <string name="pref_translation_request_method">Request Method</string>
+    <string name="pref_translation_custom_headers">Custom Headers</string>
+    <string name="pref_translation_custom_headers_desc">"Name: Value" pairs separated by ; or line breaks, override defaults. {apiKey} is replaced with the API key</string>
     <string name="pref_translation_request_template">Request Template</string>
-    <string name="pref_translation_request_template_desc">Use {texts}, {text}, {source}, {target}</string>
+    <string name="pref_translation_request_template_desc">Use {texts}, {text}, {text_esc}, {source}, {target}, {source_name}, {target_name}</string>
     <string name="pref_translation_response_path">Response Path</string>
 
     <!-- EPUB compression settings -->

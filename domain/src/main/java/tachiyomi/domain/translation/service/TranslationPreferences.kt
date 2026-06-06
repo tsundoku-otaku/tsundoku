@@ -303,6 +303,26 @@ class TranslationPreferences(
     )
 
     /**
+     * Custom HTTP request method: POST or GET.
+     * GET sends no body; placeholders are substituted URL-encoded into the URL.
+     */
+    fun customHttpMethod() = preferenceStore.getString(
+        "translation_custom_http_method",
+        "POST",
+    )
+
+    /**
+     * Custom HTTP extra headers as ;- or newline-separated "Name: Value" pairs.
+     * Override the default Content-Type/Authorization headers on name match.
+     * {apiKey} in a value is replaced with the configured API key.
+     * Example: x-api-key: {apiKey}; Accept: application/json
+     */
+    fun customHttpHeaders() = preferenceStore.getString(
+        "translation_custom_http_headers",
+        "",
+    )
+
+    /**
      * Custom HTTP request template.
      * Use placeholders: {text}, {texts}, {source}, {target}
      * Example: {"q": "{text}", "source": "{source}", "target": "{target}"}

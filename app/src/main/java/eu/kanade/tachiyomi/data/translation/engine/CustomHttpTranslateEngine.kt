@@ -21,6 +21,9 @@ import tachiyomi.domain.translation.model.TranslationResult
 import tachiyomi.domain.translation.service.TranslationPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.zip.GZIPInputStream
+import java.util.zip.Inflater
+import java.util.zip.InflaterInputStream
 
 /**
  * Custom HTTP translation engine.
@@ -124,27 +127,46 @@ class CustomHttpTranslateEngine(
         val apiKey = preferences.customHttpApiKey().get().takeIf { it.isNotBlank() }
         val requestTemplate = preferences.customHttpRequestTemplate().get()
         val responsePath = preferences.customHttpResponsePath().get()
+        val method = preferences.customHttpMethod().get()
 
-        // Build request body from template
-        val requestBody = buildRequestBody(requestTemplate, texts, sourceLanguage, targetLanguage)
+        // Placeholders in the URL are substituted URL-encoded (mainly for GET query params)
+        val finalUrl = substituteUrl(apiUrl, texts, sourceLanguage, targetLanguage)
 
-        val requestBuilder = Request.Builder()
-            .url(apiUrl)
-            .post(requestBody.toRequestBody("application/json".toMediaType()))
-            .header("Content-Type", "application/json")
+        val requestBuilder = Request.Builder().url(finalUrl)
+        if (method.equals("GET", ignoreCase = true)) {
+            requestBuilder.get()
+        } else {
+            // Build request body from template
+            val requestBody = buildRequestBody(requestTemplate, texts, sourceLanguage, targetLanguage)
+            requestBuilder
+                .post(requestBody.toRequestBody("application/json".toMediaType()))
+                .header("Content-Type", "application/json")
+        }
 
         // Add API key if configured
         if (!apiKey.isNullOrBlank()) {
             requestBuilder.header("Authorization", "Bearer $apiKey")
         }
 
+        // Custom headers as ;- or newline-separated "Name: Value" pairs, override defaults on name match
+        preferences.customHttpHeaders().get().split(';', '\n')
+            .mapNotNull { entry ->
+                val idx = entry.indexOf(':')
+                if (idx <= 0) return@mapNotNull null
+                entry.substring(0, idx).trim() to entry.substring(idx + 1).trim()
+            }
+            .filter { (name, _) -> name.isNotEmpty() }
+            .forEach { (name, value) ->
+                requestBuilder.header(name, value.replace("{apiKey}", apiKey.orEmpty()))
+            }
+
         return client.newCall(requestBuilder.build()).execute().use { response ->
             if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: "Unknown error"
+                val errorBody = readBody(response) ?: "Unknown error"
                 throw Exception("HTTP ${response.code}: $errorBody")
             }
 
-            val responseBody = response.body?.string() ?: throw Exception("Empty response")
+            val responseBody = readBody(response) ?: throw Exception("Empty response")
             parseResponse(responseBody, responsePath, texts.size)
         }
     }
@@ -152,10 +174,13 @@ class CustomHttpTranslateEngine(
     /**
      * Build the request body from the user's template.
      * Replaces placeholders:
-     * - {text} - single text (first one if multiple)
+     * - {text} - single text as a JSON string literal, quotes included (first one if multiple)
+     * - {text_esc} - single text JSON-escaped without surrounding quotes, for embedding inside a larger string
      * - {texts} - JSON array of texts
      * - {source} - source language code
      * - {target} - target language code
+     * - {source_name} - source language English name (falls back to the code)
+     * - {target_name} - target language English name (falls back to the code)
      */
     private fun buildRequestBody(
         template: String,
@@ -169,9 +194,57 @@ class CustomHttpTranslateEngine(
 
         return template
             .replace("{texts}", textsJson)
+            .replace("{text_esc}", singleText.removeSurrounding("\""))
             .replace("{text}", singleText)
+            .replace("{source_name}", languageName(sourceLanguage))
+            .replace("{target_name}", languageName(targetLanguage))
             .replace("{source}", sourceLanguage)
             .replace("{target}", targetLanguage)
+    }
+
+    private fun languageName(code: String): String =
+        supportedLanguages.firstOrNull { it.first == code }?.second ?: code
+
+    /**
+     * Read the response body, decompressing manually if needed.
+     * OkHttp only auto-decompresses gzip when it added Accept-Encoding itself;
+     * a user-supplied Accept-Encoding header delivers the body raw.
+     */
+    private fun readBody(response: okhttp3.Response): String? {
+        val bytes = response.body?.bytes()?.takeIf { it.isNotEmpty() } ?: return null
+        return when (response.header("Content-Encoding")?.lowercase()) {
+            "gzip" -> GZIPInputStream(bytes.inputStream()).use { it.readBytes() }.toString(Charsets.UTF_8)
+            "deflate" -> inflate(bytes).toString(Charsets.UTF_8)
+            else -> String(bytes, Charsets.UTF_8)
+        }
+    }
+
+    private fun inflate(bytes: ByteArray): ByteArray =
+        try {
+            // zlib-wrapped deflate
+            InflaterInputStream(bytes.inputStream()).use { it.readBytes() }
+        } catch (e: Exception) {
+            // raw deflate, some servers omit the zlib header
+            InflaterInputStream(bytes.inputStream(), Inflater(true)).use { it.readBytes() }
+        }
+
+    /**
+     * Substitute placeholders into the URL, URL-encoded.
+     * {text} here is the raw first text (no JSON quoting); {texts}/{text_esc} are not applicable.
+     */
+    private fun substituteUrl(
+        url: String,
+        texts: List<String>,
+        sourceLanguage: String,
+        targetLanguage: String,
+    ): String {
+        fun enc(value: String) = java.net.URLEncoder.encode(value, "UTF-8")
+        return url
+            .replace("{text}", enc(texts.firstOrNull().orEmpty()))
+            .replace("{source_name}", enc(languageName(sourceLanguage)))
+            .replace("{target_name}", enc(languageName(targetLanguage)))
+            .replace("{source}", enc(sourceLanguage))
+            .replace("{target}", enc(targetLanguage))
     }
 
     /**
@@ -181,7 +254,12 @@ class CustomHttpTranslateEngine(
      */
     private fun parseResponse(responseBody: String, path: String, expectedCount: Int): List<String> {
         val jsonElement = json.parseToJsonElement(responseBody)
-        val result = navigateJsonPath(jsonElement, path)
+        val result = try {
+            navigateJsonPath(jsonElement, path)
+        } catch (e: Exception) {
+            // Include the body so 200-with-error responses are diagnosable
+            throw Exception("${e.message}. Response body: ${responseBody.take(300)}")
+        }
 
         return when (result) {
             is JsonArray -> result.map {
@@ -213,7 +291,7 @@ class CustomHttpTranslateEngine(
     private fun navigateJsonPath(element: JsonElement, path: String): JsonElement {
         if (path.isBlank()) return element
 
-        val parts = path.split(".")
+        val parts = path.trim().split(".").map { it.trim() }
         var current = element
 
         for (part in parts) {

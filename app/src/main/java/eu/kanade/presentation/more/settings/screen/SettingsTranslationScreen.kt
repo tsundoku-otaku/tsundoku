@@ -13,6 +13,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
 import kotlinx.collections.immutable.persistentListOf
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.launch
 import tachiyomi.domain.translation.model.TranslationResult
@@ -486,6 +487,19 @@ object SettingsTranslationScreen : SearchableSettings {
                         preference = prefs.customHttpApiKey(),
                         title = stringResource(MR.strings.pref_translation_api_key),
                         subtitle = if (customHttpApiKey.isNotBlank()) "••••••••" else stringResource(TDMR.strings.not_set),
+                    ),
+                    Preference.PreferenceItem.ListPreference(
+                        preference = prefs.customHttpMethod(),
+                        title = stringResource(MR.strings.pref_translation_request_method),
+                        entries = persistentMapOf(
+                            "POST" to "POST",
+                            "GET" to "GET",
+                        ),
+                    ),
+                    Preference.PreferenceItem.EditTextPreference(
+                        preference = prefs.customHttpHeaders(),
+                        title = stringResource(MR.strings.pref_translation_custom_headers),
+                        subtitle = stringResource(MR.strings.pref_translation_custom_headers_desc),
                     ),
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.customHttpRequestTemplate(),
