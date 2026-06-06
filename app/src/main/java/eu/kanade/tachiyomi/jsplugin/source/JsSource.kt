@@ -313,7 +313,7 @@ class JsSource(
                     """.trimIndent(),
                 )
             }
-            logcat(LogPriority.DEBUG) { "JsSource[$pluginId]: Executing: $methodCall" }
+            logcat(LogPriority.INFO) { "JsSource[$pluginId]: Executing: $methodCall" }
 
             // Store result in global variable, handle Promise resolution in JS
             instance.execute(
@@ -383,7 +383,7 @@ class JsSource(
                 throw Exception("Plugin error while executing [$methodCall]: $error")
             }
 
-            logcat(LogPriority.DEBUG) { "JsSource[$pluginId]: Result: ${jsonResult?.take(200)}" }
+            logcat(LogPriority.INFO) { "JsSource[$pluginId]: Result: ${jsonResult?.take(200)}" }
             return jsonResult ?: "null"
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "JsSource[$pluginId]: Error executing: $methodCall" }

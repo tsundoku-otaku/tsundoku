@@ -483,7 +483,6 @@ class JsPluginManager(
                                     if (resp.isSuccessful) {
                                         val fresh = resp.body?.string().orEmpty()
                                         if (fresh.isNotBlank() && fresh.contains("exports.default")) {
-                                            // Delete-then-create: SAF "w" mode may not truncate
                                             dir.replaceFile("$nameWithoutExtension.js")?.writeUtf8(fresh)
                                             code = fresh
                                             logcat(LogPriority.INFO) {
@@ -680,7 +679,6 @@ class JsPluginManager(
                 logcat(LogPriority.WARN) { "Plugins directory not available for saving repositories.json" }
                 return
             }
-            // replaceFile: non-truncating overwrite produced the concatenated JSON loadRepositories() repairs
             val reposFile = dir.replaceFile("repositories.json")
             if (reposFile == null) {
                 logcat(LogPriority.ERROR) { "Failed to create repositories.json file" }

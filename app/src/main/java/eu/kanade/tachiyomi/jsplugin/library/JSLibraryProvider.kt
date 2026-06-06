@@ -188,7 +188,8 @@ class JSLibraryProvider(
             val priority = when (level) {
                 "ERROR" -> LogPriority.ERROR
                 "WARN" -> LogPriority.WARN
-                else -> LogPriority.DEBUG
+                "DEBUG" -> LogPriority.DEBUG
+                else -> LogPriority.INFO
             }
             logcat(priority) { "[$pluginId] $message" }
         }
@@ -662,6 +663,24 @@ class JSLibraryProvider(
             val html = args.getOrNull(1)?.toString() ?: ""
             cheerioWrap(handle, html)
         }
+
+        // Outer HTML of first element ($.html(el) support)
+        runtime.function("__cheerioOuterHtml") { args ->
+            val handle = args.getOrNull(0)?.toString()?.toIntOrNull() ?: -1
+            cheerioOuterHtml(handle)
+        }
+
+        // Lowercase tag name of first element
+        runtime.function("__cheerioTagName") { args ->
+            val handle = args.getOrNull(0)?.toString()?.toIntOrNull() ?: -1
+            cheerioTagName(handle)
+        }
+
+        // Child nodes (including text/comment nodes) as JSON for contents() support
+        runtime.function("__cheerioContents") { args ->
+            val handle = args.getOrNull(0)?.toString()?.toIntOrNull() ?: -1
+            cheerioContents(handle)
+        }
     }
 
     private fun cheerioLoad(html: String): Int {
@@ -696,25 +715,20 @@ class JSLibraryProvider(
     }
 
     private fun cheerioText(handle: Int): String {
+        // Cheerio .text() concatenates raw text nodes without whitespace normalization; Jsoup
+        // .text() normalizes, which breaks plugins that split on newline sequences.
         fun elementText(el: Element): String {
             val tagName = el.tagName().lowercase()
             return if (tagName == "script" || tagName == "style") {
                 el.data()
             } else {
-                el.text()
+                el.wholeText()
             }
         }
         return when (val el = elementCache[handle]) {
-            is Document -> el.text()
+            is Document -> el.wholeText()
             is Element -> elementText(el)
-            is Elements -> {
-                if (el.size == 1) {
-                    elementText(el.first()!!)
-                } else {
-                    // For multi-element sets, concatenate text with spaces (Cheerio behavior)
-                    el.joinToString(" ") { elementText(it) }
-                }
-            }
+            is Elements -> el.joinToString("") { elementText(it) }
             else -> ""
         }
     }
@@ -769,14 +783,21 @@ class JSLibraryProvider(
         sb.append('[')
         elements.forEachIndexed { idx, elem ->
             if (idx > 0) sb.append(',')
-            appendDomNode(sb, elem)
+            // Live handle so $(node) from toArray() resolves back to the real element
+            val nodeHandle = ++handleCounter
+            elementCache[nodeHandle] = elem
+            appendDomNode(sb, elem, nodeHandle)
         }
         sb.append(']')
         return sb.toString()
     }
 
-    private fun appendDomNode(sb: StringBuilder, element: Element) {
-        sb.append("{\"type\":\"tag\",\"name\":")
+    private fun appendDomNode(sb: StringBuilder, element: Element, handle: Int? = null) {
+        sb.append("{\"type\":\"tag\",")
+        if (handle != null) {
+            sb.append("\"_h\":").append(handle).append(',')
+        }
+        sb.append("\"name\":")
         sb.append('"').append(escapeJsonString(element.tagName().lowercase())).append('"')
         sb.append(",\"attribs\":{")
         element.attributes().forEachIndexed { i, attr ->
@@ -870,6 +891,69 @@ class JSLibraryProvider(
             sb.append(escapeJsonString(attr.value)).append("\"")
         }
         sb.append("}")
+        return sb.toString()
+    }
+
+    private fun cheerioOuterHtml(handle: Int): String = when (val el = elementCache[handle]) {
+        is Element -> el.outerHtml()
+        is Elements -> el.firstOrNull()?.outerHtml() ?: ""
+        else -> ""
+    }
+
+    private fun cheerioTagName(handle: Int): String = when (val el = elementCache[handle]) {
+        is Element -> el.tagName().lowercase()
+        is Elements -> el.firstOrNull()?.tagName()?.lowercase() ?: ""
+        else -> ""
+    }
+
+    /**
+     * Child nodes of each element in the set, including text and comment nodes, as a JSON array
+     * of DOM-like nodes. Element nodes get a live `_h` handle so $(node) and $.html(node) resolve
+     * back to the real Jsoup element. Backs cheerio's contents().
+     */
+    private fun cheerioContents(handle: Int): String {
+        val el = elementCache[handle] ?: return "[]"
+        val elements = when (el) {
+            is Element -> listOf(el)
+            is Elements -> el.toList()
+            else -> emptyList()
+        }
+        val sb = StringBuilder("[")
+        var first = true
+        for (elem in elements) {
+            for (node in elem.childNodes()) {
+                val piece = StringBuilder()
+                when (node) {
+                    is TextNode -> {
+                        piece.append("{\"type\":\"text\",\"data\":\"")
+                        piece.append(escapeJsonString(node.wholeText))
+                        piece.append("\",\"children\":[]}")
+                    }
+                    is org.jsoup.nodes.Comment -> {
+                        piece.append("{\"type\":\"comment\",\"data\":\"")
+                        piece.append(escapeJsonString(node.data))
+                        piece.append("\",\"children\":[]}")
+                    }
+                    is org.jsoup.nodes.DataNode -> {
+                        piece.append("{\"type\":\"text\",\"data\":\"")
+                        piece.append(escapeJsonString(node.wholeData))
+                        piece.append("\",\"children\":[]}")
+                    }
+                    is Element -> {
+                        val nodeHandle = ++handleCounter
+                        elementCache[nodeHandle] = node
+                        appendDomNode(piece, node, nodeHandle)
+                    }
+                    else -> {}
+                }
+                if (piece.isNotEmpty()) {
+                    if (!first) sb.append(',')
+                    first = false
+                    sb.append(piece)
+                }
+            }
+        }
+        sb.append(']')
         return sb.toString()
     }
 
@@ -1225,7 +1309,8 @@ class JSLibraryProvider(
             var id = __timerSeq++;
             var args = Array.prototype.slice.call(arguments, 2);
             function tick() {
-                __delay(ms > 0 ? ms : 0).then(function() {
+                // Clamp like browsers; ms=0 would recurse with no delay and starve the job queue
+                __delay(ms >= 4 ? ms : 4).then(function() {
                     if (__cancelledTimers[id]) { delete __cancelledTimers[id]; return; }
                     try { cb.apply(null, args); } catch (e) { console.error('setInterval callback: ' + e); }
                     tick();
@@ -1407,13 +1492,51 @@ class JSLibraryProvider(
         globalThis.Blob = Blob;
 
         // Cheerio wrapper - minimal JS, logic in Kotlin
+
+        // DOM-node-like shim for $(sel)[i] / toArray() interop, backed by a live handle
+        function __nodeAt(h, idx) {
+            var eh = __cheerioEq(h, idx);
+            if (eh < 0) return undefined;
+            var node = { _h: eh, type: 'tag' };
+            Object.defineProperty(node, 'name', {
+                get: function() { return __cheerioTagName(eh); },
+                enumerable: false, configurable: true
+            });
+            Object.defineProperty(node, 'attribs', {
+                get: function() { try { return JSON.parse(__cheerioGetAttrs(eh)); } catch (e) { return {}; } },
+                enumerable: false, configurable: true
+            });
+            return node;
+        }
+
+        // Serialize a plain DOM-tree JSON node (no live handle) back to HTML
+        function __domNodeHtml(node) {
+            if (!node) return '';
+            if (node.type === 'text') return node.data || '';
+            if (node.type === 'comment') return '';
+            if (node.type === 'tag') {
+                var attrs = '';
+                if (node.attribs) {
+                    for (var k in node.attribs) {
+                        attrs += ' ' + k + '="' + String(node.attribs[k]).replace(/"/g, '&quot;') + '"';
+                    }
+                }
+                var inner = '';
+                if (node.children) {
+                    for (var i = 0; i < node.children.length; i++) inner += __domNodeHtml(node.children[i]);
+                }
+                return '<' + node.name + attrs + '>' + inner + '</' + node.name + '>';
+            }
+            return '';
+        }
+
         function __wrapHandle(h) {
             if (h < 0) return __emptySelection();
-            return {
+            var obj = {
                 _h: h,
                 find: function(s) {
-                    // If s is a wrapped cheerio object, return it directly
-                    if (s && s._h !== undefined) return s;
+                    // Wrapped cheerio object or DOM-node shim: resolve to a wrapper
+                    if (s && s._h !== undefined) return (typeof s.find === 'function') ? s : __wrapHandle(s._h);
                     var next = __wrapHandle(__cheerioSelect(h, typeof s === 'string' ? s : ''));
                     next._prev = this;
                     return next;
@@ -1497,7 +1620,12 @@ class JSLibraryProvider(
                 prop: function(n) { var v = __cheerioAttr(h, n); return v === null ? undefined : v; },
                 val: function() { var v = __cheerioAttr(h, 'value'); return v === null ? undefined : v; },
                 trim: function() { return (__cheerioText(h) || '').trim(); },
-                contents: function() { return this.children(''); },
+                contents: function() {
+                    // Real cheerio contents() includes text/comment nodes, not just elements
+                    var nodes;
+                    try { nodes = JSON.parse(__cheerioContents(h)); } catch (e) { nodes = []; }
+                    return __arrayToCheerio(nodes);
+                },
                 siblings: function(s) {
                     var p = this.parent();
                     return s ? p.children(s).not(this) : p.children().not(this);
@@ -1535,6 +1663,16 @@ class JSLibraryProvider(
                     return -1;
                 }
             };
+            // Numeric indexing parity: $(sel)[0] returns a DOM-node-like shim
+            var __len = __cheerioLength(h);
+            for (var __i = 0; __i < __len; __i++) (function(idx) {
+                Object.defineProperty(obj, idx, {
+                    get: function() { return __nodeAt(h, idx); },
+                    enumerable: false,
+                    configurable: true
+                });
+            })(__i);
+            return obj;
         }
 
         // Helper to convert array of cheerio objects back to cheerio-like object
@@ -1562,7 +1700,13 @@ class JSLibraryProvider(
                 first: function() { return arr[0] || __emptySelection(); },
                 last: function() { return arr[arr.length - 1] || __emptySelection(); },
                 each: function(cb) { arr.forEach(function(el, i) { cb.call(el, i, el); }); return this; },
-                map: function(cb) { return arr.map(function(el, i) { return cb.call(el, i, el); }); },
+                map: function(cb) {
+                    var results = arr.map(function(el, i) { return cb.call(el, i, el); });
+                    results.get = function(idx) { return typeof idx === 'undefined' ? results.slice() : results[idx]; };
+                    results.toArray = function() { return results.slice(); };
+                    results.text = function() { return results.join(''); };
+                    return results;
+                },
                 toArray: function() { return arr.slice(); },
                 get: function(i) { return typeof i === 'undefined' ? arr.slice() : arr[i]; },
                 parent: function() {
@@ -1604,7 +1748,8 @@ class JSLibraryProvider(
                     return arr.map(function(el) {
                         if (!el) return '';
                         if (typeof el.text === 'function') return el.text();
-                        if (typeof el.toString === 'function') return el.toString();
+                        if (el._h !== undefined) return __cheerioText(el._h);
+                        if (typeof el.data === 'string') return el.data;
                         return '';
                     }).join('');
                 },
@@ -1674,6 +1819,8 @@ class JSLibraryProvider(
                 empty: function() { arr.forEach(function(el) { if (el && el.empty) el.empty(); }); return this; },
                 wrap: function(content) { arr.forEach(function(el) { if (el && el.wrap) el.wrap(content); }); return this; }
             };
+            // Numeric indexing parity with __wrapHandle
+            for (var __i = 0; __i < arr.length; __i++) obj[__i] = arr[__i];
             return obj;
         }
 
@@ -1716,13 +1863,24 @@ class JSLibraryProvider(
                         load: function(html) {
                             var docId = __cheerioLoad(html);
                             var $ = function(arg1, arg2) {
-                                if (arg1 && arg1._h !== undefined) return arg1; // $(wrapper)
-                                if (arg2 && arg2._h !== undefined) return arg2.find(arg1); // $(selector, wrapper)
+                                if (arg1 && arg1._h !== undefined) {
+                                    // $(wrapper) or $(domNode) from toArray()/contents()/[i]
+                                    return (typeof arg1.find === 'function') ? arg1 : __wrapHandle(arg1._h);
+                                }
+                                if (arg2 && arg2._h !== undefined) {
+                                    var ctx = (typeof arg2.find === 'function') ? arg2 : __wrapHandle(arg2._h);
+                                    return ctx.find(arg1); // $(selector, context)
+                                }
                                 if (typeof arg1 === 'string') return __wrapHandle(__cheerioSelect(docId, arg1)); // $(selector)
-                                if (!arg1) return __wrapHandle(docId);
-                                return __emptySelection(); // Unknown arg type
+                                // cheerio: $(), $(undefined), $(null) = empty selection, never the document
+                                return __emptySelection();
                             };
-                            $.html = function() { return __cheerioHtml(docId); };
+                            $.html = function(el) {
+                                if (el === undefined || el === null) return __cheerioHtml(docId);
+                                if (el._h !== undefined) return __cheerioOuterHtml(el._h); // $.html(el) = outer HTML
+                                if (typeof el === 'object') return __domNodeHtml(el);
+                                return '';
+                            };
                             $.text = function() { return __cheerioText(docId); };
                             $.root = function() { return __wrapHandle(docId); };
                             return $;
