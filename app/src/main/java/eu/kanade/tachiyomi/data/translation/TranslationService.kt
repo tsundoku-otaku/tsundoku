@@ -157,8 +157,8 @@ class TranslationService(
             forceRetranslate = forceRetranslate,
         )
 
-        // Don't re-queue the chapter currently being translated — e.g. auto-translate
-        // firing when the download this service itself triggered completes
+        // Don't re-queue the chapter currently translating (auto-translate fires when
+        // the download this service itself triggered completes)
         if (!forceRetranslate && chapter.id == currentTask?.chapterId) return
 
         // Atomic: only inserts if the key is absent (fix 4.1)
@@ -241,8 +241,7 @@ class TranslationService(
 
                 // Pick highest-priority task (fix 4.3)
                 val polled = pollHighestPriority() ?: break
-                // Languages follow current prefs rather than the enqueue-time snapshot,
-                // consistent with engine selection which already resolves at translate time
+                // Languages follow current prefs, matching engine selection which resolves at translate time
                 val task = polled.copy(
                     sourceLanguage = translationPreferences.sourceLanguage().get(),
                     targetLanguage = translationPreferences.targetLanguage().get(),
@@ -751,8 +750,7 @@ class TranslationService(
             }
         }
 
-        // Download first (or wait for an in-flight download) so the user keeps an
-        // offline copy instead of an ephemeral fetch that only feeds the translator
+        // Download first (or wait for an in-flight download) so the user keeps an offline copy
         if (translationPreferences.autoDownloadBeforeTranslate().get() && source.isNovelSource()) {
             if (downloadManager.getQueuedDownloadOrNull(chapter.id) == null) {
                 downloadManager.downloadChapters(manga, listOf(chapter))
@@ -1076,7 +1074,7 @@ class TranslationService(
         /** Poll interval while waiting for the auto-triggered download. */
         private const val AUTO_DOWNLOAD_POLL_MS = 1000L
 
-        /** Grace before treating "not in download queue" as failed — queueChapters lands async. */
+        /** Grace before treating "not in download queue" as failed; queueChapters lands async. */
         private const val AUTO_DOWNLOAD_GRACE_MS = 5000L
 
         /** Progress fraction at which source fetch completes. */
