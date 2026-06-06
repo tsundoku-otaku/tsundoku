@@ -398,8 +398,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             if (batchId.isNotEmpty()) MassImportStore.appendErrors(context, batchId, toFlush)
         }
 
-        // Skipped URLs get the same disk log treatment as errors (`mi_<id>_skipped.txt`),
-        // with the skip reason as the message.
+        // Skipped URLs get the same disk log treatment as errors (`mi_<id>_skipped.csv`);
+        // only the URL is persisted, the reason is dropped (there is a single skip reason).
         val skipLogBuffer = mutableListOf<Pair<String, String>>()
         fun recordSkip(url: String, reason: String) {
             val toFlush: List<Pair<String, String>>?

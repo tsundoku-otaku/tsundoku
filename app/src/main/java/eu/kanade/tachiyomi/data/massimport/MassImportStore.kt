@@ -12,13 +12,14 @@ import uy.kohesive.injekt.api.get
 
 /**
  * Per batch: `mi_<batchId>.txt` (URL list) + `mi_<batchId>.json` (metadata)
- * + `mi_<batchId>_errors.txt` / `mi_<batchId>_skipped.txt` (logs, `url<TAB>message` per line).
+ * + `mi_<batchId>_errors.csv` (`url,message` per line) / `mi_<batchId>_skipped.csv` (url per line).
  */
 object MassImportStore {
 
     private const val URLS_PREFIX = "mi_"
     private const val URLS_SUFFIX = ".txt"
     private const val META_SUFFIX = ".json"
+    private const val LOG_SUFFIX = ".csv"
     private const val ERRORS_INFIX = "_errors"
     private const val SKIPPED_INFIX = "_skipped"
 
@@ -51,8 +52,12 @@ object MassImportStore {
 
     private fun urlsName(batchId: String) = "$URLS_PREFIX$batchId$URLS_SUFFIX"
     private fun metaName(batchId: String) = "$URLS_PREFIX$batchId$META_SUFFIX"
-    private fun errorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$URLS_SUFFIX"
-    private fun skippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$URLS_SUFFIX"
+    private fun errorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$LOG_SUFFIX"
+    private fun skippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$LOG_SUFFIX"
+
+    // Pre-CSV logs used `.txt` with `url<TAB>message` lines; still read/cleaned for old batches.
+    private fun legacyErrorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$URLS_SUFFIX"
+    private fun legacySkippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$URLS_SUFFIX"
 
     private fun overwrite(dir: UniFile, name: String, content: String) {
         dir.findFile(name)?.delete()
@@ -191,28 +196,40 @@ object MassImportStore {
     }
 
     /** Truncate a log; each worker run re-evaluates every URL, so old entries are stale. */
-    fun clearErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) = clearLog(batchId, ::errorsName)
-    fun clearSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) = clearLog(batchId, ::skippedName)
+    fun clearErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) =
+        clearLog(batchId, ::errorsName, ::legacyErrorsName)
+    fun clearSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) =
+        clearLog(batchId, ::skippedName, ::legacySkippedName)
 
-    /** Append `url<TAB>message` lines. Messages are flattened to one line. */
+    /** Append CSV lines: `url,message` for errors, bare url for skipped. Messages flattened to one line. */
     fun appendErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, entries: List<Pair<String, String>>) =
-        appendLog(batchId, ::errorsName, entries)
+        appendLog(batchId, ::errorsName, entries, withMessage = true)
     fun appendSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, entries: List<Pair<String, String>>) =
-        appendLog(batchId, ::skippedName, entries)
+        appendLog(batchId, ::skippedName, entries, withMessage = false)
 
     /** Load a full log as (url, message) pairs, deduped by url keeping first message. */
-    fun loadErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) = loadLog(batchId, ::errorsName)
-    fun loadSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) = loadLog(batchId, ::skippedName)
+    fun loadErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) =
+        loadLog(batchId, ::errorsName, ::legacyErrorsName)
+    fun loadSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) =
+        loadLog(batchId, ::skippedName, ::legacySkippedName)
 
-    private fun clearLog(batchId: String, name: (String) -> String) {
+    private fun clearLog(batchId: String, vararg names: (String) -> String) {
         if (batchId.isEmpty()) return
         val dir = dir() ?: return
         synchronized(ioLock) {
-            runCatching { dir.findFile(name(batchId))?.delete() }
+            runCatching { names.forEach { dir.findFile(it(batchId))?.delete() } }
         }
     }
 
-    private fun appendLog(batchId: String, nameFor: (String) -> String, entries: List<Pair<String, String>>) {
+    private fun csvField(value: String): String =
+        if (value.contains(',') || value.contains('"')) "\"" + value.replace("\"", "\"\"") + "\"" else value
+
+    private fun appendLog(
+        batchId: String,
+        nameFor: (String) -> String,
+        entries: List<Pair<String, String>>,
+        withMessage: Boolean,
+    ) {
         if (batchId.isEmpty() || entries.isEmpty()) return
         val dir = dir() ?: return
         synchronized(ioLock) {
@@ -221,9 +238,11 @@ object MassImportStore {
                 val file = dir.findFile(name) ?: dir.createFile(name) ?: return@runCatching
                 file.openOutputStream(true).bufferedWriter().use { writer ->
                     for ((url, message) in entries) {
-                        writer.write(url)
-                        writer.write("\t")
-                        writer.write(message.replace('\t', ' ').replace('\n', ' ').take(200))
+                        writer.write(csvField(url.trim()))
+                        if (withMessage) {
+                            writer.write(",")
+                            writer.write(csvField(message.replace('\t', ' ').replace('\n', ' ').take(200)))
+                        }
                         writer.write("\n")
                     }
                 }
@@ -231,18 +250,57 @@ object MassImportStore {
         }
     }
 
-    private fun loadLog(batchId: String, nameFor: (String) -> String): List<Pair<String, String>> {
+    /** First CSV field + rest of line (unquoted). Tab lines are legacy `url<TAB>message`. */
+    private fun parseLogLine(line: String): Pair<String, String> {
+        val tab = line.indexOf('\t')
+        if (tab >= 0) return line.substring(0, tab).trim() to line.substring(tab + 1)
+        if (!line.startsWith("\"")) {
+            val sep = line.indexOf(',')
+            return if (sep >= 0) {
+                line.substring(0, sep).trim() to unquoteCsv(line.substring(sep + 1))
+            } else {
+                line.trim() to ""
+            }
+        }
+        val url = StringBuilder()
+        var i = 1
+        while (i < line.length) {
+            val c = line[i]
+            if (c == '"') {
+                if (i + 1 < line.length && line[i + 1] == '"') {
+                    url.append('"')
+                    i += 2
+                } else {
+                    i++
+                    break
+                }
+            } else {
+                url.append(c)
+                i++
+            }
+        }
+        val rest = if (i < line.length && line[i] == ',') unquoteCsv(line.substring(i + 1)) else ""
+        return url.toString().trim() to rest
+    }
+
+    private fun unquoteCsv(value: String): String =
+        if (value.startsWith("\"") && value.endsWith("\"") && value.length >= 2) {
+            value.substring(1, value.length - 1).replace("\"\"", "\"")
+        } else {
+            value
+        }
+
+    private fun loadLog(batchId: String, nameFor: (String) -> String, legacyNameFor: (String) -> String): List<Pair<String, String>> {
         if (batchId.isEmpty()) return emptyList()
         val dir = dir() ?: return emptyList()
         return runCatching {
-            dir.findFile(nameFor(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
+            val file = dir.findFile(nameFor(batchId)) ?: dir.findFile(legacyNameFor(batchId))
+            file?.openInputStream()?.bufferedReader()?.use { reader ->
                 val seen = LinkedHashMap<String, String>()
                 reader.lineSequence().forEach { line ->
                     if (line.isBlank()) return@forEach
-                    val sep = line.indexOf('\t')
-                    val url = (if (sep >= 0) line.substring(0, sep) else line).trim()
+                    val (url, msg) = parseLogLine(line)
                     if (url.isEmpty()) return@forEach
-                    val msg = if (sep >= 0) line.substring(sep + 1) else ""
                     seen.putIfAbsent(url, msg)
                 }
                 seen.map { it.key to it.value }
@@ -259,6 +317,8 @@ object MassImportStore {
                 dir.findFile(metaName(batchId))?.delete()
                 dir.findFile(errorsName(batchId))?.delete()
                 dir.findFile(skippedName(batchId))?.delete()
+                dir.findFile(legacyErrorsName(batchId))?.delete()
+                dir.findFile(legacySkippedName(batchId))?.delete()
             }
         }
     }
