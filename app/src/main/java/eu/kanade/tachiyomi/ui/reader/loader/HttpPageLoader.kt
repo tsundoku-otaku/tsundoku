@@ -73,9 +73,9 @@ internal class HttpPageLoader(
      */
     override suspend fun getPages(): List<ReaderPage> {
         val pages = if (source.isNovelSource()) {
-            // Novel page text is @Transient — not serializable — so the page-list
-            // cache always returns pages with text=null. Always fetch fresh so that
-            // internalLoadPage sees the text and can mark pages Ready immediately.
+            // Novel getPageList is metadata-only (single page, no network); the text itself
+            // is fetched once in internalLoadPage via fetchNovelPageText. Skip the page-list
+            // cache — text is @Transient so cached entries carry nothing useful anyway.
             source.getPageList(chapter.chapter)
         } else {
             try {

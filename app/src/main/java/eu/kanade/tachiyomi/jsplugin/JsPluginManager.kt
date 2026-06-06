@@ -225,11 +225,11 @@ class JsPluginManager(
             }
 
             // Save to disk
-            val pluginFile = dir.createFile("${plugin.id}.js") ?: throw Exception("Failed to create plugin file")
+            val pluginFile = dir.replaceFile("${plugin.id}.js") ?: throw Exception("Failed to create plugin file")
             pluginFile.writeUtf8(code)
 
             // Save metadata
-            val metadataFile = dir.createFile("${plugin.id}.json") ?: throw Exception("Failed to create metadata file")
+            val metadataFile = dir.replaceFile("${plugin.id}.json") ?: throw Exception("Failed to create metadata file")
             val installedPlugin = InstalledJsPlugin(
                 plugin = plugin,
                 code = code,
@@ -321,10 +321,10 @@ class JsPluginManager(
                 return@withContext false
             }
 
-            val pluginFile = dir.createFile("${plugin.id}.js") ?: throw Exception("Failed to create plugin file")
+            val pluginFile = dir.replaceFile("${plugin.id}.js") ?: throw Exception("Failed to create plugin file")
             pluginFile.writeUtf8(code)
 
-            val metadataFile = dir.createFile("${plugin.id}.json") ?: throw Exception("Failed to create metadata file")
+            val metadataFile = dir.replaceFile("${plugin.id}.json") ?: throw Exception("Failed to create metadata file")
             val metadataJson = json.encodeToString(plugin)
             metadataFile.writeText(metadataJson)
 
@@ -483,7 +483,8 @@ class JsPluginManager(
                                     if (resp.isSuccessful) {
                                         val fresh = resp.body?.string().orEmpty()
                                         if (fresh.isNotBlank() && fresh.contains("exports.default")) {
-                                            file.writeUtf8(fresh)
+                                            // Delete-then-create: SAF "w" mode may not truncate
+                                            dir.replaceFile("$nameWithoutExtension.js")?.writeUtf8(fresh)
                                             code = fresh
                                             logcat(LogPriority.INFO) {
                                                 "Re-downloaded plugin '$nameWithoutExtension' successfully (len=${fresh.length})"
@@ -550,8 +551,17 @@ class JsPluginManager(
     }
 
     private fun rebuildSources() {
+        val oldSources = _jsSources.value.filterIsInstance<JsSource>()
+        val oldById = oldSources.associateBy { it.id }
+        // Reuse sources whose plugin didn't change: rebuilds fire on every storage change, and
+        // recreating (then releasing) untouched sources would kill their in-flight calls.
         val sources = _installedPlugins.value.map { installedPlugin ->
-            JsSource(installedPlugin)
+            val existing = oldById[installedPlugin.plugin.sourceId()]
+            if (existing != null && existing.isSamePlugin(installedPlugin)) {
+                existing
+            } else {
+                JsSource(installedPlugin)
+            }
         }
         logcat(LogPriority.INFO) {
             "JsPluginManager: rebuildSources() - emitting ${sources.size} sources to jsSources StateFlow"
@@ -562,6 +572,18 @@ class JsPluginManager(
         _jsSources.value = sources
         logcat(LogPriority.INFO) {
             "JsPluginManager: rebuildSources() - _jsSources.value updated, new count: ${_jsSources.value.size}"
+        }
+
+        // Free native QuickJS runtimes held by the replaced sources only. Screens still holding
+        // an old reference keep working — the runtime is recreated on demand.
+        val kept = sources.toHashSet()
+        val replaced = oldSources.filterNot { it in kept }
+        if (replaced.isNotEmpty()) {
+            scope.launch {
+                replaced.forEach { source ->
+                    runCatching { source.releaseRuntime() }
+                }
+            }
         }
     }
 
@@ -660,7 +682,9 @@ class JsPluginManager(
                 logcat(LogPriority.WARN) { "Plugins directory not available for saving repositories.json" }
                 return
             }
-            val reposFile = dir.createFile("repositories.json")
+            // replaceFile: non-truncating SAF overwrite is what produced the concatenated-JSON
+            // repositories.json files that loadRepositories() has to repair.
+            val reposFile = dir.replaceFile("repositories.json")
             if (reposFile == null) {
                 logcat(LogPriority.ERROR) { "Failed to create repositories.json file" }
                 return
@@ -754,6 +778,18 @@ class JsPluginManager(
     }
 
     // UniFile helpers
+
+    /**
+     * Delete-then-create to guarantee truncation. SAF's openOutputStream uses "w" mode, which
+     * many document providers do NOT truncate: overwriting a file with shorter content leaves
+     * stale tail bytes from the old version. For plugin .js files that yields a permanent
+     * SyntaxError after updates (and reinstalls over the same file never heal it).
+     */
+    private fun UniFile.replaceFile(name: String): UniFile? {
+        findFile(name)?.delete()
+        return createFile(name)
+    }
+
     private fun UniFile.readText(): String {
         return this.openInputStream().use { it.reader().readText() }
     }

@@ -77,6 +77,7 @@ class JSLibraryProvider(
     suspend fun setup(runtime: QuickJs) {
         setupLogging(runtime)
         setupFetch(runtime)
+        setupTimers(runtime)
         setupCrypto(runtime)
         setupCheerio(runtime)
         setupStorage(runtime)
@@ -204,6 +205,22 @@ class JSLibraryProvider(
             val result = doFetch(url, init)
             // Convert to JSON string for reliable JS parsing
             kotlinx.serialization.json.Json.encodeToString(result)
+        }
+    }
+
+    // ============ Timers ============
+
+    private suspend fun setupTimers(runtime: QuickJs) {
+        // Backs the JS setTimeout/setInterval polyfills. Capped so a long timer can't hold
+        // the evaluate() job queue past the executePluginMethod poll timeout.
+        runtime.asyncFunction("__delay") { args ->
+            val ms = (args.getOrNull(0) as? Number)?.toLong()
+                ?: args.getOrNull(0)?.toString()?.toDoubleOrNull()?.toLong()
+                ?: 0L
+            if (ms > 0) {
+                kotlinx.coroutines.delay(ms.coerceAtMost(MAX_TIMER_DELAY_MS))
+            }
+            true
         }
     }
 
@@ -1121,9 +1138,10 @@ class JSLibraryProvider(
     // ============ Cleanup ============
 
     fun cleanup() {
+        val cleared = elementCache.size
         elementCache.clear()
         handleCounter = 0
-        logcat(LogPriority.DEBUG) { "[$pluginId] JSLibraryProvider cleanup: cleared ${elementCache.size} cached elements" }
+        logcat(LogPriority.DEBUG) { "[$pluginId] JSLibraryProvider cleanup: cleared $cleared cached elements" }
     }
 
     /**
@@ -1186,6 +1204,44 @@ class JSLibraryProvider(
             return arr;
         };
 
+        // Timers backed by Kotlin __delay (QuickJS has no event-loop timers)
+        var __timerSeq = 1;
+        var __cancelledTimers = {};
+        function setTimeout(cb, ms) {
+            if (typeof cb !== 'function') return 0;
+            var id = __timerSeq++;
+            var args = Array.prototype.slice.call(arguments, 2);
+            __delay(ms > 0 ? ms : 0).then(function() {
+                var cancelled = __cancelledTimers[id];
+                delete __cancelledTimers[id];
+                if (cancelled) return;
+                try { cb.apply(null, args); } catch (e) { console.error('setTimeout callback: ' + e); }
+            });
+            return id;
+        }
+        function clearTimeout(id) { if (id) __cancelledTimers[id] = true; }
+        function setInterval(cb, ms) {
+            if (typeof cb !== 'function') return 0;
+            var id = __timerSeq++;
+            var args = Array.prototype.slice.call(arguments, 2);
+            function tick() {
+                __delay(ms > 0 ? ms : 0).then(function() {
+                    if (__cancelledTimers[id]) { delete __cancelledTimers[id]; return; }
+                    try { cb.apply(null, args); } catch (e) { console.error('setInterval callback: ' + e); }
+                    tick();
+                });
+            }
+            tick();
+            return id;
+        }
+        function clearInterval(id) { clearTimeout(id); }
+        function queueMicrotask(fn) { Promise.resolve().then(fn); }
+        globalThis.setTimeout = setTimeout;
+        globalThis.clearTimeout = clearTimeout;
+        globalThis.setInterval = setInterval;
+        globalThis.clearInterval = clearInterval;
+        globalThis.queueMicrotask = queueMicrotask;
+
         // TextDecoder polyfill for encoding support
         function TextDecoder(encoding) {
             this.encoding = (encoding || 'utf-8').toLowerCase();
@@ -1194,25 +1250,44 @@ class JSLibraryProvider(
             // For ArrayBuffer or Uint8Array
             var bytes = buffer instanceof ArrayBuffer ? new Uint8Array(buffer) : buffer;
             if (!bytes || !bytes.length) return '';
-            // Simple UTF-8 decoding
-            var result = '';
-            for (var i = 0; i < bytes.length; i++) {
-                result += String.fromCharCode(bytes[i]);
+            // UTF-8 decoding
+            var result = '', i = 0;
+            while (i < bytes.length) {
+                var b = bytes[i++], cp, extra;
+                if (b < 0x80) { cp = b; extra = 0; }
+                else if ((b & 0xE0) === 0xC0) { cp = b & 0x1F; extra = 1; }
+                else if ((b & 0xF0) === 0xE0) { cp = b & 0x0F; extra = 2; }
+                else if ((b & 0xF8) === 0xF0) { cp = b & 0x07; extra = 3; }
+                else { cp = 0xFFFD; extra = 0; }
+                while (extra-- > 0 && i < bytes.length) {
+                    cp = (cp << 6) | (bytes[i++] & 0x3F);
+                }
+                if (cp > 0xFFFF) {
+                    cp -= 0x10000;
+                    result += String.fromCharCode(0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF));
+                } else {
+                    result += String.fromCharCode(cp);
+                }
             }
             return result;
         };
         globalThis.TextDecoder = TextDecoder;
 
-        // TextEncoder polyfill
+        // TextEncoder polyfill (UTF-8)
         function TextEncoder() {
             this.encoding = 'utf-8';
         }
         TextEncoder.prototype.encode = function(str) {
-            var arr = [];
+            var out = [];
             for (var i = 0; i < str.length; i++) {
-                arr.push(str.charCodeAt(i) & 0xff);
+                var cp = str.codePointAt(i);
+                if (cp > 0xFFFF) i++;
+                if (cp < 0x80) { out.push(cp); }
+                else if (cp < 0x800) { out.push(0xC0 | (cp >> 6), 0x80 | (cp & 63)); }
+                else if (cp < 0x10000) { out.push(0xE0 | (cp >> 12), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63)); }
+                else { out.push(0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63)); }
             }
-            return new Uint8Array(arr);
+            return new Uint8Array(out);
         };
         globalThis.TextEncoder = TextEncoder;
 
@@ -1421,10 +1496,6 @@ class JSLibraryProvider(
                 get: function(i) { return typeof i === 'undefined' ? this.toArray() : __wrapHandle(__cheerioEq(h, i)); },
                 prop: function(n) { var v = __cheerioAttr(h, n); return v === null ? undefined : v; },
                 val: function() { var v = __cheerioAttr(h, 'value'); return v === null ? undefined : v; },
-                parent: function() { return __wrapHandle(__cheerioParent(h)); },
-                children: function(s) { return __wrapHandle(__cheerioChildren(h, s || '')); },
-                next: function() { return __wrapHandle(__cheerioNext(h)); },
-                prev: function() { return __wrapHandle(__cheerioPrev(h)); },
                 trim: function() { return (__cheerioText(h) || '').trim(); },
                 contents: function() { return this.children(''); },
                 siblings: function(s) {
@@ -2261,6 +2332,10 @@ class JSLibraryProvider(
     """.trimIndent()
 
     companion object {
+        // Longest single setTimeout/setInterval delay honored. Keeps a stray long timer from
+        // blocking evaluate() job-draining longer than the 30s executePluginMethod poll window.
+        private const val MAX_TIMER_DELAY_MS = 15_000L
+
         // Real-cheerio bundle string, read from assets once and reused across plugin runtimes.
         @Volatile
         private var cachedCheerioBundle: String? = null
