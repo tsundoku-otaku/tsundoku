@@ -25,7 +25,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChapter
@@ -43,6 +46,8 @@ import tachiyomi.domain.translation.service.TranslationPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Service for managing translation queue and executing translations.
@@ -73,6 +78,18 @@ class TranslationService(
     // Thread-safe queue keyed by chapterId — atomic putIfAbsent replaces check-then-act (fix 4.1)
     private val queueMap = ConcurrentHashMap<Long, TranslationTask>()
 
+    // Stored in TranslationTask.id: FIFO tie-break for equal priorities
+    private val enqueueSequence = AtomicLong(0)
+
+    private val store = TranslationStore(context)
+    private val saveMutex = Mutex()
+
+    private val saveRequested = AtomicBoolean(false)
+
+    // In-flight task (already polled off queueMap); persisted so process death mid-translation doesn't lose it
+    @Volatile
+    private var currentTask: TranslationTask? = null
+
     /**
      * The chapter ID currently being translated.
      * Exposed so the queue UI can highlight it (fix 6.2).
@@ -100,6 +117,19 @@ class TranslationService(
     private val _isPaused = MutableStateFlow(false)
     val isPaused = _isPaused.asStateFlow()
 
+    init {
+        // Restore persisted queue; synchronous so an early enqueue can't clobber the file before restore
+        if (translationPreferences.translationEnabled().get()) {
+            val saved = store.load()
+            if (saved.isNotEmpty()) {
+                saved.forEach { task -> queueMap.putIfAbsent(task.chapterId, task) }
+                enqueueSequence.set(saved.maxOf { it.id })
+                publishQueueState()
+                TranslationJob.start(context)
+            }
+        }
+    }
+
     /**
      * Add a chapter to the translation queue.
      * @param forceRetranslate if true, skip the "already translated" check.
@@ -113,9 +143,11 @@ class TranslationService(
         if (!translationPreferences.translationEnabled().get()) return
 
         val task = TranslationTask(
+            id = enqueueSequence.incrementAndGet(),
             chapterId = chapter.id,
             mangaId = manga.id,
             chapterName = chapter.name,
+            mangaTitle = manga.title,
             sourceLanguage = translationPreferences.sourceLanguage().get(),
             targetLanguage = translationPreferences.targetLanguage().get(),
             engineId = 0L,
@@ -124,6 +156,10 @@ class TranslationService(
             retryCount = 0,
             forceRetranslate = forceRetranslate,
         )
+
+        // Don't re-queue the chapter currently being translated — e.g. auto-translate
+        // firing when the download this service itself triggered completes
+        if (!forceRetranslate && chapter.id == currentTask?.chapterId) return
 
         // Atomic: only inserts if the key is absent (fix 4.1)
         if (queueMap.putIfAbsent(chapter.id, task) == null) {
@@ -144,7 +180,8 @@ class TranslationService(
     ) {
         if (!translationPreferences.translationEnabled().get()) return
 
-        chapters.forEach { chapter ->
+        // Oldest chapters first, same as Downloader.queueChapters
+        chapters.sortedByDescending { it.sourceOrder }.forEach { chapter ->
             enqueue(manga, chapter, priority, forceRetranslate)
         }
     }
@@ -154,6 +191,28 @@ class TranslationService(
      */
     fun dequeue(chapterId: Long) {
         queueMap.remove(chapterId)
+        publishQueueState()
+    }
+
+    /**
+     * Remove all queued chapters of a novel.
+     */
+    fun dequeueAllForManga(mangaId: Long) {
+        val chapterIds = queueMap.values.filter { it.mangaId == mangaId }.map { it.chapterId }
+        if (chapterIds.isEmpty()) return
+        chapterIds.forEach { queueMap.remove(it) }
+        publishQueueState()
+    }
+
+    /**
+     * Move all queued chapters of a novel to the front of the queue
+     * (within their priority band), preserving their relative order.
+     */
+    fun moveMangaToFront(mangaId: Long) {
+        val tasks = queueMap.values.filter { it.mangaId == mangaId }.sortedBy { it.id }
+        if (tasks.isEmpty()) return
+        var nextId = queueMap.values.minOf { it.id } - tasks.size
+        tasks.forEach { task -> queueMap[task.chapterId] = task.copy(id = nextId++) }
         publishQueueState()
     }
 
@@ -181,8 +240,15 @@ class TranslationService(
                 }
 
                 // Pick highest-priority task (fix 4.3)
-                val task = pollHighestPriority() ?: break
+                val polled = pollHighestPriority() ?: break
+                // Languages follow current prefs rather than the enqueue-time snapshot,
+                // consistent with engine selection which already resolves at translate time
+                val task = polled.copy(
+                    sourceLanguage = translationPreferences.sourceLanguage().get(),
+                    targetLanguage = translationPreferences.targetLanguage().get(),
+                )
 
+                currentTask = task
                 _currentTranslatingChapterId.value = task.chapterId
 
                 try {
@@ -233,6 +299,7 @@ class TranslationService(
                         logcat(LogPriority.ERROR) { "Max retries reached for chapter ${task.chapterId}, skipping" }
                     }
                 } finally {
+                    currentTask = null
                     _currentTranslatingChapterId.value = null
                     publishQueueState()
                 }
@@ -248,10 +315,13 @@ class TranslationService(
         }
     }
 
-    /** Atomically remove and return the highest-priority task from the queue. */
+    /** Atomically remove and return the highest-priority task from the queue (FIFO within equal priority). */
     private fun pollHighestPriority(): TranslationTask? {
         if (queueMap.isEmpty()) return null
-        val best = queueMap.entries.maxByOrNull { it.value.priority } ?: return null
+        val best = queueMap.entries.minWithOrNull(
+            compareByDescending<Map.Entry<Long, TranslationTask>> { it.value.priority }
+                .thenBy { it.value.id },
+        ) ?: return null
         return queueMap.remove(best.key)
     }
 
@@ -681,6 +751,19 @@ class TranslationService(
             }
         }
 
+        // Download first (or wait for an in-flight download) so the user keeps an
+        // offline copy instead of an ephemeral fetch that only feeds the translator
+        if (translationPreferences.autoDownloadBeforeTranslate().get() && source.isNovelSource()) {
+            if (downloadManager.getQueuedDownloadOrNull(chapter.id) == null) {
+                downloadManager.downloadChapters(manga, listOf(chapter))
+            }
+            _progressState.update { it.copy(currentChapterProgress = PROGRESS_FETCH_START) }
+            awaitDownloadedContent(chapter, manga, source)?.let { return it }
+            logcat(LogPriority.WARN) {
+                "Auto-download before translate did not produce content for ${chapter.name}, fetching directly"
+            }
+        }
+
         // Fall back to fetching from source
         logcat(LogPriority.DEBUG) { "Fetching content from source for chapter: ${chapter.name}" }
 
@@ -704,12 +787,62 @@ class TranslationService(
         return content
     }
 
+    /**
+     * Poll until the chapter's downloaded content becomes readable, the download leaves the
+     * queue without producing content (failed/cancelled), or the timeout elapses.
+     * The initial grace period covers queueChapters landing the download asynchronously.
+     */
+    private suspend fun awaitDownloadedContent(
+        chapter: Chapter,
+        manga: Manga,
+        source: eu.kanade.tachiyomi.source.Source,
+    ): String? = withTimeoutOrNull(AUTO_DOWNLOAD_WAIT_MS) {
+        var elapsed = 0L
+        while (true) {
+            val content = chapterContentReader.readDownloadedContent(manga, chapter, source)
+            if (!content.isNullOrBlank()) return@withTimeoutOrNull content
+            if (elapsed >= AUTO_DOWNLOAD_GRACE_MS &&
+                downloadManager.getQueuedDownloadOrNull(chapter.id) == null
+            ) {
+                return@withTimeoutOrNull null
+            }
+            delay(AUTO_DOWNLOAD_POLL_MS)
+            elapsed += AUTO_DOWNLOAD_POLL_MS
+        }
+        @Suppress("UNREACHABLE_CODE")
+        null
+    }
+
     private fun publishQueueState() {
-        val snapshot = queueMap.values.sortedByDescending { it.priority }
+        val snapshot = queueMap.values.sortedWith(
+            compareByDescending<TranslationTask> { it.priority }.thenBy { it.id },
+        )
         _progressState.update { current ->
             current.copy(totalChapters = snapshot.size + current.completedChapters)
         }
         _queueState.value = snapshot
+        persistQueue()
+    }
+
+    /** Persist the queue off the caller thread; concurrent calls collapse to one pending save. */
+    private fun persistQueue() {
+        if (!saveRequested.compareAndSet(false, true)) return
+        scope.launch {
+            saveMutex.withLock {
+                // Clear before reading so a mutation that races the read schedules a fresh save
+                saveRequested.set(false)
+                val snapshot = queueMap.values.sortedWith(
+                    compareByDescending<TranslationTask> { it.priority }.thenBy { it.id },
+                )
+                val inFlight = currentTask
+                val toSave = if (inFlight != null && snapshot.none { it.chapterId == inFlight.chapterId }) {
+                    listOf(inFlight) + snapshot
+                } else {
+                    snapshot
+                }
+                store.save(toSave)
+            }
+        }
     }
 
     /**
@@ -936,6 +1069,15 @@ class TranslationService(
 
         /** Delay between pause polling iterations. */
         private const val PAUSE_POLL_DELAY_MS = 500L
+
+        /** Max wait for an auto-triggered download to produce readable content. */
+        private const val AUTO_DOWNLOAD_WAIT_MS = 120_000L
+
+        /** Poll interval while waiting for the auto-triggered download. */
+        private const val AUTO_DOWNLOAD_POLL_MS = 1000L
+
+        /** Grace before treating "not in download queue" as failed — queueChapters lands async. */
+        private const val AUTO_DOWNLOAD_GRACE_MS = 5000L
 
         /** Progress fraction at which source fetch completes. */
         private const val PROGRESS_FETCH_START = 0.3f

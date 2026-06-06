@@ -13,6 +13,7 @@
     <string name="label_novel_sources">Novel Sources</string>
     <string name="label_manga">Manga</string>
     <string name="label_novels">Novels</string>
+    <string name="label_translations">Translations</string>
     <string name="label_migration">Migrate Manga</string>
     <string name="label_novel_migration">Migrate Novels</string>
     <string name="label_manga_extensions">Manga Extensions</string>

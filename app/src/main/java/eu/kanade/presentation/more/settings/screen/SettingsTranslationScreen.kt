@@ -66,7 +66,7 @@ object SettingsTranslationScreen : SearchableSettings {
                     Preference.PreferenceItem.TextPreference(
                         title = stringResource(MR.strings.pref_translation_queue),
                         subtitle = queueStatusText,
-                        onClick = { navigator.push(eu.kanade.tachiyomi.ui.setting.TranslationQueueScreen) },
+                        onClick = { navigator.push(eu.kanade.tachiyomi.ui.download.DownloadQueueScreen(initialTab = 2)) },
                     ),
                 ),
             ),

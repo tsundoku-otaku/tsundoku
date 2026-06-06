@@ -20,6 +20,7 @@ data class TranslationTask(
     val chapterId: Long,
     val mangaId: Long,
     val chapterName: String = "",
+    val mangaTitle: String = "",
     val sourceLanguage: String,
     val targetLanguage: String,
     val engineId: Long,

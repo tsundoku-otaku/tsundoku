@@ -187,7 +187,7 @@ object HomeScreen : Screen() {
                             navigator.push(MangaScreen(it.mangaIdToOpen))
                         }
                         if (it is Tab.More && it.toDownloads) {
-                            navigator.push(DownloadQueueScreen)
+                            navigator.push(DownloadQueueScreen())
                         }
                     }
                 }

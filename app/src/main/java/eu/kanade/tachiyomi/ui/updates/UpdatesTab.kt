@@ -51,7 +51,7 @@ data object UpdatesTab : Tab {
         }
 
     override suspend fun onReselect(navigator: Navigator) {
-        navigator.push(DownloadQueueScreen)
+        navigator.push(DownloadQueueScreen())
     }
 
     @Composable
