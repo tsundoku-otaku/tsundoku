@@ -19,7 +19,6 @@ import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.fetchNovelPageText
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.util.epub.EpubExportNaming
@@ -1127,7 +1126,7 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
     ): String? {
         return try {
             if (source.isLocal() || manga.isLocalNovel()) {
-                return source.fetchNovelPageText(Page(0, chapter.url))
+                return source.fetchPageText(Page(0, chapter.url))
             }
 
             val reader = ChapterContentReader(context, downloadProvider)

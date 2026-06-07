@@ -4,7 +4,6 @@ import android.content.Context
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
-import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -113,11 +112,11 @@ class ChapterLoader(
                 }
             }
             source is LocalNovelSource -> LocalNovelPageLoader(chapter, source)
-            source is NovelSource -> {
-                // JS plugins and other novel sources that aren't HttpSource or LocalNovelSource
-                LocalNovelPageLoader(chapter, source)
-            }
+            // HttpSource novels (extensions + CustomNovelSource) return a no-fetch page list whose
+            // URL their own fetchPageText consumes, so HttpPageLoader loads them (manga too).
             source is HttpSource -> HttpPageLoader(chapter, source)
+            // Non-HttpSource novels (JS plugins, etc.)
+            source.isNovelSource -> LocalNovelPageLoader(chapter, source)
             source is StubSource -> {
                 // Wait for sourceManager to finish combining all sources (KT ext + JS plugins)
                 if (!sourceManager.isInitialized.value) {
@@ -128,9 +127,9 @@ class ChapterLoader(
                 val resolvedSource = sourceManager.get(source.id)
                 if (resolvedSource != null && resolvedSource !is StubSource) {
                     logcat { "ChapterLoader: StubSource ${source.id} resolved → ${resolvedSource.name}" }
-                    return when (resolvedSource) {
-                        is NovelSource -> LocalNovelPageLoader(chapter, resolvedSource)
-                        is HttpSource -> HttpPageLoader(chapter, resolvedSource)
+                    return when {
+                        resolvedSource is HttpSource -> HttpPageLoader(chapter, resolvedSource)
+                        resolvedSource.isNovelSource -> LocalNovelPageLoader(chapter, resolvedSource)
                         else -> error(context.stringResource(MR.strings.loader_not_implemented_error))
                     }
                 }
@@ -145,7 +144,7 @@ class ChapterLoader(
                         }
                         jsPluginManager.getSource(source.id)
                     }
-                if (jsSource is NovelSource) {
+                if (jsSource != null && jsSource.isNovelSource) {
                     logcat { "ChapterLoader: StubSource ${source.id} resolved via JsPluginManager → ${jsSource.name}" }
                     LocalNovelPageLoader(chapter, jsSource)
                 } else if (jsSource is HttpSource) {

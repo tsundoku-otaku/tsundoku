@@ -25,7 +25,6 @@ import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
-import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
@@ -338,11 +337,11 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                 .map { mangaInSource ->
                     async {
                         val source = sourceManager.get(mangaInSource.first().manga.source)
-                        val semaphore = if (source is NovelSource) novelSemaphore else defaultSemaphore
+                        val semaphore = if (source?.isNovelSource == true) novelSemaphore else defaultSemaphore
 
                         // Determine update throttling based on source type and overrides
                         Log.d("LibraryUpdate", "Source ${source?.name} novel: ${(source?.isNovelSource)}")
-                        val updateThrottlingMs = if ((source?.isNovelSource ?: false || source is NovelSource) &&
+                        val updateThrottlingMs = if (source?.isNovelSource == true &&
                             novelThrottleEnabled
                         ) {
                             val sourceId = source.id

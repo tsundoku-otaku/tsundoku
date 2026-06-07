@@ -14,8 +14,10 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import okhttp3.Headers
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody
 import rx.Observable
 import tachiyomi.core.common.util.lang.awaitSingle
 import uy.kohesive.injekt.injectLazy
@@ -300,9 +302,10 @@ abstract class HttpSource : CatalogueSource {
      */
     @Suppress("DEPRECATION")
     override suspend fun getPageList(chapter: SChapter): List<Page> {
-        // Novel chapters are a single text page fetched once in fetchPageText; the page-list
-        // request would fetch the chapter page only for pageListParse to discard the body.
-        // Sources overriding getPageList are unaffected.
+        // A novel chapter is a single text page fetched once in fetchPageText; the page-list
+        // request would fetch the chapter page only for pageListParse to discard the body, so
+        // every novel source would otherwise double-fetch. Sources that override getPageList or
+        // need real multi-page fetching are unaffected.
         if (isNovelSource()) {
             return listOf(Page(0, chapter.url))
         }
@@ -349,6 +352,10 @@ abstract class HttpSource : CatalogueSource {
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getImageUrl"))
     open fun fetchImageUrl(page: Page): Observable<String> {
+        if (this.isNovelSource()) {
+            return Observable.just("")
+        }
+
         return client.newCall(imageUrlRequest(page))
             .asObservableSuccess()
             .map { imageUrlParse(it) }
@@ -379,6 +386,15 @@ abstract class HttpSource : CatalogueSource {
      * @param page the page whose source image has to be downloaded.
      */
     open suspend fun getImage(page: Page): Response {
+        if (this.isNovelSource()) {
+            return Response.Builder()
+                .request(imageRequest(page)) // still need a Request object, but it won't be executed
+                .protocol(Protocol.HTTP_1_1)
+                .code(200)
+                .message("OK")
+                .body(ResponseBody.create(null, ""))
+                .build()
+        }
         return client.newCachelessCallWithProgress(imageRequest(page), page)
             .awaitSuccess()
     }
@@ -390,7 +406,9 @@ abstract class HttpSource : CatalogueSource {
      * @param page the chapter whose page list has to be fetched
      */
     protected open fun imageRequest(page: Page): Request {
-        return GET(page.imageUrl!!, headers)
+        // For novel sources, imageUrl might be null or empty; return a dummy request to avoid crash.
+        val url = if (this.isNovelSource()) "" else page.imageUrl!!
+        return GET(url, headers)
     }
 
     /**

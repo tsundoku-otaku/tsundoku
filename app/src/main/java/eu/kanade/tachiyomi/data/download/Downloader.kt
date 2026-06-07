@@ -13,7 +13,6 @@ import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.UnmeteredSource
-import eu.kanade.tachiyomi.source.fetchNovelPageText
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -653,7 +652,7 @@ class Downloader(
         if (page.text == null && download.source.isNovelSource()) {
             logcat { "  -> Fetching novel page text for page ${page.number}" }
             try {
-                page.text = download.source.fetchNovelPageText(page)
+                page.text = download.source.fetchPageText(page)
                 logcat { "  -> Fetched text, length=${page.text?.length ?: 0}" }
             } catch (e: Throwable) {
                 logcat(LogPriority.ERROR, e) { "  -> Error fetching novel page text" }

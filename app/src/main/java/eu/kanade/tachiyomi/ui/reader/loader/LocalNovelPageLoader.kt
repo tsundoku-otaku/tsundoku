@@ -1,9 +1,9 @@
 package eu.kanade.tachiyomi.ui.reader.loader
 
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -26,8 +26,18 @@ class LocalNovelPageLoader(
     override var isLocal: Boolean = true
 
     override suspend fun getPages(): List<ReaderPage> {
-        val pages = (source as? CatalogueSource)?.getPageList(chapter.chapter)
-            ?: listOf(Page(0, chapter.chapter.url))
+        val source = this.source
+        val chapter = this.chapter
+
+        // For HttpSource novels, the "page list" is just a single stub page.
+        // Calling source.getPageList() would trigger an unnecessary HTTP request.
+        val pages = when {
+            source is HttpSource && source.isNovelSource -> {
+                listOf(Page(0, chapter.chapter.url))
+            }
+            else -> (source as? CatalogueSource)?.getPageList(chapter.chapter)
+                ?: listOf(Page(0, chapter.chapter.url))
+        }
 
         return pages.mapIndexed { index, page ->
             ReaderPage(index, page.url, page.imageUrl).also { readerPage ->
@@ -40,7 +50,6 @@ class LocalNovelPageLoader(
             }
         }
     }
-
     override suspend fun getPageDataStream(url: String): java.io.InputStream? {
         val sChapter = chapter.chapter
         return (source as? tachiyomi.source.local.LocalNovelSource)?.getChapterImage(sChapter, url)
@@ -51,7 +60,7 @@ class LocalNovelPageLoader(
 
         page.status = Page.State.LoadPage
         try {
-            if (source is NovelSource) {
+            if (source.isNovelSource) {
                 var text = source.fetchPageText(Page(page.index, page.url, page.imageUrl))
                 // Apply auto-split if enabled
                 if (readerPreferences.novelAutoSplitText.get()) {

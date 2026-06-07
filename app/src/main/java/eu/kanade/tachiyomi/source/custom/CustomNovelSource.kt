@@ -4,8 +4,6 @@ import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.NovelSource
-import eu.kanade.tachiyomi.source.fetchNovelPageText
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -312,7 +310,7 @@ private fun sanitizeCustomSourceFilename(name: String): String {
  */
 class CustomNovelSource(
     val config: CustomSourceConfig,
-) : HttpSource(), NovelSource {
+) : HttpSource() {
 
     // Mark this as a novel source for HttpPageLoader detection
     override val isNovelSource: Boolean = config.isNovel
@@ -420,6 +418,9 @@ class CustomNovelSource(
         baseSource?.let { source ->
             return source.getPageList(toBaseSourceChapter(chapter)).map { rebasePage(it) }
         }
+        // Novel: single metadata page, no fetch. fetchPageText rebuilds the absolute URL from this
+        // relative path, so the one content fetch happens there.
+        if (isNovelSource) return listOf(Page(0, chapter.url))
         return super.getPageList(chapter)
     }
 
@@ -565,7 +566,7 @@ class CustomNovelSource(
             }
             
             val pageToFetch = Page(page.index, sourceUrl, page.imageUrl, page.uri).also { it.text = page.text }
-            return bs.fetchNovelPageText(pageToFetch)
+            return bs.fetchPageText(pageToFetch)
         }
 
         // If based on extension but source is not a novel source, fall through to CSS selectors

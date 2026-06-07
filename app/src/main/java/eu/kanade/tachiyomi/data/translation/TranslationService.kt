@@ -11,7 +11,6 @@ import eu.kanade.tachiyomi.data.translation.engine.LibreTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.NvidiaNimTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.OllamaTranslateEngine
 import eu.kanade.tachiyomi.data.translation.engine.OpenAITranslateEngine
-import eu.kanade.tachiyomi.source.fetchNovelPageText
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import kotlinx.coroutines.CancellationException
@@ -774,7 +773,7 @@ class TranslationService(
         _progressState.update { it.copy(currentChapterProgress = PROGRESS_FETCH_START) }
 
         val content = try {
-            source.fetchNovelPageText(page)
+            source.fetchPageText(page)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to fetch novel page text for chapter: ${chapter.name}" }
             throw e

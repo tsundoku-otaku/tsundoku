@@ -10,7 +10,6 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.ConfigurableSource
-import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -48,7 +47,7 @@ import java.util.concurrent.Executors
 class JsSource(
     private val installedPlugin: InstalledJsPlugin,
     private val siteOverride: String? = null,
-) : CatalogueSource, ConfigurableSource, NovelSource {
+) : CatalogueSource, ConfigurableSource {
 
     private val plugin: JsPlugin = installedPlugin.plugin
     private val jsCode: String = installedPlugin.code
@@ -1344,7 +1343,7 @@ class JsSource(
         }
     }
 
-    // NovelSource implementation
+    // Novel page text (Source.fetchPageText)
     override suspend fun fetchPageText(page: Page): String = withContext(Dispatchers.IO) {
         try {
             // If the page already has text content (set by getPageList), return it directly

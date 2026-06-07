@@ -70,6 +70,18 @@ interface Source {
         return fetchPageList(chapter).awaitSingle()
     }
 
+    /**
+     * Fetches the text content for a novel page. Only meaningful when [isNovelSource] is true;
+     * manga sources never call this. A novel chapter is a single [Page] whose text is returned
+     * here, so the one content fetch happens in this method.
+     *
+     * @since extensions-lib 1.5
+     * @param page the page to fetch; use [Page.url] to make the request.
+     * @return the HTML or text content to display.
+     */
+    suspend fun fetchPageText(page: Page): String =
+        throw UnsupportedOperationException("Not a novel source")
+
     @Deprecated(
         "Use the non-RxJava API instead",
         ReplaceWith("getMangaDetails"),

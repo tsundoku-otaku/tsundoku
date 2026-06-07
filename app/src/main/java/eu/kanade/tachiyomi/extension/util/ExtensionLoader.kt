@@ -13,7 +13,6 @@ import eu.kanade.tachiyomi.extension.model.LoadResult
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
-import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.util.lang.Hash
 import eu.kanade.tachiyomi.util.storage.copyAndSetReadOnlyTo
 import eu.kanade.tachiyomi.util.system.ChildFirstPathClassLoader
@@ -387,7 +386,7 @@ internal object ExtensionLoader {
             libVersion = libVersion,
             lang = lang,
             isNsfw = isNsfw,
-            isNovel = sources.any { it.isNovelSource() },
+            isNovel = appInfo.metaData.getInt("$metaNs.novel") == 1,
             sources = sources,
             pkgFactory = appInfo.metaData.getString("$metaNs.factory"),
             icon = appInfo.loadIcon(pkgManager),

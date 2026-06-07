@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.ui.reader.loader
 
 import eu.kanade.tachiyomi.data.cache.ChapterCache
 import eu.kanade.tachiyomi.data.database.models.toDomainChapter
-import eu.kanade.tachiyomi.source.fetchNovelPageText
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -73,8 +72,8 @@ internal class HttpPageLoader(
      */
     override suspend fun getPages(): List<ReaderPage> {
         val pages = if (source.isNovelSource()) {
-            // Novel getPageList is metadata-only; the text is fetched once in internalLoadPage.
-            // Skip the page-list cache, text is @Transient so cached entries are useless.
+            // Novel page text is @Transient, so the page-list cache always returns pages
+            // with text=null. Always fetch fresh so internalLoadPage sees the text.
             source.getPageList(chapter.chapter)
         } else {
             try {
@@ -186,25 +185,22 @@ internal class HttpPageLoader(
      */
     private suspend fun internalLoadPage(page: ReaderPage, force: Boolean) {
         try {
-            // Determine if this page should be treated as novel content
             val isNovel = source.isNovelSource()
             val hasActualImageUrl = !page.imageUrl.isNullOrEmpty()
             val hasTextData = !page.text.isNullOrEmpty()
 
-            // If text content is already present, consider this page ready regardless of source flag.
             if (hasTextData) {
                 page.status = Page.State.Ready
                 return
             }
 
-            // For NovelSource: treat as novel unless there's an actual image URL
-            // The page.url field is just used for fetchPageText, not for images
+            // Novel sources can still serve image pages; only pages without an
+            // image URL go through fetchPageText.
             val treatAsNovel = isNovel && !hasActualImageUrl
 
             if (treatAsNovel) {
-                // For novels, fetch text content instead of images
                 page.status = Page.State.LoadPage
-                var text = source.fetchNovelPageText(page)
+                var text = source.fetchPageText(page)
                 if (readerPreferences.novelAutoSplitText.get()) {
                     val wordCount = readerPreferences.novelAutoSplitWordCount.get().coerceAtLeast(20)
                     if (wordCount > 0) {
@@ -217,7 +213,6 @@ internal class HttpPageLoader(
             }
 
             // Manga path (matches mihon baseline).
-            // isNullOrEmpty() catches both null (never set) and "" (empty string).
             if (page.imageUrl.isNullOrEmpty()) {
                 page.status = Page.State.LoadPage
                 page.imageUrl = source.getImageUrl(page)

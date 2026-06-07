@@ -3,7 +3,6 @@ package tachiyomi.source.local
 import android.content.Context
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.NovelSource
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -49,7 +48,7 @@ import java.nio.charset.StandardCharsets
 import kotlin.time.Duration.Companion.days
 import tachiyomi.domain.source.model.Source as DomainSource
 
-actual class LocalNovelSource : CatalogueSource, NovelSource, UnmeteredSource {
+actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
 
     private val context: Context by injectLazy()
     private val fileSystem: LocalNovelSourceFileSystem by injectLazy()
