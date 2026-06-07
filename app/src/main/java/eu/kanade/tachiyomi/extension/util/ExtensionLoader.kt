@@ -50,10 +50,6 @@ internal object ExtensionLoader {
     private const val EXTENSION_FEATURE = "tachiyomi.extension"
     private const val EXTENSION_FEATURE_NOVEL = "tachiyomi.novelextension"
     private val EXTENSION_FEATURES = setOf(EXTENSION_FEATURE, EXTENSION_FEATURE_NOVEL)
-    private const val METADATA_SOURCE_CLASS = "tachiyomi.extension.class"
-    private const val METADATA_SOURCE_FACTORY = "tachiyomi.extension.factory"
-    private const val METADATA_NSFW = "tachiyomi.extension.nsfw"
-    private const val METADATA_NOVEL = "tachiyomi.extension.novel"
     const val LIB_VERSION_MIN = 1.4
     const val LIB_VERSION_MAX = 1.5
 
@@ -290,12 +286,15 @@ internal object ExtensionLoader {
             return LoadResult.Error
         }
 
+        val isNovelExtension = pkgInfo.reqFeatures.orEmpty().any { it.name == EXTENSION_FEATURE_NOVEL }
+        val metaNs = if (isNovelExtension) "tachiyomi.novelextension" else "tachiyomi.extension"
+
         val signatures = getSignatures(pkgInfo)
         if (signatures.isNullOrEmpty()) {
             logcat(LogPriority.WARN) { "Package $pkgName isn't signed" }
             return LoadResult.Error
         } else if (!trustExtension.isTrusted(pkgInfo, signatures)) {
-            val isNovelExt = appInfo.metaData.getInt(METADATA_NOVEL) == 1
+            val isNovelExt = appInfo.metaData.getInt("$metaNs.novel") == 1
             val extension = Extension.Untrusted(
                 extName,
                 pkgName,
@@ -309,7 +308,7 @@ internal object ExtensionLoader {
             return LoadResult.Untrusted(extension)
         }
 
-        val isNsfw = appInfo.metaData.getInt(METADATA_NSFW) == 1
+        val isNsfw = appInfo.metaData.getInt("$metaNs.nsfw") == 1
         if (!loadNsfwSource && isNsfw) {
             logcat(LogPriority.WARN) { "NSFW extension $pkgName not allowed" }
             return LoadResult.Error
@@ -322,7 +321,10 @@ internal object ExtensionLoader {
             return LoadResult.Error
         }
 
-        val sources = appInfo.metaData.getString(METADATA_SOURCE_CLASS)!!
+        val sources = (appInfo.metaData.getString("$metaNs.class") ?: run {
+            logcat(LogPriority.WARN) { "Missing source class for extension $extName ($pkgName)" }
+            return LoadResult.Error
+        })
             .split(";")
             .map {
                 val sourceClass = it.trim()
@@ -387,7 +389,7 @@ internal object ExtensionLoader {
             isNsfw = isNsfw,
             isNovel = sources.any { it.isNovelSource() },
             sources = sources,
-            pkgFactory = appInfo.metaData.getString(METADATA_SOURCE_FACTORY),
+            pkgFactory = appInfo.metaData.getString("$metaNs.factory"),
             icon = appInfo.loadIcon(pkgManager),
             isShared = extensionInfo.isShared,
         )
