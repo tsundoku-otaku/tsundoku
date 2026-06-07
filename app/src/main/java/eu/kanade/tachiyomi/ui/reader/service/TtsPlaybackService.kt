@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.service
 
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -9,6 +10,8 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.Notifications
@@ -31,7 +34,15 @@ class TtsPlaybackService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        // Null intent means a sticky restart by the system; there is no playback
+        // state to restore and the app may not be allowed to start a foreground
+        // service from the background, so just stop.
+        if (intent == null) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
+        when (intent.action) {
             ACTION_STOP_SERVICE -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -69,7 +80,7 @@ class TtsPlaybackService : Service() {
 
         startForegroundWithNotification()
 
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -175,14 +186,27 @@ class TtsPlaybackService : Service() {
             )
         }.build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                Notifications.ID_TTS_PLAYBACK,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            )
-        } else {
-            startForeground(Notifications.ID_TTS_PLAYBACK, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    Notifications.ID_TTS_PLAYBACK,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(Notifications.ID_TTS_PLAYBACK, notification)
+            }
+        } catch (e: Exception) {
+            // Android 12+ disallows starting a foreground service from the
+            // background; stop instead of crashing.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                e is ForegroundServiceStartNotAllowedException
+            ) {
+                logcat(LogPriority.WARN, e) { "Foreground start not allowed for TTS notification" }
+                stopSelf()
+            } else {
+                throw e
+            }
         }
     }
 
@@ -252,24 +276,39 @@ class TtsPlaybackService : Service() {
             mangaId: Long,
             chapterId: Long,
         ) {
-            ContextCompat.startForegroundService(
-                context,
-                Intent(context, TtsPlaybackService::class.java)
-                    .setAction(ACTION_SYNC)
-                    .putExtra(EXTRA_IS_PAUSED, isPaused)
-                    .putExtra(EXTRA_PROGRESS_PERCENT, progressPercent.coerceIn(0, 100))
-                    .putExtra(EXTRA_NOVEL_TITLE, novelTitle)
-                    .putExtra(EXTRA_CHAPTER_TITLE, chapterTitle)
-                    .putExtra(EXTRA_MANGA_ID, mangaId)
-                    .putExtra(EXTRA_CHAPTER_ID, chapterId),
-            )
+            try {
+                ContextCompat.startForegroundService(
+                    context,
+                    Intent(context, TtsPlaybackService::class.java)
+                        .setAction(ACTION_SYNC)
+                        .putExtra(EXTRA_IS_PAUSED, isPaused)
+                        .putExtra(EXTRA_PROGRESS_PERCENT, progressPercent.coerceIn(0, 100))
+                        .putExtra(EXTRA_NOVEL_TITLE, novelTitle)
+                        .putExtra(EXTRA_CHAPTER_TITLE, chapterTitle)
+                        .putExtra(EXTRA_MANGA_ID, mangaId)
+                        .putExtra(EXTRA_CHAPTER_ID, chapterId),
+                )
+            } catch (e: Exception) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    e is ForegroundServiceStartNotAllowedException
+                ) {
+                    logcat(LogPriority.WARN, e) { "Cannot start TTS service from the background" }
+                } else {
+                    throw e
+                }
+            }
         }
 
         fun stop(context: Context) {
-            context.startService(
-                Intent(context, TtsPlaybackService::class.java)
-                    .setAction(ACTION_STOP_SERVICE),
-            )
+            try {
+                context.startService(
+                    Intent(context, TtsPlaybackService::class.java)
+                        .setAction(ACTION_STOP_SERVICE),
+                )
+            } catch (e: IllegalStateException) {
+                // App is in the background and the service is not running; nothing to stop.
+                logcat(LogPriority.WARN, e) { "Cannot stop TTS service" }
+            }
         }
     }
 }
