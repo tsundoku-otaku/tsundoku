@@ -524,7 +524,9 @@ class ReaderActivity : BaseActivity() {
         super.onResume()
         viewModel.restartReadTimer()
         setMenuVisibility(viewModel.state.value.menuVisible)
-        if (readerPreferences.novelTtsBackgroundPlayback.get()) {
+        if (readerPreferences.novelTtsBackgroundPlayback.get() &&
+            currentNovelTtsState()?.active == true
+        ) {
             startTtsNotificationSync()
             syncBackgroundTtsState()
         }
@@ -819,7 +821,6 @@ class ReaderActivity : BaseActivity() {
                     readerPreferences.novelTtsControlsVisible.set(nowVisible)
                     val viewer = state.viewer
                     if (nowVisible) {
-                        // Show panel → optionally start TTS if pref enabled and not already running
                         if (!isTtsActive && readerPreferences.novelTtsAutoStartOnPanelOpen.get()) {
                             when (viewer) {
                                 is NovelViewer -> {
@@ -840,7 +841,6 @@ class ReaderActivity : BaseActivity() {
                             }
                         }
                     } else {
-                        // Hide panel → stop TTS
                         when (viewer) {
                             is NovelViewer -> {
                                 stopBackgroundTtsIfRunning()
@@ -861,7 +861,6 @@ class ReaderActivity : BaseActivity() {
                     }
                 },
                 onToggleTts = {
-                    // Pause/resume — used by the TTS controls overlay
                     val viewer = state.viewer
                     when (viewer) {
                         is NovelViewer -> {

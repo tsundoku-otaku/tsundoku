@@ -27,12 +27,6 @@ class TtsPlaybackService : Service() {
     private var mangaId: Long = -1L
     private var chapterId: Long = -1L
 
-    override fun onCreate() {
-        super.onCreate()
-
-        startForegroundWithNotification()
-    }
-
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Null intent means a sticky restart by the system; there is no playback
         // state to restore and the app may not be allowed to start a foreground
@@ -43,12 +37,6 @@ class TtsPlaybackService : Service() {
         }
 
         when (intent.action) {
-            ACTION_STOP_SERVICE -> {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                return START_NOT_STICKY
-            }
-
             ACTION_TOGGLE_PAUSE -> {
                 sendControlBroadcast(COMMAND_TOGGLE_PAUSE)
             }
@@ -223,9 +211,6 @@ class TtsPlaybackService : Service() {
         private const val ACTION_SYNC =
             "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.SYNC"
 
-        private const val ACTION_STOP_SERVICE =
-            "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.STOP_SERVICE"
-
         private const val ACTION_TOGGLE_PAUSE =
             "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.TOGGLE_PAUSE"
 
@@ -300,15 +285,7 @@ class TtsPlaybackService : Service() {
         }
 
         fun stop(context: Context) {
-            try {
-                context.startService(
-                    Intent(context, TtsPlaybackService::class.java)
-                        .setAction(ACTION_STOP_SERVICE),
-                )
-            } catch (e: IllegalStateException) {
-                // App is in the background and the service is not running; nothing to stop.
-                logcat(LogPriority.WARN, e) { "Cannot stop TTS service" }
-            }
+            context.stopService(Intent(context, TtsPlaybackService::class.java))
         }
     }
 }
