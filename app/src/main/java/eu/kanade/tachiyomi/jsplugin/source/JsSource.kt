@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.util.lang.normalizeHtmlDescription
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -67,15 +68,33 @@ class JsSource(
     // Cached runtime instance to avoid recreating for every method call
     @Volatile private var cachedInstance: eu.kanade.tachiyomi.jsplugin.runtime.PluginInstance? = null
     private val instanceLock = Any()
+    private val instanceMutex = kotlinx.coroutines.sync.Mutex()
     private var lastUsed = System.currentTimeMillis()
 
-    // Cache manga details and chapters to prevent re-fetching
-    private val detailsCache = java.util.concurrent.ConcurrentHashMap<String, Pair<SManga, Long>>()
+    // Chapter list may aggregate parseNovel + N parsePage calls; re-deriving it would refetch every page.
     private val chaptersCache = java.util.concurrent.ConcurrentHashMap<String, Pair<List<SChapter>, Long>>()
-    private val cacheTimeout = 300_000L // 5 minutes
+
+    // Short so a manual details/chapter-list refresh actually refetches.
+    private val cacheTimeout = 60_000L
+
+    // getMangaDetails and getChapterList both map to one plugin.parseNovel; parseChapter serves
+    // reader, translation and download paths. Mutex makes concurrent callers share one fetch.
+    private val parseNovelCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+    private val parseNovelMutex = kotlinx.coroutines.sync.Mutex()
+    private val chapterTextCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+    private val chapterTextMutex = kotlinx.coroutines.sync.Mutex()
+
+    // inferHasNextPage probe result, reused when the user pages forward.
+    private val browseProbeCache = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>()
+
+    // Raw JSON of plugin.filters / plugin.pluginSettings. Static per plugin version; caching it
+    // limits the runBlocking JS execution in getFilterList/setupPreferenceScreen to the first call.
+    @Volatile private var filtersJsonCache: String? = null
+    @Volatile private var pluginSettingsJsonCache: String? = null
 
     companion object {
         private const val INSTANCE_TIMEOUT_MS = 60_000L // 1 minute timeout
+        private const val BROWSE_PROBE_TTL_MS = 60_000L
 
         private val HTML_TAG_REGEX = Regex(
             "<(?:p|div|br|span|h[1-6]|ul|ol|li|a|img|table|blockquote|strong|em|b|i|code)\\b",
@@ -161,68 +180,74 @@ class JsSource(
     private suspend fun getOrCreateInstance(): eu.kanade.tachiyomi.jsplugin.runtime.PluginInstance = withContext(
         jsDispatcher,
     ) {
-        synchronized(instanceLock) {
+        // instanceMutex serializes check-create-assign; instanceLock additionally guards
+        // cachedInstance so invalidateInstance (any thread) can't race these accesses.
+        instanceMutex.withLock {
             val now = System.currentTimeMillis()
-            val existing = cachedInstance
-
-            // Return existing instance if still valid
-            if (existing != null && (now - lastUsed) < INSTANCE_TIMEOUT_MS) {
-                lastUsed = now
-                return@withContext existing
-            }
-
-            // Close old instance if timed out
-            existing?.close()
-            cachedInstance = null
-        }
-
-        // Create new instance outside lock to avoid blocking
-        val codeToUse = jsCode
-        val runtime = PluginRuntime(pluginId, context, jsDispatcher, baseUrl)
-        val newInstance = try {
-            runtime.executePlugin(codeToUse)
-        } catch (e: Exception) {
-            // If plugin execution fails, log and rethrow
-            logcat(LogPriority.ERROR, e) { "JsSource[$pluginId]: Failed to execute plugin" }
-            throw e
-        }
-
-        if (!siteOverride.isNullOrBlank()) {
-            val escapedSiteOverride = siteOverride
-                .replace("\\", "\\\\")
-                .replace("'", "\\'")
-            newInstance.execute(
-                """
-                if (globalThis.plugin) {
-                    globalThis.plugin.site = '$escapedSiteOverride';
-                    globalThis.plugin.sourceSite = globalThis.plugin.site;
+            val existing = synchronized(instanceLock) {
+                val current = cachedInstance
+                when {
+                    current == null -> null
+                    (now - lastUsed) < INSTANCE_TIMEOUT_MS -> {
+                        lastUsed = now
+                        current
+                    }
+                    else -> {
+                        runCatching { current.close() }
+                        cachedInstance = null
+                        null
+                    }
                 }
-                """.trimIndent(),
-            )
-        }
+            }
+            if (existing != null) return@withLock existing
 
-        synchronized(instanceLock) {
-            // Double-check: another thread might have created one
-            val existing = cachedInstance
-            if (existing != null) {
-                newInstance.close()
-                lastUsed = System.currentTimeMillis()
-                return@withContext existing
+            val runtime = PluginRuntime(pluginId, context, jsDispatcher, baseUrl)
+            val newInstance = try {
+                runtime.executePlugin(jsCode)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "JsSource[$pluginId]: Failed to execute plugin" }
+                throw e
             }
 
-            cachedInstance = newInstance
+            if (!siteOverride.isNullOrBlank()) {
+                val escapedSiteOverride = escapeJsString(siteOverride)
+                newInstance.execute(
+                    """
+                    if (globalThis.plugin) {
+                        globalThis.plugin.site = '$escapedSiteOverride';
+                        globalThis.plugin.sourceSite = globalThis.plugin.site;
+                    }
+                    """.trimIndent(),
+                )
+            }
+
+            synchronized(instanceLock) {
+                lastUsed = System.currentTimeMillis()
+                cachedInstance = newInstance
+            }
             newInstance
         }
     }
 
     /**
      * Invalidate the cached instance (call on errors).
+     * [expected] guards against closing a runtime that was already replaced: a failing call
+     * holding an old instance must not kill the fresh one a concurrent caller created.
      */
-    private fun invalidateInstance() {
+    private fun invalidateInstance(expected: eu.kanade.tachiyomi.jsplugin.runtime.PluginInstance? = null) {
         synchronized(instanceLock) {
-            cachedInstance?.close()
+            if (expected != null && cachedInstance !== expected) return
+            runCatching { cachedInstance?.close() }
             cachedInstance = null
         }
+    }
+
+    /**
+     * Close the cached QuickJS runtime to free native memory without killing the executor.
+     * Safe while the source may still be referenced; the next call recreates the runtime.
+     */
+    suspend fun releaseRuntime() = withContext(jsDispatcher) {
+        invalidateInstance()
     }
 
     /**
@@ -237,6 +262,11 @@ class JsSource(
         return JsSource(installedPlugin, site)
     }
 
+    /** True when this source was built from the same plugin version and code. */
+    fun isSamePlugin(other: InstalledJsPlugin): Boolean =
+        installedPlugin.installedVersion == other.installedVersion &&
+            installedPlugin.code == other.code
+
     /**
      * Execute a plugin method and return JSON result.
      * All JS execution happens on jsDispatcher to ensure JNI environment is consistent.
@@ -246,6 +276,21 @@ class JsSource(
      * We use a global variable approach to store the result after Promise resolution.
      */
     private suspend fun executePluginMethod(methodCall: String): String = withContext(jsDispatcher) {
+        try {
+            executePluginMethodAttempt(methodCall)
+        } catch (e: Exception) {
+            // The runtime can be closed under an in-flight call (releaseRuntime after a plugin
+            // update, instance timeout); the attempt already invalidated it, so retry once.
+            if (e.message.orEmpty().contains("context is destroyed", ignoreCase = true)) {
+                logcat(LogPriority.WARN) { "JsSource[$pluginId]: runtime closed mid-call, retrying: $methodCall" }
+                executePluginMethodAttempt(methodCall)
+            } else {
+                throw e
+            }
+        }
+    }
+
+    private suspend fun executePluginMethodAttempt(methodCall: String): String {
         val instance = try {
             getOrCreateInstance()
         } catch (e: Exception) {
@@ -256,8 +301,7 @@ class JsSource(
         val token = "tsundoku_${System.nanoTime()}"
         val escapedSiteOverride = siteOverride
             ?.takeIf { it.isNotBlank() }
-            ?.replace("\\", "\\\\")
-            ?.replace("'", "\\'")
+            ?.let { escapeJsString(it) }
         try {
             if (escapedSiteOverride != null) {
                 instance.execute(
@@ -269,7 +313,7 @@ class JsSource(
                     """.trimIndent(),
                 )
             }
-            logcat(LogPriority.DEBUG) { "JsSource[$pluginId]: Executing: $methodCall" }
+            logcat(LogPriority.INFO) { "JsSource[$pluginId]: Executing: $methodCall" }
 
             // Store result in global variable, handle Promise resolution in JS
             instance.execute(
@@ -339,19 +383,33 @@ class JsSource(
                 throw Exception("Plugin error while executing [$methodCall]: $error")
             }
 
-            logcat(LogPriority.DEBUG) { "JsSource[$pluginId]: Result: ${jsonResult?.take(200)}" }
-            jsonResult ?: "null"
+            logcat(LogPriority.INFO) { "JsSource[$pluginId]: Result: ${jsonResult?.take(200)}" }
+            return jsonResult ?: "null"
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "JsSource[$pluginId]: Error executing: $methodCall" }
-            // Invalidate on SyntaxError or critical errors
+            // Invalidate on critical errors so the dead runtime isn't reused
             val message = e.message.orEmpty()
             if (message.contains("SyntaxError", ignoreCase = true) ||
-                message.contains("vm is not cached", ignoreCase = true)
+                message.contains("vm is not cached", ignoreCase = true) ||
+                message.contains("context is destroyed", ignoreCase = true)
             ) {
-                invalidateInstance()
+                invalidateInstance(expected = instance)
             }
             throw e
         }
+    }
+
+    /**
+     * Execute a browse method call, consuming a matching inferHasNextPage probe result if one
+     * is pending so paging forward doesn't refetch the page the probe already pulled.
+     */
+    private suspend fun executeBrowseMethod(methodCall: String): String {
+        browseProbeCache.remove(methodCall)?.let { (cached, ts) ->
+            if (System.currentTimeMillis() - ts < BROWSE_PROBE_TTL_MS) {
+                return cached
+            }
+        }
+        return executePluginMethod(methodCall)
     }
 
     // CatalogueSource implementation
@@ -359,7 +417,7 @@ class JsSource(
     override suspend fun getPopularManga(page: Int): MangasPage = withContext(Dispatchers.IO) {
         try {
             val currentResult =
-                executePluginMethod("plugin.popularNovels($page, { showLatestNovels: false, filters: plugin.filters })")
+                executeBrowseMethod("plugin.popularNovels($page, { showLatestNovels: false, filters: plugin.filters })")
             val parsed = parseMangasPage(currentResult, page)
             inferHasNextPage(
                 currentPage = page,
@@ -377,7 +435,7 @@ class JsSource(
     override suspend fun getLatestUpdates(page: Int): MangasPage = withContext(Dispatchers.IO) {
         try {
             val currentResult =
-                executePluginMethod("plugin.popularNovels($page, { showLatestNovels: true, filters: plugin.filters })")
+                executeBrowseMethod("plugin.popularNovels($page, { showLatestNovels: true, filters: plugin.filters })")
             val parsed = parseMangasPage(currentResult, page)
             inferHasNextPage(
                 currentPage = page,
@@ -396,7 +454,7 @@ class JsSource(
         Dispatchers.IO,
     ) {
         try {
-            val escapedQuery = query.replace("'", "\\'").replace("\"", "\\\"")
+            val escapedQuery = escapeJsString(query)
 
             // Determine if non-default filters are present
             val hasActiveFilters = filters.isNotEmpty() && filters.any { filter ->
@@ -414,7 +472,7 @@ class JsSource(
 
             if (query.isNotBlank()) {
                 // Use searchNovels for text search
-                val currentResult = executePluginMethod("plugin.searchNovels('$escapedQuery', $page)")
+                val currentResult = executeBrowseMethod("plugin.searchNovels('$escapedQuery', $page)")
                 val parsed = parseMangasPage(currentResult, page)
                 inferHasNextPage(
                     currentPage = page,
@@ -425,7 +483,7 @@ class JsSource(
                 // Use popularNovels with user-modified filters
                 val filtersJs = convertFiltersToJs(filters)
                 val currentResult =
-                    executePluginMethod("plugin.popularNovels($page, { showLatestNovels: false, filters: $filtersJs })")
+                    executeBrowseMethod("plugin.popularNovels($page, { showLatestNovels: false, filters: $filtersJs })")
                 val parsed = parseMangasPage(currentResult, page)
                 inferHasNextPage(
                     currentPage = page,
@@ -437,7 +495,7 @@ class JsSource(
             } else {
                 // Default to popular with plugin's original filters
                 val currentResult =
-                    executePluginMethod(
+                    executeBrowseMethod(
                         "plugin.popularNovels($page, { showLatestNovels: false, filters: plugin.filters })",
                     )
                 val parsed = parseMangasPage(currentResult, page)
@@ -536,20 +594,8 @@ class JsSource(
 
     override suspend fun getMangaDetails(manga: SManga): SManga = withContext(Dispatchers.IO) {
         try {
-            // Check cache first
-            val cached = detailsCache[manga.url]
-            val now = System.currentTimeMillis()
-            if (cached != null && (now - cached.second) < cacheTimeout) {
-                return@withContext cached.first
-            }
-
-            val path = normalizePluginPath(manga.url).replace("'", "\\'").replace("\"", "\\\"")
-            val result = executePluginMethod("plugin.parseNovel('$path')")
-            val details = parseNovelDetails(result, manga)
-
-            // Cache the result
-            detailsCache[manga.url] = details to now
-            details
+            // parseNovelCached dedupes the fetch with getChapterList; parsing the raw JSON is cheap.
+            parseNovelDetails(parseNovelCached(manga.url), manga)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Error in getMangaDetails for ${plugin.name}" }
             manga
@@ -565,8 +611,8 @@ class JsSource(
                 return@withContext cached.first
             }
 
-            val path = normalizePluginPath(manga.url).replace("'", "\\'").replace("\"", "\\\"")
-            val result = executePluginMethod("plugin.parseNovel('$path')")
+            val path = escapeJsString(normalizePluginPath(manga.url))
+            val result = parseNovelCached(manga.url)
             val chapters = parseChapterList(result).toMutableList()
 
             // Support paged chapter sources (like novelight, novelfire)
@@ -624,33 +670,24 @@ class JsSource(
         }
     }
 
-    override suspend fun getPageList(chapter: SChapter): List<Page> = withContext(Dispatchers.IO) {
-        try {
-            // Validate chapter URL is not empty/blank to avoid fetching base URL
-            if (chapter.url.isBlank()) {
-                logcat(LogPriority.ERROR) { "[$id] getPageList: chapter.url is blank, cannot parse chapter" }
-                return@withContext emptyList()
-            }
-            val path = normalizePluginPath(chapter.url).replace("'", "\\'").replace("\"", "\\\"")
-            val result = executePluginMethod("plugin.parseChapter('$path')")
-            listOf(Page(0, chapter.url, "").also { it.text = extractChapterText(result) })
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) {
-                "Error in getPageList for ${plugin.name}: chapter='${chapter.name}' url='${chapter.url}' " +
-                    "site='$baseUrl' cause='${e.message}'"
-            }
-            emptyList()
+    override suspend fun getPageList(chapter: SChapter): List<Page> {
+        // Validate chapter URL is not empty/blank to avoid fetching base URL
+        if (chapter.url.isBlank()) {
+            logcat(LogPriority.ERROR) { "[$id] getPageList: chapter.url is blank, cannot parse chapter" }
+            return emptyList()
         }
+        // A novel chapter is always one page; the single fetch happens in fetchPageText.
+        return listOf(Page(0, chapter.url, ""))
     }
 
     override fun getFilterList(): FilterList {
         return try {
-            // getFilterList is synchronous in the interface, but we need to run suspend code.
-            // We use runBlocking here.
-            runBlocking {
-                val result = executePluginMethod("plugin.filters || {}")
-                parseFiltersFromJson(result)
-            }
+            // Synchronous interface, so the first call must runBlocking into JS. Cache the raw
+            // JSON but re-parse per call; Filter instances are stateful.
+            val result = filtersJsonCache
+                ?: runBlocking { executePluginMethod("plugin.filters || {}") }
+                    .also { filtersJsonCache = it }
+            parseFiltersFromJson(result)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Error getting filters for ${plugin.name}" }
             FilterList()
@@ -660,7 +697,9 @@ class JsSource(
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         // Read plugin's pluginSettings and create preferences backed by persistent storage
         try {
-            val result = runBlocking { executePluginMethod("JSON.stringify(plugin.pluginSettings || {})") }
+            val result = pluginSettingsJsonCache
+                ?: runBlocking { executePluginMethod("JSON.stringify(plugin.pluginSettings || {})") }
+                    .also { pluginSettingsJsonCache = it }
             val settingsJson = decodeJsonStringIfQuoted(result)
             if (settingsJson.isBlank() || settingsJson == "{}" || settingsJson == "null") return
 
@@ -766,6 +805,45 @@ class JsSource(
         }
     }
 
+    /** Escape a value for embedding in a single-quoted JS string literal. */
+    private fun escapeJsString(value: String): String =
+        value.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"")
+
+    /** plugin.parseNovel with raw-result caching and in-flight dedup. */
+    private suspend fun parseNovelCached(mangaUrl: String): String {
+        val path = escapeJsString(normalizePluginPath(mangaUrl))
+        return parseNovelMutex.withLock {
+            val now = System.currentTimeMillis()
+            parseNovelCache[path]?.takeIf { (now - it.second) < cacheTimeout }?.let { return@withLock it.first }
+            val result = executePluginMethod("plugin.parseNovel('$path')")
+            parseNovelCache[path] = result to now
+            trimRawCache(parseNovelCache)
+            result
+        }
+    }
+
+    /** plugin.parseChapter with raw-result caching and in-flight dedup. */
+    private suspend fun parseChapterCached(chapterUrl: String): String {
+        val path = escapeJsString(normalizePluginPath(chapterUrl))
+        return chapterTextMutex.withLock {
+            val now = System.currentTimeMillis()
+            chapterTextCache[path]?.takeIf { (now - it.second) < cacheTimeout }?.let { return@withLock it.first }
+            val result = executePluginMethod("plugin.parseChapter('$path')")
+            chapterTextCache[path] = result to now
+            trimRawCache(chapterTextCache)
+            result
+        }
+    }
+
+    /** Keep raw caches small; chapter HTML payloads can be large. */
+    private fun trimRawCache(cache: java.util.concurrent.ConcurrentHashMap<String, Pair<String, Long>>) {
+        val maxEntries = 8
+        if (cache.size <= maxEntries) return
+        cache.entries.sortedBy { it.value.second }
+            .take(cache.size - maxEntries)
+            .forEach { cache.remove(it.key) }
+    }
+
     // Parsing helpers
 
     private fun String.decodeEntities(): String {
@@ -839,7 +917,17 @@ class JsSource(
 
         val probePage = currentPage + 1
         return try {
-            val nextResult = executePluginMethod(methodCallForPage(probePage))
+            val probeCall = methodCallForPage(probePage)
+            val nextResult = executePluginMethod(probeCall)
+            // Save so paging to probePage serves this result instead of refetching it.
+            // Evict oldest under lock so a concurrent probe's fresh entry isn't wiped.
+            synchronized(browseProbeCache) {
+                while (browseProbeCache.size > 4) {
+                    val oldest = browseProbeCache.minByOrNull { it.value.second }?.key ?: break
+                    browseProbeCache.remove(oldest)
+                }
+                browseProbeCache[probeCall] = nextResult to System.currentTimeMillis()
+            }
             val nextParsed = parseMangasPage(nextResult, probePage)
             MangasPage(current.mangas, nextParsed.mangas.isNotEmpty())
         } catch (_: Exception) {
@@ -1265,13 +1353,12 @@ class JsSource(
             }
 
             // Validate URL before calling plugin - avoid fetching base URL with empty path
-            val chapterUrl = normalizePluginPath(page.url).replace("'", "\\'").replace("\"", "\\\"")
-            if (chapterUrl.isBlank()) {
+            if (normalizePluginPath(page.url).isBlank()) {
                 logcat(LogPriority.WARN) { "[$id] fetchPageText: page.url is blank, cannot parse chapter" }
                 return@withContext "Chapter content unavailable (empty URL)"
             }
 
-            val result = executePluginMethod("plugin.parseChapter('$chapterUrl')")
+            val result = parseChapterCached(page.url)
             extractChapterText(result)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Error fetching page text for ${plugin.name}" }
