@@ -32,6 +32,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Webview constants refactor, also fixes (non-infinite) scroll having dividers - Changes that affect custom CSS/JS [@mrissaoussama](https://github.com/mrissaoussama) [#209](https://github.com/tsundoku-otaku/tsundoku/pull/209)
 - Added support for missing wrap function for JS plugins, and native cheerio support [@mrissaoussama](https://github.com/mrissaoussama) [#239](https://github.com/tsundoku-otaku/tsundoku/pull/239)
 - Mass import chunks to avoid memory errors, has better caching and redundancy checking, improve UI [@mrissaoussama](https://github.com/mrissaoussama) [#214](https://github.com/tsundoku-otaku/tsundoku/pull/214)
+- Browse should properly filter manga and novel sources [@mrissaoussama](https://github.com/mrissaoussama) [#246](https://github.com/tsundoku-otaku/tsundoku/pull/246)
 
 
 ### Fix
