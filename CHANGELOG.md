@@ -25,6 +25,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - Translation: NVIDIA NIM, Cache reliability, auto-translation option, better error handling/UX, and rendering improvements [@mrissaoussama](https://github.com/mrissaoussama) [#218](https://github.com/tsundoku-otaku/tsundoku/pull/218)
 - MassImport Pause/Resume, skip sources with consecutive failures config [@mrissaoussama](https://github.com/mrissaoussama) [#233](https://github.com/tsundoku-otaku/tsundoku/pull/233)
+- Mass import streams better, has a timeout, and improved pause/resume [@mrissaoussama](https://github.com/mrissaoussama) [#242](https://github.com/tsundoku-otaku/tsundoku/pull/242)
 - TTS - Paragraph naviation, chapter auto-advance [@mrissaoussama](https://github.com/mrissaoussama) [#225](https://github.com/tsundoku-otaku/tsundoku/pull/225)
 - Novellist webview tracker login [@mrissaoussama](https://github.com/mrissaoussama) [#230](https://github.com/tsundoku-otaku/tsundoku/pull/230)
 - Novel Viewer Improvements - Refactors JS with infinite scroll, and more detailed metadata. [@mrissaoussama](https://github.com/mrissaoussama) [#198](https://github.com/tsundoku-otaku/tsundoku/pull/198)
