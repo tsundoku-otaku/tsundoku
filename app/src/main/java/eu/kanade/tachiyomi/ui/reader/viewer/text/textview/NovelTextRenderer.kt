@@ -49,6 +49,8 @@ internal class NovelTextRenderer(
         val density = activity.resources.displayMetrics.density
         val blockMedia = preferences.novelBlockMedia.get()
 
+        val token = ++block.renderToken
+
         scope.launch {
             val imageGetter = if (!blockMedia && !plainTextMode) {
                 val widthPx = block.chunkViews.firstOrNull()
@@ -83,7 +85,7 @@ internal class NovelTextRenderer(
                 }
             }
 
-            if (!block.container.isAttachedToWindow) return@launch
+            if (token != block.renderToken || !block.container.isAttachedToWindow) return@launch
             block.ensureChunkCount(chunks.size)
 
             if (chunks.isEmpty()) {
@@ -94,24 +96,25 @@ internal class NovelTextRenderer(
             }
 
             val params = TextViewCompat.getTextMetricsParams(block.chunkViews.first())
-            val precomputed = withContext(Dispatchers.Default) {
-                chunks.map { PrecomputedTextCompat.create(it, params) }
+            val (precomputed, fullText) = withContext(Dispatchers.Default) {
+                chunks.map { PrecomputedTextCompat.create(it, params) } to spannable.toString()
             }
 
-            if (!block.container.isAttachedToWindow) return@launch
+            if (token != block.renderToken || !block.container.isAttachedToWindow) return@launch
 
-            block.clearSelections()
             val starts = IntArray(chunks.size)
             var offset = 0
             chunks.forEachIndexed { i, chunk ->
                 starts[i] = offset
                 offset += chunk.length
             }
+
+            block.clearSelections()
             precomputed.forEachIndexed { i, text ->
                 TextViewCompat.setPrecomputedText(block.chunkViews[i], text)
             }
             block.chunkStarts = starts
-            block.fullText = spannable.toString()
+            block.fullText = fullText
             imageGetter?.startLoading()
             onTextSet()
         }

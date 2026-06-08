@@ -211,8 +211,8 @@ internal class CoilImageGetter(
     }
 
     private fun scheduleRecompute(textView: TextView) {
-        recomputeJobs[textView]?.cancel()
-        recomputeJobs[textView] = scope.launch(Dispatchers.Main) {
+        recomputeJobs.remove(textView)?.cancel()
+        val job = scope.launch(Dispatchers.Main) {
             delay(RECOMPUTE_DEBOUNCE_MS)
             if (!textView.isAttachedToWindow) return@launch
             val snapshot = textView.text ?: return@launch
@@ -223,6 +223,8 @@ internal class CoilImageGetter(
             if (!textView.isAttachedToWindow) return@launch
             TextViewCompat.setPrecomputedText(textView, precomputed)
         }
+        recomputeJobs[textView] = job
+        job.invokeOnCompletion { recomputeJobs.remove(textView, job) }
     }
 
     private fun sampleSizeForWidth(srcWidth: Int): Int {

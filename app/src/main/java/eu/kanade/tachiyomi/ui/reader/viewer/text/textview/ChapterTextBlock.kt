@@ -35,6 +35,13 @@ internal class ChapterTextBlock(
     /** Concatenation of all chunk texts; the text TTS and offset mapping operate on. */
     var fullText: String? = null
 
+    /**
+     * Bumped each time a render of this block starts. A render coroutine captures the
+     * value and bails if it changes, so an overlapping re-render (translation finish,
+     * reload) never races view mutations against a stale one.
+     */
+    var renderToken: Int = 0
+
     private var placeholderView: TextView? = null
 
     fun ensureChunkCount(count: Int) {
