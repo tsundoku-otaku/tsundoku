@@ -1343,7 +1343,6 @@ class JsSource(
         }
     }
 
-    // Novel page text (Source.fetchPageText)
     override suspend fun fetchPageText(page: Page): String = withContext(Dispatchers.IO) {
         try {
             // If the page already has text content (set by getPageList), return it directly
