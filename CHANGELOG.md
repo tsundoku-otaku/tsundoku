@@ -46,6 +46,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - JS Source URL normalization [@mrissaoussama](https://github.com/mrissaoussama) [#231](https://github.com/tsundoku-otaku/tsundoku/pull/231)
 - Fix service restrictions and background start crashes [@mrissaoussama](https://github.com/mrissaoussama) [#243](https://github.com/tsundoku-otaku/tsundoku/pull/243)
 - Encoding issues when parsing jssource chapters [@mrissaoussama](https://github.com/mrissaoussama) [#224](https://github.com/tsundoku-otaku/tsundoku/pull/224)
+- Fix accuracy of mass import notification [@mrissaoussama](https://github.com/mrissaoussama) [#254](https://github.com/tsundoku-otaku/tsundoku/pull/254)
 - Properly remove TTS notification when stopped, more TTS states [@mrissaoussama](https://github.com/mrissaoussama) [#217](https://github.com/tsundoku-otaku/tsundoku/pull/217)
 - Manga mass import URL with JS plugins [@mrissaoussama](https://github.com/mrissaoussama) [#197](https://github.com/tsundoku-otaku/tsundoku/pull/197)
 - Fix custom fonts not working with local files [@mrissaoussama](https://github.com/mrissaoussama) [#237](https://github.com/tsundoku-otaku/tsundoku/pull/237)
