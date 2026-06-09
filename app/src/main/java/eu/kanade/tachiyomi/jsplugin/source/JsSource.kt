@@ -1346,23 +1346,23 @@ class JsSource(
     }
 
     override suspend fun fetchPageText(page: Page): String = withContext(Dispatchers.IO) {
+        // If the page already has text content (set by getPageList), return it directly
+        if (!page.text.isNullOrBlank()) {
+            return@withContext page.text!!
+        }
+
+        // Validate URL before calling plugin - avoid fetching base URL with empty path
+        if (normalizePluginPath(page.url).isBlank()) {
+            logcat(LogPriority.WARN) { "[$id] fetchPageText: page.url is blank, cannot parse chapter" }
+            throw IllegalStateException("Chapter content unavailable (empty URL)")
+        }
+
         try {
-            // If the page already has text content (set by getPageList), return it directly
-            if (!page.text.isNullOrBlank()) {
-                return@withContext page.text!!
-            }
-
-            // Validate URL before calling plugin - avoid fetching base URL with empty path
-            if (normalizePluginPath(page.url).isBlank()) {
-                logcat(LogPriority.WARN) { "[$id] fetchPageText: page.url is blank, cannot parse chapter" }
-                return@withContext "Chapter content unavailable (empty URL)"
-            }
-
             val result = parseChapterCached(page.url)
             extractChapterText(result)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Error fetching page text for ${plugin.name}" }
-            "Error loading chapter content: ${e.message}"
+            throw e
         }
     }
 
