@@ -129,6 +129,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // True only while loadHtmlContent() has called loadDataWithBaseURL for real chapter content
     // (not the loading-indicator page). Lets onPageFinished distinguish real vs loading loads.
     private var isLoadingRealChapter = false
+    // False while the loading indicator is up or real content is still loading; true once real
+    // chapter content has finished rendering. Guards TTS from reading the loading placeholder.
+    private var webChapterContentReady = false
 
     private val ttsController: TtsController
 
@@ -567,6 +570,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     // when the chapter URL is relative, making the URL useless as a guard.
                     if (isLoadingRealChapter) {
                         isLoadingRealChapter = false
+                        // Real content is now rendered; let TTS start read the body.
+                        webChapterContentReady = true
                         if (pendingTtsAutoStartOnLoad) {
                             pendingTtsAutoStartOnLoad = false
                             startTts()
@@ -1105,6 +1110,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // Signal to onPageFinished that the next callback is for real chapter content, not
         // the loading-indicator page (which also fires onPageFinished with url="about:blank").
         isLoadingRealChapter = true
+        webChapterContentReady = false
         webView.loadDataWithBaseURL(resolveWebViewBaseUrl(chapterPath), html, "text/html", "UTF-8", null)
     }
 
@@ -1179,6 +1185,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         """.trimIndent()
 
         isLoadingRealChapter = false
+        webChapterContentReady = false
         webView.loadDataWithBaseURL(null, loadingHtml, "text/html", "UTF-8", null)
     }
 
@@ -1864,6 +1871,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
+        if (!webChapterContentReady) {
+            // Loading indicator still up; reading the body now would speak the placeholder
+            // and auto-advance. Defer; onPageFinished starts TTS once content is rendered.
+            pendingTtsAutoStartOnLoad = true
+            return
+        }
         val (chapterIdx, chapterId) = getTtsChapterContext()
         evaluateJavascriptSafe(
             """
@@ -1966,6 +1979,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
+        if (!webChapterContentReady) {
+            // Still loading; defer so onPageFinished re-runs the viewport start once content is in.
+            ttsController.pendingStartRequest = TtsController.StartRequest.VIEWPORT
+            return
+        }
         val (chapterIdx, chapterId) = getTtsChapterContext()
         evaluateJavascriptSafe(
             """

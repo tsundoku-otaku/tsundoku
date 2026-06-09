@@ -960,7 +960,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val text = loadedChapters.getOrNull(currentChapterIndex)?.block?.fullText
             ?: loadedChapters.firstOrNull()?.block?.fullText
         if (text.isNullOrEmpty()) {
-            logcat(LogPriority.WARN) { "TTS: No text to speak. loadedChapters=${loadedChapters.size}, currentIndex=$currentChapterIndex" }
+            // Chapter text hasn't rendered yet; defer so onChapterTextSet starts playback
+            // once it's ready instead of failing the start silently.
+            logcat(LogPriority.WARN) { "TTS: text not ready, deferring start. loadedChapters=${loadedChapters.size}, currentIndex=$currentChapterIndex" }
+            pendingTtsAutoStart = true
             return
         }
         logcat(LogPriority.DEBUG) { "TTS: Starting to speak ${text.length} characters" }
@@ -1021,7 +1024,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val text = loadedChapters.getOrNull(currentChapterIndex)?.block?.fullText
             ?: loadedChapters.firstOrNull()?.block?.fullText
         if (text.isNullOrEmpty()) {
-            logcat(LogPriority.WARN) { "TTS: No text available for viewport start" }
+            // Chapter text not rendered yet; defer to onChapterTextSet rather than no-op.
+            logcat(LogPriority.WARN) { "TTS: text not ready for viewport start, deferring" }
+            pendingTtsAutoStart = true
             return
         }
         val firstVisibleParagraphIndex = findFirstVisibleParagraphIndex(text)
