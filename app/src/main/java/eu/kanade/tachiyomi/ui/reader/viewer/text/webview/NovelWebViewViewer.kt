@@ -354,7 +354,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // Use a viewer-owned flag so ttsController.stop() (called from setChapters)
                 // cannot clear it before onPageFinished fires.
                 pendingTtsAutoStartOnLoad = true
-                activity.loadNextChapter()
+                // Must NOT use activity.loadNextChapter(): stopNovelTtsForManualNav() →
+                // stopTts() clears pendingTtsAutoStartOnLoad, so playback never resumes.
+                activity.loadNextChapterForTtsHandoff()
             }
         }
     }

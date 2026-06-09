@@ -1139,6 +1139,11 @@ class ReaderActivity : BaseActivity() {
     private fun startTtsNotificationSync() {
         ttsNotificationSyncJob?.cancel()
         ttsNotificationSyncJob = lifecycleScope.launch {
+            // Delay the first poll: lifecycleScope is Dispatchers.Main.immediate, so an
+            // immediate first iteration runs before the caller sets the TTS state, sees
+            // active=false, and stopService()s before startForeground() runs, crashing with
+            // ForegroundServiceDidNotStartInTimeException. Start sites sync explicitly after.
+            delay(750)
             while (isActive) {
                 syncBackgroundTtsState()
                 delay(750)
@@ -1375,6 +1380,21 @@ class ReaderActivity : BaseActivity() {
      */
     internal fun loadNextChapter() {
         stopNovelTtsForManualNav()
+        loadNextChapterInternal()
+    }
+
+    /**
+     * Loads the next chapter for a TTS auto-advance handoff WITHOUT stopping the
+     * active TTS session. The viewer has already set its `pendingTtsAutoStart`
+     * flag and relies on it surviving the chapter swap so playback resumes once
+     * the new chapter text is rendered. Routing through [loadNextChapter] would
+     * call [stopNovelTtsForManualNav] and clear that flag.
+     */
+    internal fun loadNextChapterForTtsHandoff() {
+        loadNextChapterInternal()
+    }
+
+    private fun loadNextChapterInternal() {
         lifecycleScope.launch {
             viewModel.loadNextChapter()
             // Only reset to page 0 if NOT using infinite scroll for novel viewers

@@ -798,7 +798,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
         pendingTtsAutoStart = true
         scope.launch {
-            activity.loadNextChapter()
+            // Must NOT use activity.loadNextChapter(): it stops TTS (manual-nav)
+            // and clears pendingTtsAutoStart, so playback never resumes.
+            activity.loadNextChapterForTtsHandoff()
         }
     }
 
