@@ -657,6 +657,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private var pendingTtsAutoStart = false
 
+    // Set when an inf-scroll TTS handoff found nothing prefetched and kicked a prefetch;
+    // the prefetch completion retries the handoff.
+    private var pendingTtsHandoffAfterPrefetch = false
+
     @Volatile private var handoffState: TtsHandoffState<LoadedChapter> = TtsHandoffState.Idle
 
     private val ttsController = TtsController(
@@ -788,7 +792,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     startTts()
                 }
             } else {
-                logcat(LogPriority.WARN) { "TTS: No next chapter in loadedChapters or cache for inf-scroll handoff" }
+                // Nothing prefetched: TTS reads in place, so the scroll-driven prefetch never
+                // fired. Fetch the next chapter now and retry the handoff once it's cached.
+                logcat(LogPriority.DEBUG) { "TTS: next chapter not ready, prefetching for handoff" }
+                pendingTtsHandoffAfterPrefetch = true
+                preFetchNextChapterForTts()
             }
             return
         }
@@ -868,9 +876,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     )
                     handoffState = TtsHandoffState.Cached(cachedChapter)
                     logcat(LogPriority.DEBUG) { "TTS: Cached next chapter ${preparedChapter.chapter.name}" }
+
+                    if (pendingTtsHandoffAfterPrefetch) {
+                        pendingTtsHandoffAfterPrefetch = false
+                        loadNextChapterForTts(currentChapterIndex)
+                    }
                 }
             } finally {
                 if (handoffState.isPreFetching) handoffState = TtsHandoffState.Idle
+                // Prefetch ended without caching (e.g. fetch failed); drop the pending retry.
+                pendingTtsHandoffAfterPrefetch = false
             }
         }
     }
