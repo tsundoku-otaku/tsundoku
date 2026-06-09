@@ -20,8 +20,10 @@ import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
+import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.tachiyomi.source.model.RefreshContext
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
@@ -49,6 +51,7 @@ import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.NoChaptersException
 import tachiyomi.domain.download.service.NovelDownloadPreferences
@@ -98,6 +101,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
     private val getManga: GetManga = Injekt.get()
     private val updateManga: UpdateManga = Injekt.get()
     private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get()
+    private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get()
     private val fetchInterval: FetchInterval = Injekt.get()
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get()
     private val novelDownloadPreferences: NovelDownloadPreferences = Injekt.get()
@@ -480,7 +484,13 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
 
         if (skipChapterFetch) return emptyList()
 
-        val chapters = source.getChapterList(manga.toSManga())
+        val existingChapters = getChaptersByMangaId.await(manga.id)
+        val refreshContext = RefreshContext(
+            mangaId = manga.id,
+            existingChapters = existingChapters.map { it.toSChapter() },
+            lastFetchTime = manga.lastUpdate,
+        )
+        val chapters = source.getChapterList(manga.toSManga(), refreshContext)
 
         // Get manga from database to account for if it was removed during the update and
         // to get latest data so it doesn't get overwritten later on

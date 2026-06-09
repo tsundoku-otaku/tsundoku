@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.source
 
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.RefreshContext
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.awaitSingle
@@ -55,6 +56,20 @@ interface Source {
     @Suppress("DEPRECATION")
     suspend fun getChapterList(manga: SManga): List<SChapter> {
         return fetchChapterList(manga).awaitSingle()
+    }
+
+    /**
+     * Get all the available chapters for a manga.
+     *
+     * @since extensions-lib 1.6
+     * @param manga the manga to update.
+     * @param context refresh context containing existing local state
+     * @return the chapters for the manga.
+     */
+    @Suppress("DEPRECATION")
+    suspend fun getChapterList(manga: SManga, context: RefreshContext): List<SChapter> {
+        // Default implementation falls back to original method for backwards compatibility
+        return getChapterList(manga)
     }
 
     /**

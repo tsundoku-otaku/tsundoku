@@ -17,6 +17,7 @@ import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
+import eu.kanade.domain.chapter.model.toSChapter
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
 import eu.kanade.domain.manga.interactor.UpdateManga
@@ -43,6 +44,7 @@ import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.network.HttpException
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isNovelSource
+import eu.kanade.tachiyomi.source.model.RefreshContext
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
@@ -723,7 +725,13 @@ class MangaScreenModel(
         val state = successState ?: return
         try {
             withIOContext {
-                val chapters = state.source.getChapterList(state.manga.toSManga())
+                val existingChapters = getMangaAndChapters.awaitChapters(state.manga.id)
+                val refreshContext = RefreshContext(
+                    mangaId = state.manga.id,
+                    existingChapters = existingChapters.map { it.toSChapter() },
+                    lastFetchTime = state.manga.lastUpdate,
+                )
+                val chapters = state.source.getChapterList(state.manga.toSManga(), refreshContext)
 
                 val newChapters = syncChaptersWithSource.await(
                     chapters,

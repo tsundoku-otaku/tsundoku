@@ -10,6 +10,7 @@ import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.RefreshContext
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import okhttp3.Headers
@@ -258,6 +259,19 @@ abstract class HttpSource : CatalogueSource {
     @Suppress("DEPRECATION")
     override suspend fun getChapterList(manga: SManga): List<SChapter> {
         return fetchChapterList(manga).awaitSingle()
+    }
+
+    /**
+     * Get all the available chapters for a manga with refresh context.
+     * Default implementation does intelligent delta refresh to avoid redundant requests.
+     * Extensions can override this for custom optimization logic.
+     *
+     * @param manga the manga to update
+     * @param context refresh context containing existing local state
+     * @return the chapters for the manga
+     */
+    override suspend fun getChapterList(manga: SManga, context: RefreshContext): List<SChapter> {
+        return getChapterList(manga)
     }
 
     @Deprecated("Use the non-RxJava API instead", replaceWith = ReplaceWith("getChapterList"))
