@@ -23,4 +23,10 @@ data class RefreshContext(
      * Unix timestamp (milliseconds) of when this manga was last successfully refreshed.
      */
     val lastFetchTime: Long,
+
+    /**
+     * When true, the caller requests a full re-fetch regardless of cached state.
+     * Extensions should skip any count-based short-circuit logic.
+     */
+    val forceRefresh: Boolean = false,
 )

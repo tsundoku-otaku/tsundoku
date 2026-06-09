@@ -308,12 +308,12 @@ class MangaScreenModel(
         }
     }
 
-    fun fetchAllFromSource(manualFetch: Boolean = true) {
+    fun fetchAllFromSource(manualFetch: Boolean = true, forceRefresh: Boolean = false) {
         screenModelScope.launch {
             updateSuccessState { it.copy(isRefreshingData = true) }
             val fetchFromSourceTasks = listOf(
                 async { fetchMangaFromSource(manualFetch) },
-                async { fetchChaptersFromSource(manualFetch) },
+                async { fetchChaptersFromSource(manualFetch, forceRefresh) },
             )
             fetchFromSourceTasks.awaitAll()
             updateSuccessState { it.copy(isRefreshingData = false) }
@@ -721,15 +721,16 @@ class MangaScreenModel(
     /**
      * Requests an updated list of chapters from the source.
      */
-    private suspend fun fetchChaptersFromSource(manualFetch: Boolean = false) {
+    private suspend fun fetchChaptersFromSource(manualFetch: Boolean = false, forceRefresh: Boolean = false) {
         val state = successState ?: return
         try {
             withIOContext {
                 val existingChapters = getMangaAndChapters.awaitChapters(state.manga.id)
                 val refreshContext = RefreshContext(
                     mangaId = state.manga.id,
-                    existingChapters = existingChapters.map { it.toSChapter() },
+                    existingChapters = if (forceRefresh) emptyList() else existingChapters.map { it.toSChapter() },
                     lastFetchTime = state.manga.lastUpdate,
+                    forceRefresh = forceRefresh,
                 )
                 val chapters = state.source.getChapterList(state.manga.toSManga(), refreshContext)
 

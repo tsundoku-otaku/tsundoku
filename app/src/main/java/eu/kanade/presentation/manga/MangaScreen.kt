@@ -105,6 +105,7 @@ fun MangaScreen(
 
     onFilterButtonClicked: () -> Unit,
     onRefresh: () -> Unit,
+    onForceRefresh: (() -> Unit)? = null,
     onContinueReading: () -> Unit,
     onSearch: (query: String, global: Boolean) -> Unit,
 
@@ -170,6 +171,7 @@ fun MangaScreen(
             onCopyTagToClipboard = onCopyTagToClipboard,
             onFilterClicked = onFilterButtonClicked,
             onRefresh = onRefresh,
+            onForceRefresh = onForceRefresh,
             onContinueReading = onContinueReading,
             onSearch = onSearch,
             onCoverClicked = onCoverClicked,
@@ -218,6 +220,7 @@ fun MangaScreen(
             onCopyTagToClipboard = onCopyTagToClipboard,
             onFilterButtonClicked = onFilterButtonClicked,
             onRefresh = onRefresh,
+            onForceRefresh = onForceRefresh,
             onContinueReading = onContinueReading,
             onSearch = onSearch,
             onCoverClicked = onCoverClicked,
@@ -272,6 +275,7 @@ private fun MangaScreenSmallImpl(
 
     onFilterClicked: () -> Unit,
     onRefresh: () -> Unit,
+    onForceRefresh: (() -> Unit)? = null,
     onContinueReading: () -> Unit,
     onSearch: (query: String, global: Boolean) -> Unit,
 
@@ -439,6 +443,7 @@ private fun MangaScreenSmallImpl(
         PullRefresh(
             refreshing = state.isRefreshingData,
             onRefresh = onRefresh,
+            onForceRefresh = onForceRefresh,
             enabled = !isAnySelected,
             indicatorPadding = PaddingValues(top = topPadding),
         ) {
@@ -571,6 +576,7 @@ fun MangaScreenLargeImpl(
 
     onFilterButtonClicked: () -> Unit,
     onRefresh: () -> Unit,
+    onForceRefresh: (() -> Unit)? = null,
     onContinueReading: () -> Unit,
     onSearch: (query: String, global: Boolean) -> Unit,
 
@@ -736,6 +742,7 @@ fun MangaScreenLargeImpl(
         PullRefresh(
             refreshing = state.isRefreshingData,
             onRefresh = onRefresh,
+            onForceRefresh = onForceRefresh,
             enabled = !isAnySelected,
             indicatorPadding = PaddingValues(
                 start = insetPadding.calculateStartPadding(layoutDirection),
