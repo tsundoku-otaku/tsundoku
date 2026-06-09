@@ -668,19 +668,21 @@ class ReaderActivity : BaseActivity() {
             var isTtsActive by remember { mutableStateOf(false) }
             var isTtsPaused by remember { mutableStateOf(false) }
             var ttsControlsVisible by remember { mutableStateOf(readerPreferences.novelTtsControlsVisible.get()) }
-            LaunchedEffect(state.menuVisible) {
-                if (state.menuVisible) {
-                    val viewer = state.viewer
-                    isTtsActive = when (viewer) {
-                        is NovelViewer -> viewer.isTtsSpeaking() || viewer.isTtsPaused()
-                        is NovelWebViewViewer -> viewer.isTtsSpeaking() || viewer.isTtsPaused()
-                        else -> false
-                    }
-                    isTtsPaused = when (viewer) {
-                        is NovelViewer -> viewer.isTtsPaused()
-                        is NovelWebViewViewer -> viewer.isTtsPaused()
-                        else -> false
-                    }
+            // Re-sync the pause/play button from the viewer on menu open and on every
+            // chapter change. Chapter nav stops TTS without going through a button tap, so
+            // keying on the chapter id resets the button instead of leaving it stale.
+            LaunchedEffect(state.menuVisible, state.novelVisibleChapter?.id) {
+                if (!state.menuVisible) return@LaunchedEffect
+                val viewer = state.viewer
+                isTtsActive = when (viewer) {
+                    is NovelViewer -> viewer.isTtsActive()
+                    is NovelWebViewViewer -> viewer.isTtsActive()
+                    else -> false
+                }
+                isTtsPaused = when (viewer) {
+                    is NovelViewer -> viewer.isTtsPaused()
+                    is NovelWebViewViewer -> viewer.isTtsPaused()
+                    else -> false
                 }
             }
 
