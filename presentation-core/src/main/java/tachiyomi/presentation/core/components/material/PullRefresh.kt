@@ -1,6 +1,7 @@
 package tachiyomi.presentation.core.components.material
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -23,11 +24,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
-// Pull must reach 1.8× the normal threshold to enter force-refresh zone.
-private const val FORCE_THRESHOLD = 1.8f
+// Pull must reach 1.5× the normal threshold to enter force-refresh zone.
+private const val FORCE_THRESHOLD = 1.5f
 
 // Milliseconds the user must hold in the force zone to trigger force refresh.
 private const val FORCE_HOLD_MS = 3_000L
@@ -35,13 +38,19 @@ private const val FORCE_HOLD_MS = 3_000L
 // Releasing within this window after entering the force zone counts as a normal refresh.
 private const val FORCE_GRACE_MS = 1_000L
 
+// Matches Material3's internal SpinnerContainerSize used in IndicatorBox.
+private val SpinnerContainerSize = 40.dp
+
+// Indicator ring drawn around the pull indicator when in the force zone.
+private val ForceRingSize = 48.dp
+
 /**
  * @param refreshing Whether the layout is currently refreshing
  * @param onRefresh Lambda which is invoked when a swipe to refresh gesture is completed.
  * @param enabled Whether the layout should react to swipe gestures or not.
  * @param indicatorPadding Content padding for the indicator, to inset the indicator in if required.
- * @param onForceRefresh Optional lambda invoked when the user holds the pull in the force zone
- *   for [FORCE_HOLD_MS] milliseconds. When null, the force-refresh path is disabled entirely.
+ * @param onForceRefresh Optional lambda invoked when the user holds the pull in the force zone for
+ *   3 seconds. When null, the force-refresh path is disabled entirely.
  * @param content The content containing a vertically scrollable composable.
  */
 @Composable
@@ -55,18 +64,21 @@ fun PullRefresh(
     content: @Composable () -> Unit,
 ) {
     val state = rememberPullToRefreshState()
+    val density = LocalDensity.current
 
-    // True only when force-refresh is wired up and the pull distance exceeds the force threshold.
+    // Pre-computed in composition; read lazily inside graphicsLayer to avoid recomposition.
+    val maxDistancePx = with(density) { PullToRefreshDefaults.PositionalThreshold.roundToPx().toFloat() }
+    val spinnerSizePx = with(density) { SpinnerContainerSize.roundToPx().toFloat() }
+
     val inForceZone by remember(onForceRefresh) {
         derivedStateOf { onForceRefresh != null && state.distanceFraction >= FORCE_THRESHOLD }
     }
 
     var forceProgress by remember { mutableFloatStateOf(0f) }
     var holdEnteredAt by remember { mutableLongStateOf(0L) }
-    // Safety flag: force was triggered by the timer so the upcoming release should be ignored.
+    // Safety flag: timer completed and force refresh was already called — ignore the upcoming release.
     var forceTriggered by remember { mutableStateOf(false) }
 
-    // Timer coroutine — restarts whenever inForceZone changes.
     LaunchedEffect(inForceZone) {
         if (inForceZone) {
             holdEnteredAt = System.currentTimeMillis()
@@ -89,17 +101,11 @@ fun PullRefresh(
 
     val wrappedOnRefresh = {
         when {
-            forceTriggered -> {
-                // Timer already fired force refresh — ignore this release.
-                forceTriggered = false
-            }
+            forceTriggered -> forceTriggered = false // timer already fired, ignore release
             inForceZone -> {
                 val heldMs = if (holdEnteredAt > 0L) System.currentTimeMillis() - holdEnteredAt else 0L
-                if (heldMs < FORCE_GRACE_MS) {
-                    // Accidental overpull — treat as normal refresh.
-                    onRefresh()
-                }
-                // else: deliberate hold that didn't reach 3 s — cancel silently.
+                if (heldMs < FORCE_GRACE_MS) onRefresh() // accidental overpull — treat as normal
+                // else: deliberate hold that didn't reach 3 s — cancel silently
             }
             else -> onRefresh()
         }
@@ -116,21 +122,30 @@ fun PullRefresh(
         label = "pullIndicatorContent",
     )
 
+    // State objects for deferred reads inside graphicsLayer (avoids full recomposition per frame).
+    val ringAlphaState = animateFloatAsState(
+        targetValue = if (inForceZone && !refreshing) 1f else 0f,
+        animationSpec = tween(200),
+        label = "forceRingAlpha",
+    )
+
     Box(
-        modifier = modifier
-            .pullToRefresh(
-                isRefreshing = refreshing,
-                state = state,
-                enabled = enabled,
-                onRefresh = wrappedOnRefresh,
-            ),
+        modifier = modifier.pullToRefresh(
+            isRefreshing = refreshing,
+            state = state,
+            enabled = enabled,
+            onRefresh = wrappedOnRefresh,
+        ),
     ) {
         content()
 
+        // Fixed-size container prevents layout jumps when the ring appears/disappears.
+        // Size matches ForceRingSize so the indicator stays centered at (4dp, 4dp) within it.
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(indicatorPadding),
+                .padding(indicatorPadding)
+                .size(ForceRingSize),
             contentAlignment = Alignment.Center,
         ) {
             PullToRefreshDefaults.Indicator(
@@ -139,15 +154,26 @@ fun PullRefresh(
                 containerColor = containerColor,
                 color = indicatorColor,
             )
-            if (inForceZone) {
-                CircularProgressIndicator(
-                    progress = { forceProgress },
-                    modifier = Modifier.size(48.dp),
-                    color = MaterialTheme.colorScheme.error,
-                    trackColor = Color.Transparent,
-                    strokeWidth = 3.dp,
-                )
-            }
+
+            // Progress ring drawn around the indicator.
+            // Applies the same graphicsLayer translation that Material3's IndicatorBox uses
+            // internally so the ring tracks the indicator as it slides in/out with the pull gesture.
+            // Formula from M3 1.4.0 PullToRefresh.kt IndicatorBox:
+            //   translationY = distanceFraction * maxDistance.roundToPx() - containerSize
+            // With our 48dp ring centered in the fixed box over the 40dp indicator, the centers
+            // stay aligned throughout the pull motion.
+            CircularProgressIndicator(
+                progress = { forceProgress },
+                modifier = Modifier
+                    .size(ForceRingSize)
+                    .graphicsLayer {
+                        alpha = ringAlphaState.value
+                        translationY = state.distanceFraction * maxDistancePx - spinnerSizePx
+                    },
+                color = MaterialTheme.colorScheme.error,
+                trackColor = Color.Transparent,
+                strokeWidth = 3.dp,
+            )
         }
     }
 }
