@@ -59,6 +59,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Other
 - Internationalize mass-import strings, add confirmation dialogues [@mrissaoussama](https://github.com/mrissaoussama) [#206](https://github.com/tsundoku-otaku/tsundoku/pull/206)
+- Better detect novels via proeprty, drop reflection [@mrissaoussama](https://github.com/mrissaoussama) [#257](https://github.com/tsundoku-otaku/tsundoku/pull/257)
 - Expanded custom HTTP engine options [@mrissaoussama](https://github.com/mrissaoussama) [#250](https://github.com/tsundoku-otaku/tsundoku/pull/250)
 - Added tsundoku specific extensions, so apps can avoid appearing as manga sources in other apps [@mrissaoussama](https://github.com/mrissaoussama) [#238](https://github.com/tsundoku-otaku/tsundoku/pull/238)
 
