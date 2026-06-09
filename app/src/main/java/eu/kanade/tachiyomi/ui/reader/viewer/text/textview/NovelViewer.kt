@@ -803,9 +803,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
         val chapters = currentChapters ?: return
         if (chapters.nextChapter == null) {
-            // End of novel: no next chapter to hand off to. End the session so the
-            // background notification/service tears down instead of lingering with
-            // isTtsAutoPlay stuck true.
+            // End of novel: stop so the background service tears down instead of
+            // lingering with isTtsAutoPlay stuck true.
             stopTts()
             return
         }
@@ -890,10 +889,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 }
             } finally {
                 if (handoffState.isPreFetching) handoffState = TtsHandoffState.Idle
-                // Reaching here with the retry flag still set means the prefetch ended
-                // without caching (fetch failed or no next chapter). The handoff can't
-                // proceed, so end the session instead of leaving isTtsAutoPlay stuck true
-                // (which keeps the background notification/service alive forever).
+                // Flag still set: prefetch ended without caching (fetch failed or no next
+                // chapter). Stop instead of leaving isTtsAutoPlay stuck true.
                 if (pendingTtsHandoffAfterPrefetch) {
                     pendingTtsHandoffAfterPrefetch = false
                     stopTts()

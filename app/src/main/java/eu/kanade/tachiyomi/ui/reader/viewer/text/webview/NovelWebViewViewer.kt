@@ -354,8 +354,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             } else {
                 val chapters = currentChapters ?: return@launch
                 if (chapters.nextChapter == null) {
-                    // End of novel: end the session so the background notification/service
-                    // tears down instead of lingering with isTtsAutoPlay stuck true.
+                    // End of novel: stop so the background service tears down instead of
+                    // lingering with isTtsAutoPlay stuck true.
                     stopTts()
                     return@launch
                 }
@@ -437,9 +437,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             if (handoffState.isAppending) {
                 clearPendingTtsHandoff()
                 if (loadedChapters.size <= loadedCountAtSchedule) {
-                    // No new chapter appended within the window (end of novel or fetch
-                    // failure). Restarting here would re-read the just-finished chapter on
-                    // a loop, so end the session and let the service tear down instead.
+                    // No new chapter appended (end of novel or fetch failure). Restarting
+                    // would re-read the finished chapter on a loop, so stop instead.
                     logcat(LogPriority.WARN) {
                         "TTS (WebView): Handoff timeout, no next chapter appended; stopping playback"
                     }
@@ -584,7 +583,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     // when the chapter URL is relative, making the URL useless as a guard.
                     if (isLoadingRealChapter) {
                         isLoadingRealChapter = false
-                        // Real content is now rendered; let TTS start read the body.
+                        // Real content rendered; TTS may now read the body.
                         webChapterContentReady = true
                         if (pendingTtsAutoStartOnLoad) {
                             pendingTtsAutoStartOnLoad = false

@@ -668,9 +668,8 @@ class ReaderActivity : BaseActivity() {
             var isTtsActive by remember { mutableStateOf(false) }
             var isTtsPaused by remember { mutableStateOf(false) }
             var ttsControlsVisible by remember { mutableStateOf(readerPreferences.novelTtsControlsVisible.get()) }
-            // Re-sync the pause/play button from the viewer on menu open and on every
-            // chapter change. Chapter nav stops TTS without going through a button tap, so
-            // keying on the chapter id resets the button instead of leaving it stale.
+            // Re-sync the pause/play button on menu open and chapter change. Chapter nav
+            // stops TTS without a button tap, so key on chapter id to reset it.
             LaunchedEffect(state.menuVisible, state.novelVisibleChapter?.id) {
                 if (!state.menuVisible) return@LaunchedEffect
                 val viewer = state.viewer
@@ -1104,10 +1103,8 @@ class ReaderActivity : BaseActivity() {
 
     private fun startBackgroundTtsIfEnabled() {
         if (readerPreferences.novelTtsBackgroundPlayback.get()) {
-            // Don't push a placeholder "TTS playback" notification here: every caller
-            // follows with syncBackgroundTtsState(), which starts the foreground service
-            // with the real novel/chapter title. Starting it twice just flashes the
-            // generic title for a frame.
+            // No placeholder notification: the caller's syncBackgroundTtsState() starts
+            // the service with the real novel/chapter title.
             startTtsNotificationSync()
         }
     }
@@ -1144,10 +1141,9 @@ class ReaderActivity : BaseActivity() {
     private fun startTtsNotificationSync() {
         ttsNotificationSyncJob?.cancel()
         ttsNotificationSyncJob = lifecycleScope.launch {
-            // The first loop pass runs immediately (Main.immediate), before the caller has
-            // set the TTS state. Don't let it stop the service until TTS has actually been
-            // active once: stopping the just-started service before it calls startForeground()
-            // crashes with ForegroundServiceDidNotStartInTimeException.
+            // First pass runs before the caller sets TTS state. Don't stop the service
+            // until TTS has been active once: stopping it before startForeground() crashes
+            // with ForegroundServiceDidNotStartInTimeException.
             var ttsWasActive = false
             while (isActive) {
                 if (currentNovelTtsState()?.active == true) ttsWasActive = true
