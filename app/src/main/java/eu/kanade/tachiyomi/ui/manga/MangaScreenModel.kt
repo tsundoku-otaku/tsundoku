@@ -17,7 +17,7 @@ import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
-import eu.kanade.domain.chapter.model.toSChapter
+import eu.kanade.domain.chapter.model.toRefreshContextChapters
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
 import eu.kanade.domain.manga.interactor.UpdateManga
@@ -728,7 +728,7 @@ class MangaScreenModel(
                 val existingChapters = getMangaAndChapters.awaitChapters(state.manga.id)
                 val refreshContext = RefreshContext(
                     mangaId = state.manga.id,
-                    existingChapters = if (forceRefresh) emptyList() else existingChapters.map { it.toSChapter() },
+                    existingChapters = if (forceRefresh) emptyList() else existingChapters.toRefreshContextChapters(),
                     lastFetchTime = state.manga.lastUpdate,
                     forceRefresh = forceRefresh,
                 )

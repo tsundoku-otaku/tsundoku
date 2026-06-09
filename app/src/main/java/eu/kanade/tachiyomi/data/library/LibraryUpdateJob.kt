@@ -20,7 +20,7 @@ import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
-import eu.kanade.domain.chapter.model.toSChapter
+import eu.kanade.domain.chapter.model.toRefreshContextChapters
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.source.model.RefreshContext
@@ -487,7 +487,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val existingChapters = getChaptersByMangaId.await(manga.id)
         val refreshContext = RefreshContext(
             mangaId = manga.id,
-            existingChapters = existingChapters.map { it.toSChapter() },
+            existingChapters = existingChapters.toRefreshContextChapters(),
             lastFetchTime = manga.lastUpdate,
         )
         val chapters = source.getChapterList(manga.toSManga(), refreshContext)

@@ -263,8 +263,8 @@ abstract class HttpSource : CatalogueSource {
 
     /**
      * Get all the available chapters for a manga with refresh context.
-     * Default implementation does intelligent delta refresh to avoid redundant requests.
-     * Extensions can override this for custom optimization logic.
+     * Default implementation ignores the context and falls back to the plain [getChapterList].
+     * Extensions can override this to use [context] for delta refresh and skip redundant requests.
      *
      * @param manga the manga to update
      * @param context refresh context containing existing local state

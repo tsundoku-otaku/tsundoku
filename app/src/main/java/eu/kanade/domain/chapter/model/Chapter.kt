@@ -1,9 +1,16 @@
 package eu.kanade.domain.chapter.model
 
 import eu.kanade.tachiyomi.data.database.models.ChapterImpl
+import eu.kanade.tachiyomi.source.model.RefreshContext
 import eu.kanade.tachiyomi.source.model.SChapter
 import tachiyomi.domain.chapter.model.Chapter
 import eu.kanade.tachiyomi.data.database.models.Chapter as DbChapter
+
+/**
+ * Builds the chapter list for a [RefreshContext], sorted by sourceOrder.
+ */
+fun List<Chapter>.toRefreshContextChapters(): List<SChapter> =
+    sortedBy { it.sourceOrder }.map { it.toSChapter() }
 
 // TODO: Remove when all deps are migrated
 fun Chapter.toSChapter(): SChapter {

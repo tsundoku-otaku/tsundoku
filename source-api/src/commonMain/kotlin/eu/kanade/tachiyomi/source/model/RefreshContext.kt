@@ -14,8 +14,7 @@ data class RefreshContext(
     val mangaId: Long,
 
     /**
-     * List of chapters that currently exist locally for this manga.
-     * These are the chapters that were last fetched from this source.
+     * List of chapters that currently exist locally for this manga, ordered by sourceOrder.
      */
     val existingChapters: List<SChapter>,
 
