@@ -69,9 +69,8 @@ private const val MIN_FREE_MEMORY_BYTES = 50 * 1024 * 1024L
 private const val MAX_MEMORY_WAIT_ITERATIONS = 20
 // Upper bound on parallel fetches; matches the settings slider max.
 private const val MAX_CONCURRENCY = 30
-// Look-ahead window for host-interleaving the URL stream. Bounds the reorder buffer
-// (so a huge file stays O(window) memory) while breaking up contiguous same-source
-// clumps that would otherwise collapse the concurrency window onto one source semaphore.
+// How many URLs to look ahead when spreading same-host URLs apart (see interleaveByHost).
+// Caps the reorder buffer so a huge file stays small in memory.
 private const val MAX_LOOKAHEAD = 512
 // Bound the retained per-URL error detail so a mostly-failing huge import can't OOM.
 private const val MAX_TRACKED_ERRORS = 2000
@@ -465,8 +464,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         urlFlow
             // Resume: skip the already-processed prefix.
             .let { if (resumeOffset > 0) it.drop(resumeOffset) else it }
-            // Spread contiguous same-source URLs across the concurrency window so one
-            // source's per-source semaphore can't starve all the merge slots.
+            // Spread same-host URLs apart so one slow source doesn't fill every slot below.
             .interleaveByHost(MAX_LOOKAHEAD)
             .flatMapMerge(concurrency) { url ->
                 if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
@@ -569,9 +567,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                                 totalCount,
                                                 "Processing: ${activeImports.size} active",
                                             )
-                                            // Remove when the fetch returns; keeping it until the
-                                            // outer finally (post-processing/flush) counts finished
-                                            // URLs as active, inflating the notif toward concurrency.
+                                            // Remove when the fetch returns so the "active" count
+                                            // in the notification reflects only in-progress URLs.
                                             result = try {
                                                 processUrlWithSource(
                                                     url, source, addToLibrary, fetchDetails, categoryId,
@@ -771,12 +768,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
 
     /**
-     * Reorders the stream so consecutive same-host URLs are spread out: buffers up to
-     * [maxBuffer] URLs bucketed by host and, when full, emits one URL per bucket
-     * (round-robin) before refilling. Memory stays O([maxBuffer]).
+     * Reorders the stream so URLs from the same host aren't bunched together. Holds up to
+     * [maxBuffer] URLs grouped by host; when full, emits one from each host in turn, then
+     * refills. Memory is capped at [maxBuffer] so big files stay safe.
      *
-     * Without it, a long run of one source's URLs fills the whole `flatMapMerge` window;
-     * they all block on that source's single permit while the other slots sit idle.
+     * Without it, a long run of one host's URLs fills every parallel slot and they all wait
+     * on that one source while the other slots do nothing.
      */
     private fun Flow<String>.interleaveByHost(maxBuffer: Int): Flow<String> {
         val upstream = this
@@ -1197,9 +1194,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         const val KEY_BATCH_ID = "batchId"
         const val KEY_EXCLUDED_HOSTS = "excludedHosts"
         const val KEY_PREFERRED_SOURCE_ID = "preferredSourceId"
-        // Resume cursor: number of leading URLs to skip (the prefix already processed
-        // before a pause). Kept a safety margin behind the persisted progress so
-        // out-of-order completions never skip an unprocessed URL.
+        // Resume cursor: how many leading URLs to skip because they were already done
+        // before the pause.
         const val KEY_RESUME_OFFSET = "resumeOffset"
 
         // Number of URLs retained in the live queue for display; full list stays on disk.
@@ -1744,10 +1740,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     return@launch abortResume("no persisted urls")
                 }
 
-                // Resume a margin behind persisted progress: out-of-order flatMapMerge
-                // completions plus interleaveByHost's look-ahead buffer mean a low-index URL
-                // can lag the completed count by up to MAX_LOOKAHEAD + MAX_CONCURRENCY. The
-                // re-done overlap DB-skips instantly; dropping less could skip a URL.
+                // Restart a bit before the saved progress, not exactly at it: URLs finish out
+                // of order and the interleave buffer holds some back, so a few just past the
+                // saved count may still be unfinished. Re-doing that overlap is cheap (already
+                // imported ones skip instantly); skipping it could drop a URL.
                 val resumeOffset = (batch.progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
                 val payload = mutableListOf<Pair<String, Any?>>(
                     KEY_CATEGORY_ID to batch.categoryId,
