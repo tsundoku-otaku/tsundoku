@@ -12,7 +12,7 @@ import uy.kohesive.injekt.api.get
 
 /**
  * Per batch: `mi_<batchId>.txt` (URL list) + `mi_<batchId>.json` (metadata)
- * + `mi_<batchId>_errors.csv` (`url,message` per line) / `mi_<batchId>_skipped.csv` (url per line).
+ * + `mi_<batchId>_errors.csv` (`url,message` per line) / `mi_<batchId>_skipped.txt` (one raw url per line).
  */
 object MassImportStore {
 
@@ -53,11 +53,13 @@ object MassImportStore {
     private fun urlsName(batchId: String) = "$URLS_PREFIX$batchId$URLS_SUFFIX"
     private fun metaName(batchId: String) = "$URLS_PREFIX$batchId$META_SUFFIX"
     private fun errorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$LOG_SUFFIX"
-    private fun skippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$LOG_SUFFIX"
+    // Skipped is single-column (url only), so it's a plain `.txt` url list, not CSV.
+    private fun skippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$URLS_SUFFIX"
 
-    // Pre-CSV logs used `.txt` with `url<TAB>message` lines; still read/cleaned for old batches.
+    // Pre-CSV error logs used `.txt` with `url<TAB>message` lines; still read/cleaned for old batches.
     private fun legacyErrorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$URLS_SUFFIX"
-    private fun legacySkippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$URLS_SUFFIX"
+    // Older builds wrote skipped urls to a `.csv`; still read/cleaned for old batches.
+    private fun legacySkippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$LOG_SUFFIX"
 
     private fun overwrite(dir: UniFile, name: String, content: String) {
         dir.findFile(name)?.delete()
@@ -238,10 +240,14 @@ object MassImportStore {
                 val file = dir.findFile(name) ?: dir.createFile(name) ?: return@runCatching
                 file.openOutputStream(true).bufferedWriter().use { writer ->
                     for ((url, message) in entries) {
-                        writer.write(csvField(url.trim()))
                         if (withMessage) {
+                            // CSV: `url,message`
+                            writer.write(csvField(url.trim()))
                             writer.write(",")
                             writer.write(csvField(message.replace('\t', ' ').replace('\n', ' ').take(200)))
+                        } else {
+                            // Single-column `.txt`: raw url, directly re-importable.
+                            writer.write(url.trim())
                         }
                         writer.write("\n")
                     }

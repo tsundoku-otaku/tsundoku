@@ -64,6 +64,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - TextView Regex; Short chapter detection false positives [@mrissaoussama](https://github.com/mrissaoussama) [#225](https://github.com/tsundoku-otaku/tsundoku/pull/225)
 - Fix TTS service lifecycle and background sync [@mrissaoussama](https://github.com/mrissaoussama) [#255](https://github.com/tsundoku-otaku/tsundoku/pull/255)
 - Update library unread counts when marking chapters as read [@mrissaoussama](https://github.com/mrissaoussama) [#240](https://github.com/tsundoku-otaku/tsundoku/pull/240)
+- Massimport throughput/threading [@mrissaoussama](https://github.com/mrissaoussama) [#263](https://github.com/tsundoku-otaku/tsundoku/pull/263)
 - Fix HTML vs plain text detection [@mrissaoussama](https://github.com/mrissaoussama) [#223](https://github.com/tsundoku-otaku/tsundoku/pull/223)
 
 ### Other

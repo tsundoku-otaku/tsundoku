@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
@@ -68,6 +69,9 @@ private const val MIN_FREE_MEMORY_BYTES = 50 * 1024 * 1024L
 private const val MAX_MEMORY_WAIT_ITERATIONS = 20
 // Upper bound on parallel fetches; matches the settings slider max.
 private const val MAX_CONCURRENCY = 30
+// How many URLs to look ahead when spreading same-host URLs apart (see interleaveByHost).
+// Caps the reorder buffer so a huge file stays small in memory.
+private const val MAX_LOOKAHEAD = 512
 // Bound the retained per-URL error detail so a mostly-failing huge import can't OOM.
 private const val MAX_TRACKED_ERRORS = 2000
 // Hard ceiling on a single source fetch so one hanging/oversized request can't freeze
@@ -117,6 +121,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val missingSourceHosts = ConcurrentHashMap.newKeySet<String>()
 
         val jobBatchId = inputData.getString(KEY_BATCH_ID) ?: ""
+        val resumeOffset = inputData.getInt(KEY_RESUME_OFFSET, 0).coerceAtLeast(0)
         // Exit instead of parking in the pause loop: a parked foreground worker burns the
         // Android 15 dataSync time budget. Resume flips the status before re-enqueueing.
         hydrateBatchFromStore(jobBatchId)
@@ -185,6 +190,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         urlFlow, totalCount,
                         categoryId, addToLibrary, fetchDetails, fetchChapters, batchId,
                         excludedHostsSet, hostSourceCache, missingSourceHosts, preferredSourceId,
+                        resumeOffset = resumeOffset,
                     )
 
                     Result.success()
@@ -227,6 +233,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     hostSourceCache,
                     missingSourceHosts,
                     preferredSourceId,
+                    resumeOffset = resumeOffset,
                 )
                 Result.success()
             } catch (e: Exception) {
@@ -298,6 +305,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         hostSourceCache: ConcurrentHashMap<String, CatalogueSource> = ConcurrentHashMap(),
         missingSourceHosts: MutableSet<String> = ConcurrentHashMap.newKeySet(),
         preferredSourceId: Long? = null,
+        resumeOffset: Int = 0,
     ): ImportResult {
         hydrateBatchFromStore(batchId)
         startRunningUnlessPaused(batchId)
@@ -351,10 +359,13 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             novelDownloadPreferences.parallelMassImport().get().coerceIn(1, MAX_CONCURRENCY)
         }
 
-        val completedCount = AtomicInteger(0)
-        val addedCount = AtomicInteger(0)
-        val skippedCount = AtomicInteger(0)
-        val erroredCount = AtomicInteger(0)
+        // Resume: seed counters from the persisted batch so progress/tallies continue
+        // instead of restarting at 0. The dropped prefix counts as already-completed.
+        val seed = if (resumeOffset > 0) _sharedQueue.value.find { it.id == batchId } else null
+        val completedCount = AtomicInteger(resumeOffset)
+        val addedCount = AtomicInteger(seed?.added ?: 0)
+        val skippedCount = AtomicInteger(seed?.skipped ?: 0)
+        val erroredCount = AtomicInteger(seed?.errored ?: 0)
         val pendingAddIds = java.util.Collections.synchronizedList(mutableListOf<Long>())
         val flushBatchSize = 50
         val activeImports = ConcurrentHashMap<String, Boolean>()
@@ -398,7 +409,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             if (batchId.isNotEmpty()) MassImportStore.appendErrors(context, batchId, toFlush)
         }
 
-        // Skipped URLs get the same disk log treatment as errors (`mi_<id>_skipped.csv`);
+        // Skipped URLs are streamed to a single-column `.txt` (`mi_<id>_skipped.txt`);
         // only the URL is persisted, the reason is dropped (there is a single skip reason).
         val skipLogBuffer = mutableListOf<Pair<String, String>>()
         fun recordSkip(url: String, reason: String) {
@@ -451,6 +462,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         try {
         urlFlow
+            // Resume: skip the already-processed prefix.
+            .let { if (resumeOffset > 0) it.drop(resumeOffset) else it }
+            // Spread same-host URLs apart so one slow source doesn't fill every slot below.
+            .interleaveByHost(MAX_LOOKAHEAD)
             .flatMapMerge(concurrency) { url ->
                 if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
                     return@flatMapMerge flow {
@@ -552,10 +567,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                                 totalCount,
                                                 "Processing: ${activeImports.size} active",
                                             )
-                                            result = processUrlWithSource(
-                                                url, source, addToLibrary, fetchDetails, categoryId,
-                                                fetchChapters, pendingAddIds, flushBatchSize,
-                                            )
+                                            // Remove when the fetch returns so the "active" count
+                                            // in the notification reflects only in-progress URLs.
+                                            result = try {
+                                                processUrlWithSource(
+                                                    url, source, addToLibrary, fetchDetails, categoryId,
+                                                    fetchChapters, pendingAddIds, flushBatchSize,
+                                                )
+                                            } finally {
+                                                activeImports.remove(url)
+                                            }
                                             true
                                         }
                                     }
@@ -572,10 +593,14 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                     totalCount,
                                     "Processing: ${activeImports.size} active",
                                 )
-                                processUrlWithSource(
-                                    url, source, addToLibrary, fetchDetails, categoryId,
-                                    fetchChapters, pendingAddIds, flushBatchSize,
-                                )
+                                try {
+                                    processUrlWithSource(
+                                        url, source, addToLibrary, fetchDetails, categoryId,
+                                        fetchChapters, pendingAddIds, flushBatchSize,
+                                    )
+                                } finally {
+                                    activeImports.remove(url)
+                                }
                             }
                         }
                         when (success) {
@@ -734,6 +759,48 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
     private fun batchStatus(batchId: String): BatchStatus? =
         _sharedQueue.value.find { it.id == batchId }?.status
+
+    private fun hostKey(url: String): String =
+        try {
+            URI(url).host?.lowercase()?.removePrefix("www.") ?: url
+        } catch (e: Exception) {
+            url
+        }
+
+    /**
+     * Reorders the stream so URLs from the same host aren't bunched together. Holds up to
+     * [maxBuffer] URLs grouped by host; when full, emits one from each host in turn, then
+     * refills. Memory is capped at [maxBuffer] so big files stay safe.
+     *
+     * Without it, a long run of one host's URLs fills every parallel slot and they all wait
+     * on that one source while the other slots do nothing.
+     */
+    private fun Flow<String>.interleaveByHost(maxBuffer: Int): Flow<String> {
+        val upstream = this
+        return flow {
+            val buckets = LinkedHashMap<String, ArrayDeque<String>>()
+
+            suspend fun emitRound() {
+                val iter = buckets.entries.iterator()
+                while (iter.hasNext()) {
+                    val deque = iter.next().value
+                    emit(deque.removeFirst())
+                    if (deque.isEmpty()) iter.remove()
+                }
+            }
+
+            var buffered = 0
+            upstream.collect { url ->
+                buckets.getOrPut(hostKey(url)) { ArrayDeque() }.addLast(url)
+                buffered++
+                if (buffered >= maxBuffer) {
+                    emitRound()
+                    buffered = buckets.values.sumOf { it.size }
+                }
+            }
+            while (buckets.isNotEmpty()) emitRound()
+        }
+    }
 
     // Parks while the batch is Paused; returns false when it was cancelled instead of resumed.
     private suspend fun awaitResumed(batchId: String): Boolean {
@@ -1127,6 +1194,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         const val KEY_BATCH_ID = "batchId"
         const val KEY_EXCLUDED_HOSTS = "excludedHosts"
         const val KEY_PREFERRED_SOURCE_ID = "preferredSourceId"
+        // Resume cursor: how many leading URLs to skip because they were already done
+        // before the pause.
+        const val KEY_RESUME_OFFSET = "resumeOffset"
 
         // Number of URLs retained in the live queue for display; full list stays on disk.
         private const val URL_PREVIEW_LIMIT = 100
@@ -1670,6 +1740,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     return@launch abortResume("no persisted urls")
                 }
 
+                // Restart a bit before the saved progress, not exactly at it: URLs finish out
+                // of order and the interleave buffer holds some back, so a few just past the
+                // saved count may still be unfinished. Re-doing that overlap is cheap (already
+                // imported ones skip instantly); skipping it could drop a URL.
+                val resumeOffset = (batch.progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
                 val payload = mutableListOf<Pair<String, Any?>>(
                     KEY_CATEGORY_ID to batch.categoryId,
                     KEY_ADD_TO_LIBRARY to batch.addToLibrary,
@@ -1677,6 +1752,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     KEY_FETCH_CHAPTERS to batch.fetchChapters,
                     KEY_BATCH_ID to batchId,
                     KEY_URLS_FILE to cacheFile.absolutePath,
+                    KEY_RESUME_OFFSET to resumeOffset,
                 )
                 if (batch.excludedHosts.isNotEmpty()) {
                     payload += KEY_EXCLUDED_HOSTS to batch.excludedHosts.joinToString(",")
