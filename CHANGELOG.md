@@ -48,6 +48,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Always serve cached translations [@mrissaoussama](https://github.com/mrissaoussama) [#236](https://github.com/tsundoku-otaku/tsundoku/pull/236)
 - JS Source URL normalization [@mrissaoussama](https://github.com/mrissaoussama) [#231](https://github.com/tsundoku-otaku/tsundoku/pull/231)
 - Fix service restrictions and background start crashes [@mrissaoussama](https://github.com/mrissaoussama) [#243](https://github.com/tsundoku-otaku/tsundoku/pull/243)
+- Library filter OOM fix [@mrissaoussama](https://github.com/mrissaoussama) [#261](https://github.com/tsundoku-otaku/tsundoku/pull/261)
 - Library settings now has per-type extension cache [@mrissaoussama](https://github.com/mrissaoussama) [#259](https://github.com/tsundoku-otaku/tsundoku/pull/259)
 - Encoding issues when parsing jssource chapters [@mrissaoussama](https://github.com/mrissaoussama) [#224](https://github.com/tsundoku-otaku/tsundoku/pull/224)
 - Fix accuracy of mass import notification [@mrissaoussama](https://github.com/mrissaoussama) [#254](https://github.com/tsundoku-otaku/tsundoku/pull/254)
