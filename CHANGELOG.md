@@ -11,6 +11,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+
+
+## [v0.2.0]
 ### Added
 - Tap zones for novels [@mrissaoussama](https://github.com/mrissaoussama) [#210](https://github.com/tsundoku-otaku/tsundoku/pull/210)
 - Open EPUBs with app, export with CSS/JS [@mrissaoussama](https://github.com/mrissaoussama) [#227](https://github.com/tsundoku-otaku/tsundoku/pull/227)
@@ -231,7 +234,8 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - **Browse Screen Enhancements**: Jump-to-page, page range loading, back confirmation
 
 
-[Unreleased]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.4...main
+[Unreleased]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.2.0...main
+[v0.2.0]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.4...v0.2.0
 [v0.1.4]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.3...v0.1.4
 [v0.1.3]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.2...v0.1.3
 [v0.1.2]: https://github.com/tsundoku-otaku/tsundoku/compare/v0.1.1...v0.1.2
