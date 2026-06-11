@@ -97,6 +97,13 @@ interface MangaRepository {
     ): Triple<Set<Long>, Set<Long>, Set<Long>>
 
     /**
+     * Favorite IDs whose title contains (or is contained by) the given title.
+     * Single table scan; replaces filtering the O(N^2) findDuplicatesContains self-join
+     * when only one manga's matches are needed.
+     */
+    suspend fun findContainsForTitle(id: Long, title: String): List<Long>
+
+    /**
      * Get ID + title pairs for all favorites.
      */
     suspend fun getFavoriteIdAndTitle(): List<Pair<Long, String>>

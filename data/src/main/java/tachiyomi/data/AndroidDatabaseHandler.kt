@@ -121,6 +121,12 @@ class AndroidDatabaseHandler(
         }
     }
 
+    override suspend fun execute(sql: String) {
+        withContext(queryDispatcher) {
+            driver.execute(null, sql, 0, null)
+        }
+    }
+
     override suspend fun analyze() {
         withContext(queryDispatcher) {
             driver.execute(null, "ANALYZE", 0, null)

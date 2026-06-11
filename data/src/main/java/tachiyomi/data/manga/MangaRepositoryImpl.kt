@@ -961,7 +961,29 @@ class MangaRepositoryImpl(
         }
     }
 
+    // Built lazily on first duplicate-detection use instead of in the schema or a migration:
+    // building an expression index over a large library takes long enough to stall startup
+    // (the migration runs on first DB access), and duplicate detection is its only consumer.
+    // The exact lower(trim(title)) expression matches getDuplicateLibraryManga and
+    // findDuplicatesExact so SQLite can use it for both; LIKE '%..%' scans cannot use it.
+    @Volatile
+    private var normalizedTitleIndexEnsured = false
+
+    private suspend fun ensureNormalizedTitleIndex() {
+        if (normalizedTitleIndexEnsured) return
+        runCatching {
+            handler.execute(
+                "CREATE INDEX IF NOT EXISTS mangas_normalized_title_index " +
+                    "ON mangas(lower(trim(title))) WHERE favorite = 1",
+            )
+            normalizedTitleIndexEnsured = true
+        }.onFailure {
+            logcat(LogPriority.WARN, it) { "Failed to create mangas_normalized_title_index" }
+        }
+    }
+
     override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<MangaWithChapterCount> {
+        ensureNormalizedTitleIndex()
         return handler.awaitList {
             mangasQueries.getDuplicateLibraryManga(id, title) {
                     id,
@@ -1030,6 +1052,7 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun findDuplicatesExact(): List<DuplicateGroup> {
+        ensureNormalizedTitleIndex()
         return handler.awaitList {
             mangasQueries.findDuplicatesExact { normalizedTitle, ids, count ->
                 DuplicateGroup(
@@ -1075,6 +1098,12 @@ class MangaRepositoryImpl(
                 }
             }.executeAsList()
             Triple(authorIds, artistIds, descriptionIds)
+        }
+    }
+
+    override suspend fun findContainsForTitle(id: Long, title: String): List<Long> {
+        return handler.awaitList {
+            mangasQueries.findContainsForTitle(id, title)
         }
     }
 

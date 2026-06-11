@@ -335,10 +335,6 @@ data object LibraryTab : Tab {
             is LibraryScreenModel.Dialog.ExportEpub -> {
                 // Export EPUB is only used in NovelsTab, not here
             }
-            is LibraryScreenModel.Dialog.DuplicateDetection -> {
-                // Navigate to DuplicateDetectionScreen instead of showing dialog
-                onDismissRequest()
-            }
             null -> {}
         }
 

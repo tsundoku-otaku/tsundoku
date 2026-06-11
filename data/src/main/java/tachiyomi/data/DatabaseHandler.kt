@@ -70,6 +70,12 @@ interface DatabaseHandler {
     suspend fun reindex()
 
     /**
+     * Execute a raw parameterless statement (e.g. CREATE INDEX IF NOT EXISTS) on the query
+     * dispatcher. For maintenance/DDL only; regular queries belong in .sq files.
+     */
+    suspend fun execute(sql: String)
+
+    /**
      * Execute ANALYZE to update database statistics used by the query planner.
      */
     suspend fun analyze()
