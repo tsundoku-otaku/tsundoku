@@ -115,8 +115,10 @@ class ChapterLoader(
             // HttpSource novels (extensions + CustomNovelSource) return a no-fetch page list whose
             // URL their own fetchPageText consumes, so HttpPageLoader loads them (manga too).
             source is HttpSource -> HttpPageLoader(chapter, source)
-            // Non-HttpSource novels (JS plugins, etc.)
-            source.isNovelSource -> LocalNovelPageLoader(chapter, source)
+            // Non-HttpSource novels (JS plugins, etc.). Exclude StubSource: a stub carries the
+            // persisted isNovelSource flag but no fetchPageText impl, so it must fall through to
+            // the resolution branch below (e.g. after process death before sourceManager inits).
+            source.isNovelSource && source !is StubSource -> LocalNovelPageLoader(chapter, source)
             source is StubSource -> {
                 // Wait for sourceManager to finish combining all sources (KT ext + JS plugins)
                 if (!sourceManager.isInitialized.value) {

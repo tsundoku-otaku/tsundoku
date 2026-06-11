@@ -47,6 +47,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Fix TTS crashes, and issues with chapter change and rendering [@Rojikku](https://github.com/Rojikku) [#251](https://github.com/tsundoku-otaku/tsundoku/pull/251)
 - Make JS scripts regardless of inf scroll [@mrissaoussama](https://github.com/mrissaoussama) [#220](https://github.com/tsundoku-otaku/tsundoku/pull/220)
 - Always serve cached translations [@mrissaoussama](https://github.com/mrissaoussama) [#236](https://github.com/tsundoku-otaku/tsundoku/pull/236)
+- Exclude stubsource from localnovelpageloader [@mrissaoussama](https://github.com/mrissaoussama) [#236](https://github.com/tsundoku-otaku/tsundoku/pull/236)
 - JS Source URL normalization [@mrissaoussama](https://github.com/mrissaoussama) [#231](https://github.com/tsundoku-otaku/tsundoku/pull/231)
 - Fix service restrictions and background start crashes [@mrissaoussama](https://github.com/mrissaoussama) [#243](https://github.com/tsundoku-otaku/tsundoku/pull/243)
 - Library filter OOM fix [@mrissaoussama](https://github.com/mrissaoussama) [#261](https://github.com/tsundoku-otaku/tsundoku/pull/261)
