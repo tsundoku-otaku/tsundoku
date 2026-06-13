@@ -107,17 +107,21 @@ class UpdateManga(
 
         val thumbnailUrl = remoteManga.thumbnail_url?.takeIf { it.isNotEmpty() }
 
+        // Don't overwrite manually edited metadata unless the preference is enabled
+        val updateMetadata = libraryPreferences.updateMangaMetadata.get()
+        val status = remoteManga.status.toLong()
+
         val success = mangaRepository.update(
             MangaUpdate(
                 id = localManga.id,
                 title = title,
                 coverLastModified = coverLastModified,
-                author = remoteManga.author,
-                artist = remoteManga.artist,
-                description = remoteManga.description,
-                genre = remoteManga.getGenres(),
+                author = remoteManga.author.takeIf { updateMetadata },
+                artist = remoteManga.artist.takeIf { updateMetadata },
+                description = remoteManga.description.takeIf { updateMetadata },
+                genre = remoteManga.getGenres().takeIf { updateMetadata },
                 thumbnailUrl = thumbnailUrl,
-                status = remoteManga.status.toLong(),
+                status = status.takeIf { updateMetadata },
                 updateStrategy = remoteManga.update_strategy,
                 initialized = true,
             ),
@@ -131,7 +135,7 @@ class UpdateManga(
                     title = title ?: manga.title,
                     thumbnailUrl = thumbnailUrl ?: manga.thumbnailUrl,
                     coverLastModified = coverLastModified ?: manga.coverLastModified,
-                    status = remoteManga.status.toLong(),
+                    status = if (updateMetadata) status else manga.status,
                 )
             }
         }

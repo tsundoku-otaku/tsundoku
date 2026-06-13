@@ -7,6 +7,8 @@
     nav_zone_next: Next
     nav_zone_prev: Prev
      -->
+    <string name="pref_update_library_manga_metadata">Update entries metadata to match source</string>
+    <string name="pref_update_library_manga_metadata_summary">When refreshing, overwrite author, description, status and tags with source data. Disable to keep your manual edits.</string>
     <!-- Screen Titles -->
     <string name="label_novel_download_queue">Novel downloads</string>
     <string name="label_manga_sources">Manga Sources</string>
