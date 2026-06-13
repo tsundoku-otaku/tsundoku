@@ -174,9 +174,10 @@ class MainActivity : BaseActivity() {
                     this@MainActivity.navigator = navigator
 
                     if (isLaunch) {
-                        launchIO {
-                            eu.kanade.tachiyomi.data.massimport.MassImportJob.restoreActiveJobsFromWorkManager(context)
-                        }
+                        // Mass-import restore/auto-resume deliberately NOT run here: starting its
+                        // foreground workers during cold start jammed the splash window (the
+                        // activity could fail to start). It now runs lazily when the mass-import
+                        // dialog is opened instead.
                         // Set start screen
                         handleIntentAction(intent, navigator, closeImportScreenOnDone = true)
 

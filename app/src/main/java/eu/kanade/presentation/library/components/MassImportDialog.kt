@@ -118,6 +118,15 @@ fun MassImportDialog(
             pickedFile?.let { f -> Thread { runCatching { f.delete() } }.start() }
         }
     }
+    // Restore persisted batches and auto-resume interrupted ones lazily, only when the dialog is
+    // opened. Doing this at app launch jammed the cold-start/splash window (foreground workers
+    // contending for the SystemJobService bind). Runs off the main thread.
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            MassImportJob.restoreActiveJobsFromWorkManager(context)
+        }
+    }
+
     var showClearCompletedConfirm by remember { mutableStateOf(false) }
     var showClearPendingConfirm by remember { mutableStateOf(false) }
     var showCancelAllConfirm by remember { mutableStateOf(false) }
@@ -399,7 +408,14 @@ fun MassImportDialog(
                                 onResume = { MassImportJob.resumeBatch(context, batch.id) },
                                 onRetryFailed = {
                                     MassImportJob.retryFailed(context, batch.id)
-                                    context.toast(String.format(toastRequeuedErrors, batch.errored))
+                                    // Cancelled batches also re-queue the unprocessed remainder, not
+                                    // just the errors.
+                                    val remaining = if (batch.status == MassImportJob.BatchStatus.Cancelled) {
+                                        (batch.total - batch.progress).coerceAtLeast(0)
+                                    } else {
+                                        0
+                                    }
+                                    context.toast(String.format(toastRequeuedErrors, batch.errored + remaining))
                                 },
                                 onCopyUrls = {
                                     if (batch.total > CLIPBOARD_COPY_LIMIT) {
@@ -1191,10 +1207,13 @@ private fun BatchItem(
 
                     // Retry failed (terminal batches only). Gate on the count, not the in-memory
                     // list — after a restart the persisted error log may have entries the live
-                    // list lost.
+                    // list lost. A cancelled batch that never reached every URL also offers retry
+                    // (it re-queues the errored URLs plus the unprocessed remainder).
                     val isTerminal = batch.status == MassImportJob.BatchStatus.Completed ||
                         batch.status == MassImportJob.BatchStatus.Cancelled
-                    if (batch.errored > 0 && isTerminal) {
+                    val hasRemaining = batch.status == MassImportJob.BatchStatus.Cancelled &&
+                        batch.total > 0 && batch.progress < batch.total
+                    if (isTerminal && (batch.errored > 0 || hasRemaining)) {
                         TooltipBox(
                             positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                             tooltip = {

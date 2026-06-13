@@ -44,6 +44,7 @@ object MassImportStore {
         val fetchChapters: Boolean = false,
         val preferredSourceId: Long? = null,
         val excludedHosts: List<String> = emptyList(),
+        val interrupted: Boolean = false,
     )
 
     private fun dir(): UniFile? = runCatching {
