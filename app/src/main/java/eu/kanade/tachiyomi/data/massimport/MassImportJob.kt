@@ -727,8 +727,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         hydrateBatchFromStore(batchId)
         val status = _sharedQueue.value.find { it.id == batchId }?.status ?: return
         if (status == BatchStatus.Completed || status == BatchStatus.Cancelled) return
-        // interrupted = true marks this as a system stop (not a user pause), so the batch is
-        // auto-resumed on the next app start (see restoreActiveJobsFromWorkManager).
+        // interrupted = true marks this as a system stop (not a user pause), so the batch shows
+        // up Paused-but-resumable on the next app start (restore never auto-resumes).
         _sharedQueue.update { list ->
             list.map { if (it.id == batchId) it.copy(status = BatchStatus.Paused, interrupted = true) else it }
         }
@@ -1219,7 +1219,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val errorMessages: Map<String, String> = emptyMap(),
         val preferredSourceId: Long? = null,
         val excludedHosts: List<String> = emptyList(),
-        // System stop (time-limit / process kill), not a user pause: auto-resumed on app start.
+        // System stop (time-limit / process kill), not a user pause: shows up Paused-but-resumable
+        // on app start (never auto-resumed).
         val interrupted: Boolean = false,
     )
 
@@ -1253,10 +1254,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // Delay before a system-stopped worker re-runs in the background. Long enough to let the
         // 6h foreground budget free up; short enough to resume promptly once it does.
         private const val BACKGROUND_RESUME_DELAY_MIN = 20L
-
-        // Defer app-start auto-resume off the cold-start window so the foreground service isn't
-        // started during splash (which makes the OS flag the app as buggy).
-        private const val APP_START_RESUME_DELAY_MIN = 1L
 
         // Max times the worker re-tries when the foreground start is refused before it parks the
         // batch instead of looping. Stops a job that can never start a foreground service (denied
@@ -1380,6 +1377,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
             val persisted = MassImportStore.loadAll(context)
 
+            // IDs of restored, unfinished batches whose live WorkManager entry must be cancelled so
+            // it cannot resume on its own during this cold start.
+            val toCancel = mutableSetOf<String>()
+
             _sharedQueue.update { current ->
                 val existingIds = current.map { it.id }.toMutableSet()
                 val additions = mutableListOf<Batch>()
@@ -1389,24 +1390,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     // Preview only; the full list could be millions of lines per batch.
                     val urls = MassImportStore.loadUrlsPreview(context, meta.id, URL_PREVIEW_LIMIT)
                     var batch = meta.toBatch(urls)
-                    val wmState = wmStateById[meta.id]
-                    val wmActive = wmState == WorkInfo.State.RUNNING ||
-                        wmState == WorkInfo.State.ENQUEUED ||
-                        wmState == WorkInfo.State.BLOCKED
                     val terminal = batch.status == BatchStatus.Completed || batch.status == BatchStatus.Cancelled
-                    if (!terminal && !wmActive) {
-                        // Worker died with no live WorkManager entry: done if all URLs finished,
-                        // otherwise Paused so resumeBatch() can re-enqueue a fresh worker.
+                    if (!terminal) {
+                        // Never auto-resume on app start: an unfinished batch comes back Paused so
+                        // the user resumes it explicitly. interrupted = true marks it resumable
+                        // (system stop, not a user pause) without re-enqueueing a worker here.
                         val finishedAll = batch.total > 0 && batch.progress >= batch.total
-                        // A batch persisted as Running/Pending with no worker was hard-killed by
-                        // the system (process death before markBatchInterrupted ran) — flag it
-                        // for auto-resume. A persisted-Paused batch is a user pause; leave its
-                        // flag alone so it stays parked.
-                        val systemKilled = !finishedAll &&
-                            (batch.status == BatchStatus.Running || batch.status == BatchStatus.Pending)
+                        if (!finishedAll) toCancel += meta.id
                         batch = batch.copy(
                             status = if (finishedAll) BatchStatus.Completed else BatchStatus.Paused,
-                            interrupted = if (systemKilled) true else batch.interrupted,
+                            interrupted = if (finishedAll) batch.interrupted else true,
                         )
                     }
                     additions += batch
@@ -1421,13 +1414,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     ) {
                         continue
                     }
+                    // Live worker with no persisted meta: park it Paused too and cancel it.
+                    toCancel += id
                     additions += Batch(
                         id = id,
                         urls = emptyList(),
                         categoryId = 0L,
                         addToLibrary = true,
                         fetchChapters = false,
-                        status = if (state == WorkInfo.State.RUNNING) BatchStatus.Running else BatchStatus.Pending,
+                        status = BatchStatus.Paused,
+                        interrupted = true,
                     )
                     existingIds += id
                 }
@@ -1435,24 +1431,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 current + additions
             }
 
-            // Auto-resume batches the system stopped (not user-paused). resumeBatch re-enqueues a
-            // worker and is a no-op if one is already live. A small initial delay keeps the
-            // foreground DATA_SYNC service from starting during the cold-start/splash window —
-            // a foreground-service start there makes the OS flag the app ("considered buggy" /
-            // identifyForegroundApp). Off the launch window the resume runs normally.
-            _sharedQueue.value
-                .filter {
-                    it.status == BatchStatus.Paused &&
-                        it.interrupted &&
-                        (it.total == 0 || it.progress < it.total)
-                }
-                // Stagger: starting every interrupted batch's foreground worker at once during
-                // cold start floods SystemJobService binds (each is exempted via the battery
-                // allowlist), which the framework then flags "considered buggy". One extra minute
-                // per batch spaces the foreground-service starts out.
-                .forEachIndexed { index, batch ->
-                    resumeBatch(context, batch.id, initialDelayMinutes = APP_START_RESUME_DELAY_MIN + index)
-                }
+            // Stop any worker WorkManager rescheduled after process death. doWork bails on a Paused
+            // status, but cancelling removes the WorkSpec so it can't fire during splash at all.
+            for (id in toCancel) {
+                context.workManager.cancelUniqueWork("${TAG}_$id")
+            }
+            toCancel.forEach { persistMeta(context, it, force = true) }
         }
 
         fun isRunning(context: Context): Boolean {
@@ -1769,35 +1753,34 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
 
         fun resumeBatch(context: Context, batchId: String, initialDelayMinutes: Long = 0) {
-            var changed = false
+            var wasPaused = false
             _sharedQueue.update { list ->
                 list.map {
                     if (it.id == batchId && it.status == BatchStatus.Paused) {
-                        changed = true
+                        wasPaused = true
                         it.copy(status = BatchStatus.Running, interrupted = false)
                     } else {
                         it
                     }
                 }
             }
-            // Only the Paused -> Running transition should enqueue. A second resume on an already
-            // Running batch must NOT re-enqueue: REPLACE would cancel the live worker (which then
-            // reschedules itself), looping.
-            if (!changed) return
-            persistMeta(context, batchId, force = true)
-            // After a process restart (or a paused-cancelled worker) there is nothing executing;
-            // flipping the status alone would leave the batch "Running" forever.
-            //
-            // requireNoActiveWorker = false: pause cancelled the worker, but WorkManager reports
-            // the cancellation asynchronously, so the old worker can still read as RUNNING/ENQUEUED
-            // for a moment. The active-worker pre-check would then skip the re-enqueue and the
-            // batch would sit Running with nothing executing ("resume sometimes does nothing").
-            // Force a fresh worker; enqueueBatchWorker uses REPLACE so any zombie entry is swapped.
+            // Resume must also recover a batch that already reads Running but has no worker actually
+            // executing: a background-resume worker lost to process death, or an abortResume race,
+            // leaves the status Running with nothing running. The old "only act on Paused" guard
+            // made Resume a silent no-op in that state ("resume sometimes does nothing").
+            val status = _sharedQueue.value.find { it.id == batchId }?.status ?: return
+            if (status != BatchStatus.Running) return
+            if (wasPaused) persistMeta(context, batchId, force = true)
+            // wasPaused (Paused -> Running just now): pause cancelled the worker, but WorkManager
+            // reports the cancellation asynchronously, so a stale entry can still read RUNNING for a
+            // moment; force a fresh worker (REPLACE swaps any zombie). Already-Running recovery:
+            // require no active worker so we DON'T cancel a genuinely live worker (REPLACE would make
+            // it reschedule itself, looping) — enqueue only when nothing is actually executing.
             reenqueueIfNoWorker(
                 context,
                 batchId,
                 initialDelayMinutes = initialDelayMinutes,
-                requireNoActiveWorker = false,
+                requireNoActiveWorker = !wasPaused,
             )
         }
 
@@ -1914,7 +1897,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
 
         fun resumeAll(context: Context) {
-            val affected = _sharedQueue.value.filter { it.status == BatchStatus.Paused }.map { it.id }
+            // Paused batches flip to Running and force a fresh worker. Batches already reading
+            // Running but with no live worker (lost background-resume / abort race) are recovered
+            // too, but only if nothing is actually executing — otherwise we'd cancel a live worker.
+            val pausedIds = _sharedQueue.value.filter { it.status == BatchStatus.Paused }.map { it.id }
+            val runningIds = _sharedQueue.value.filter { it.status == BatchStatus.Running }.map { it.id }
             _sharedQueue.update { list ->
                 list.map {
                     if (it.status == BatchStatus.Paused) {
@@ -1924,11 +1911,14 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     }
                 }
             }
-            affected.forEach {
+            pausedIds.forEach {
                 persistMeta(context, it, force = true)
                 // See resumeBatch: pauseAll's worker cancellations report asynchronously, so force
                 // a fresh worker instead of skipping on a stale "active" reading.
                 reenqueueIfNoWorker(context, it, requireNoActiveWorker = false)
+            }
+            runningIds.forEach {
+                reenqueueIfNoWorker(context, it, requireNoActiveWorker = true)
             }
         }
 

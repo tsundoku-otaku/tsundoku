@@ -118,9 +118,10 @@ fun MassImportDialog(
             pickedFile?.let { f -> Thread { runCatching { f.delete() } }.start() }
         }
     }
-    // Restore persisted batches and auto-resume interrupted ones lazily, only when the dialog is
-    // opened. Doing this at app launch jammed the cold-start/splash window (foreground workers
-    // contending for the SystemJobService bind). Runs off the main thread.
+    // Restore persisted batches lazily, only when the dialog is opened. Interrupted batches come
+    // back Paused (never auto-resumed) so the user resumes them explicitly. Doing this at app
+    // launch jammed the cold-start/splash window (foreground workers contending for the
+    // SystemJobService bind). Runs off the main thread.
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             MassImportJob.restoreActiveJobsFromWorkManager(context)
