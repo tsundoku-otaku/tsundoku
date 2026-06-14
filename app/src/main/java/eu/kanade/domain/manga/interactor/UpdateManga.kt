@@ -111,6 +111,24 @@ class UpdateManga(
         val updateMetadata = libraryPreferences.updateMangaMetadata.get()
         val status = remoteManga.status.toLong()
 
+        // Alternative titles are always merged additively (never removed), so they don't clash with
+        // manual edits and aren't gated by updateMetadata.
+        val remoteAltTitles = try {
+            remoteManga.altTitles
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val effectiveTitle = title ?: localManga.title
+        val mergedAltTitles = if (remoteAltTitles.isNotEmpty()) {
+            (localManga.alternativeTitles + remoteAltTitles)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && it != effectiveTitle }
+                .distinct()
+                .takeIf { it != localManga.alternativeTitles }
+        } else {
+            null
+        }
+
         val success = mangaRepository.update(
             MangaUpdate(
                 id = localManga.id,
@@ -120,6 +138,7 @@ class UpdateManga(
                 artist = remoteManga.artist.takeIf { updateMetadata },
                 description = remoteManga.description.takeIf { updateMetadata },
                 genre = remoteManga.getGenres().takeIf { updateMetadata },
+                alternativeTitles = mergedAltTitles,
                 thumbnailUrl = thumbnailUrl,
                 status = status.takeIf { updateMetadata },
                 updateStrategy = remoteManga.update_strategy,
@@ -136,6 +155,7 @@ class UpdateManga(
                     thumbnailUrl = thumbnailUrl ?: manga.thumbnailUrl,
                     coverLastModified = coverLastModified ?: manga.coverLastModified,
                     status = if (updateMetadata) status else manga.status,
+                    alternativeTitles = mergedAltTitles ?: manga.alternativeTitles,
                 )
             }
         }
