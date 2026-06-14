@@ -33,8 +33,6 @@ object LibraryExporter {
         val currentTitle: String = "",
     )
 
-    // Favorites are streamed a page at a time instead of materialized into one list: a massive
-    // library OOMs when every favorite (with its genre/description columns) is held at once.
     const val PAGE_SIZE = 500L
 
     suspend fun exportToCsv(
@@ -183,7 +181,6 @@ object LibraryExporter {
                 )
             }
 
-            // Last page reached when it wasn't full.
             if (page.size < PAGE_SIZE) break
         }
     }
