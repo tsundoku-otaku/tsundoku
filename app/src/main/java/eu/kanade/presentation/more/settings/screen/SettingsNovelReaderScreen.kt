@@ -321,7 +321,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.novelRenderTables,
                     title = "Render tables (TextView)",
-                    subtitle = "Draw HTML tables as a grid. Off uses the system fallback. " +
+                    subtitle = "Draw HTML tables as a grid. Off drops tables. " +
                         "Many large tables in one chapter can slow rendering.",
                 ),
                 Preference.PreferenceItem.SwitchPreference(

@@ -10,7 +10,7 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
- * Draws an HTML table inline in a TextView as a real, column-aligned, bordered grid — measured with
+ * Draws an HTML table inline in a TextView as a real, column-aligned, bordered grid, measured with
  * the actual draw [Paint] (so it inherits the reader's font size and text color) and wrapped with
  * [StaticLayout] per cell. No bitmap and no separate view: everything is painted in [draw], so it
  * costs only what its own measure/draw take. Column widths come from each column's widest cell,
@@ -44,7 +44,7 @@ class NovelTableSpan(
     private val headerBgPaint = Paint().apply { style = Paint.Style.FILL }
 
     // Shared cell paints. The StaticLayouts keep these by reference, so updating their color at
-    // draw time (from the live, themed run paint) re-colors the already-built layouts — colors are
+    // draw time (from the live, themed run paint) re-colors the already-built layouts. Colors are
     // never baked in at measure time (which would freeze whatever color the precompute pass used).
     private val bodyPaint = TextPaint()
     private val headerPaint = TextPaint()
