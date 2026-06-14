@@ -106,6 +106,11 @@ class ElementSelectorScreenModel(
     private fun convertToCustomSourceConfig(selectorConfig: SelectorConfig): CustomSourceConfig {
         val baseUrl = selectorConfig.baseUrl.trimEnd('/')
 
+        // Popular and search reuse the popular card layout. When popular was toggled off (latest-only
+        // setup), fall back to the latest list selector so those sections still resolve items instead
+        // of throwing "List selector is empty".
+        val primaryListSelector = selectorConfig.trendingSelector.ifBlank { selectorConfig.newNovelsSelector }
+
         // Page 1 = the verbatim URL the user browsed. Page 2+ template = page1/page2 diff (handles
         // ?page= vs /page/ alike). The source uses page1 for page 1 and the template afterwards, so
         // the first page keeps or omits the page token exactly as the site does.
@@ -146,7 +151,7 @@ class ElementSelectorScreenModel(
             testSearchQuery = selectorConfig.searchKeyword.ifBlank { null },
             selectors = SourceSelectors(
                 popular = MangaListSelectors(
-                    list = selectorConfig.trendingSelector,
+                    list = primaryListSelector,
                     link = selectorConfig.novelTitleSelector.ifBlank { null },
                     title = selectorConfig.novelTitleSelector.ifBlank { null },
                     cover = selectorConfig.novelCoverSelector.ifBlank { null },
@@ -162,7 +167,7 @@ class ElementSelectorScreenModel(
                     )
                 },
                 search = MangaListSelectors(
-                    list = selectorConfig.trendingSelector, // Usually same as popular
+                    list = primaryListSelector, // Usually same as popular
                     link = selectorConfig.novelTitleSelector.ifBlank { null },
                     title = selectorConfig.novelTitleSelector.ifBlank { null },
                     cover = selectorConfig.novelCoverSelector.ifBlank { null },
@@ -243,9 +248,6 @@ class ElementSelectorScreenModel(
     }
 }
 
-/**
- * Preview data for step confirmation UI
- */
 data class StepPreviewData(
     val stepName: String,
     val detectedTitle: String? = null,

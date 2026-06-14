@@ -984,7 +984,7 @@ class CustomNovelSource(
             if (p.tagName() == "a" && p.hasAttr("href")) return p
             p = p.parent()
         }
-        return selectFirst("a")
+        return null
     }
 
     private fun Document.selectText(selector: String?): String? {

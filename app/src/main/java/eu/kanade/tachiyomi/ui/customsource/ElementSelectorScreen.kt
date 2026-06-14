@@ -239,9 +239,6 @@ enum class SelectorWizardStep(
     }
 }
 
-/**
- * Data class for storing selected CSS selectors
- */
 data class SelectorConfig(
     var sourceName: String = "",
     var baseUrl: String = "",
@@ -287,9 +284,6 @@ data class SelectorConfig(
     var sampleNovelUrl: String = "",
 )
 
-/**
- * JavaScript interface for element selection communication
- */
 @Keep
 class ElementSelectorJSInterface(
     private val onElementSelected: (String, String, String, String, String) -> Unit,
