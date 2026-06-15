@@ -79,6 +79,8 @@ class NotificationReceiver : BroadcastReceiver() {
             ACTION_CANCEL_LIBRARY_UPDATE -> cancelLibraryUpdate(context)
             // Cancel mass import
             ACTION_CANCEL_MASS_IMPORT -> cancelMassImport(context)
+            // Cancel library export
+            ACTION_CANCEL_LIBRARY_EXPORT -> cancelLibraryExport(context)
             // Start downloading app update
             ACTION_START_APP_UPDATE -> startDownloadAppUpdate(context, intent)
             // Cancel downloading app update
@@ -194,6 +196,16 @@ class NotificationReceiver : BroadcastReceiver() {
         eu.kanade.tachiyomi.data.massimport.MassImportJob.stop(context)
     }
 
+    /**
+     * Method called when user wants to stop a library export job
+     *
+     * @param context context of application
+     */
+    private fun cancelLibraryExport(context: Context) {
+        eu.kanade.tachiyomi.data.export.LibraryExportJob.stop(context)
+        context.cancelNotification(Notifications.ID_LIBRARY_EXPORT_PROGRESS)
+    }
+
     private fun startDownloadAppUpdate(context: Context, intent: Intent) {
         val url = intent.getStringExtra(AppUpdateDownloadJob.EXTRA_DOWNLOAD_URL) ?: return
         AppUpdateDownloadJob.start(context, url)
@@ -265,6 +277,8 @@ class NotificationReceiver : BroadcastReceiver() {
         private const val ACTION_CANCEL_LIBRARY_UPDATE = "$ID.$NAME.CANCEL_LIBRARY_UPDATE"
 
         private const val ACTION_CANCEL_MASS_IMPORT = "$ID.$NAME.CANCEL_MASS_IMPORT"
+
+        private const val ACTION_CANCEL_LIBRARY_EXPORT = "$ID.$NAME.CANCEL_LIBRARY_EXPORT"
 
         private const val ACTION_START_APP_UPDATE = "$ID.$NAME.ACTION_START_APP_UPDATE"
         private const val ACTION_CANCEL_APP_UPDATE_DOWNLOAD = "$ID.$NAME.CANCEL_APP_UPDATE_DOWNLOAD"
@@ -587,6 +601,19 @@ class NotificationReceiver : BroadcastReceiver() {
         internal fun cancelMassImportPendingBroadcast(context: Context): PendingIntent {
             val intent = Intent(context, NotificationReceiver::class.java).apply {
                 action = ACTION_CANCEL_MASS_IMPORT
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /** Returns a [PendingIntent] that stops the library export. */
+        internal fun cancelLibraryExportPendingBroadcast(context: Context): PendingIntent {
+            val intent = Intent(context, NotificationReceiver::class.java).apply {
+                action = ACTION_CANCEL_LIBRARY_EXPORT
             }
             return PendingIntent.getBroadcast(
                 context,

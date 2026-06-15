@@ -34,6 +34,10 @@ interface MangaRepository {
 
     suspend fun getFavorites(): List<Manga>
 
+    suspend fun getFavoritesPaged(limit: Long, offset: Long): List<Manga>
+
+    suspend fun getFavoritesCount(): Long
+
     suspend fun getFavoritesEntry(): List<Manga>
 
     fun getFavoritesEntryBySourceId(sourceId: Long): Flow<List<Manga>>

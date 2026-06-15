@@ -18,15 +18,17 @@ import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.manga.interactor.GetFavorites
+import tachiyomi.domain.manga.repository.MangaRepository
+import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class LibraryExportJob(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
 
-    private val getFavorites: GetFavorites = Injekt.get()
+    private val mangaRepository: MangaRepository = Injekt.get()
 
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_LIBRARY_EXPORT) {
         setSmallIcon(android.R.drawable.stat_sys_upload)
@@ -34,6 +36,11 @@ class LibraryExportJob(private val context: Context, workerParams: WorkerParamet
         setContentText("Starting...")
         setOngoing(true)
         setOnlyAlertOnce(true)
+        addAction(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            context.stringResource(MR.strings.action_cancel),
+            eu.kanade.tachiyomi.data.notification.NotificationReceiver.cancelLibraryExportPendingBroadcast(context),
+        )
     }
 
     override suspend fun doWork(): Result {
@@ -47,11 +54,12 @@ class LibraryExportJob(private val context: Context, workerParams: WorkerParamet
         }
 
         return try {
-            val favorites = getFavorites.await()
+            val total = mangaRepository.getFavoritesCount().toInt()
             LibraryExporter.exportToCsv(
                 context = context,
                 uri = Uri.parse(uriString),
-                favorites = favorites,
+                total = total,
+                loadPage = { limit, offset -> mangaRepository.getFavoritesPaged(limit, offset) },
                 options = options,
                 onProgress = { progress ->
                     notificationBuilder
@@ -132,6 +140,10 @@ class LibraryExportJob(private val context: Context, workerParams: WorkerParamet
                 .setInputData(data)
                 .build()
             context.workManager.enqueueUniqueWork(TAG, ExistingWorkPolicy.REPLACE, request)
+        }
+
+        fun stop(context: Context) {
+            context.workManager.cancelUniqueWork(TAG)
         }
 
         private fun exportOptionsFromData(data: androidx.work.Data): LibraryExporter.ExportOptions {

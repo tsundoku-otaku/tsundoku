@@ -325,6 +325,52 @@ class MangaRepositoryImpl(
         }
     }
 
+    override suspend fun getFavoritesPaged(limit: Long, offset: Long): List<Manga> {
+        return handler.awaitList {
+            mangasQueries.getFavoritesPaged(limit, offset) {
+                    id,
+                    source,
+                    url,
+                    artist,
+                    author,
+                    description,
+                    genre,
+                    title,
+                    alternative_titles,
+                    status,
+                    thumbnail_url,
+                    favorite,
+                    last_update,
+                    next_update,
+                    initialized,
+                    viewer,
+                    chapter_flags,
+                    cover_last_modified,
+                    date_added,
+                    update_strategy,
+                    calculate_interval,
+                    last_modified_at,
+                    favorite_modified_at,
+                    version,
+                    is_syncing,
+                    notes,
+                    is_novel,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                ->
+                MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
+            }
+        }
+    }
+
+    override suspend fun getFavoritesCount(): Long {
+        return handler.awaitOne { mangasQueries.getFavoritesCount() }
+    }
+
     override suspend fun getFavoritesEntry(): List<Manga> {
         return handler.awaitList {
             mangasQueries.getFavoritesEntry {

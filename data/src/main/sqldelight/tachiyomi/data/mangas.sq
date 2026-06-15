@@ -124,6 +124,18 @@ SELECT *
 FROM mangas
 WHERE favorite = 1;
 
+getFavoritesPaged:
+SELECT *
+FROM mangas
+WHERE favorite = 1
+ORDER BY _id
+LIMIT :limit OFFSET :offset;
+
+getFavoritesCount:
+SELECT COUNT(*)
+FROM mangas
+WHERE favorite = 1;
+
 getFavoritesEntry:
 SELECT _id, source, url, title, artist, author, thumbnail_url, cover_last_modified, favorite, is_novel
 FROM mangas

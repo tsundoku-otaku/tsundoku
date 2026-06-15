@@ -33,10 +33,13 @@ object LibraryExporter {
         val currentTitle: String = "",
     )
 
+    const val PAGE_SIZE = 500L
+
     suspend fun exportToCsv(
         context: Context,
         uri: Uri,
-        favorites: List<Manga>,
+        total: Int,
+        loadPage: suspend (limit: Long, offset: Long) -> List<Manga>,
         options: ExportOptions,
         onProgress: (ExportProgress) -> Unit = {},
         onExportComplete: () -> Unit,
@@ -44,7 +47,7 @@ object LibraryExporter {
         withContext(Dispatchers.IO) {
             context.contentResolver.openOutputStream(uri)?.use { outputStream ->
                 outputStream.bufferedWriter().use { writer ->
-                    writeCsvData(writer, favorites, options, onProgress)
+                    writeCsvData(writer, total, loadPage, options, onProgress)
                 }
             }
             onExportComplete()
@@ -55,7 +58,8 @@ object LibraryExporter {
 
     private suspend fun writeCsvData(
         writer: java.io.Writer,
-        favorites: List<Manga>,
+        total: Int,
+        loadPage: suspend (limit: Long, offset: Long) -> List<Manga>,
         options: ExportOptions,
         onProgress: (ExportProgress) -> Unit = {},
     ) {
@@ -109,67 +113,75 @@ object LibraryExporter {
 
         writer.appendLine(columns.joinToString(","))
 
-        val total = favorites.size
-        favorites.forEachIndexed { index, manga ->
-            // Report progress
-            onProgress(ExportProgress(index + 1, total, manga.title))
+        var processed = 0
+        var offset = 0L
+        while (true) {
+            val page = loadPage(PAGE_SIZE, offset)
+            if (page.isEmpty()) break
+            offset += page.size
 
-            val row = mutableListOf<String?>()
-            if (options.includeTitle) row.add(manga.title)
-            if (options.includeAuthor) row.add(manga.author)
-            if (options.includeArtist) row.add(manga.artist)
+            for (manga in page) {
+                processed++
+                onProgress(ExportProgress(processed, total, manga.title))
 
-            if (options.includeCategory) {
-                val catIds = mangaCategoryMap[manga.id] ?: emptyList()
-                val catNames = catIds.mapNotNull { categoryIdToName[it] }.joinToString("|")
-                row.add(catNames)
-            }
+                val row = mutableListOf<String?>()
+                if (options.includeTitle) row.add(manga.title)
+                if (options.includeAuthor) row.add(manga.author)
+                if (options.includeArtist) row.add(manga.artist)
 
-            if (options.includeIsNovel) {
-                row.add(if (manga.isNovel) "Yes" else "No")
-            }
+                if (options.includeCategory) {
+                    val catIds = mangaCategoryMap[manga.id] ?: emptyList()
+                    val catNames = catIds.mapNotNull { categoryIdToName[it] }.joinToString("|")
+                    row.add(catNames)
+                }
 
-            if (options.includeDescription) {
-                row.add(manga.description?.take(5000) ?: "")
-            }
+                if (options.includeIsNovel) {
+                    row.add(if (manga.isNovel) "Yes" else "No")
+                }
 
-            if (options.includeTags) {
-                // Tags are comma-separated within quotes
-                val tags = manga.genre?.joinToString(", ") ?: ""
-                row.add(tags)
-            }
+                if (options.includeDescription) {
+                    row.add(manga.description?.take(5000) ?: "")
+                }
 
-            if (options.includeUrl) {
-                val fullUrl = try {
-                    val source = sourceManager.get(manga.source) as? HttpSource
-                    if (source != null) {
-                        val sManga = SManga.create().apply { url = manga.url }
-                        source.getMangaUrl(sManga)
-                    } else {
+                if (options.includeTags) {
+                    val tags = manga.genre?.joinToString(", ") ?: ""
+                    row.add(tags)
+                }
+
+                if (options.includeUrl) {
+                    val fullUrl = try {
+                        val source = sourceManager.get(manga.source) as? HttpSource
+                        if (source != null) {
+                            val sManga = SManga.create().apply { url = manga.url }
+                            source.getMangaUrl(sManga)
+                        } else {
+                            manga.url
+                        }
+                    } catch (_: Exception) {
                         manga.url
                     }
-                } catch (_: Exception) {
-                    manga.url
+                    row.add(fullUrl)
                 }
-                row.add(fullUrl)
+
+                if (options.includeChapterCount) {
+                    val count = chapterCountMap[manga.id]?.toString() ?: ""
+                    row.add(count)
+                }
+
+                writer.appendLine(
+                    row.joinToString(",") { column ->
+                        if (column.isNullOrBlank()) {
+                            ""
+                        } else if (escapeRequired.any { column.contains(it) }) {
+                            column.replace("\"", "\"\"").let { "\"$it\"" }
+                        } else {
+                            column
+                        }
+                    },
+                )
             }
 
-            if (options.includeChapterCount) {
-                val count = chapterCountMap[manga.id]?.toString() ?: ""
-                row.add(count)
-            }
-
-            writer.appendLine(
-                row.joinToString(",") { column ->
-                    if (column.isNullOrBlank()) {
-                        ""
-                    } else if (escapeRequired.any { column.contains(it) }) {
-                        column.replace("\"", "\"\"").let { "\"$it\"" }
-                    } else {
-                        column
-                    }
-                },
-            )
+            if (page.size < PAGE_SIZE) break
         }
     }
 }
