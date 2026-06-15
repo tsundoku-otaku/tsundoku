@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.data.massimport
 import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
+import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
@@ -35,7 +36,9 @@ import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
@@ -57,11 +60,12 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 
-// Clamp at 50% to trigger GC early and avoid heap fragmentation near 512MB limit
-private const val MEMORY_PRESSURE_THRESHOLD = 0.50
+// Trigger GC when heap usage crosses this fraction, before fragmentation near the 512MB limit
+private const val MEMORY_PRESSURE_THRESHOLD = 0.75
 private const val MAX_HEAP_BYTES = 512 * 1024 * 1024L
 private const val GC_DELAY_MS = 500L
 private const val MIN_FREE_MEMORY_BYTES = 50 * 1024 * 1024L
@@ -97,6 +101,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
     private var lastNotifiedProgress = -1
     private var lastNotificationStatus: String? = null
 
+    // Serializes the memory-pressure back-off so concurrent fetch coroutines don't all spin
+    // (and previously all fire System.gc()) at once.
+    private val memoryPressureMutex = Mutex()
+
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_MASS_IMPORT) {
         setSmallIcon(android.R.drawable.stat_sys_download)
         setContentTitle("Mass Import")
@@ -130,12 +138,31 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             else -> {}
         }
 
+        // Resume from the persisted progress, not just the input offset. A WorkManager retry
+        // (foreground-budget backoff below) re-runs with the ORIGINAL input data, so without this
+        // every retry would restart the batch from zero.
+        val persistedProgress = _sharedQueue.value.find { it.id == jobBatchId }?.progress ?: 0
+        val effectiveResumeOffset = maxOf(
+            resumeOffset,
+            (persistedProgress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0),
+        )
+
         if (!trySetForeground()) {
-            // dataSync budget exhausted (6h/day on Android 15+); park as resumable instead of
-            // running a doomed background worker.
-            markBatchInterrupted(jobBatchId)
+            // Foreground start refused. Two causes: dataSync budget exhausted (6h/day on Android
+            // 15+), or the OS won't let a background worker start a foreground service at all (e.g.
+            // run from a cold start). Retrying helps the budget case, but NOT the second: WorkManager
+            // re-runs the still-ENQUEUED job at the next process start, where it is again denied,
+            // looping forever and jamming the splash window every launch. Bound the retries; once
+            // exhausted, park the batch as interrupted (resumable) and finish so the WorkSpec goes
+            // terminal instead of re-firing. It resumes when the mass-import dialog is next opened
+            // (app in foreground, where the foreground start is allowed).
             notifyForegroundLimitReached()
-            return Result.failure()
+            return if (runAttemptCount < MAX_FOREGROUND_START_RETRIES) {
+                Result.retry()
+            } else {
+                markBatchInterrupted(jobBatchId)
+                Result.success()
+            }
         }
 
         val streamFilePath = urlsFilePath ?: rawTextFilePath
@@ -190,15 +217,15 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         urlFlow, totalCount,
                         categoryId, addToLibrary, fetchDetails, fetchChapters, batchId,
                         excludedHostsSet, hostSourceCache, missingSourceHosts, preferredSourceId,
-                        resumeOffset = resumeOffset,
+                        resumeOffset = effectiveResumeOffset,
                     )
 
                     Result.success()
                 } catch (e: Exception) {
                     if (e is CancellationException) {
                         // Still Running = system stop (time limit, process pressure), not a
-                        // user pause/cancel — park as resumable.
-                        if (batchStatus(batchId) == BatchStatus.Running) markBatchInterrupted(batchId)
+                        // user pause/cancel — schedule a delayed background resume.
+                        if (batchStatus(batchId) == BatchStatus.Running) scheduleBackgroundResume(batchId)
                         Result.success()
                     } else {
                         logcat(LogPriority.ERROR, e)
@@ -233,13 +260,14 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     hostSourceCache,
                     missingSourceHosts,
                     preferredSourceId,
-                    resumeOffset = resumeOffset,
+                    resumeOffset = effectiveResumeOffset,
                 )
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) {
-                    // Still Running = system stop, not user pause/cancel — park as resumable.
-                    if (batchStatus(batchId) == BatchStatus.Running) markBatchInterrupted(batchId)
+                    // Still Running = system stop, not user pause/cancel — schedule a delayed
+                    // background resume.
+                    if (batchStatus(batchId) == BatchStatus.Running) scheduleBackgroundResume(batchId)
                     Result.success()
                 } else {
                     logcat(LogPriority.ERROR, e)
@@ -705,7 +733,32 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         hydrateBatchFromStore(batchId)
         val status = _sharedQueue.value.find { it.id == batchId }?.status ?: return
         if (status == BatchStatus.Completed || status == BatchStatus.Cancelled) return
-        updateBatchStatus(batchId, BatchStatus.Paused)
+        // interrupted = true marks this as a system stop (not a user pause), so the batch shows
+        // up Paused-but-resumable on the next app start (restore never auto-resumes).
+        _sharedQueue.update { list ->
+            list.map { if (it.id == batchId) it.copy(status = BatchStatus.Paused, interrupted = true) else it }
+        }
+        persistMeta(context, batchId, force = true)
+    }
+
+    // System stopped the worker mid-run (6h foreground budget / process pressure). Keep the batch
+    // Running and schedule a DELAYED worker that re-stages from the store and resumes from the
+    // persisted offset, so the import auto-continues in the background without reopening the app.
+    // The delay matters: an immediate worker can't get foreground either while the budget is still
+    // exhausted, so it would just thrash. interrupted = true is the app-start fallback if the
+    // scheduled work is lost to a hard process kill.
+    private fun scheduleBackgroundResume(batchId: String) {
+        if (batchId.isEmpty()) return
+        _sharedQueue.update { list ->
+            list.map { if (it.id == batchId) it.copy(interrupted = true) else it }
+        }
+        persistMeta(context, batchId, force = true)
+        reenqueueIfNoWorker(
+            context,
+            batchId,
+            initialDelayMinutes = BACKGROUND_RESUME_DELAY_MIN,
+            requireNoActiveWorker = false,
+        )
     }
 
     private fun hydrateBatchFromStore(batchId: String) {
@@ -1040,33 +1093,36 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
     private suspend fun waitForMemoryPressure() {
         val runtime = Runtime.getRuntime()
-        // Block new fetches until the heap drops below threshold (a single GC rarely reclaims
-        // enough); bounded so a heap that never recovers can't stall the import forever.
-        var iteration = 0
-        while (iteration < MAX_MEMORY_WAIT_ITERATIONS) {
+
+        fun pressured(): Boolean {
             val maxMem = runtime.maxMemory().coerceAtMost(MAX_HEAP_BYTES)
             val usedMem = runtime.totalMemory() - runtime.freeMemory()
             val freeMem = maxMem - usedMem
-
             val exceedsThreshold = usedMem.toDouble() / maxMem > MEMORY_PRESSURE_THRESHOLD
             val lowFreeMemory = freeMem < MIN_FREE_MEMORY_BYTES
-            if (!exceedsThreshold && !lowFreeMemory) return
-
-            val usagePercent = (usedMem.toDouble() / maxMem * 100).toInt()
-            val reason = if (exceedsThreshold) "threshold" else "low free"
-            logcat(LogPriority.WARN) {
-                "MassImport: Memory pressure $usagePercent% ($reason): ${usedMem / 1024 / 1024}MB / " +
-                    "${maxMem / 1024 / 1024}MB, waiting ${iteration + 1}/$MAX_MEMORY_WAIT_ITERATIONS..."
-            }
-            try {
-                System.gc()
-            } catch (_: Throwable) {
-            }
-            delay(GC_DELAY_MS)
-            iteration++
+            return exceedsThreshold || lowFreeMemory
         }
-        logcat(LogPriority.WARN) {
-            "MassImport: heap still pressured after ${MAX_MEMORY_WAIT_ITERATIONS} waits; proceeding to avoid deadlock"
+
+        if (!pressured()) return
+
+         memoryPressureMutex.withLock {
+            if (!pressured()) return
+            var iteration = 0
+            while (iteration < MAX_MEMORY_WAIT_ITERATIONS) {
+                if (!pressured()) return
+                val maxMem = runtime.maxMemory().coerceAtMost(MAX_HEAP_BYTES)
+                val usedMem = runtime.totalMemory() - runtime.freeMemory()
+                val usagePercent = (usedMem.toDouble() / maxMem * 100).toInt()
+                logcat(LogPriority.WARN) {
+                    "MassImport: Memory pressure $usagePercent%: ${usedMem / 1024 / 1024}MB / " +
+                        "${maxMem / 1024 / 1024}MB, waiting ${iteration + 1}/$MAX_MEMORY_WAIT_ITERATIONS..."
+                }
+                delay(GC_DELAY_MS)
+                iteration++
+            }
+            logcat(LogPriority.WARN) {
+                "MassImport: heap still pressured after $MAX_MEMORY_WAIT_ITERATIONS waits; proceeding to avoid deadlock"
+            }
         }
     }
 
@@ -1172,6 +1228,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val errorMessages: Map<String, String> = emptyMap(),
         val preferredSourceId: Long? = null,
         val excludedHosts: List<String> = emptyList(),
+        // System stop (time-limit / process kill), not a user pause: shows up Paused-but-resumable
+        // on app start (never auto-resumed).
+        val interrupted: Boolean = false,
     )
 
     enum class BatchStatus {
@@ -1200,6 +1259,15 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         // Number of URLs retained in the live queue for display; full list stays on disk.
         private const val URL_PREVIEW_LIMIT = 100
+
+        // Delay before a system-stopped worker re-runs in the background. Long enough to let the
+        // 6h foreground budget free up; short enough to resume promptly once it does.
+        private const val BACKGROUND_RESUME_DELAY_MIN = 20L
+
+        // Max times the worker re-tries when the foreground start is refused before it parks the
+        // batch instead of looping. Stops a job that can never start a foreground service (denied
+        // at cold start) from re-running every launch and jamming splash.
+        private const val MAX_FOREGROUND_START_RETRIES = 3
 
         private val _sharedQueue = MutableStateFlow<List<Batch>>(emptyList())
         val sharedQueue = _sharedQueue.asStateFlow()
@@ -1246,6 +1314,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             fetchChapters = fetchChapters,
             preferredSourceId = preferredSourceId,
             excludedHosts = excludedHosts,
+            interrupted = interrupted,
         )
 
         private fun MassImportStore.PersistedMeta.toBatch(urls: List<String>): Batch {
@@ -1269,6 +1338,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 errorMessages = errorMessages,
                 preferredSourceId = preferredSourceId,
                 excludedHosts = excludedHosts,
+                interrupted = interrupted,
             )
         }
 
@@ -1316,6 +1386,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
             val persisted = MassImportStore.loadAll(context)
 
+            // IDs of restored, unfinished batches whose live WorkManager entry must be cancelled so
+            // it cannot resume on its own during this cold start.
+            val toCancel = mutableSetOf<String>()
+
             _sharedQueue.update { current ->
                 val existingIds = current.map { it.id }.toMutableSet()
                 val additions = mutableListOf<Batch>()
@@ -1325,17 +1399,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     // Preview only; the full list could be millions of lines per batch.
                     val urls = MassImportStore.loadUrlsPreview(context, meta.id, URL_PREVIEW_LIMIT)
                     var batch = meta.toBatch(urls)
-                    val wmState = wmStateById[meta.id]
-                    val wmActive = wmState == WorkInfo.State.RUNNING ||
-                        wmState == WorkInfo.State.ENQUEUED ||
-                        wmState == WorkInfo.State.BLOCKED
                     val terminal = batch.status == BatchStatus.Completed || batch.status == BatchStatus.Cancelled
-                    if (!terminal && !wmActive) {
-                        // Worker died with no live WorkManager entry: done if all URLs finished,
-                        // otherwise Paused so resumeBatch() can re-enqueue a fresh worker.
+                    if (!terminal) {
+                        // Never auto-resume on app start: an unfinished batch comes back Paused so
+                        // the user resumes it explicitly. interrupted = true marks it resumable
+                        // (system stop, not a user pause) without re-enqueueing a worker here.
                         val finishedAll = batch.total > 0 && batch.progress >= batch.total
+                        if (!finishedAll) toCancel += meta.id
                         batch = batch.copy(
                             status = if (finishedAll) BatchStatus.Completed else BatchStatus.Paused,
+                            interrupted = if (finishedAll) batch.interrupted else true,
                         )
                     }
                     additions += batch
@@ -1350,19 +1423,29 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     ) {
                         continue
                     }
+                    // Live worker with no persisted meta: park it Paused too and cancel it.
+                    toCancel += id
                     additions += Batch(
                         id = id,
                         urls = emptyList(),
                         categoryId = 0L,
                         addToLibrary = true,
                         fetchChapters = false,
-                        status = if (state == WorkInfo.State.RUNNING) BatchStatus.Running else BatchStatus.Pending,
+                        status = BatchStatus.Paused,
+                        interrupted = true,
                     )
                     existingIds += id
                 }
 
                 current + additions
             }
+
+            // Stop any worker WorkManager rescheduled after process death. doWork bails on a Paused
+            // status, but cancelling removes the WorkSpec so it can't fire during splash at all.
+            for (id in toCancel) {
+                context.workManager.cancelUniqueWork("${TAG}_$id")
+            }
+            toCancel.forEach { persistMeta(context, it, force = true) }
         }
 
         fun isRunning(context: Context): Boolean {
@@ -1375,11 +1458,22 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             batchId: String,
             payload: List<Pair<String, Any?>>,
             policy: ExistingWorkPolicy = ExistingWorkPolicy.KEEP,
+            initialDelayMinutes: Long = 0,
         ) {
             val workRequest = OneTimeWorkRequestBuilder<MassImportJob>()
                 .addTag(TAG)
                 .addTag("batch_$batchId")
-                .setExpedited(androidx.work.OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                // Deliberately NOT expedited: an expedited job runs as an exempted foreground job
+                // immediately, and WorkManager persists that flag. After a process kill the system
+                // re-runs it during the next cold start, where the SystemJobService bind times out
+                // under splash contention and JobScheduler flags the app buggy ("Exempted app
+                // considered buggy"). Normal deferrable work still promotes to foreground via
+                // setForeground() inside doWork (same as the downloader) without the boot-time
+                // exempted scheduling.
+                // Foreground-budget exhaustion returns Result.retry(); back off so the worker
+                // periodically re-attempts and auto-resumes once the rolling 24h window frees.
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 15, TimeUnit.MINUTES)
+                .apply { if (initialDelayMinutes > 0) setInitialDelay(initialDelayMinutes, TimeUnit.MINUTES) }
                 .setInputData(workDataOf(*payload.toTypedArray()))
                 .build()
             context.workManager.enqueueUniqueWork(
@@ -1654,7 +1748,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             _sharedQueue.update { list ->
                 list.map {
                     if (it.id == batchId && (it.status == BatchStatus.Pending || it.status == BatchStatus.Running)) {
-                        it.copy(status = BatchStatus.Paused)
+                        // User pause: clear interrupted so it is NOT auto-resumed on app start.
+                        it.copy(status = BatchStatus.Paused, interrupted = false)
                     } else {
                         it
                     }
@@ -1666,36 +1761,61 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             context.workManager.cancelUniqueWork("${TAG}_$batchId")
         }
 
-        fun resumeBatch(context: Context, batchId: String) {
+        fun resumeBatch(context: Context, batchId: String, initialDelayMinutes: Long = 0) {
+            var wasPaused = false
             _sharedQueue.update { list ->
                 list.map {
                     if (it.id == batchId && it.status == BatchStatus.Paused) {
-                        it.copy(status = BatchStatus.Running)
+                        wasPaused = true
+                        it.copy(status = BatchStatus.Running, interrupted = false)
                     } else {
                         it
                     }
                 }
             }
-            persistMeta(context, batchId, force = true)
-            // After a process restart (or a paused-cancelled worker) there is nothing executing;
-            // flipping the status alone would leave the batch "Running" forever.
-            reenqueueIfNoWorker(context, batchId)
+            // Resume must also recover a batch that already reads Running but has no worker actually
+            // executing: a background-resume worker lost to process death, or an abortResume race,
+            // leaves the status Running with nothing running. The old "only act on Paused" guard
+            // made Resume a silent no-op in that state ("resume sometimes does nothing").
+            val status = _sharedQueue.value.find { it.id == batchId }?.status ?: return
+            if (status != BatchStatus.Running) return
+            if (wasPaused) persistMeta(context, batchId, force = true)
+            // wasPaused (Paused -> Running just now): pause cancelled the worker, but WorkManager
+            // reports the cancellation asynchronously, so a stale entry can still read RUNNING for a
+            // moment; force a fresh worker (REPLACE swaps any zombie). Already-Running recovery:
+            // require no active worker so we DON'T cancel a genuinely live worker (REPLACE would make
+            // it reschedule itself, looping) — enqueue only when nothing is actually executing.
+            reenqueueIfNoWorker(
+                context,
+                batchId,
+                initialDelayMinutes = initialDelayMinutes,
+                requireNoActiveWorker = !wasPaused,
+            )
         }
 
         // Enqueue a fresh worker for an existing batch, reconstructing input from the persisted
-        // store, unless a worker is already running/enqueued for it.
-        private fun reenqueueIfNoWorker(context: Context, batchId: String) {
+        // store, unless a worker is already running/enqueued for it. initialDelayMinutes > 0 lets
+        // a dying worker schedule its own background resume; requireNoActiveWorker = false skips
+        // the active-worker guard (the caller IS the soon-dead worker).
+        private fun reenqueueIfNoWorker(
+            context: Context,
+            batchId: String,
+            initialDelayMinutes: Long = 0,
+            requireNoActiveWorker: Boolean = true,
+        ) {
             if (batchId.isEmpty()) return
             val appContext = context.applicationContext
             persistScope.launch {
-                val active = runCatching {
-                    appContext.workManager.getWorkInfosByTag("batch_$batchId").get()
-                }.getOrDefault(emptyList()).any {
-                    it.state == WorkInfo.State.RUNNING ||
-                        it.state == WorkInfo.State.ENQUEUED ||
-                        it.state == WorkInfo.State.BLOCKED
+                if (requireNoActiveWorker) {
+                    val active = runCatching {
+                        appContext.workManager.getWorkInfosByTag("batch_$batchId").get()
+                    }.getOrDefault(emptyList()).any {
+                        it.state == WorkInfo.State.RUNNING ||
+                            it.state == WorkInfo.State.ENQUEUED ||
+                            it.state == WorkInfo.State.BLOCKED
+                    }
+                    if (active) return@launch
                 }
-                if (active) return@launch
 
                 // Resume already flipped the status to Running; if we can't actually start a
                 // worker, revert so the batch doesn't sit "Running" with nothing executing.
@@ -1760,7 +1880,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 batch.preferredSourceId?.let { payload += KEY_PREFERRED_SOURCE_ID to it }
 
                 // REPLACE: any stale/zombie entry for this batch is swapped for a worker that runs now.
-                enqueueBatchWorker(appContext, batchId, payload, ExistingWorkPolicy.REPLACE)
+                enqueueBatchWorker(appContext, batchId, payload, ExistingWorkPolicy.REPLACE, initialDelayMinutes)
             }
         }
 
@@ -1771,7 +1891,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             _sharedQueue.update { list ->
                 list.map {
                     if (it.status == BatchStatus.Pending || it.status == BatchStatus.Running) {
-                        it.copy(status = BatchStatus.Paused)
+                        // User pause: clear interrupted so it is NOT auto-resumed on app start.
+                        it.copy(status = BatchStatus.Paused, interrupted = false)
                     } else {
                         it
                     }
@@ -1785,19 +1906,28 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
 
         fun resumeAll(context: Context) {
-            val affected = _sharedQueue.value.filter { it.status == BatchStatus.Paused }.map { it.id }
+            // Paused batches flip to Running and force a fresh worker. Batches already reading
+            // Running but with no live worker (lost background-resume / abort race) are recovered
+            // too, but only if nothing is actually executing — otherwise we'd cancel a live worker.
+            val pausedIds = _sharedQueue.value.filter { it.status == BatchStatus.Paused }.map { it.id }
+            val runningIds = _sharedQueue.value.filter { it.status == BatchStatus.Running }.map { it.id }
             _sharedQueue.update { list ->
                 list.map {
                     if (it.status == BatchStatus.Paused) {
-                        it.copy(status = BatchStatus.Running)
+                        it.copy(status = BatchStatus.Running, interrupted = false)
                     } else {
                         it
                     }
                 }
             }
-            affected.forEach {
+            pausedIds.forEach {
                 persistMeta(context, it, force = true)
-                reenqueueIfNoWorker(context, it)
+                // See resumeBatch: pauseAll's worker cancellations report asynchronously, so force
+                // a fresh worker instead of skipping on a stale "active" reading.
+                reenqueueIfNoWorker(context, it, requireNoActiveWorker = false)
+            }
+            runningIds.forEach {
+                reenqueueIfNoWorker(context, it, requireNoActiveWorker = true)
             }
         }
 
@@ -1885,10 +2015,53 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 val failed = getErroredUrls(appContext, batchId)
                     .map { it.trim() }
                     .filter { it.isNotEmpty() }
-                if (failed.isEmpty()) return@launch
-                start(
+
+                // A cancelled batch never reached every URL, so re-queue the errored URLs AND the
+                // unprocessed tail — not just the errors. A completed batch walked the whole list,
+                // so only its errors are retried.
+                val includeRemaining = batch.total > 0 && batch.progress < batch.total
+                if (failed.isEmpty() && !includeRemaining) return@launch
+
+                // Stream errors + tail into a temp file so a multi-million-URL remainder never
+                // materializes in memory; startFromFile streams it to the store and enqueues.
+                val tmp = File(appContext.cacheDir, "mass_import_retry_${java.util.UUID.randomUUID()}.txt")
+                var wrote = 0
+                val ok = runCatching {
+                    tmp.bufferedWriter().use { w ->
+                        for (u in failed) {
+                            w.write(u)
+                            w.newLine()
+                            wrote++
+                        }
+                        if (includeRemaining) {
+                            // Conservative offset (matches resume): processing is out of order, so
+                            // re-do the overlap rather than risk dropping an unfinished URL. URLs
+                            // already imported skip instantly on the re-run.
+                            val offset = (batch.progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
+                            MassImportStore.openUrlsReader(appContext, batchId)?.use { reader ->
+                                var idx = 0
+                                reader.lineSequence().forEach { line ->
+                                    val t = line.trim()
+                                    if (t.isNotEmpty()) {
+                                        if (idx >= offset) {
+                                            w.write(t)
+                                            w.newLine()
+                                            wrote++
+                                        }
+                                        idx++
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }.isSuccess
+                if (!ok || wrote == 0) {
+                    runCatching { tmp.delete() }
+                    return@launch
+                }
+                startFromFile(
                     context = appContext,
-                    urls = failed,
+                    urlsFile = tmp,
                     categoryId = batch.categoryId,
                     addToLibrary = batch.addToLibrary,
                     fetchDetails = batch.fetchDetails,
