@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Looper
+import android.webkit.WebSettings
 import android.webkit.WebView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -94,9 +95,26 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
         }
 
         // Avoid potential crashes
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        val isMainProcess = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             val process = getProcessName()
             if (packageName != process) WebView.setDataDirectorySuffix(process)
+            packageName == process
+        } else {
+            true
+        }
+
+        // Warm up the WebView default user agent on the main (UI) thread before any source loads.
+        // Some extensions call WebSettings.getDefaultUserAgent() while constructing their sources on
+        // a background thread. Off the UI thread that call must wait for the UI thread to run
+        // Chromium startup; if the UI thread is simultaneously blocked building the source graph
+        // (Injekt lazy lock), the two deadlock and freeze the splash. Caching the UA here makes the
+        // later background calls return instantly without needing the UI thread.
+        if (isMainProcess) {
+            try {
+                WebSettings.getDefaultUserAgent(this)
+            } catch (e: Throwable) {
+                logcat(LogPriority.ERROR, e) { "Failed to warm up WebView user agent" }
+            }
         }
 
         Injekt.importModule(PreferenceModule(this))
