@@ -102,6 +102,7 @@ class NovelExtensionsScreenModel(
                 // Respect language filter for JS plugins (same as KT extensions)
                 val enabledLanguages = preferences.enabledLanguages.get()
 
+                var updatesCount = 0
                 buildMap {
 
                     // Build extensions from available plugins
@@ -173,6 +174,7 @@ class NovelExtensionsScreenModel(
 
                     val updates = (_updates.filter { it.isNovel } + jsUpdates)
                         .filter(queryFilter(searchQuery)).map(extensionMapper(downloads))
+                    updatesCount = updates.size
                     if (updates.isNotEmpty()) {
                         put(ExtensionUiModel.Header.Resource(MR.strings.ext_updates_pending), updates)
                     }
@@ -204,23 +206,20 @@ class NovelExtensionsScreenModel(
                     if (languagesWithExtensions.isNotEmpty()) {
                         putAll(languagesWithExtensions)
                     }
-                }
+                } to updatesCount
             }
-                .collectLatest {
+                .collectLatest { (items, updates) ->
                     mutableState.update { state ->
                         state.copy(
                             isLoading = false,
-                            items = it,
+                            items = items,
+                            updates = updates,
                         )
                     }
                 }
         }
 
         screenModelScope.launchIO { findAvailableExtensions() }
-
-        preferences.extensionUpdatesCount.changes()
-            .onEach { mutableState.update { state -> state.copy(updates = it) } }
-            .launchIn(screenModelScope)
 
         basePreferences.extensionInstaller.changes()
             .onEach { mutableState.update { state -> state.copy(installer = it) } }
