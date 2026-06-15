@@ -259,6 +259,16 @@ class DownloadQueueScreenModel(
         downloadManager.pauseDownloads()
     }
 
+    val pausedNovelMangaIds = downloadManager.pausedNovelMangaIds
+
+    fun pauseNovelGroup(mangaId: Long) {
+        downloadManager.pauseNovelGroup(mangaId)
+    }
+
+    fun resumeNovelGroup(mangaId: Long) {
+        downloadManager.resumeNovelGroup(mangaId)
+    }
+
     fun clearQueue() {
         downloadManager.clearQueue()
     }

@@ -467,6 +467,7 @@
     <string name="novel_downloads_failed_chapters">%d failed</string>
     <string name="novel_downloads_copy_error">Copy error details</string>
     <string name="novel_downloads_more_errors">+%d more</string>
+    <string name="novel_downloads_show_less">Show less</string>
 
     <!-- JS Plugins Tab -->
     <string name="js_plugin_manage_repos">Manage Repositories</string>

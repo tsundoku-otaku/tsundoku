@@ -108,6 +108,13 @@ class Downloader(
     val queueState = _queueState.asStateFlow()
 
     /**
+     * Novel manga ids whose downloads are individually paused, independent of the global queue
+     * state. Downloads of these groups are excluded from the active set while the queue runs.
+     */
+    private val _pausedNovelMangaIds = MutableStateFlow<Set<Long>>(emptySet())
+    val pausedNovelMangaIds = _pausedNovelMangaIds.asStateFlow()
+
+    /**
      * Notifier for the downloader state and progress.
      */
     private val notifier by lazy { DownloadNotifier(context) }
@@ -215,6 +222,27 @@ class Downloader(
     }
 
     /**
+     * Pauses downloads for a single novel group without affecting the rest of the queue.
+     */
+    fun pauseNovelGroup(mangaId: Long) {
+        _pausedNovelMangaIds.update { it + mangaId }
+        // Drop any in-flight download of this group back to QUEUE so it stops showing as active.
+        queueState.value
+            .filter { it.mangaId == mangaId && it.status == Download.State.DOWNLOADING }
+            .forEach { it.status = Download.State.QUEUE }
+    }
+
+    /**
+     * Resumes a previously paused novel group, starting the downloader if it isn't running.
+     */
+    fun resumeNovelGroup(mangaId: Long) {
+        _pausedNovelMangaIds.update { it - mangaId }
+        if (!isRunning && !isPaused) {
+            DownloadJob.start(context)
+        }
+    }
+
+    /**
      * Prepares the subscriptions to start downloading.
      */
     private fun launchDownloaderJob() {
@@ -225,7 +253,11 @@ class Downloader(
                 queueState,
                 downloadPreferences.parallelSourceLimit.changes(),
                 novelDownloadPreferences.parallelNovelDownloads().changes(),
-            ) { a, b, c -> Triple(a, b, c) }.transformLatest { (queue, parallelCount, parallelNovelCount) ->
+                // Re-evaluate the active set whenever a group is paused/resumed.
+                _pausedNovelMangaIds,
+            ) { queue, parallelCount, parallelNovelCount, _ ->
+                Triple(queue, parallelCount, parallelNovelCount)
+            }.transformLatest { (queue, parallelCount, parallelNovelCount) ->
                 while (true) {
                     val maxMangaActiveSources = parallelCount.coerceAtLeast(1)
                     val maxNovelActiveManga = parallelNovelCount.coerceAtLeast(1)
@@ -241,6 +273,7 @@ class Downloader(
                             if (download.status.value > Download.State.DOWNLOADING.value) continue
 
                             if (download.source.isNovelSource()) {
+                                if (download.mangaId in _pausedNovelMangaIds.value) continue
                                 if (novelActiveCount >= maxNovelActiveManga) continue
                                 if (usedNovelMangaIds.add(download.mangaId)) {
                                     add(download)
@@ -474,9 +507,9 @@ class Downloader(
                         }
                     }
                     DownloadJob.start(context)
-                } else if (!autoStart && !isRunning && novelDownloadPreferences.resumeQueueOnNewChapters().get()) {
-                    // Resume paused queue when new chapters are added, if preference enabled
-                    logcat(LogPriority.INFO) { "Resuming download queue: new chapters added while paused" }
+                } else if (!isRunning && novelDownloadPreferences.resumeQueueOnNewChapters().get()) {
+                    // Resume paused/stopped queue when new chapters are added, if preference enabled.
+                    logcat(LogPriority.INFO) { "Resuming download queue: new chapters added while not running" }
                     DownloadJob.start(context)
                 }
             }
