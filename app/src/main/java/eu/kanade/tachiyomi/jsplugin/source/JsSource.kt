@@ -95,6 +95,9 @@ class JsSource(
         private const val INSTANCE_TIMEOUT_MS = 60_000L // 1 minute timeout
         private const val BROWSE_PROBE_TTL_MS = 60_000L
 
+        // Sentinel handed to plugin.resolveUrl to discover its base/prefix join shape.
+        private const val PATH_PROBE_TOKEN = "__tsundoku_path_probe__"
+
         private val HTML_TAG_REGEX = Regex(
             "<(?:p|div|br|span|h[1-6]|ul|ol|li|a|img|table|blockquote|strong|em|b|i|code)\\b",
             RegexOption.IGNORE_CASE,
@@ -610,7 +613,7 @@ class JsSource(
                 return@withContext cached.first
             }
 
-            val path = escapeJsString(normalizePluginPath(manga.url))
+            val path = escapeJsString(resolvePluginPath(manga.url))
             val result = parseNovelCached(manga.url)
             val chapters = parseChapterList(result).toMutableList()
 
@@ -806,13 +809,48 @@ class JsSource(
         }
     }
 
+    // Whether the plugin's URL join (resolveUrl) ends with a slash. Probed once via a sentinel.
+    // Plugins that build URLs from a trailing-slash `site` want the path WITHOUT a leading slash;
+    // plugins that use a prefix without a trailing slash need the
+    // leading slash kept.
+    @Volatile private var resolveUrlPrefixProbe: String? = null
+    @Volatile private var resolveUrlProbed = false
+
+    private suspend fun pluginPrefixEndsWithSlash(): Boolean? {
+        if (resolveUrlProbed) return resolveUrlPrefixProbe?.endsWith("/")
+        val prefix = runCatching {
+            if (executePluginMethod("typeof plugin.resolveUrl === 'function'") != "true") return@runCatching null
+            val raw = executePluginMethod("plugin.resolveUrl('$PATH_PROBE_TOKEN')")
+            val decoded = decodeJsonStringIfQuoted(raw)
+            if (decoded.endsWith(PATH_PROBE_TOKEN)) decoded.removeSuffix(PATH_PROBE_TOKEN) else null
+        }.getOrNull()
+        resolveUrlPrefixProbe = prefix
+        resolveUrlProbed = true
+        return prefix?.endsWith("/")
+    }
+
+    /**
+     * Path passed to parseNovel/parseChapter/parsePage, with its leading slash reconciled to the
+     * plugin's URL-join convention (see [pluginPrefixEndsWithSlash]). Falls back to the legacy
+     * leading-slash strip when the plugin exposes no usable resolveUrl.
+     */
+    private suspend fun resolvePluginPath(value: String): String {
+        val base = normalizeDoubleSlashes(value.trim())
+        if (base.startsWith("http://") || base.startsWith("https://")) return base
+        return when (pluginPrefixEndsWithSlash()) {
+            true -> base.removePrefix("/")
+            false -> if (base.startsWith("/")) base else "/$base"
+            null -> base.removePrefix("/")
+        }
+    }
+
     /** Escape a value for embedding in a single-quoted JS string literal. */
     private fun escapeJsString(value: String): String =
         value.replace("\\", "\\\\").replace("'", "\\'").replace("\"", "\\\"")
 
     /** plugin.parseNovel with raw-result caching and in-flight dedup. */
     private suspend fun parseNovelCached(mangaUrl: String): String {
-        val path = escapeJsString(normalizePluginPath(mangaUrl))
+        val path = escapeJsString(resolvePluginPath(mangaUrl))
         return parseNovelMutex.withLock {
             val now = System.currentTimeMillis()
             parseNovelCache[path]?.takeIf { (now - it.second) < cacheTimeout }?.let { return@withLock it.first }
@@ -825,7 +863,7 @@ class JsSource(
 
     /** plugin.parseChapter with raw-result caching and in-flight dedup. */
     private suspend fun parseChapterCached(chapterUrl: String): String {
-        val path = escapeJsString(normalizePluginPath(chapterUrl))
+        val path = escapeJsString(resolvePluginPath(chapterUrl))
         return chapterTextMutex.withLock {
             val now = System.currentTimeMillis()
             chapterTextCache[path]?.takeIf { (now - it.second) < cacheTimeout }?.let { return@withLock it.first }
