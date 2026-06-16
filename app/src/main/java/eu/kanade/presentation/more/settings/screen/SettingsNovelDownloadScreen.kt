@@ -49,6 +49,7 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.random.Random
+import eu.kanade.tachiyomi.source.CatalogueSource
 
 object SettingsNovelDownloadScreen : SearchableSettings {
 
@@ -516,7 +517,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     ) {
         val sourceManager = remember { Injekt.get<SourceManager>() }
         val novelSources = remember {
-            sourceManager.getCatalogueSources()
+            sourceManager.getAll().filterIsInstance<CatalogueSource>()
                 .filter { it.isNovelSource() }
         }
 

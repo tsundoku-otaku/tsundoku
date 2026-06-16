@@ -48,6 +48,8 @@ import tachiyomi.presentation.core.util.plus
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import eu.kanade.tachiyomi.source.CatalogueSource
+import kotlinx.coroutines.flow.map
 
 object SourcePriorityScreen : Screen {
 
@@ -265,7 +267,7 @@ class SourcePriorityScreenModel(
 
     private fun loadSourceItems() {
         screenModelScope.launch {
-            sourceManager.catalogueSources.collect { catalogueSources ->
+            sourceManager.sources.map { it.filterIsInstance<CatalogueSource>() }.collect { catalogueSources ->
                 val items = catalogueSources
                     .filter { !it.isLocal() }
                     .map { source ->

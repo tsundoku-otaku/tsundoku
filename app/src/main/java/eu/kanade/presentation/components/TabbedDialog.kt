@@ -48,7 +48,7 @@ sealed class TabTitle {
 }
 
 fun String.toTabTitle() = TabTitle.Text(this)
-fun ImmutableList<String>.toTabTitles() = map { it.toTabTitle() }.toImmutableList()
+fun List<String>.toTabTitles() = map { it.toTabTitle() }.toImmutableList()
 
 @Composable
 fun TabbedDialog(

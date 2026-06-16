@@ -146,13 +146,13 @@ class NovelExtensionReposScreen(
                         }
                         items(
                             items = successState.kotlinRepos.toList(),
-                            key = { "kotlin-${it.baseUrl}" },
+                            key = { "kotlin-${it.indexUrl}" },
                         ) { repo ->
                             KotlinRepoListItem(
                                 repo = repo,
-                                enabled = repo.baseUrl !in successState.disabledKotlinRepos,
-                                onSetEnabled = { enabled -> screenModel.setKotlinRepoEnabled(repo.baseUrl, enabled) },
-                                onDelete = { screenModel.showDialog(NovelRepoDialog.DeleteKotlin(repo.baseUrl)) },
+                                enabled = repo.indexUrl !in successState.disabledKotlinRepos,
+                                onSetEnabled = { enabled -> screenModel.setKotlinRepoEnabled(repo.indexUrl, enabled) },
+                                onDelete = { screenModel.showDialog(NovelRepoDialog.DeleteKotlin(repo.indexUrl)) },
                             )
                         }
                     }
@@ -196,16 +196,8 @@ class NovelExtensionReposScreen(
                 is NovelRepoDialog.DeleteKotlin -> {
                     NovelRepoDeleteDialog(
                         onDismissRequest = screenModel::dismissDialog,
-                        onDelete = { screenModel.deleteKotlinRepo(dialog.baseUrl) },
-                        repoName = dialog.baseUrl,
-                    )
-                }
-                is NovelRepoDialog.KotlinConflict -> {
-                    KotlinRepoConflictDialog(
-                        onDismissRequest = screenModel::dismissDialog,
-                        onReplace = { screenModel.replaceKotlinRepo(dialog.newRepo) },
-                        oldRepo = dialog.oldRepo,
-                        newRepo = dialog.newRepo,
+                        onDelete = { screenModel.deleteKotlinRepo(dialog.indexUrl) },
+                        repoName = dialog.indexUrl,
                     )
                 }
             }
@@ -370,7 +362,7 @@ private fun NovelRepoDeleteDialog(
 
 @Composable
 private fun KotlinRepoListItem(
-    repo: mihon.domain.extensionrepo.model.ExtensionRepo,
+    repo: mihon.domain.extension.model.ExtensionStore,
     enabled: Boolean,
     onSetEnabled: (Boolean) -> Unit,
     onDelete: () -> Unit,
@@ -400,7 +392,7 @@ private fun KotlinRepoListItem(
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = repo.baseUrl,
+                    text = repo.indexUrl,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -413,7 +405,7 @@ private fun KotlinRepoListItem(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.baseUrl))
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.indexUrl))
                 context.startActivity(intent)
             }) {
                 Icon(
@@ -424,7 +416,7 @@ private fun KotlinRepoListItem(
 
             IconButton(
                 onClick = {
-                    context.copyToClipboard(repo.baseUrl, repo.baseUrl)
+                    context.copyToClipboard(repo.indexUrl, repo.indexUrl)
                 },
             ) {
                 Icon(
@@ -481,35 +473,6 @@ private fun KotlinRepoCreateDialog(
                 enabled = url.isNotBlank(),
             ) {
                 Text(text = stringResource(MR.strings.action_add))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismissRequest) {
-                Text(text = stringResource(MR.strings.action_cancel))
-            }
-        },
-    )
-}
-
-@Composable
-private fun KotlinRepoConflictDialog(
-    onDismissRequest: () -> Unit,
-    onReplace: () -> Unit,
-    oldRepo: mihon.domain.extensionrepo.model.ExtensionRepo,
-    newRepo: mihon.domain.extensionrepo.model.ExtensionRepo,
-) {
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = { Text(text = "Repository conflict") },
-        text = {
-            Text(
-                text = "A repository with the same signing key already exists (${oldRepo.name}). " +
-                    "Replace it with ${newRepo.name}?",
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onReplace) {
-                Text(text = "Replace")
             }
         },
         dismissButton = {

@@ -48,7 +48,6 @@ import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.browse.migration.search.MigrateSearchScreen
 import eu.kanade.tachiyomi.util.system.LocaleHelper
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.update
 import mihon.feature.migration.list.MigrationListScreen
 import sh.calvin.reorderable.ReorderableCollectionItemScope
@@ -117,7 +116,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                     scrollBehavior = it,
                     actions = {
                         AppBarActions(
-                            persistentListOf(
+                            listOf(
                                 AppBar.Action(
                                     title = stringResource(MR.strings.migrationConfigScreen_selectAllLabel),
                                     icon = Icons.Outlined.SelectAll,
@@ -344,7 +343,7 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
             val includedSources = sourcePreferences.migrationSources.get()
             val disabledSources = sourcePreferences.disabledSources.get()
                 .mapNotNull { it.toLongOrNull() }
-            val sources = sourceManager.getCatalogueSources()
+            val sources = sourceManager.getAll()
                 .asSequence()
                 .filter { it.lang in languages }
                 .map {

@@ -67,7 +67,7 @@ class MassImport(
     }
 
     private fun getAllSources(): List<CatalogueSource> {
-        return sourceManager.getCatalogueSources().filter { it is HttpSource || it is JsSource }
+        return sourceManager.getAll().filterIsInstance<CatalogueSource>().filter { it is HttpSource || it is JsSource }
     }
 
     private fun findMatchingSource(url: String, sources: List<CatalogueSource>): CatalogueSource? {

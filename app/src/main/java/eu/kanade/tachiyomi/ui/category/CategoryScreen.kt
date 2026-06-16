@@ -15,9 +15,9 @@ import eu.kanade.presentation.category.components.CategoryDeleteDialog
 import eu.kanade.presentation.category.components.CategoryRenameDialog
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.util.system.toast
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.flow.collectLatest
 import tachiyomi.presentation.core.screens.LoadingScreen
+import kotlinx.collections.immutable.toImmutableList
 
 class CategoryScreen : Screen() {
 
@@ -58,7 +58,7 @@ class CategoryScreen : Screen() {
                 CategoryRenameDialog(
                     onDismissRequest = screenModel::dismissDialog,
                     onRename = { screenModel.renameCategory(dialog.category, it) },
-                    categories = successState.categories.fastMap { it.name }.toImmutableList(),
+                    categories = successState.categories.fastMap { it.name },
                     category = dialog.category.name,
                 )
             }

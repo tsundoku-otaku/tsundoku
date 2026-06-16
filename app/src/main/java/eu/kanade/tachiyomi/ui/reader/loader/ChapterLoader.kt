@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.CoroutineScope
 import mihon.core.archive.archiveReader
 import mihon.core.archive.epubReader
 import tachiyomi.core.common.i18n.stringResource
@@ -28,6 +29,7 @@ import uy.kohesive.injekt.api.get
  */
 class ChapterLoader(
     private val context: Context,
+    private val scope: CoroutineScope,
     private val downloadManager: DownloadManager,
     private val downloadProvider: DownloadProvider,
     private val manga: Manga,
@@ -114,7 +116,7 @@ class ChapterLoader(
             source is LocalNovelSource -> LocalNovelPageLoader(chapter, source)
             // HttpSource novels (extensions + CustomNovelSource) return a no-fetch page list whose
             // URL their own fetchPageText consumes, so HttpPageLoader loads them (manga too).
-            source is HttpSource -> HttpPageLoader(chapter, source)
+            source is HttpSource -> HttpPageLoader(chapter, source, scope)
             // Non-HttpSource novels (JS plugins, etc.). Exclude StubSource: a stub carries the
             // persisted isNovelSource flag but no fetchPageText impl, so it must fall through to
             // the resolution branch below (e.g. after process death before sourceManager inits).
@@ -130,7 +132,7 @@ class ChapterLoader(
                 if (resolvedSource != null && resolvedSource !is StubSource) {
                     logcat { "ChapterLoader: StubSource ${source.id} resolved → ${resolvedSource.name}" }
                     return when {
-                        resolvedSource is HttpSource -> HttpPageLoader(chapter, resolvedSource)
+                        resolvedSource is HttpSource -> HttpPageLoader(chapter, resolvedSource, scope)
                         resolvedSource.isNovelSource -> LocalNovelPageLoader(chapter, resolvedSource)
                         else -> error(context.stringResource(MR.strings.loader_not_implemented_error))
                     }
@@ -151,7 +153,7 @@ class ChapterLoader(
                     LocalNovelPageLoader(chapter, jsSource)
                 } else if (jsSource is HttpSource) {
                     logcat { "ChapterLoader: StubSource ${source.id} resolved via JsPluginManager → ${jsSource.name}" }
-                    HttpPageLoader(chapter, jsSource)
+                    HttpPageLoader(chapter, jsSource, scope)
                 } else {
                     error(context.stringResource(MR.strings.source_not_installed, source.toString()))
                 }

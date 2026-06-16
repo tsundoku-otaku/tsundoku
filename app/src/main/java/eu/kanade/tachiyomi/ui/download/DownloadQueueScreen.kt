@@ -457,7 +457,7 @@ class DownloadQueueScreen(private val initialTab: Int = 0) : Screen() {
                             }
 
                             AppBarActions(
-                                persistentListOf(
+                                listOf(
                                     AppBar.Action(
                                         title = stringResource(MR.strings.action_filter),
                                         icon = Icons.Outlined.FilterList,

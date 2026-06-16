@@ -53,7 +53,7 @@ class MigrateMangaScreenModel(
         get() = sourceManager.get(sourceId)?.isNovelSource() == true
 
     fun getAvailableSources(filterNovel: Boolean): List<CatalogueSource> {
-        return sourceManager.getCatalogueSources()
+        return sourceManager.getAll().filterIsInstance<CatalogueSource>()
             .filter { it.id != sourceId && it.isNovelSource() == filterNovel }
             .sortedBy { it.name }
     }
@@ -75,10 +75,9 @@ class MigrateMangaScreenModel(
                 .map { manga ->
                     manga
                         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
-                        .toImmutableList()
                 }
                 .collectLatest { list ->
-                    mutableState.update { it.copy(titleList = list) }
+                    mutableState.update { it.copy(titleList = list.toImmutableList()) }
                 }
         }
     }
@@ -207,8 +206,8 @@ class MigrateMangaScreenModel(
         private val titleList: ImmutableList<Manga>? = null,
     ) {
 
-        val titles: ImmutableList<Manga>
-            get() = titleList ?: persistentListOf()
+        val titles: List<Manga>
+            get() = titleList ?: listOf()
 
         val isLoading: Boolean
             get() = source == null || titleList == null

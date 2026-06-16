@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.extension.model
 
 import android.graphics.drawable.Drawable
 import eu.kanade.tachiyomi.source.Source
+import mihon.domain.extension.model.ExtensionStore
 import tachiyomi.domain.source.model.StubSource
 
 sealed class Extension {
@@ -30,7 +31,7 @@ sealed class Extension {
         val hasUpdate: Boolean = false,
         val isObsolete: Boolean = false,
         val isShared: Boolean,
-        val repoUrl: String? = null,
+        val store: ExtensionStore? = null,
     ) : Extension()
 
     data class Available(
@@ -43,9 +44,9 @@ sealed class Extension {
         override val isNsfw: Boolean,
         override val isNovel: Boolean,
         val sources: List<Source>,
-        val apkName: String,
+        val apkUrl: String,
         val iconUrl: String,
-        val repoUrl: String,
+        val store: ExtensionStore,
     ) : Extension() {
 
         data class Source(
