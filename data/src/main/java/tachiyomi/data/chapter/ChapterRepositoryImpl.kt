@@ -23,7 +23,7 @@ class ChapterRepositoryImpl(
         return try {
             database.transactionWithResult {
                 chapters.map { chapter ->
-                    database.chaptersQueries.insert(
+                    val lastInsertId = database.chaptersQueries.insertReturningId(
                         chapter.mangaId,
                         chapter.url,
                         chapter.name,
@@ -37,8 +37,7 @@ class ChapterRepositoryImpl(
                         chapter.dateUpload,
                         chapter.version,
                         chapter.memo,
-                    )
-                    val lastInsertId = database.chaptersQueries.selectLastInsertedRowId().awaitAsOne()
+                    ).awaitAsOne()
                     chapter.copy(id = lastInsertId)
                 }
             }

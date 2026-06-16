@@ -31,15 +31,17 @@ interface CatalogueSource : Source {
         filters: FilterList,
     ): MangasPage = fetchSearchManga(page, query, filters).awaitSingle()
 
-    @Suppress("DEPRECATION")
     override suspend fun getMangaUpdate(
         manga: SManga,
         chapters: List<SChapter>,
         fetchDetails: Boolean,
         fetchChapters: Boolean,
     ): SMangaUpdate = supervisorScope {
-        val asyncManga = if (fetchDetails) async { fetchMangaDetails(manga).awaitSingle() } else null
-        val asyncChapters = if (fetchChapters) async { fetchChapterList(manga).awaitSingle() } else null
+        // Delegate to the suspend getMangaDetails/getChapterList so sources that only
+        // override those (e.g. novel sources) work. The suspend defaults themselves fall
+        // back to the deprecated fetch* Observables for legacy extensions.
+        val asyncManga = if (fetchDetails) async { getMangaDetails(manga) } else null
+        val asyncChapters = if (fetchChapters) async { getChapterList(manga) } else null
         SMangaUpdate(asyncManga?.await() ?: manga, asyncChapters?.await() ?: chapters)
     }
 
