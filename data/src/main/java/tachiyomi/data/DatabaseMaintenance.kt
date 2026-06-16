@@ -15,45 +15,56 @@ class DatabaseMaintenance(
     /**
      * Reconcile the live schema with columns/tables that should exist but may be missing on DBs
      * left inconsistent by the mihon-merge migration renumbering (extension_store and the
-     * TachiyomiX `memo` columns could be skipped). Idempotent and pragma-guarded so clean and
-     * fresh DBs are untouched. Runs synchronously right after the driver is created, before any
-     * generated query references these columns.
+     * TachiyomiX `memo` columns could be skipped). Idempotent so clean and fresh DBs are untouched.
+     * Awaits each statement on the async driver and runs before any generated query references
+     * these columns.
      */
-    fun reconcileSchema() {
-        ensureColumn("mangas", "memo", "BLOB NOT NULL DEFAULT '{}'")
-        ensureColumn("chapters", "memo", "BLOB NOT NULL DEFAULT '{}'")
-        driver.execute(
-            null,
-            """
-            CREATE TABLE IF NOT EXISTS extension_store(
-                index_url TEXT NOT NULL PRIMARY KEY,
-                name TEXT NOT NULL,
-                badge_label TEXT NOT NULL,
-                signing_key TEXT NOT NULL,
-                contact_website TEXT NOT NULL,
-                contact_discord TEXT,
-                is_legacy INTEGER NOT NULL
-            )
-            """.trimIndent(),
-            0,
-            null,
-        )
+    suspend fun reconcileSchema() {
+        addColumnIfMissing("mangas", "memo", "BLOB NOT NULL DEFAULT '{}'")
+        addColumnIfMissing("chapters", "memo", "BLOB NOT NULL DEFAULT '{}'")
+        runCatching {
+            driver.execute(
+                null,
+                """
+                CREATE TABLE IF NOT EXISTS extension_store(
+                    index_url TEXT NOT NULL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    badge_label TEXT NOT NULL,
+                    signing_key TEXT NOT NULL,
+                    contact_website TEXT NOT NULL,
+                    contact_discord TEXT,
+                    is_legacy INTEGER NOT NULL
+                )
+                """.trimIndent(),
+                0,
+            ).await()
+        }
+        // Best-effort recovery: if a legacy extension_repos table survived the inconsistent
+        // migration state (its drop migration was skipped too), migrate its rows so users don't
+        // lose their configured stores. Throws and is ignored when the table no longer exists.
+        runCatching {
+            driver.execute(
+                null,
+                """
+                INSERT OR IGNORE INTO extension_store(
+                    index_url, name, badge_label, signing_key, contact_website, contact_discord, is_legacy
+                )
+                SELECT base_url || '/repo.json', name, coalesce(short_name, name),
+                    signing_key_fingerprint, website, NULL, 1
+                FROM extension_repos
+                """.trimIndent(),
+                0,
+            ).await()
+        }
     }
 
-    private fun columnExists(table: String, column: String): Boolean {
-        var exists = false
-        driver.executeQuery(null, "PRAGMA table_info($table)", { cursor ->
-            while (cursor.next().value) {
-                if (cursor.getString(1) == column) exists = true
-            }
-            QueryResult.Unit
-        }, 0, null)
-        return exists
-    }
-
-    private fun ensureColumn(table: String, column: String, definition: String) {
-        if (!columnExists(table, column)) {
-            driver.execute(null, "ALTER TABLE $table ADD COLUMN $column $definition", 0, null)
+    /**
+     * ALTER throws "duplicate column name" when the column already exists; that caught failure is
+     * the idempotency guard, avoiding an async PRAGMA table_info round-trip.
+     */
+    private suspend fun addColumnIfMissing(table: String, column: String, definition: String) {
+        runCatching {
+            driver.execute(null, "ALTER TABLE $table ADD COLUMN $column $definition", 0).await()
         }
     }
 
