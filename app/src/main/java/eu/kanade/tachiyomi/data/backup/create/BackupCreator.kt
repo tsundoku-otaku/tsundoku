@@ -18,7 +18,7 @@ import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.source.isNovelSource
-import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.collect
 import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
 import okio.buffer
@@ -144,8 +144,10 @@ class BackupCreator(
                         }
                     }
 
-                    val backupBatch = mangaBackupCreator.backupMangaStream(fullBatch, options).toList()
-                    backupBatch.forEach { m ->
+                    // Collect-and-write each manga as it's produced so only one BackupManga
+                    // (manga + its chapters + encoded bytes) is resident at a time. Materializing
+                    // the whole batch with .toList() spiked memory on very large libraries.
+                    mangaBackupCreator.backupMangaStream(fullBatch, options).collect { m ->
                         sourceIds.add(m.source)
                         val bytes = parser.encodeToByteArray(BackupManga.serializer(), m)
                         writeProtoField(gzipOut.outputStream(), 1, bytes)
