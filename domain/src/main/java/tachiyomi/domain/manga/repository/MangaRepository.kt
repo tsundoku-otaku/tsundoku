@@ -40,6 +40,9 @@ interface MangaRepository {
 
     suspend fun getFavoritesEntry(): List<Manga>
 
+    /** Keyset-paged favorites (id > afterId, ascending) so very large libraries can be streamed. */
+    suspend fun getFavoritesEntryPaged(afterId: Long, limit: Long): List<Manga>
+
     fun getFavoritesEntryBySourceId(sourceId: Long): Flow<List<Manga>>
 
     suspend fun getFavoriteSourceAndUrl(): List<Pair<Long, String>>
