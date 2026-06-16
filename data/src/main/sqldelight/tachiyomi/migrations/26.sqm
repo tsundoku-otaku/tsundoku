@@ -1,0 +1,15 @@
+import kotlin.Boolean;
+
+-- Self-heal: the extension_store creation was renumbered during the mihon merge,
+-- so some intermediate dev/test DBs reached the prior schema version without ever
+-- running it (no such table: extension_store). Recreate it idempotently. Fresh
+-- installs and DBs that already ran 24.sqm are unaffected by IF NOT EXISTS.
+CREATE TABLE IF NOT EXISTS extension_store(
+    index_url TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    badge_label TEXT NOT NULL,
+    signing_key TEXT NOT NULL,
+    contact_website TEXT NOT NULL,
+    contact_discord TEXT,
+    is_legacy INTEGER AS Boolean NOT NULL
+);
