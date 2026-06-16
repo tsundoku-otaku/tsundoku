@@ -33,12 +33,14 @@ class DatabaseMaintenance(
                     signing_key TEXT NOT NULL,
                     contact_website TEXT NOT NULL,
                     contact_discord TEXT,
-                    is_legacy INTEGER NOT NULL
+                    is_legacy INTEGER NOT NULL,
+                    is_novel INTEGER NOT NULL DEFAULT 0
                 )
                 """.trimIndent(),
                 0,
             ).await()
         }
+        addColumnIfMissing("extension_store", "is_novel", "INTEGER NOT NULL DEFAULT 0")
         // Best-effort recovery: if a legacy extension_repos table survived the inconsistent
         // migration state (its drop migration was skipped too), migrate its rows so users don't
         // lose their configured stores. Throws and is ignored when the table no longer exists.
