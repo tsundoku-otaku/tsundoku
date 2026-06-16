@@ -256,8 +256,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 This project was originally forked from Mihon, and, while we keep separate version numbers, we would like to note in our changelog when we merge from upstream, and link to their changelog to try to give appropriate credit.
 This project is greatly advantaged by building off all of their work, and their continued contributions!
 
+Merged from v0.19.9 [7a91796](https://github.com/mihonapp/mihon/commit/7a917968e3bf71c4a665e6655a550877d81ead1d)
 Merged from v0.19.7 [25d4bf5](https://github.com/mihonapp/mihon/commit/25d4bf5e2ffdcb84f6469f5e0a81108777a98e85)  
 Merged from v0.19.4 [81871a3](https://github.com/mihonapp/mihon/commit/81871a34694c8e408d907731292b7266c5b993cc)  
 Forked from Mihon v0.19.3 [7161bc2](https://github.com/mihonapp/mihon/commit/7161bc2e825bdfd66a1829f7dce42bd0570b1008)
 
-[mihon]: https://github.com/mihonapp/mihon/blob/25d4bf5e2ffdcb84f6469f5e0a81108777a98e85/CHANGELOG.md
+[mihon]: https://github.com/mihonapp/mihon/blob/7a917968e3bf71c4a665e6655a550877d81ead1d/CHANGELOG.md
