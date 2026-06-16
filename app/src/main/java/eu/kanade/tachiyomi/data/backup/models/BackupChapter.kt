@@ -81,3 +81,37 @@ val backupChapterMapper = {
         memo = MemoColumnAdapter.encode(memo),
     )
 }
+
+// Backup mapper for getChaptersByMangaIdForBackup: memo arrives as raw bytes (no JsonObject
+// decode/re-encode), so backing up a large library doesn't thrash GC parsing every chapter's memo.
+val backupChapterRawMemoMapper = {
+        url: String,
+        name: String,
+        scanlator: String?,
+        read: Boolean,
+        bookmark: Boolean,
+        lastPageRead: Long,
+        chapterNumber: Double,
+        sourceOrder: Long,
+        dateFetch: Long,
+        dateUpload: Long,
+        lastModifiedAt: Long,
+        version: Long,
+        memo: ByteArray?,
+    ->
+    BackupChapter(
+        url = url,
+        name = name,
+        chapterNumber = chapterNumber.toFloat(),
+        scanlator = scanlator,
+        read = read,
+        bookmark = bookmark,
+        lastPageRead = lastPageRead,
+        dateFetch = dateFetch,
+        dateUpload = dateUpload,
+        sourceOrder = sourceOrder,
+        lastModifiedAt = lastModifiedAt,
+        version = version,
+        memo = memo ?: JsonObjectEmptyBytes,
+    )
+}

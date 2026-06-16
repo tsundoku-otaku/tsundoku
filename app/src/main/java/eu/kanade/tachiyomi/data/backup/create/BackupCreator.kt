@@ -138,6 +138,9 @@ class BackupCreator(
                 }
                 written += filtered.size
                 onProgress?.invoke(written, approxTotal.coerceAtLeast(written))
+                // Push deflated output to disk each batch so buffered bytes don't accumulate
+                // across a very large backup.
+                gzipOut.flush()
                 kotlinx.coroutines.yield()
             }
 

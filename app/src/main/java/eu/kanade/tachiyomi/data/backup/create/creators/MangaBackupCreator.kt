@@ -3,10 +3,9 @@ package eu.kanade.tachiyomi.data.backup.create.creators
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import eu.kanade.tachiyomi.data.backup.create.BackupOptions
-import eu.kanade.tachiyomi.data.backup.models.BackupChapter
 import eu.kanade.tachiyomi.data.backup.models.BackupHistory
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
-import eu.kanade.tachiyomi.data.backup.models.backupChapterMapper
+import eu.kanade.tachiyomi.data.backup.models.backupChapterRawMemoMapper
 import eu.kanade.tachiyomi.data.backup.models.backupTrackMapper
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import kotlinx.coroutines.flow.Flow
@@ -58,25 +57,17 @@ class MangaBackupCreator(
             .awaitAsList()
 
         if (options.chapters) {
-            // Backup all the chapters
+            // Backup all the chapters. The raw-memo query returns memo as bytes (no per-chapter
+            // JSON decode/re-encode), which was the main allocation hotspot on large libraries.
             val allChapters = database.chaptersQueries
-                .getChaptersByMangaIdUnfiltered(
+                .getChaptersByMangaIdForBackup(
                     mangaId = manga.id,
-                    mapper = backupChapterMapper,
+                    mapper = backupChapterRawMemoMapper,
                 )
                 .awaitAsList()
 
             if (allChapters.isNotEmpty()) {
-                // Process chapters in smaller chunks to allow GC between them
-                val chapters = mutableListOf<BackupChapter>()
-                allChapters.chunked(500).forEach { chunk ->
-                    chapters.addAll(chunk)
-                    // Hint GC for manga with lots of chapters
-                    if (allChapters.size > 1000) {
-                        kotlinx.coroutines.yield()
-                    }
-                }
-                mangaObject.chapters = chapters
+                mangaObject.chapters = allChapters
             }
         }
 
