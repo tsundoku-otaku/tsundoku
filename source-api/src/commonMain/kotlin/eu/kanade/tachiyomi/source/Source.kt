@@ -39,8 +39,13 @@ interface Source {
 
     /**
      * Whether the source has support for latest updates.
+     *
+     * Defaulted (not abstract) so novel extensions compiled against the pre-TachiyomiX-1.6
+     * source-api, where this lived on CatalogueSource, don't crash with AbstractMethodError.
+     * Extensions that support it still override this.
      */
     val supportsLatest: Boolean
+        get() = false
 
     /**
      * Returns the list of filters for the source.
