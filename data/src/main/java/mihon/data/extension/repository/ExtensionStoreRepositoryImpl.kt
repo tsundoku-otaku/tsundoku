@@ -19,8 +19,8 @@ class ExtensionStoreRepositoryImpl(
     private val service: ExtensionStoreService,
     private val database: Database,
 ) : ExtensionStoreRepository {
-    override suspend fun insert(indexUrl: String): Result<Unit> {
-        return service.fetch(indexUrl).mapCatching { upsert(it) }
+    override suspend fun insert(indexUrl: String, isNovel: Boolean): Result<Unit> {
+        return service.fetch(indexUrl).mapCatching { upsert(it.copy(isNovel = isNovel)) }
     }
 
     override suspend fun insertFromPreference(indexUrl: String, name: String) {
@@ -32,6 +32,7 @@ class ExtensionStoreRepositoryImpl(
             contactWebsite = indexUrl,
             contactDiscord = null,
             isLegacy = false,
+            isNovel = false,
         )
     }
 
@@ -41,7 +42,9 @@ class ExtensionStoreRepositoryImpl(
                 service.fetch(store.index_url)
                     .mapCatching {
                         database.transaction {
-                            upsert(it)
+                            // Preserve the content-type tag across a refresh; the fetched store
+                            // doesn't carry it.
+                            upsert(it.copy(isNovel = store.is_novel))
                             if (store.index_url != it.indexUrl) {
                                 database.extension_storeQueries.delete(store.index_url)
                             }
@@ -67,6 +70,7 @@ class ExtensionStoreRepositoryImpl(
             contactWebsite = store.contact.website,
             contactDiscord = store.contact.discord,
             isLegacy = store.isLegacy,
+            isNovel = store.isNovel,
         )
     }
 
@@ -119,6 +123,7 @@ class ExtensionStoreRepositoryImpl(
         contactWebsite: String,
         contactDiscord: String?,
         isLegacy: Boolean,
+        isNovel: Boolean,
     ): ExtensionStore = ExtensionStore(
         indexUrl = indexUrl,
         name = name,
@@ -129,5 +134,6 @@ class ExtensionStoreRepositoryImpl(
             discord = contactDiscord,
         ),
         isLegacy = isLegacy,
+        isNovel = isNovel,
     )
 }

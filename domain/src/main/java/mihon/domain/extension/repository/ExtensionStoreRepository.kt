@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.Flow
 import mihon.domain.extension.model.ExtensionStore
 
 interface ExtensionStoreRepository {
-    suspend fun insert(indexUrl: String): Result<Unit>
+    suspend fun insert(indexUrl: String, isNovel: Boolean = false): Result<Unit>
 
     suspend fun insertFromPreference(indexUrl: String, name: String)
 
