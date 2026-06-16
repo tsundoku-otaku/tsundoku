@@ -35,6 +35,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.plus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
+import logcat.LogPriority
 import nl.adaptivity.xmlutil.XmlDeclMode
 import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
@@ -85,7 +86,13 @@ class AppModule(val app: Application) : InjektModule {
                         isForeignKeyConstraintsEnabled = true,
                     ),
                 )
-                    .also { sqlDriverRef = WeakReference(it) }
+                    .also { driver ->
+                        sqlDriverRef = WeakReference(driver)
+                        // Self-heal columns/tables skipped by the merge migration renumbering
+                        // (memo, extension_store) before any generated query runs against them.
+                        runCatching { DatabaseMaintenance(driver).reconcileSchema() }
+                            .onFailure { logcat(LogPriority.ERROR, it) { "Schema reconcile failed" } }
+                    }
             }
         }
         addSingletonFactory {
