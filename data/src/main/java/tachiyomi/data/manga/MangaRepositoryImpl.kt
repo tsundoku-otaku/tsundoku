@@ -415,6 +415,51 @@ class MangaRepositoryImpl(
             }.awaitAsList()
     }
 
+    override suspend fun getFavoritesEntryPaged(afterId: Long, limit: Long): List<Manga> {
+        return database.mangasQueries.getFavoritesEntryPaged(afterId, limit) {
+                    id,
+                    source,
+                    url,
+                    title,
+                    artist,
+                    author,
+                    thumbnail_url,
+                    cover_last_modified,
+                    favorite,
+                    is_novel,
+                ->
+                MangaMapper.mapManga(
+                    id = id,
+                    source = source,
+                    url = url,
+                    artist = artist,
+                    author = author,
+                    description = null,
+                    genre = null,
+                    title = title,
+                    alternativeTitles = null,
+                    status = 0,
+                    thumbnailUrl = thumbnail_url,
+                    favorite = favorite,
+                    lastUpdate = 0,
+                    nextUpdate = 0,
+                    initialized = false,
+                    viewerFlags = 0,
+                    chapterFlags = 0,
+                    coverLastModified = cover_last_modified,
+                    dateAdded = 0,
+                    updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                    calculateInterval = 0,
+                    lastModifiedAt = 0,
+                    favoriteModifiedAt = null,
+                    version = 0,
+                    isSyncing = 0,
+                    notes = "",
+                    isNovel = is_novel,
+                )
+            }.awaitAsList()
+    }
+
     override fun getFavoritesEntryBySourceId(sourceId: Long): Flow<List<Manga>> {
         return database.mangasQueries.getFavoritesEntryBySourceId(sourceId) {
                     id,
