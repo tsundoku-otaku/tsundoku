@@ -64,6 +64,12 @@ class BackupCreator(
     private val MANGA_BATCH_SIZE = 20
 
     /**
+     * How many lightweight favorite rows to pull from the DB per keyset page. Kept well above
+     * MANGA_BATCH_SIZE but small enough that a 200k library is never fully resident at once.
+     */
+    private val MANGA_PAGE_SIZE = 500L
+
+    /**
      * Maximum number of manga to hold in memory at once before flushing.
      * For very large libraries, we process in memory-bounded segments.
      */
@@ -93,31 +99,6 @@ class BackupCreator(
                 throw IllegalStateException(context.stringResource(MR.strings.create_backup_file_error))
             }
 
-            val nonFavoriteManga = if (options.readEntries) mangaRepository.getReadMangaNotInLibrary() else emptyList()
-
-            val favorites = if (options.libraryEntries) mangaRepository.getFavoritesEntry() else emptyList()
-            val allManga = favorites + nonFavoriteManga
-
-            logcat(LogPriority.INFO) { "Backup: Processing ${allManga.size} manga entries" }
-
-            // Filter by manga/novel content type based on options
-            val filteredManga = allManga.filter { manga ->
-                // Use manga.isNovel field first (reliable for stub/uninstalled sources too),
-                // then fall back to live source check for sources that haven't been migrated.
-                val isNovel = manga.isNovel || sourceManager.getOrStub(manga.source).isNovelSource()
-                if (!options.libraryEntries && manga.favorite) return@filter false
-                if (!options.readEntries && !manga.favorite) return@filter false
-
-                when {
-                    options.includeManga && options.includeNovels -> true
-                    options.includeManga && !isNovel -> true
-                    options.includeNovels && isNovel -> true
-                    else -> false
-                }
-            }
-
-            logcat(LogPriority.INFO) { "Backup: ${filteredManga.size} manga after filtering" }
-
             val backupCategories = backupCategories(options)
             val backupAppPrefs = backupAppPreferences(options)
             val backupExtensionStores = backupExtensionStores(options)
@@ -129,38 +110,56 @@ class BackupCreator(
 
             // Track source IDs as we process manga for backupSources field
             val sourceIds = mutableSetOf<Long>()
-            var batchCount = 0
-            val totalBatches = (filteredManga.size + MANGA_BATCH_SIZE - 1) / MANGA_BATCH_SIZE
+            var written = 0
+            val approxTotal = if (options.libraryEntries) mangaRepository.getFavoritesCount().toInt() else 0
 
-            try {
-                // Field 1: backupManga (repeated) - stream each batch directly to output
-                filteredManga.chunked(MANGA_BATCH_SIZE).forEach { batch ->
-                    // Fetch full details for incomplete objects (favorites from getFavoritesEntry)
-                    val fullBatch = batch.map { manga ->
-                        if (manga.favorite && manga.description == null) {
-                            mangaRepository.getMangaById(manga.id)
-                        } else {
-                            manga
-                        }
-                    }
-
-                    // Collect-and-write each manga as it's produced so only one BackupManga
-                    // (manga + its chapters + encoded bytes) is resident at a time. Materializing
-                    // the whole batch with .toList() spiked memory on very large libraries.
-                    mangaBackupCreator.backupMangaStream(fullBatch, options).collect { m ->
-                        sourceIds.add(m.source)
-                        val bytes = parser.encodeToByteArray(BackupManga.serializer(), m)
-                        writeProtoField(gzipOut.outputStream(), 1, bytes)
-                    }
-                    kotlinx.coroutines.yield()
-                    batchCount++
-                    onProgress?.invoke(batchCount, totalBatches)
-                    if (batchCount % 50 == 0) {
-                        logcat(LogPriority.DEBUG) { "Backup: Processed $batchCount/$totalBatches batches" }
+            // Filter a batch by content-type options, fetch full details for the survivors, then
+            // stream each BackupManga straight to the output so only one is resident at a time.
+            suspend fun processBatch(batch: List<Manga>) {
+                val filtered = batch.filter { manga ->
+                    // manga.isNovel is reliable for stub/uninstalled sources; fall back to the live
+                    // source check for entries that haven't been migrated.
+                    val isNovel = manga.isNovel || sourceManager.getOrStub(manga.source).isNovelSource()
+                    when {
+                        options.includeManga && options.includeNovels -> true
+                        options.includeManga && !isNovel -> true
+                        options.includeNovels && isNovel -> true
+                        else -> false
                     }
                 }
+                if (filtered.isEmpty()) return
+                val fullBatch = filtered.map { manga ->
+                    if (manga.description == null) mangaRepository.getMangaById(manga.id) else manga
+                }
+                mangaBackupCreator.backupMangaStream(fullBatch, options).collect { m ->
+                    sourceIds.add(m.source)
+                    val bytes = parser.encodeToByteArray(BackupManga.serializer(), m)
+                    writeProtoField(gzipOut.outputStream(), 1, bytes)
+                }
+                written += filtered.size
+                onProgress?.invoke(written, approxTotal.coerceAtLeast(written))
+                kotlinx.coroutines.yield()
+            }
 
-                logcat(LogPriority.INFO) { "Backup: All manga streamed ($batchCount batches), writing metadata..." }
+            try {
+                // Field 1: backupManga (repeated). Favorites are keyset-paged so a very large
+                // library is never fully materialised in memory at once.
+                if (options.libraryEntries) {
+                    var afterId = 0L
+                    while (true) {
+                        val page = mangaRepository.getFavoritesEntryPaged(afterId, MANGA_PAGE_SIZE)
+                        if (page.isEmpty()) break
+                        afterId = page.last().id
+                        page.chunked(MANGA_BATCH_SIZE).forEach { processBatch(it) }
+                    }
+                }
+                if (options.readEntries) {
+                    mangaRepository.getReadMangaNotInLibrary()
+                        .chunked(MANGA_BATCH_SIZE)
+                        .forEach { processBatch(it) }
+                }
+
+                logcat(LogPriority.INFO) { "Backup: All manga streamed ($written entries), writing metadata..." }
 
                 val backupSources = sourcesBackupCreator.forSourceIds(sourceIds)
 
