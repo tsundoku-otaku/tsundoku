@@ -95,7 +95,8 @@ data class NetworkExtensionStore(
                 versionName = extension.versionName,
                 lang = if (lang.size == 1) lang.first() else "all",
                 isNsfw = extension.sources.maxOfOrNull { it.contentRating } == ContentRating.PORNOGRAPHIC,
-                isNovel = false,
+                // Index format carries no novel flag; novel extensions use the novelextension package prefix.
+                isNovel = extension.packageName.startsWith("eu.kanade.tachiyomi.novelextension"),
                 sources = extension.sources.map { source ->
                     eu.kanade.tachiyomi.extension.model.Extension.Available.Source(
                         id = source.id,
