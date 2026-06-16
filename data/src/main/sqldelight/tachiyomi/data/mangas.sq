@@ -143,6 +143,13 @@ SELECT _id, source, url, title, artist, author, thumbnail_url, cover_last_modifi
 FROM mangas
 WHERE favorite = 1;
 
+getFavoritesEntryPaged:
+SELECT _id, source, url, title, artist, author, thumbnail_url, cover_last_modified, favorite, is_novel
+FROM mangas
+WHERE favorite = 1 AND _id > :afterId
+ORDER BY _id
+LIMIT :limit;
+
 getFavoritesEntryBySourceId:
 SELECT _id, source, url, title, artist, author, thumbnail_url, cover_last_modified, favorite, is_novel
 FROM mangas
