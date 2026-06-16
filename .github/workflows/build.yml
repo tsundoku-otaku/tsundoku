@@ -65,7 +65,8 @@ jobs:
         run: ./gradlew assembleNightly -Penable-updater
 
       - name: Run unit tests
-        run: ./gradlew testReleaseUnitTest
+        id: unit_tests
+        run: ./gradlew testDebugUnitTest
 
       - name: Verify SQLDelight migrations
         run: ./gradlew verifySqlDelightMigration
@@ -75,7 +76,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: test-report-${{ github.sha }}
-          path: app/build/reports/tests/testReleaseUnitTest
+          path: app/build/reports/tests/testDebugUnitTest
 
       - name: Sign APK
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'tsundoku-otaku/tsundoku'
