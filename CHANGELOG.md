@@ -16,6 +16,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Improved
 - Custom Source Overhaul [@mrissaoussama](https://github.com/mrissaoussama) [#273](https://github.com/tsundoku-otaku/tsundoku/pull/273)
+- Edit manga now has an artist field [@mrissaoussama](https://github.com/mrissaoussama) [#278](https://github.com/tsundoku-otaku/tsundoku/pull/278)
 - URL path resolution in JsSource [@mrissaoussama](https://github.com/mrissaoussama) [#274](https://github.com/tsundoku-otaku/tsundoku/pull/274)
 
 ### Fixed
