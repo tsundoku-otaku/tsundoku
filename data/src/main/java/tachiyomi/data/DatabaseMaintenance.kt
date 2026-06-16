@@ -12,6 +12,51 @@ class DatabaseMaintenance(
     private val driver: SqlDriver,
 ) {
 
+    /**
+     * Reconcile the live schema with columns/tables that should exist but may be missing on DBs
+     * left inconsistent by the mihon-merge migration renumbering (extension_store and the
+     * TachiyomiX `memo` columns could be skipped). Idempotent and pragma-guarded so clean and
+     * fresh DBs are untouched. Runs synchronously right after the driver is created, before any
+     * generated query references these columns.
+     */
+    fun reconcileSchema() {
+        ensureColumn("mangas", "memo", "BLOB NOT NULL DEFAULT '{}'")
+        ensureColumn("chapters", "memo", "BLOB NOT NULL DEFAULT '{}'")
+        driver.execute(
+            null,
+            """
+            CREATE TABLE IF NOT EXISTS extension_store(
+                index_url TEXT NOT NULL PRIMARY KEY,
+                name TEXT NOT NULL,
+                badge_label TEXT NOT NULL,
+                signing_key TEXT NOT NULL,
+                contact_website TEXT NOT NULL,
+                contact_discord TEXT,
+                is_legacy INTEGER NOT NULL
+            )
+            """.trimIndent(),
+            0,
+            null,
+        )
+    }
+
+    private fun columnExists(table: String, column: String): Boolean {
+        var exists = false
+        driver.executeQuery(null, "PRAGMA table_info($table)", { cursor ->
+            while (cursor.next().value) {
+                if (cursor.getString(1) == column) exists = true
+            }
+            QueryResult.Unit
+        }, 0, null)
+        return exists
+    }
+
+    private fun ensureColumn(table: String, column: String, definition: String) {
+        if (!columnExists(table, column)) {
+            driver.execute(null, "ALTER TABLE $table ADD COLUMN $column $definition", 0, null)
+        }
+    }
+
     /** Rebuild the database file, reclaiming unused space. Truncates WAL afterwards. */
     suspend fun vacuum() {
         withContext(Dispatchers.IO) {
