@@ -31,7 +31,6 @@ object SettingsReaderScreen : SearchableSettings {
         return listOf(
             readerPref.flashDurationMillis,
             readerPref.flashPageInterval,
-            readerPref.novelAutoSplitWordCount,
             readerPref.webtoonSidePadding,
         )
     }
@@ -47,7 +46,7 @@ object SettingsReaderScreen : SearchableSettings {
         return listOf(
             Preference.PreferenceItem.ListPreference(
                 preference = readerPref.defaultReadingMode,
-                entries = ReadingMode.entries.drop(1)
+                entries = (ReadingMode.entries.drop(1) - ReadingMode.NOVEL)
                     .associate { it.flagValue to stringResource(it.stringRes) }
                     .toImmutableMap(),
                 title = stringResource(MR.strings.pref_viewer_type),
@@ -183,10 +182,6 @@ object SettingsReaderScreen : SearchableSettings {
 
     @Composable
     private fun getReadingGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
-        val autoSplitEnabled by readerPreferences.novelAutoSplitText.collectAsState()
-        val autoSplitWordCountPref = readerPreferences.novelAutoSplitWordCount
-        val autoSplitWordCount by autoSplitWordCountPref.collectAsState()
-
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_reading),
             preferenceItems = persistentListOf(
@@ -205,30 +200,6 @@ object SettingsReaderScreen : SearchableSettings {
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.alwaysShowChapterTransition,
                     title = stringResource(MR.strings.pref_always_show_chapter_transition),
-                ),
-                Preference.PreferenceItem.InfoPreference(
-                    title = "Novel Reader Settings",
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelAutoSplitText,
-                    title = "Auto-split long chapters",
-                    subtitle = "Split long novel chapters into multiple pages based on word count",
-                ),
-                Preference.PreferenceItem.ListPreference(
-                    preference = readerPreferences.novelVerticalProgressSliderSize,
-                    entries = persistentMapOf(
-                        "half" to "Vertical progress size: Half screen",
-                        "full" to "Vertical progress size: Full screen",
-                    ),
-                    title = "Vertical progress slider size",
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = autoSplitWordCount / 50,
-                    valueRange = 1..40,
-                    title = "Split word count (×50)",
-                    subtitle = "Split every $autoSplitWordCount words",
-                    enabled = autoSplitEnabled,
-                    onValueChanged = { autoSplitWordCountPref.set(it * 50) },
                 ),
             ),
         )

@@ -26,7 +26,8 @@ import tachiyomi.presentation.core.components.SettingsIconGrid
 import tachiyomi.presentation.core.components.material.IconToggleButton
 import tachiyomi.presentation.core.i18n.stringResource
 
-private val ReadingModesWithoutDefault = ReadingMode.entries - ReadingMode.DEFAULT
+// NOVEL is auto-assigned for novel sources, not a manual manga reading mode.
+private val ReadingModesWithoutDefault = ReadingMode.entries - ReadingMode.DEFAULT - ReadingMode.NOVEL
 
 @Composable
 fun ReadingModeSelectDialog(
