@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import logcat.LogPriority
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.StubSource
@@ -73,7 +74,11 @@ class ExtensionManager(
     val untrustedExtensionsFlow = untrustedExtensionMapFlow.mapExtensions(scope)
 
     init {
-        initExtensions()
+        // Load off the constructing thread: ExtensionLoader.loadExtensions runBlocks on the
+        // trusted-fingerprint DB flow, so doing it synchronously here froze startup when the manager
+        // was first constructed on the main thread before the DB migration had completed. Consumers
+        // already observe isInitialized / installedExtensionsFlow, so async init is safe.
+        scope.launchIO { initExtensions() }
         ExtensionInstallReceiver(InstallationListener()).register(context)
     }
 
