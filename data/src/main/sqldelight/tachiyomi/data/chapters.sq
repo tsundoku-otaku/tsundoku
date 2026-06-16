@@ -78,6 +78,15 @@ SELECT *
 FROM chapters
 WHERE manga_id = :mangaId;
 
+-- Backup-only: memo is returned as a raw BLOB (CAST bypasses the JsonObject column adapter) so
+-- backup doesn't decode+re-encode every chapter's memo JSON, which thrashed GC / OOMed on large
+-- libraries. The backup model stores memo as bytes anyway.
+getChaptersByMangaIdForBackup:
+SELECT url, name, scanlator, read, bookmark, last_page_read, chapter_number, source_order,
+    date_fetch, date_upload, last_modified_at, version, CAST(memo AS BLOB) AS memo
+FROM chapters
+WHERE manga_id = :mangaId;
+
 getScanlatorsByMangaId:
 SELECT scanlator
 FROM chapters
