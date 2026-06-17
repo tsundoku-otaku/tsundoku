@@ -37,7 +37,6 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import kotlinx.collections.immutable.persistentListOf
 
 data object BrowseTab : Tab {
 
@@ -78,13 +77,13 @@ data object BrowseTab : Tab {
         val novelExtensionsState by novelExtensionsScreenModel.state.collectAsState()
 
         val tabs = if (hideMangaBrowseTabs) {
-            persistentListOf(
+            listOf(
                 novelSourcesTab(),
                 novelExtensionsTab(novelExtensionsScreenModel),
                 novelMigrateSourceTab(),
             )
         } else {
-            persistentListOf(
+            listOf(
                 novelSourcesTab(),
                 sourcesTab(),
                 novelExtensionsTab(novelExtensionsScreenModel),

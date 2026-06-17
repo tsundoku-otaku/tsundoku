@@ -56,8 +56,6 @@ import tachiyomi.domain.updates.service.UpdatesPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.ZonedDateTime
-import kotlinx.collections.immutable.mutate
-import kotlinx.collections.immutable.toPersistentList
 
 enum class UpdatesFilter {
     ALL,
@@ -160,7 +158,7 @@ class UpdatesScreenModel(
                 val items = filteredUpdates
                     .toUpdateItems()
                     .applyFilters(itemPreferences)
-                    .toPersistentList()
+                    .toList()
                 // If returned items fill the limit, there may be more
                 val hasMore = updates.size.toLong() >= currentLimit.value
                 items to hasMore
@@ -628,7 +626,7 @@ class UpdatesScreenModel(
     fun setFilter(filter: UpdatesFilter) {
         mutableState.update { it.copy(filter = filter) }
         mutableState.update {
-            it.copy(items = latestUpdates.toUpdateItems().toPersistentList())
+            it.copy(items = latestUpdates.toUpdateItems().toList())
         }
         // Reset pagination when filter changes
         currentLimit.value = GetUpdates.PAGE_SIZE
@@ -639,7 +637,7 @@ class UpdatesScreenModel(
 
         mutableState.update { it.copy(filter = UpdatesFilter.ALL) }
         mutableState.update {
-            it.copy(items = latestUpdates.toUpdateItems().toPersistentList())
+            it.copy(items = latestUpdates.toUpdateItems().toList())
         }
         currentLimit.value = GetUpdates.PAGE_SIZE
     }

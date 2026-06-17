@@ -72,7 +72,6 @@ import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import kotlinx.collections.immutable.persistentListOf
 
 object SettingsTrackingScreen : SearchableSettings {
 
@@ -228,7 +227,7 @@ object SettingsTrackingScreen : SearchableSettings {
             ),
             Preference.PreferenceGroup(
                 title = "Novel Trackers",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.TrackerPreference(
                         tracker = trackerManager.novelUpdates,
                         login = {
@@ -317,7 +316,7 @@ object SettingsTrackingScreen : SearchableSettings {
             ),
             Preference.PreferenceGroup(
                 title = "Source-defined trackers",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.SwitchPreference(
                         preference = trackPreferences.migrationTriggersSourceTracker,
                         title = "Run source trackers on migration",

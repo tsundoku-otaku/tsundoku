@@ -26,7 +26,6 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.LocalDate
-import kotlinx.collections.immutable.persistentListOf
 
 object SettingsAppearanceScreen : SearchableSettings {
 
@@ -163,7 +162,7 @@ object SettingsAppearanceScreen : SearchableSettings {
         val basePreferences = remember { Injekt.get<eu.kanade.domain.base.BasePreferences>() }
         return Preference.PreferenceGroup(
             title = "Library layout",
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = libraryPreferences.joinedLibrary,
                     title = "Combined library",

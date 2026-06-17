@@ -290,8 +290,6 @@ dependencies {
     // Dependency injection
     implementation(libs.injekt)
 
-    implementation(libs.kotlinx.collections.immutable)
-
     // Image loading
     implementation(libs.bundles.coil)
     implementation(libs.subsamplingScaleImageView) {

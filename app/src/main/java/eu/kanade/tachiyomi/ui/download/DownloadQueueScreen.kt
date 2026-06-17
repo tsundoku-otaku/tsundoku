@@ -78,8 +78,6 @@ import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.databinding.DownloadListBinding
 import eu.kanade.tachiyomi.util.system.copyToClipboard
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toPersistentList
 import tachiyomi.core.common.util.lang.launchUI
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
@@ -260,7 +258,7 @@ class DownloadQueueScreen(private val initialTab: Int = 0) : Screen() {
                                     )
                                 }
                             }
-                            AppBarActions(translationActions.toPersistentList())
+                            AppBarActions(translationActions.toList())
                         } else if ((selectedTab == 1 && filteredMangaList.isNotEmpty()) ||
                             (selectedTab == 0 && filteredNovelList.isNotEmpty())
                         ) {

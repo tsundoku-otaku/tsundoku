@@ -17,7 +17,6 @@ import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.flow.collectLatest
 import tachiyomi.presentation.core.screens.LoadingScreen
-import kotlinx.collections.immutable.toImmutableList
 
 class CategoryScreen : Screen() {
 
@@ -51,7 +50,7 @@ class CategoryScreen : Screen() {
                 CategoryCreateDialog(
                     onDismissRequest = screenModel::dismissDialog,
                     onCreate = { name, contentType -> screenModel.createCategory(name, contentType) },
-                    categories = successState.categories.fastMap { it.name }.toImmutableList(),
+                    categories = successState.categories.fastMap { it.name }.toList(),
                 )
             }
             is CategoryDialog.Rename -> {

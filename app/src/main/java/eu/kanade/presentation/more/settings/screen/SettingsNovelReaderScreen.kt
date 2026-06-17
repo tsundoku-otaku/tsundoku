@@ -7,8 +7,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toImmutableMap
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -64,7 +62,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
     private fun getDisplayGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_display),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.ListPreference(
                     preference = readerPreferences.novelTheme,
                     entries = mapOf(
@@ -73,7 +71,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
                         "sepia" to "Sepia",
                         "black" to "Black",
                         "grey" to "Grey",
-                    ).toImmutableMap(),
+                    ).toMap(),
                     title = stringResource(TDMR.strings.pref_novel_theme),
                 ),
                 Preference.PreferenceItem.ListPreference(
@@ -81,7 +79,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     entries = mapOf(
                         "default" to "Native (TextView)",
                         "webview" to "WebView",
-                    ).toImmutableMap(),
+                    ).toMap(),
                     title = "Rendering mode",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
@@ -118,7 +116,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = "Text",
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
                     value = fontSize,
                     valueRange = 10..40,
@@ -137,7 +135,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
                         "Georgia, serif" to "Georgia",
                         "Times New Roman, serif" to "Times New Roman",
                         "Arial, sans-serif" to "Arial",
-                    ).toImmutableMap(),
+                    ).toMap(),
                     title = stringResource(TDMR.strings.pref_font_family),
                 ),
                 Preference.PreferenceItem.TextPreference(
@@ -161,7 +159,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
                         "center" to "Center",
                         "right" to "Right",
                         "justify" to "Justify",
-                    ).toImmutableMap(),
+                    ).toMap(),
                     title = stringResource(TDMR.strings.pref_novel_text_align),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
@@ -182,7 +180,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
     private fun getNavigationGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_reader_navigation),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.novelVolumeKeysScroll,
                     title = stringResource(TDMR.strings.pref_novel_volume_keys_scroll),
@@ -206,7 +204,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(TDMR.strings.pref_novel_auto_scroll),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
                     value = autoScrollSpeed,
                     valueRange = 5..120,
@@ -231,7 +229,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = "Formatting",
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
                     value = (paragraphIndent * 10).toInt(),
                     valueRange = 0..50,
@@ -285,7 +283,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = "Content",
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.novelInfiniteScroll,
                     title = "Infinite scroll",
@@ -346,7 +344,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = "Text-to-Speech",
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
                     value = (ttsSpeed * 10).toInt(),
                     valueRange = 1..30,

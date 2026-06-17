@@ -20,10 +20,6 @@ import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.widget.TriStateListDialog
 import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.ui.category.CategoryScreen
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.collections.immutable.toImmutableList
-import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.launch
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.ResetCategoryFlags
@@ -212,7 +208,7 @@ object SettingsLibraryScreen : SearchableSettings {
                 ),
                 Preference.PreferenceItem.ListPreference(
                     preference = libraryPreferences.skipUpdateTime,
-                    entries = persistentMapOf(
+                    entries = mapOf(
                         LibraryPreferences.SKIP_UPDATE_NONE to stringResource(TDMR.strings.skip_update_no_restriction),
                         LibraryPreferences.SKIP_UPDATE_1_DAY to stringResource(TDMR.strings.skip_update_days, 1),
                         LibraryPreferences.SKIP_UPDATE_3_DAYS to stringResource(TDMR.strings.skip_update_days, 3),
@@ -325,7 +321,7 @@ object SettingsLibraryScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_behavior),
-            preferenceItems = preferenceItems.toImmutableList(),
+            preferenceItems = preferenceItems.toList(),
         )
     }
 }

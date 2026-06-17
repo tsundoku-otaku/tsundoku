@@ -39,7 +39,6 @@ import tachiyomi.presentation.core.screens.EmptyScreenAction
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.LocalNovelSource
 import tachiyomi.source.local.LocalSource
-import kotlinx.collections.immutable.persistentListOf
 
 @Composable
 fun BrowseSourceContent(
@@ -98,7 +97,7 @@ fun BrowseSourceContent(
                 else -> stringResource(MR.strings.no_results_found)
             },
             actions = when {
-                source is LocalNovelSource -> persistentListOf(
+                source is LocalNovelSource -> listOf(
                     EmptyScreenAction(
                         stringRes = MR.strings.action_retry,
                         icon = Icons.Outlined.Refresh,
@@ -115,14 +114,14 @@ fun BrowseSourceContent(
                         onClick = onLocalSourceHelpClick,
                     ),
                 )
-                source is LocalSource -> persistentListOf(
+                source is LocalSource -> listOf(
                     EmptyScreenAction(
                         stringRes = MR.strings.local_source_help_guide,
                         icon = Icons.AutoMirrored.Outlined.HelpOutline,
                         onClick = onLocalSourceHelpClick,
                     ),
                 )
-                else -> persistentListOf(
+                else -> listOf(
                     EmptyScreenAction(
                         stringRes = MR.strings.action_retry,
                         icon = Icons.Outlined.Refresh,

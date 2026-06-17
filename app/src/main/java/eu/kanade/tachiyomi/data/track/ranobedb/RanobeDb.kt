@@ -9,8 +9,6 @@ import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.awaitSuccess
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -68,7 +66,7 @@ class RanobeDb(id: Long) : BaseTracker(id, "RanobeDB"), DeletableTracker {
     override fun getRereadingStatus() = READING
     override fun getCompletionStatus() = COMPLETED
 
-    override fun getScoreList(): ImmutableList<String> = persistentListOf(
+    override fun getScoreList(): List<String> = listOf(
         "10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "",
     )
 

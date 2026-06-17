@@ -7,10 +7,6 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
 import eu.kanade.tachiyomi.jsplugin.model.JsPluginRepository
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.ImmutableSet
-import kotlinx.collections.immutable.toImmutableList
-import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -47,9 +43,9 @@ class NovelExtensionReposScreenModel(
                 sourcePreferences.disabledExtensionRepos.changes(),
             ) { jsRepos, kotlinRepos, disabledKotlinRepos ->
                 NovelRepoScreenState.Success(
-                    jsRepos = jsRepos.toImmutableList(),
-                    kotlinRepos = kotlinRepos.toImmutableSet(),
-                    disabledKotlinRepos = disabledKotlinRepos.toImmutableSet(),
+                    jsRepos = jsRepos.toList(),
+                    kotlinRepos = kotlinRepos.toSet(),
+                    disabledKotlinRepos = disabledKotlinRepos.toSet(),
                 )
             }.collectLatest { state ->
                 mutableState.update {
@@ -160,9 +156,9 @@ sealed class NovelRepoScreenState {
 
     @Immutable
     data class Success(
-        val jsRepos: ImmutableList<JsPluginRepository> = kotlinx.collections.immutable.persistentListOf(),
-        val kotlinRepos: ImmutableSet<ExtensionStore> = kotlinx.collections.immutable.persistentSetOf(),
-        val disabledKotlinRepos: ImmutableSet<String> = kotlinx.collections.immutable.persistentSetOf(),
+        val jsRepos: List<JsPluginRepository> = listOf(),
+        val kotlinRepos: Set<ExtensionStore> = setOf(),
+        val disabledKotlinRepos: Set<String> = setOf(),
         val dialog: NovelRepoDialog? = null,
     ) : NovelRepoScreenState() {
         val isEmpty: Boolean

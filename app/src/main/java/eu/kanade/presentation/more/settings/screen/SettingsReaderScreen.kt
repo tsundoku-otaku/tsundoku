@@ -17,7 +17,6 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.text.NumberFormat
-import kotlinx.collections.immutable.toImmutableMap
 
 object SettingsReaderScreen : SearchableSettings {
 
@@ -46,7 +45,7 @@ object SettingsReaderScreen : SearchableSettings {
                 preference = readerPref.defaultReadingMode,
                 entries = (ReadingMode.entries.drop(1) - ReadingMode.NOVEL)
                     .associate { it.flagValue to stringResource(it.stringRes) }
-                    .toImmutableMap(),
+                    .toMap(),
                 title = stringResource(MR.strings.pref_viewer_type),
             ),
             Preference.PreferenceItem.ListPreference(

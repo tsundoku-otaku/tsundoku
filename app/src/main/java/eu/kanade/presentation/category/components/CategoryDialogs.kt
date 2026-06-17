@@ -41,13 +41,12 @@ import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
 import kotlin.time.Duration.Companion.seconds
-import kotlinx.collections.immutable.ImmutableList
 
 @Composable
 fun CategoryCreateDialog(
     onDismissRequest: () -> Unit,
     onCreate: (String, Int) -> Unit,
-    categories: ImmutableList<String>,
+    categories: List<String>,
 ) {
     var name by remember { mutableStateOf("") }
     var contentType by remember { mutableIntStateOf(Category.CONTENT_TYPE_ALL) }

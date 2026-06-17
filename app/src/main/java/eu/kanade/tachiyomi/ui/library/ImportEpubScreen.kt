@@ -80,7 +80,6 @@ import eu.kanade.presentation.library.components.ImportProgress
 import eu.kanade.presentation.library.components.ImportResult
 import eu.kanade.presentation.manga.components.MangaCover
 import eu.kanade.presentation.util.Screen
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -346,7 +345,7 @@ class ImportEpubScreen(
                             importResult == null
                         ) {
                             AppBarActions(
-                                persistentListOf(
+                                listOf(
                                     AppBar.Action(
                                         title = "Auto rename & organize",
                                         icon = Icons.Outlined.Refresh,

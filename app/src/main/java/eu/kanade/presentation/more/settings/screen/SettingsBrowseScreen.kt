@@ -13,8 +13,6 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.ui.browse.extension.NovelExtensionReposScreen
 import eu.kanade.tachiyomi.util.system.AuthenticatorUtil.authenticate
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toImmutableMap
 import eu.kanade.presentation.more.settings.screen.browse.ExtensionStoresScreen
 import mihon.domain.extension.interactor.GetExtensionStoreCountAsFlow
 import tachiyomi.core.common.i18n.stringResource
@@ -54,7 +52,7 @@ object SettingsBrowseScreen : SearchableSettings {
                         preference = sourcePreferences.pageLoadDelay,
                         title = "Page load delay",
                         subtitle = "Delay between loading pages (helps with rate limits)",
-                        entries = (0..15).associate { it to "${it}s" }.toImmutableMap(),
+                        entries = (0..15).associate { it to "${it}s" }.toMap(),
                     ),
                     Preference.PreferenceItem.SwitchPreference(
                         preference = sourcePreferences.showPageNumber,
@@ -76,7 +74,7 @@ object SettingsBrowseScreen : SearchableSettings {
                             5 to "5 pages",
                             10 to "10 pages",
                             20 to "20 pages",
-                        ).toImmutableMap(),
+                        ).toMap(),
                     ),
                     Preference.PreferenceItem.TextPreference(
                         title = stringResource(MR.strings.extensionStores),

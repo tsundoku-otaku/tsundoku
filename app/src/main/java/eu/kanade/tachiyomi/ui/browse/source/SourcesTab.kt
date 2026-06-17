@@ -22,7 +22,6 @@ import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
-import kotlinx.collections.immutable.persistentListOf
 
 @Composable
 fun Screen.sourcesTab(): TabContent {
@@ -32,7 +31,7 @@ fun Screen.sourcesTab(): TabContent {
 
     return TabContent(
         titleRes = TDMR.strings.label_manga_sources,
-        actions = persistentListOf(
+        actions = listOf(
             AppBar.Action(
                 title = stringResource(MR.strings.action_global_search),
                 icon = Icons.Outlined.TravelExplore,

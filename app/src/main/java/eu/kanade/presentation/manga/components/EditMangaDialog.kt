@@ -42,7 +42,6 @@ import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
 import eu.kanade.presentation.components.imeAwareDialogProperties
 import eu.kanade.tachiyomi.source.model.SManga
-import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
@@ -71,7 +70,7 @@ fun EditMangaDialog(
     var artist by remember { mutableStateOf(manga.artist.orEmpty()) }
     var status by remember { mutableStateOf(manga.status) }
 
-    val tabTitles = persistentListOf(
+    val tabTitles = listOf(
         TabTitle.Text(stringResource(MR.strings.pref_category_general)),
         TabTitle.Text("Description"),
     )

@@ -28,7 +28,6 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
-import kotlinx.collections.immutable.persistentListOf
 
 @Composable
 fun ReaderSettingsDialog(
@@ -112,7 +111,7 @@ private fun NovelReaderSettingsDialog(
     screenModel: ReaderSettingsScreenModel,
 ) {
     val renderingMode by screenModel.preferences.novelRenderingMode.collectAsState()
-    val tabTitles = persistentListOf(
+    val tabTitles = listOf(
         TabTitle.Icon(imageVector = Icons.Outlined.TextFields), // Reading
         TabTitle.Icon(imageVector = Icons.Outlined.Palette), // Appearance
         TabTitle.Icon(imageVector = Icons.Outlined.Swipe), // Controls
