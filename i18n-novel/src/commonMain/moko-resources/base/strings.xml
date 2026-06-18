@@ -869,6 +869,10 @@
     <string name="action_sort_source_name">Source name</string>
     <string name="pref_show_manga_source_name">Show source name in manga details</string>
     <string name="pref_show_manga_source_name_summary">Display source name under status on manga details screen</string>
+    <string name="pref_experimental_library_pagination">Experimental: paginate library (reduce memory)</string>
+    <string name="pref_experimental_library_pagination_summary">Load each category a page at a time (default 300, newest first) and load more as you scroll, instead of holding the whole library in memory. Sorting, filtering and search apply to the entries loaded so far. Restart after changing.</string>
+    <string name="pref_experimental_library_page_size">Experimental: library page size</string>
+    <string name="pref_experimental_library_page_size_summary">Entries loaded per category per page when pagination is on. Lower means less memory but more loads while scrolling. Currently %1$d. Restart after changing.</string>
     <string name="pref_js_plugin_native_cheerio">Use native cheerio for JS plugins</string>
     <string name="pref_js_plugin_native_cheerio_summary">Experimental: parse plugin HTML with bundled real cheerio (full API) instead of the Jsoup wrapper. Slower but more compatible. Reopen the chapter to apply.</string>
     <string name="action_hide_source_name">Hide source name</string>

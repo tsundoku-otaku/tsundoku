@@ -1,6 +1,7 @@
 package eu.kanade.presentation.library.components
 
 import android.content.res.Configuration
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,7 +11,9 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +47,11 @@ fun LibraryPager(
     onClickContinueReading: ((LibraryManga) -> Unit)?,
     titleMaxLines: Int = 2,
     showUrlInList: Boolean = false,
+    paginationEnabled: Boolean = false,
+    onCategoryFirstVisible: (Category) -> Unit = {},
+    onLoadMore: (Category) -> Unit = {},
+    getLoadMoreKey: (Category) -> Int = { 0 },
+    isCategoryLoading: (Category) -> Boolean = { false },
 ) {
     HorizontalPager(
         modifier = Modifier.fillMaxSize(),
@@ -57,15 +65,39 @@ fun LibraryPager(
         val category = getCategoryForPage(page)
         val items = getItemsForCategory(category)
 
+        if (paginationEnabled) {
+            // Request the first page once this category page is composed.
+            LaunchedEffect(category.id) { onCategoryFirstVisible(category) }
+        }
+
         if (items.isEmpty()) {
-            LibraryPagerEmptyScreen(
-                searchQuery = searchQuery,
-                hasActiveFilters = hasActiveFilters,
-                contentPadding = contentPadding,
-                onGlobalSearchClicked = onGlobalSearchClicked,
-            )
+            if (paginationEnabled && isCategoryLoading(category)) {
+                Box(
+                    modifier = Modifier
+                        .padding(contentPadding)
+                        .fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                LibraryPagerEmptyScreen(
+                    searchQuery = searchQuery,
+                    hasActiveFilters = hasActiveFilters,
+                    contentPadding = contentPadding,
+                    onGlobalSearchClicked = onGlobalSearchClicked,
+                )
+            }
             return@HorizontalPager
         }
+
+        val onLoadMoreForCategory: (() -> Unit)? = if (paginationEnabled) {
+            { onLoadMore(category) }
+        } else {
+            null
+        }
+        // Generation key (paginated) drives sentinel re-fire; item count otherwise.
+        val loadMoreKey = if (paginationEnabled) getLoadMoreKey(category) else items.size
 
         val displayMode by getDisplayMode(page)
         val columns by if (displayMode != LibraryDisplayMode.List) {
@@ -92,6 +124,8 @@ fun LibraryPager(
                     searchQuery = searchQuery,
                     onGlobalSearchClicked = onGlobalSearchClicked,
                     showUrl = showUrlInList,
+                    onLoadMore = onLoadMoreForCategory,
+                    loadMoreKey = loadMoreKey,
                 )
             }
             LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
@@ -106,6 +140,8 @@ fun LibraryPager(
                     onClickContinueReading = onClickContinueReading,
                     searchQuery = searchQuery,
                     onGlobalSearchClicked = onGlobalSearchClicked,
+                    onLoadMore = onLoadMoreForCategory,
+                    loadMoreKey = loadMoreKey,
                 )
             }
             LibraryDisplayMode.ComfortableGrid -> {
@@ -120,6 +156,8 @@ fun LibraryPager(
                     searchQuery = searchQuery,
                     onGlobalSearchClicked = onGlobalSearchClicked,
                     titleMaxLines = titleMaxLines,
+                    onLoadMore = onLoadMoreForCategory,
+                    loadMoreKey = loadMoreKey,
                 )
             }
         }

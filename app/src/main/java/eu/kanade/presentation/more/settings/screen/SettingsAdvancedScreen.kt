@@ -132,6 +132,8 @@ object SettingsAdvancedScreen : SearchableSettings {
         val networkPreferences = remember { Injekt.get<NetworkPreferences>() }
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
 
+        val libraryPageSize by libraryPreferences.experimentalLibraryPageSize.collectAsState()
+
         return listOf(
             Preference.PreferenceItem.TextPreference(
                 title = stringResource(MR.strings.pref_dump_crash_logs),
@@ -155,6 +157,28 @@ object SettingsAdvancedScreen : SearchableSettings {
                 preference = libraryPreferences.showMangaSourceName,
                 title = stringResource(TDMR.strings.pref_show_manga_source_name),
                 subtitle = stringResource(TDMR.strings.pref_show_manga_source_name_summary),
+            ),
+            Preference.PreferenceItem.SwitchPreference(
+                preference = libraryPreferences.experimentalLibraryPagination,
+                title = stringResource(TDMR.strings.pref_experimental_library_pagination),
+                subtitle = stringResource(TDMR.strings.pref_experimental_library_pagination_summary),
+                onValueChanged = {
+                    context.toast(MR.strings.requires_app_restart)
+                    true
+                },
+            ),
+            Preference.PreferenceItem.SliderPreference(
+                value = libraryPageSize,
+                valueRange = 50..1000 step 50,
+                steps = 18,
+                title = stringResource(TDMR.strings.pref_experimental_library_page_size),
+                subtitle = stringResource(TDMR.strings.pref_experimental_library_page_size_summary, libraryPageSize),
+                valueString = libraryPageSize.toString(),
+                enabled = libraryPreferences.experimentalLibraryPagination.get(),
+                onValueChanged = {
+                    libraryPreferences.experimentalLibraryPageSize.set(it)
+                    context.toast(MR.strings.requires_app_restart)
+                },
             ),
             Preference.PreferenceItem.TextPreference(
                 title = stringResource(MR.strings.pref_debug_info),

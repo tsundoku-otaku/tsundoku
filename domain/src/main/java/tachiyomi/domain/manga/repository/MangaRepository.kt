@@ -67,6 +67,19 @@ interface MangaRepository {
     suspend fun getLibraryManga(): List<LibraryManga>
 
     /**
+     * Experimental memory-capped library load: one page of favorites for a single category and
+     * content type, with the DB-expressible filters/sort in [spec] applied so the page is the
+     * globally-correct slice. [categoryId] 0 is the uncategorized bucket.
+     */
+    suspend fun getLibraryMangaPage(
+        categoryId: Long,
+        isNovel: Boolean,
+        limit: Long,
+        offset: Long,
+        spec: tachiyomi.domain.library.model.LibraryPageSpec,
+    ): List<LibraryManga>
+
+    /**
      * Get a single LibraryManga by ID from the library cache.
      * Returns null if the manga is not in the library or cache is missing.
      */

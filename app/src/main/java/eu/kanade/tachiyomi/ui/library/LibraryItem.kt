@@ -57,6 +57,7 @@ data class LibraryItem(
         spec: LibrarySearchSpec,
         chapterMatchIds: Set<Long> = emptySet(),
         metadataMatchIds: LibraryScreenModel.MetadataMatchIds = LibraryScreenModel.MetadataMatchIds(),
+        searchContent: Boolean = true,
     ): Boolean {
         val manga = libraryManga.manga
         return when (spec.field) {
@@ -70,7 +71,7 @@ data class LibraryItem(
             LibrarySearchSpec.Field.SOURCE -> matchField(sourceName, spec.term, spec.termRegex, spec.useRegex)
             LibrarySearchSpec.Field.URL -> matchField(manga.url, spec.term, spec.termRegex, spec.useRegex)
             LibrarySearchSpec.Field.CHAPTER -> chapterMatchIds.contains(id)
-            LibrarySearchSpec.Field.DEFAULT -> matchesDefault(spec, chapterMatchIds, metadataMatchIds)
+            LibrarySearchSpec.Field.DEFAULT -> matchesDefault(spec, chapterMatchIds, metadataMatchIds, searchContent)
         }
     }
 
@@ -84,17 +85,20 @@ data class LibraryItem(
         spec: LibrarySearchSpec,
         chapterMatchIds: Set<Long>,
         metadataMatchIds: LibraryScreenModel.MetadataMatchIds,
+        searchContent: Boolean,
     ): Boolean {
         if (spec.subTerms.isEmpty()) return true
         val manga = libraryManga.manga
 
         // Every comma sub-term must match some in-memory field (negatable per sub-term). Author,
         // artist and description aren't resident, so they're handled via the DB id-sets below.
+        // Tags/genre are gated behind the "descriptions and tags" content checkbox, mirroring how
+        // description is gated DB-side. An explicit tag:/genre: prefix bypasses this via Field.TAG.
         val inMemoryMatch = spec.subTerms.all { sub ->
             val hit = matchField(manga.title, sub.text, sub.regex, spec.useRegex) ||
                 (spec.searchByUrl && matchField(manga.url, sub.text, sub.regex, spec.useRegex)) ||
                 matchField(sourceName, sub.text, sub.regex, spec.useRegex) ||
-                (manga.genre?.any { matchField(it, sub.text, sub.regex, spec.useRegex) } ?: false)
+                (searchContent && (manga.genre?.any { matchField(it, sub.text, sub.regex, spec.useRegex) } ?: false))
             if (sub.negate) !hit else hit
         }
         if (inMemoryMatch) return true

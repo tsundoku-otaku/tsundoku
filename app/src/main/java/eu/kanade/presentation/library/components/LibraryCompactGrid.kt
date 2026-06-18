@@ -21,6 +21,8 @@ internal fun LibraryCompactGrid(
     onClickContinueReading: ((LibraryManga) -> Unit)?,
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
+    onLoadMore: (() -> Unit)? = null,
+    loadMoreKey: Int = 0,
 ) {
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),
@@ -63,5 +65,7 @@ internal fun LibraryCompactGrid(
                 },
             )
         }
+
+        loadMoreSentinel(loadMoreKey, onLoadMore)
     }
 }

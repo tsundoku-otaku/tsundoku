@@ -242,6 +242,11 @@ data object LibraryTab : Tab {
                         getItemsForCategory = { state.getItemsForCategory(it) },
                         titleMaxLines = titleMaxLines,
                         showUrlInList = showUrlInList,
+                        paginationEnabled = screenModel.paginationEnabled,
+                        onCategoryFirstVisible = screenModel::onCategoryFirstVisible,
+                        onLoadMore = screenModel::loadMoreForCategory,
+                        getLoadMoreKey = { state.categoryLoadKey(it) },
+                        isCategoryLoading = { state.paginationLoadingCategories.contains(it.id) },
                     )
                 }
             }

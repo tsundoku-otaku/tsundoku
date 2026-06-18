@@ -15,6 +15,8 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
+import tachiyomi.domain.library.model.LibraryPageSpec
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.repository.MangaRepository
 
 /**
@@ -25,9 +27,26 @@ import tachiyomi.domain.manga.repository.MangaRepository
  */
 class GetLibraryManga(
     private val mangaRepository: MangaRepository,
+    private val libraryPreferences: LibraryPreferences,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
+
+    // Experimental pagination: per (category, content type) page bookkeeping. The enable pref is
+    // restart-gated, so it isn't observed.
+    private data class PageKey(val categoryId: Long, val isNovel: Boolean)
+    private val loadedPageCount = mutableMapOf<PageKey, Int>()
+    private val pageHasMore = mutableMapOf<PageKey, Boolean>()
+    // Per-key query spec (global filters/search + that category's sort), reconciled by
+    // [applyPageSpecs]. A change there triggers a full reset and reload.
+    private val keySpec = mutableMapOf<PageKey, LibraryPageSpec>()
+
+    private val paginationEnabled: Boolean
+        get() = libraryPreferences.experimentalLibraryPagination.get() &&
+            libraryPreferences.experimentalLibraryPageSize.get() > 0
+
+    private val pageSize: Int
+        get() = libraryPreferences.experimentalLibraryPageSize.get().coerceAtLeast(1)
 
     private val _libraryState = MutableStateFlow<List<LibraryManga>>(emptyList())
 
@@ -359,28 +378,152 @@ class GetLibraryManga(
 
             _isLoading.value = true
 
-            if (force) {
-                logcat(LogPriority.INFO) { "GetLibraryManga: Rebuilding library_cache table (forced)" }
-                mangaRepository.refreshLibraryCache()
-            } else {
-                mangaRepository.invalidateLibraryCache()
+            val paginated = paginationEnabled
+            if (!paginated) {
+                if (force) {
+                    logcat(LogPriority.INFO) { "GetLibraryManga: Rebuilding library_cache table (forced)" }
+                    mangaRepository.refreshLibraryCache()
+                } else {
+                    mangaRepository.invalidateLibraryCache()
+                }
             }
             val startTime = System.currentTimeMillis()
 
             try {
-                val library = mangaRepository.getLibraryManga()
-                _libraryState.value = library
+                if (paginated) {
+                    // Pages are loaded on demand by the UI per (category, content type). On refresh
+                    // rebuild whatever the user had already scrolled through, otherwise start empty
+                    // and let the visible categories request their first page.
+                    if (loadedPageCount.isEmpty()) {
+                        _libraryState.value = emptyList()
+                    } else {
+                        reloadLoadedPagesLocked()
+                    }
+                } else {
+                    _libraryState.value = mangaRepository.getLibraryManga()
+                }
                 isInitialized = true
                 lastRefreshTime = System.currentTimeMillis()
 
                 val duration = System.currentTimeMillis() - startTime
-                logcat(LogPriority.INFO) { "GetLibraryManga: Refresh complete in ${duration}ms, ${library.size} items" }
+                logcat(LogPriority.INFO) {
+                    "GetLibraryManga: Refresh complete in ${duration}ms, ${_libraryState.value.size} items (paginated=$paginated)"
+                }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "GetLibraryManga: Failed to refresh library" }
             } finally {
                 _isLoading.value = false
             }
         }
+    }
+
+    /** Whether the experimental per-category pagination mode is active. */
+    fun isPaginationEnabled(): Boolean = paginationEnabled
+
+    /**
+     * Reconcile the desired per-(category, content type) page specs (global filters/search plus
+     * that category's sort). If anything changed, fully reset pagination and reload the first page
+     * of each key, otherwise just load the first page of any newly added key. Single entry point
+     * that both kicks the initial load and reacts to filter/sort/search changes.
+     */
+    suspend fun applyPageSpecs(desired: Map<Pair<Long, Boolean>, LibraryPageSpec>) {
+        if (!paginationEnabled) return
+        val desiredKeys = desired.entries.associate { (k, v) -> PageKey(k.first, k.second) to v }
+        mutex.withLock {
+            if (desiredKeys != keySpec) {
+                keySpec.clear()
+                keySpec.putAll(desiredKeys)
+                loadedPageCount.clear()
+                pageHasMore.clear()
+                _libraryState.value = emptyList()
+                for (key in desiredKeys.keys) loadPageLocked(key)
+            } else {
+                for (key in desiredKeys.keys) {
+                    if (!loadedPageCount.containsKey(key)) loadPageLocked(key)
+                }
+            }
+            isInitialized = true
+            _isLoading.value = false
+        }
+    }
+
+    /**
+     * Load the first page for a (category, content type) if nothing has been loaded yet.
+     * Pager safety net. The spec must already be known via [applyPageSpecs].
+     */
+    suspend fun loadCategoryPageIfNeeded(categoryId: Long, isNovel: Boolean) {
+        if (!paginationEnabled) return
+        mutex.withLock {
+            val key = PageKey(categoryId, isNovel)
+            if (keySpec.containsKey(key) && !loadedPageCount.containsKey(key)) loadPageLocked(key)
+        }
+    }
+
+    /**
+     * Load the next page for a (category, content type). No-op once the category is exhausted.
+     * Returns true if a page was actually fetched, false when there was nothing left to load.
+     */
+    suspend fun loadCategoryNextPage(categoryId: Long, isNovel: Boolean): Boolean {
+        if (!paginationEnabled) return false
+        return mutex.withLock {
+            val key = PageKey(categoryId, isNovel)
+            if (keySpec.containsKey(key) && pageHasMore[key] != false) {
+                loadPageLocked(key)
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    /** Caller must hold [mutex]. Loads the next unread page for [key] and appends deduped. */
+    private suspend fun loadPageLocked(key: PageKey) {
+        val loaded = loadedPageCount[key] ?: 0
+        val size = pageSize
+        // Fetch one extra row to peek past the page boundary: its presence means there is a next
+        // page, and its absence means there isn't. Avoids reporting hasMore=true for an exactly
+        // full final page (which would later fire a wasted empty load).
+        val fetched = mangaRepository.getLibraryMangaPage(
+            categoryId = key.categoryId,
+            isNovel = key.isNovel,
+            limit = size.toLong() + 1,
+            offset = loaded.toLong() * size,
+            spec = keySpec[key] ?: LibraryPageSpec(),
+        )
+        val hasMore = fetched.size > size
+        val page = if (hasMore) fetched.take(size) else fetched
+        loadedPageCount[key] = loaded + 1
+        pageHasMore[key] = hasMore
+        if (page.isNotEmpty()) {
+            val existing = _libraryState.value.mapTo(HashSet(_libraryState.value.size)) { it.id }
+            val fresh = page.filterNot { it.id in existing }
+            if (fresh.isNotEmpty()) _libraryState.value = _libraryState.value + fresh
+        }
+        isInitialized = true
+        _isLoading.value = false
+    }
+
+    /** Caller must hold [mutex]. Rebuilds the resident list from all previously loaded pages. */
+    private suspend fun reloadLoadedPagesLocked() {
+        val size = pageSize
+        val keys = loadedPageCount.toMap()
+        val rebuilt = ArrayList<LibraryManga>()
+        val seen = HashSet<Long>()
+        for ((key, count) in keys) {
+            val total = count.toLong() * size
+            // Same N+1 peek as loadPageLocked, scaled to the number of pages already loaded.
+            val fetched = mangaRepository.getLibraryMangaPage(
+                categoryId = key.categoryId,
+                isNovel = key.isNovel,
+                limit = total + 1,
+                offset = 0,
+                spec = keySpec[key] ?: LibraryPageSpec(),
+            )
+            pageHasMore[key] = fetched.size > total
+            val page = if (fetched.size > total) fetched.take(total.toInt()) else fetched
+            for (m in page) if (seen.add(m.id)) rebuilt.add(m)
+        }
+        _libraryState.value = rebuilt
     }
 
     /**

@@ -62,6 +62,14 @@ class LibraryPreferences(
 
     val autoUpdateMetadata: Preference<Boolean> = preferenceStore.getBoolean("auto_update_metadata", false)
 
+    // Experimental: cap how many library entries are loaded into memory at once so very large
+    // libraries (100k+) don't exhaust the heap. A limit <= 0 means "load everything" (default).
+    val experimentalLibraryPagination: Preference<Boolean> =
+        preferenceStore.getBoolean("pref_experimental_library_pagination", false)
+
+    val experimentalLibraryPageSize: Preference<Int> =
+        preferenceStore.getInt("pref_experimental_library_page_size", 300)
+
     val autoUpdateThrottle: Preference<Int> = preferenceStore.getInt("pref_library_update_throttle_ms", 3000)
 
     val joinedLibrary: Preference<Boolean> = preferenceStore.getBoolean("pref_joined_library", true)

@@ -23,6 +23,8 @@ internal fun LibraryList(
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
     showUrl: Boolean = false,
+    onLoadMore: (() -> Unit)? = null,
+    loadMoreKey: Int = 0,
 ) {
     FastScrollLazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -74,5 +76,7 @@ internal fun LibraryList(
                 showUrl = showUrl,
             )
         }
+
+        loadMoreSentinel(loadMoreKey, onLoadMore)
     }
 }

@@ -136,7 +136,7 @@ class DomainModule : InjektModule {
         addFactory { GetFavorites(get()) }
         addFactory { GetFavoritesEntry(get()) }
         // Singleton so all screens share the same cached SharedFlow for library queries
-        addSingletonFactory { GetLibraryManga(get()) }
+        addSingletonFactory { GetLibraryManga(get(), get()) }
         // Singleton for library cache management
         addSingletonFactory { RefreshLibraryCache(get()) }
         addFactory { GetMangaWithChapters(get(), get()) }

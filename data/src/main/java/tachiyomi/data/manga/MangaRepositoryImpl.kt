@@ -704,6 +704,77 @@ class MangaRepositoryImpl(
         return result
     }
 
+    override suspend fun getLibraryMangaPage(
+        categoryId: Long,
+        isNovel: Boolean,
+        limit: Long,
+        offset: Long,
+        spec: tachiyomi.domain.library.model.LibraryPageSpec,
+    ): List<LibraryManga> {
+        // NOT IN () is invalid, so pad an empty exclusion list with a non-existent source id.
+        val excluded = spec.excludedSourceIds.ifEmpty { listOf(-1L) }
+        return database.mangasQueries.libraryPageFiltered(
+            isNovel = isNovel,
+            categoryId = categoryId,
+            filterUnread = spec.filterUnread.toLong(),
+            filterStarted = spec.filterStarted.toLong(),
+            filterBookmarked = spec.filterBookmarked.toLong(),
+            filterCompleted = spec.filterCompleted.toLong(),
+            filterIntervalCustom = spec.filterIntervalCustom.toLong(),
+            filterChapterCount = spec.filterChapterCount.toLong(),
+            chapterCountThreshold = spec.filterChapterCountThreshold.toLong(),
+            excludedSourceIds = excluded,
+            searchTerm = spec.searchTerm,
+            includedTagsCsv = spec.includedTagsCsv,
+            sortType = spec.sortType.toLong(),
+            sortAscending = if (spec.sortAscending) 1L else 0L,
+            limit = limit,
+            offset = offset,
+        ) {
+                    id, source, url, _, _, _, genre, title, _, status, thumbnailUrl, favorite,
+                    lastUpdate, nextUpdate, _, _, _, coverLastModified, dateAdded, _, _, _, _, _, _,
+                    notes, isNovel, totalCount, readCount, latestUpload, chapterFetchedAt, lastRead,
+                    bookmarkCount, categories,
+                ->
+                MangaMapper.mapLibraryManga(
+                    id = id,
+                    source = source,
+                    url = url,
+                    artist = null,
+                    author = null,
+                    description = null,
+                    genre = genre,
+                    title = title,
+                    alternativeTitles = null,
+                    status = status,
+                    thumbnailUrl = thumbnailUrl,
+                    favorite = favorite,
+                    lastUpdate = lastUpdate,
+                    nextUpdate = nextUpdate,
+                    initialized = false,
+                    viewerFlags = 0,
+                    chapterFlags = 0,
+                    coverLastModified = coverLastModified,
+                    dateAdded = dateAdded,
+                    updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                    calculateInterval = 0,
+                    lastModifiedAt = 0,
+                    favoriteModifiedAt = null,
+                    version = 0,
+                    isSyncing = 0,
+                    notes = notes,
+                    isNovel = isNovel,
+                    totalCount = totalCount,
+                    readCount = readCount,
+                    latestUpload = latestUpload,
+                    chapterFetchedAt = chapterFetchedAt,
+                    lastRead = lastRead,
+                    bookmarkCount = bookmarkCount,
+                    categories = categories,
+                )
+            }.awaitAsList()
+    }
+
     override suspend fun getLibraryMangaById(mangaId: Long): LibraryManga? {
         return database.mangasQueries.libraryGridById(mangaId) {
                     id,
