@@ -52,6 +52,7 @@ import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import tachiyomi.core.common.i18n.stringResource as ctxStringResource
+import eu.kanade.tachiyomi.source.CatalogueSource
 
 private data class SourceTemplateOption(
     val id: Long,
@@ -73,7 +74,7 @@ class CreateCustomSourceScreen : Screen {
         var showInstalledTemplateDialog by remember { mutableStateOf(false) }
         val sourceManager = remember { Injekt.get<SourceManager>() }
         val installedTemplateSources = remember {
-            sourceManager.getCatalogueSources()
+            sourceManager.getAll().filterIsInstance<CatalogueSource>()
                 .mapNotNull { source ->
                     val baseUrl = when (source) {
                         is HttpSource -> source.baseUrl

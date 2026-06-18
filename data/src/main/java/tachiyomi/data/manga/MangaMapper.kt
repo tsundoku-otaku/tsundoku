@@ -1,12 +1,15 @@
 package tachiyomi.data.manga
 
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 
 object MangaMapper {
+    @Suppress("UNUSED_PARAMETER")
     fun mapManga(
         id: Long,
         source: Long,
@@ -32,7 +35,6 @@ object MangaMapper {
         lastModifiedAt: Long,
         favoriteModifiedAt: Long?,
         version: Long,
-        @Suppress("UNUSED_PARAMETER")
         isSyncing: Long,
         notes: String,
         isNovel: Boolean,
@@ -63,6 +65,7 @@ object MangaMapper {
         version = version,
         notes = notes,
         isNovel = isNovel,
+        memo = JsonObject.EMPTY,
     )
 
     fun mapMangaFull(
@@ -100,6 +103,7 @@ object MangaMapper {
         @Suppress("UNUSED_PARAMETER") chapterFetchedAt: Long,
         @Suppress("UNUSED_PARAMETER") lastRead: Long,
         @Suppress("UNUSED_PARAMETER") bookmarkCount: Long,
+        @Suppress("UNUSED_PARAMETER") memo: JsonObject,
     ): Manga = mapManga(
         id, source, url, artist, author, description, genre, title, alternativeTitles,
         status, thumbnailUrl, favorite, lastUpdate, nextUpdate, initialized, viewerFlags,

@@ -91,9 +91,6 @@ import eu.kanade.tachiyomi.util.system.isShizukuInstalled
 import eu.kanade.tachiyomi.util.system.powerManager
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import eu.kanade.tachiyomi.util.system.toast
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import okhttp3.Headers
@@ -101,8 +98,7 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.AndroidDatabaseHandler
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.DatabaseMaintenance
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
@@ -193,7 +189,7 @@ object SettingsAdvancedScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.label_background_activity),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.pref_disable_battery_optimization),
                     subtitle = stringResource(MR.strings.pref_disable_battery_optimization_summary),
@@ -1032,7 +1028,7 @@ object SettingsAdvancedScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.label_data),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.pref_invalidate_download_cache),
                     subtitle = stringResource(MR.strings.pref_invalidate_download_cache_summary),
@@ -1052,9 +1048,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                     onClick = {
                         scope.launch {
                             try {
-                                val handler = Injekt.get<DatabaseHandler>() as? AndroidDatabaseHandler
-                                    ?: throw Exception("DatabaseHandler is not AndroidDatabaseHandler")
-                                val stats = handler.getDetailedDatabaseStats()
+                                val stats = Injekt.get<DatabaseMaintenance>().getDetailedDatabaseStats()
 
                                 val totalSize = (stats["total_size_bytes"] as? Long) ?: 0L
                                 val freelistSize = (stats["freelist_size_bytes"] as? Long) ?: 0L
@@ -1269,7 +1263,7 @@ object SettingsAdvancedScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.label_network),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.pref_clear_cookies),
                     onClick = {
@@ -1299,7 +1293,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                 ),
                 Preference.PreferenceItem.ListPreference(
                     preference = networkPreferences.dohProvider,
-                    entries = persistentMapOf(
+                    entries = mapOf(
                         -1 to stringResource(MR.strings.disabled),
                         PREF_DOH_CLOUDFLARE to "Cloudflare",
                         PREF_DOH_GOOGLE to "Google",
@@ -1356,7 +1350,7 @@ object SettingsAdvancedScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.label_library),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.TextPreference(
                     title = stringResource(MR.strings.pref_refresh_library_covers),
                     onClick = { MetadataUpdateJob.startNow(context) },
@@ -1414,7 +1408,7 @@ object SettingsAdvancedScreen : SearchableSettings {
         }
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_reader),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.ListPreference(
                     preference = basePreferences.hardwareBitmapThreshold,
                     entries = GLUtil.CUSTOM_TEXTURE_LIMIT_OPTIONS
@@ -1426,8 +1420,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                             }
                             option to display
                         }
-                        .toMap()
-                        .toImmutableMap(),
+                        .toMap(),
                     title = stringResource(MR.strings.pref_hardware_bitmap_threshold),
                     subtitleProvider = { value, options ->
                         stringResource(MR.strings.pref_hardware_bitmap_threshold_summary, options[value].orEmpty())
@@ -1486,7 +1479,7 @@ object SettingsAdvancedScreen : SearchableSettings {
         }
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.label_extensions),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.ListPreference(
                     preference = extensionInstallerPref,
                     entries = extensionInstallerPref.entries
@@ -1498,8 +1491,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 true
                             }
                         }
-                        .associateWith { stringResource(it.titleRes) }
-                        .toImmutableMap(),
+                        .associateWith { stringResource(it.titleRes) },
                     title = stringResource(MR.strings.ext_installer_pref),
                     onValueChanged = {
                         if (it == BasePreferences.ExtensionInstaller.SHIZUKU &&

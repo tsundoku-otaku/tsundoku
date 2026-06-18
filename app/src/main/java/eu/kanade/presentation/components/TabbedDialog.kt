@@ -30,8 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.fastForEachIndexed
 import androidx.compose.ui.window.DialogProperties
 import eu.kanade.presentation.components.dialogProperties
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.launch
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.material.TabText
@@ -48,12 +46,12 @@ sealed class TabTitle {
 }
 
 fun String.toTabTitle() = TabTitle.Text(this)
-fun ImmutableList<String>.toTabTitles() = map { it.toTabTitle() }.toImmutableList()
+fun List<String>.toTabTitles() = map { it.toTabTitle() }.toList()
 
 @Composable
 fun TabbedDialog(
     onDismissRequest: () -> Unit,
-    tabTitles: ImmutableList<TabTitle>,
+    tabTitles: List<TabTitle>,
     modifier: Modifier = Modifier,
     properties: DialogProperties = dialogProperties,
     tabOverflowMenuContent: (@Composable ColumnScope.(() -> Unit) -> Unit)? = null,

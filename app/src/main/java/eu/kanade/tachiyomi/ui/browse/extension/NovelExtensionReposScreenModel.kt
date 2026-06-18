@@ -7,21 +7,16 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
 import eu.kanade.tachiyomi.jsplugin.model.JsPluginRepository
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.ImmutableSet
-import kotlinx.collections.immutable.toImmutableList
-import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
-import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
-import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
-import mihon.domain.extensionrepo.interactor.GetExtensionRepo
-import mihon.domain.extensionrepo.interactor.ReplaceExtensionRepo
-import mihon.domain.extensionrepo.interactor.UpdateExtensionRepo
-import mihon.domain.extensionrepo.model.ExtensionRepo
+import mihon.domain.extension.interactor.AddExtensionStore
+import mihon.domain.extension.interactor.GetExtensionStores
+import mihon.domain.extension.interactor.RemoveExtensionStore
+import mihon.domain.extension.interactor.UpdateExtensionStores
+import mihon.domain.extension.model.ExtensionStore
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
@@ -29,11 +24,10 @@ import uy.kohesive.injekt.api.get
 
 class NovelExtensionReposScreenModel(
     private val jsPluginManager: JsPluginManager = Injekt.get(),
-    private val getExtensionRepo: GetExtensionRepo = Injekt.get(),
-    private val createExtensionRepo: CreateExtensionRepo = Injekt.get(),
-    private val deleteExtensionRepo: DeleteExtensionRepo = Injekt.get(),
-    private val replaceExtensionRepo: ReplaceExtensionRepo = Injekt.get(),
-    private val updateExtensionRepo: UpdateExtensionRepo = Injekt.get(),
+    private val getExtensionStores: GetExtensionStores = Injekt.get(),
+    private val addExtensionStore: AddExtensionStore = Injekt.get(),
+    private val removeExtensionStore: RemoveExtensionStore = Injekt.get(),
+    private val updateExtensionStores: UpdateExtensionStores = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) : StateScreenModel<NovelRepoScreenState>(NovelRepoScreenState.Loading) {
@@ -45,13 +39,13 @@ class NovelExtensionReposScreenModel(
         screenModelScope.launchIO {
             combine(
                 jsPluginManager.repositories,
-                getExtensionRepo.subscribeAll(),
+                getExtensionStores.subscribe(isNovel = true),
                 sourcePreferences.disabledExtensionRepos.changes(),
             ) { jsRepos, kotlinRepos, disabledKotlinRepos ->
                 NovelRepoScreenState.Success(
-                    jsRepos = jsRepos.toImmutableList(),
-                    kotlinRepos = kotlinRepos.toImmutableSet(),
-                    disabledKotlinRepos = disabledKotlinRepos.toImmutableSet(),
+                    jsRepos = jsRepos.toList(),
+                    kotlinRepos = kotlinRepos.toSet(),
+                    disabledKotlinRepos = disabledKotlinRepos.toSet(),
                 )
             }.collectLatest { state ->
                 mutableState.update {
@@ -72,29 +66,17 @@ class NovelExtensionReposScreenModel(
     }
 
     /**
-     * Create a Kotlin extension repository
+     * Add a Kotlin extension store (mihon extension index).
      */
-    fun createKotlinRepo(baseUrl: String) {
+    fun createKotlinRepo(indexUrl: String) {
         screenModelScope.launchIO {
-            when (val result = createExtensionRepo.await(baseUrl)) {
-                CreateExtensionRepo.Result.Success -> {
+            addExtensionStore(indexUrl, isNovel = true).fold(
+                onSuccess = {
                     extensionManager.findAvailableExtensions()
                     dismissDialog()
-                }
-                CreateExtensionRepo.Result.InvalidUrl -> _events.send(NovelRepoEvent.InvalidUrl)
-                CreateExtensionRepo.Result.RepoAlreadyExists -> _events.send(NovelRepoEvent.RepoAlreadyExists)
-                is CreateExtensionRepo.Result.DuplicateFingerprint -> {
-                    showDialog(NovelRepoDialog.KotlinConflict(result.oldRepo, result.newRepo))
-                }
-                else -> {}
-            }
-        }
-    }
-
-    fun replaceKotlinRepo(newRepo: ExtensionRepo) {
-        screenModelScope.launchIO {
-            replaceExtensionRepo.await(newRepo)
-            dismissDialog()
+                },
+                onFailure = { _events.send(NovelRepoEvent.InvalidUrl) },
+            )
         }
     }
 
@@ -105,11 +87,11 @@ class NovelExtensionReposScreenModel(
         }
     }
 
-    fun deleteKotlinRepo(baseUrl: String) {
+    fun deleteKotlinRepo(indexUrl: String) {
         screenModelScope.launchIO {
-            deleteExtensionRepo.await(baseUrl)
+            removeExtensionStore(indexUrl)
             sourcePreferences.disabledExtensionRepos.set(
-                sourcePreferences.disabledExtensionRepos.get() - baseUrl,
+                sourcePreferences.disabledExtensionRepos.get() - indexUrl,
             )
             extensionManager.findAvailableExtensions()
             dismissDialog()
@@ -120,10 +102,10 @@ class NovelExtensionReposScreenModel(
         jsPluginManager.setRepositoryEnabled(url, enabled)
     }
 
-    fun setKotlinRepoEnabled(baseUrl: String, enabled: Boolean) {
+    fun setKotlinRepoEnabled(indexUrl: String, enabled: Boolean) {
         sourcePreferences.disabledExtensionRepos.set(
             sourcePreferences.disabledExtensionRepos.get().let { disabledRepos ->
-                if (enabled) disabledRepos - baseUrl else disabledRepos + baseUrl
+                if (enabled) disabledRepos - indexUrl else disabledRepos + indexUrl
             },
         )
     }
@@ -131,9 +113,7 @@ class NovelExtensionReposScreenModel(
     fun refreshRepos() {
         screenModelScope.launchIO {
             jsPluginManager.refreshAvailablePlugins(forceRefresh = true)
-            val disabledRepos = sourcePreferences.disabledExtensionRepos.get()
-            val enabledRepos = getExtensionRepo.getAll().filterNot { it.baseUrl in disabledRepos }
-            updateExtensionRepo.awaitAll(enabledRepos)
+            updateExtensionStores()
         }
     }
 
@@ -167,8 +147,7 @@ sealed class NovelRepoDialog {
     data object CreateJs : NovelRepoDialog()
     data object CreateKotlin : NovelRepoDialog()
     data class DeleteJs(val repo: JsPluginRepository) : NovelRepoDialog()
-    data class DeleteKotlin(val baseUrl: String) : NovelRepoDialog()
-    data class KotlinConflict(val oldRepo: ExtensionRepo, val newRepo: ExtensionRepo) : NovelRepoDialog()
+    data class DeleteKotlin(val indexUrl: String) : NovelRepoDialog()
 }
 
 sealed class NovelRepoScreenState {
@@ -177,9 +156,9 @@ sealed class NovelRepoScreenState {
 
     @Immutable
     data class Success(
-        val jsRepos: ImmutableList<JsPluginRepository> = kotlinx.collections.immutable.persistentListOf(),
-        val kotlinRepos: ImmutableSet<ExtensionRepo> = kotlinx.collections.immutable.persistentSetOf(),
-        val disabledKotlinRepos: ImmutableSet<String> = kotlinx.collections.immutable.persistentSetOf(),
+        val jsRepos: List<JsPluginRepository> = listOf(),
+        val kotlinRepos: Set<ExtensionStore> = setOf(),
+        val disabledKotlinRepos: Set<String> = setOf(),
         val dialog: NovelRepoDialog? = null,
     ) : NovelRepoScreenState() {
         val isEmpty: Boolean

@@ -59,7 +59,6 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.tachiyomi.jsplugin.model.JsPlugin
 import eu.kanade.tachiyomi.ui.browse.jsplugin.JsPluginsScreenModel.JsPluginItem
-import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -79,7 +78,7 @@ fun jsPluginsTab(
         titleRes = MR.strings.label_extensions, // TODO: Add proper string resource
         badgeNumber = updateCount.takeIf { it > 0 },
         searchEnabled = true,
-        actions = persistentListOf(
+        actions = listOf(
             AppBar.OverflowAction(
                 title = stringResource(MR.strings.action_filter),
                 onClick = { /* TODO: Language filter */ },

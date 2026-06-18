@@ -10,7 +10,6 @@ import eu.kanade.domain.extension.interactor.TrustExtension
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.LoadResult
-import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import eu.kanade.tachiyomi.util.lang.Hash
@@ -50,7 +49,7 @@ internal object ExtensionLoader {
     private const val EXTENSION_FEATURE_NOVEL = "tachiyomi.novelextension"
     private val EXTENSION_FEATURES = setOf(EXTENSION_FEATURE, EXTENSION_FEATURE_NOVEL)
     const val LIB_VERSION_MIN = 1.4
-    const val LIB_VERSION_MAX = 1.5
+    const val LIB_VERSION_MAX = 1.6
 
     @Suppress("DEPRECATION")
     private val PACKAGE_FLAGS = PackageManager.GET_CONFIGURATIONS or
@@ -277,13 +276,20 @@ internal object ExtensionLoader {
 
         // Validate lib version
         val libVersion = versionName.substringBeforeLast('.').toDoubleOrNull()
-        if (libVersion == null || libVersion < LIB_VERSION_MIN || libVersion > LIB_VERSION_MAX) {
+        if (libVersion == null || (libVersion != LIB_VERSION_MIN && libVersion != LIB_VERSION_MAX)) {
             logcat(LogPriority.WARN) {
                 "Lib version is $libVersion, while only versions " +
-                    "$LIB_VERSION_MIN to $LIB_VERSION_MAX are allowed"
+                    "$LIB_VERSION_MIN and $LIB_VERSION_MAX is allowed"
             }
             return LoadResult.Error
         }
+//        if (libVersion == null || libVersion < LIB_VERSION_MIN || libVersion > LIB_VERSION_MAX) {
+//            logcat(LogPriority.WARN) {
+//                "Lib version is $libVersion, while only versions " +
+//                    "$LIB_VERSION_MIN or $LIB_VERSION_MAX is allowed"
+//            }
+//            return LoadResult.Error
+//        }
 
         val isNovelExtension = pkgInfo.reqFeatures.orEmpty().any { it.name == EXTENSION_FEATURE_NOVEL }
         val metaNs = if (isNovelExtension) "tachiyomi.novelextension" else "tachiyomi.extension"
@@ -369,9 +375,7 @@ internal object ExtensionLoader {
                 return LoadResult.Error
             }
 
-        val langs = sources.filterIsInstance<CatalogueSource>()
-            .map { it.lang }
-            .toSet()
+        val langs = sources.map { it.lang }.toSet()
         val lang = when (langs.size) {
             0 -> ""
             1 -> langs.first()

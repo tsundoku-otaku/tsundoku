@@ -33,8 +33,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import eu.kanade.core.preference.asToggleableState
 import eu.kanade.presentation.category.visualName
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.delay
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.domain.category.model.Category
@@ -48,7 +46,7 @@ import kotlin.time.Duration.Companion.seconds
 fun CategoryCreateDialog(
     onDismissRequest: () -> Unit,
     onCreate: (String, Int) -> Unit,
-    categories: ImmutableList<String>,
+    categories: List<String>,
 ) {
     var name by remember { mutableStateOf("") }
     var contentType by remember { mutableIntStateOf(Category.CONTENT_TYPE_ALL) }
@@ -167,7 +165,7 @@ private fun ContentTypeOption(
 fun CategoryRenameDialog(
     onDismissRequest: () -> Unit,
     onRename: (String) -> Unit,
-    categories: ImmutableList<String>,
+    categories: List<String>,
     category: String,
 ) {
     var name by remember { mutableStateOf(category) }
@@ -259,7 +257,7 @@ fun CategoryDeleteDialog(
 
 @Composable
 fun ChangeCategoryDialog(
-    initialSelection: ImmutableList<CheckboxState<Category>>,
+    initialSelection: List<CheckboxState<Category>>,
     onDismissRequest: () -> Unit,
     onEditCategories: () -> Unit,
     onConfirm: (List<Long>, List<Long>) -> Unit,
@@ -345,7 +343,7 @@ fun ChangeCategoryDialog(
                         if (index != -1) {
                             val mutableList = selection.toMutableList()
                             mutableList[index] = it.next()
-                            selection = mutableList.toList().toImmutableList()
+                            selection = mutableList.toList()
                         }
                     }
                     Row(

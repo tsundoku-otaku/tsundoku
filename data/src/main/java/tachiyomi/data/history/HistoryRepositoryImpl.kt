@@ -3,16 +3,20 @@
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.history.model.History
 import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.model.MangaCover
 import java.util.Date
+import tachiyomi.data.Database
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import tachiyomi.data.subscribeToList
 
 class HistoryRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val database: Database,
 ) : HistoryRepository {
 
     /**
@@ -54,36 +58,28 @@ class HistoryRepositoryImpl(
     )
 
     override fun getHistory(query: String, limit: Long): Flow<List<HistoryWithRelations>> {
-        return handler.subscribeToList {
-            historyQueries.getHistoryWithRelations(query, limit, ::mapHistoryWithRelations)
-        }
+        return database.historyQueries.getHistoryWithRelations(query, limit, ::mapHistoryWithRelations).subscribeToList()
     }
 
     override fun getHistoryGrouped(query: String, limit: Long): Flow<List<HistoryWithRelations>> {
-        return handler.subscribeToList {
-            historyQueries.getHistoryWithRelationsGrouped(query, limit, ::mapHistoryWithRelations)
-        }
+        return database.historyQueries.getHistoryWithRelationsGrouped(query, limit, ::mapHistoryWithRelations).subscribeToList()
     }
 
     override suspend fun getLastHistory(): HistoryWithRelations? {
-        return handler.awaitOneOrNull {
-            historyQueries.getLatestHistory(::mapHistoryWithRelations)
-        }
+        return database.historyQueries.getLatestHistory(::mapHistoryWithRelations).awaitAsOneOrNull()
     }
 
     override suspend fun getTotalReadDuration(): Long {
-        return handler.awaitOne { historyQueries.getReadDuration() }
+        return database.historyQueries.getReadDuration().awaitAsOne()
     }
 
     override suspend fun getHistoryByMangaId(mangaId: Long): List<History> {
-        return handler.awaitList { historyQueries.getHistoryByMangaId(mangaId, HistoryMapper::mapHistory) }
+        return database.historyQueries.getHistoryByMangaId(mangaId, HistoryMapper::mapHistory).awaitAsList()
     }
 
     override suspend fun resetHistory(historyId: Long) {
         try {
-            handler.await {
-                historyQueries.resetHistoryById(historyId)
-            }
+            database.historyQueries.resetHistoryById(historyId)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)
         }
@@ -91,9 +87,7 @@ class HistoryRepositoryImpl(
 
     override suspend fun resetHistoryByMangaId(mangaId: Long) {
         try {
-            handler.await {
-                historyQueries.resetHistoryByMangaId(mangaId)
-            }
+            database.historyQueries.resetHistoryByMangaId(mangaId)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)
         }
@@ -101,9 +95,7 @@ class HistoryRepositoryImpl(
 
     override suspend fun deleteAllHistory(): Boolean {
         return try {
-            handler.await {
-                historyQueries.removeAllHistory()
-            }
+            database.historyQueries.removeAllHistory()
             true
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)
@@ -113,13 +105,11 @@ class HistoryRepositoryImpl(
 
     override suspend fun upsertHistory(historyUpdate: HistoryUpdate) {
         try {
-            handler.await {
-                historyQueries.upsert(
+            database.historyQueries.upsert(
                     historyUpdate.chapterId,
                     historyUpdate.readAt,
                     historyUpdate.sessionReadDuration,
                 )
-            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)
         }

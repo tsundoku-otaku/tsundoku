@@ -28,7 +28,6 @@ import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
 import eu.kanade.tachiyomi.ui.browse.source.novelSourcesTab
 import eu.kanade.tachiyomi.ui.browse.source.sourcesTab
 import eu.kanade.tachiyomi.ui.main.MainActivity
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
@@ -78,13 +77,13 @@ data object BrowseTab : Tab {
         val novelExtensionsState by novelExtensionsScreenModel.state.collectAsState()
 
         val tabs = if (hideMangaBrowseTabs) {
-            persistentListOf(
+            listOf(
                 novelSourcesTab(),
                 novelExtensionsTab(novelExtensionsScreenModel),
                 novelMigrateSourceTab(),
             )
         } else {
-            persistentListOf(
+            listOf(
                 novelSourcesTab(),
                 sourcesTab(),
                 novelExtensionsTab(novelExtensionsScreenModel),

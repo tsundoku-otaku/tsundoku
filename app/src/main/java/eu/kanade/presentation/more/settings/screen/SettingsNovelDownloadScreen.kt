@@ -37,7 +37,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.source.isNovelSource
-import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences.Companion.SourceOverride
@@ -49,6 +48,7 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.random.Random
+import eu.kanade.tachiyomi.source.CatalogueSource
 
 object SettingsNovelDownloadScreen : SearchableSettings {
 
@@ -151,7 +151,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_downloads),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = prefs.enableThrottling(),
                     title = stringResource(TDMR.strings.pref_novel_download_throttling),
@@ -253,7 +253,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(TDMR.strings.pref_category_novel_images),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = prefs.downloadChapterImages(),
                     title = stringResource(TDMR.strings.pref_novel_download_images),
@@ -297,7 +297,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_library_update),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = prefs.enableUpdateThrottling(),
                     title = stringResource(TDMR.strings.pref_novel_update_throttling),
@@ -345,7 +345,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(TDMR.strings.pref_novel_mass_import_category),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = prefs.enableMassImportThrottling(),
                     title = stringResource(TDMR.strings.pref_novel_mass_import_throttling),
@@ -391,7 +391,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         }
         return Preference.PreferenceGroup(
             title = "Per-Extension Overrides",
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.TextPreference(
                     title = "Manage source overrides",
                     subtitle = "${overrides.size} override(s) configured",
@@ -516,7 +516,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     ) {
         val sourceManager = remember { Injekt.get<SourceManager>() }
         val novelSources = remember {
-            sourceManager.getCatalogueSources()
+            sourceManager.getAll().filterIsInstance<CatalogueSource>()
                 .filter { it.isNovelSource() }
         }
 

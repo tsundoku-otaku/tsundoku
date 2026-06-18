@@ -8,7 +8,6 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
-import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.source.model.SourceWithCount
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.repository.SourcePagingSource
@@ -16,14 +15,16 @@ import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.SourceManager
 import kotlin.time.Duration.Companion.seconds
 import tachiyomi.domain.source.model.Source as DomainSource
+import tachiyomi.data.Database
+import tachiyomi.data.subscribeToDebouncedList
 
 class SourceRepositoryImpl(
     private val sourceManager: SourceManager,
-    private val handler: DatabaseHandler,
+    private val database: Database,
 ) : SourceRepository {
 
     override fun getSources(): Flow<List<DomainSource>> {
-        return sourceManager.catalogueSources.map { sources ->
+        return sourceManager.sources.map { sources ->
             sources.map {
                 mapSourceToDomainSource(it).copy(
                     supportsLatest = it.supportsLatest,
@@ -33,7 +34,7 @@ class SourceRepositoryImpl(
     }
 
     override fun getOnlineSources(): Flow<List<DomainSource>> {
-        return sourceManager.catalogueSources.map { sources ->
+        return sourceManager.sources.map { sources ->
             sources
                 .filter { it.id != 0L && it.id != 1L }
                 .map(::mapSourceToDomainSource)
@@ -44,8 +45,8 @@ class SourceRepositoryImpl(
         return combine(
             // Triggers cause multiple table writes per operation, so debounce
             // collapses them into a single query execution after the burst.
-            handler.subscribeToDebouncedList(2.seconds) { mangasQueries.getSourceIdWithFavoriteCount() },
-            sourceManager.catalogueSources,
+            database.mangasQueries.getSourceIdWithFavoriteCount().subscribeToDebouncedList(2.seconds),
+            sourceManager.sources,
         ) { sourceIdWithFavoriteCount, _ -> sourceIdWithFavoriteCount }
             .map {
                 it.map { (sourceId, count) ->
@@ -60,7 +61,7 @@ class SourceRepositoryImpl(
 
     override fun getSourcesWithNonLibraryManga(): Flow<List<SourceWithCount>> {
         val sourceIdWithNonLibraryManga =
-            handler.subscribeToDebouncedList(2.seconds) { mangasQueries.getSourceIdsWithNonLibraryManga() }
+            database.mangasQueries.getSourceIdsWithNonLibraryManga().subscribeToDebouncedList(2.seconds)
         return sourceIdWithNonLibraryManga.map { sourceId ->
             sourceId.map { (sourceId, count) ->
                 val source = sourceManager.getOrStub(sourceId)

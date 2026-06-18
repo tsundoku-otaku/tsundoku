@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
+import eu.kanade.tachiyomi.source.Source
 
 class GlobalSearchScreenModel(
     initialQuery: String = "",
@@ -19,7 +20,7 @@ class GlobalSearchScreenModel(
         }
     }
 
-    override fun getEnabledSources(): List<CatalogueSource> {
+    override fun getEnabledSources(): List<Source> {
         return super.getEnabledSources()
             .filterNot { it.isNovelSource() } // Exclude novel sources from manga global search
             .filter { state.value.sourceFilter != SourceFilter.PinnedOnly || "${it.id}" in pinnedSources }

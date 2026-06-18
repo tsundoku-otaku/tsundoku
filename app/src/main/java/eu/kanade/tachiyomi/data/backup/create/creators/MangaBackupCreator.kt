@@ -1,15 +1,17 @@
 package eu.kanade.tachiyomi.data.backup.create.creators
 
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
 import eu.kanade.tachiyomi.data.backup.create.BackupOptions
-import eu.kanade.tachiyomi.data.backup.models.BackupChapter
 import eu.kanade.tachiyomi.data.backup.models.BackupHistory
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
-import eu.kanade.tachiyomi.data.backup.models.backupChapterMapper
+import eu.kanade.tachiyomi.data.backup.models.backupChapterRawMemoMapper
 import eu.kanade.tachiyomi.data.backup.models.backupTrackMapper
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.Database
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.history.interactor.GetHistory
 import tachiyomi.domain.manga.model.Manga
@@ -17,7 +19,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class MangaBackupCreator(
-    private val handler: DatabaseHandler = Injekt.get(),
+    private val database: Database = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
     private val getHistory: GetHistory = Injekt.get(),
 ) {
@@ -50,29 +52,22 @@ class MangaBackupCreator(
         // Entry for this manga
         val mangaObject = manga.toBackupManga()
 
-        mangaObject.excludedScanlators = handler.awaitList {
-            excluded_scanlatorsQueries.getExcludedScanlatorsByMangaId(manga.id)
-        }
+        mangaObject.excludedScanlators = database.excluded_scanlatorsQueries
+            .getExcludedScanlatorsByMangaId(manga.id)
+            .awaitAsList()
 
         if (options.chapters) {
-            val allChapters = handler.awaitList {
-                chaptersQueries.getChaptersByMangaIdUnfiltered(
+            // Backup all the chapters. The raw-memo query returns memo as bytes (no per-chapter
+            // JSON decode/re-encode), which was the main allocation hotspot on large libraries.
+            val allChapters = database.chaptersQueries
+                .getChaptersByMangaIdForBackup(
                     mangaId = manga.id,
-                    mapper = backupChapterMapper,
+                    mapper = backupChapterRawMemoMapper,
                 )
-            }
+                .awaitAsList()
 
             if (allChapters.isNotEmpty()) {
-                // Process chapters in smaller chunks to allow GC between them
-                val chapters = mutableListOf<BackupChapter>()
-                allChapters.chunked(500).forEach { chunk ->
-                    chapters.addAll(chunk)
-                    // Hint GC for manga with lots of chapters
-                    if (allChapters.size > 1000) {
-                        kotlinx.coroutines.yield()
-                    }
-                }
-                mangaObject.chapters = chapters
+                mangaObject.chapters = allChapters
             }
         }
 
@@ -85,7 +80,9 @@ class MangaBackupCreator(
         }
 
         if (options.tracking) {
-            val tracks = handler.awaitList { manga_syncQueries.getTracksByMangaId(manga.id, backupTrackMapper) }
+            val tracks = database.manga_syncQueries
+                .getTracksByMangaId(manga.id, backupTrackMapper)
+                .awaitAsList()
             if (tracks.isNotEmpty()) {
                 mangaObject.tracking = tracks
             }
@@ -95,7 +92,9 @@ class MangaBackupCreator(
             val historyByMangaId = getHistory.await(manga.id)
             if (historyByMangaId.isNotEmpty()) {
                 val history = historyByMangaId.map { history ->
-                    val chapter = handler.awaitOne { chaptersQueries.getChapterById(history.chapterId) }
+                    val chapter = database.chaptersQueries
+                        .getChapterById(history.chapterId)
+                        .awaitAsOne()
                     BackupHistory(chapter.url, history.readAt?.time ?: 0L, history.readDuration)
                 }
                 if (history.isNotEmpty()) {
@@ -131,4 +130,5 @@ private fun Manga.toBackupManga() =
         notes = this.notes,
         initialized = this.initialized,
         isNovel = this.isNovel,
+        memo = MemoColumnAdapter.encode(this.memo),
     )

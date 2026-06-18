@@ -34,7 +34,8 @@ internal fun ColumnScope.ReadingModePage(screenModel: ReaderSettingsScreenModel)
 
     val readingMode = remember(manga) { ReadingMode.fromPreference(manga?.readingMode?.toInt()) }
     SettingsChipRow(MR.strings.pref_category_reading_mode) {
-        ReadingMode.entries.map {
+        // NOVEL is auto-assigned for novel sources, not a manual manga reading mode.
+        (ReadingMode.entries - ReadingMode.NOVEL).map {
             FilterChip(
                 selected = it == readingMode,
                 onClick = { screenModel.onChangeReadingMode(it) },

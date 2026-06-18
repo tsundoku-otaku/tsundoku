@@ -1,14 +1,16 @@
 ﻿package tachiyomi.data.updates
 
+import app.cash.sqldelight.async.coroutines.awaitAsList
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.core.common.util.lang.toLong
-import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.domain.updates.repository.UpdatesRepository
+import tachiyomi.data.Database
+import tachiyomi.data.subscribeToList
 
 class UpdatesRepositoryImpl(
-    private val databaseHandler: DatabaseHandler,
+    private val database: Database,
 ) : UpdatesRepository {
 
     override suspend fun awaitWithRead(
@@ -17,15 +19,13 @@ class UpdatesRepositoryImpl(
         limit: Long,
         offset: Long,
     ): List<UpdatesWithRelations> {
-        return databaseHandler.awaitList {
-            updatesQueries.getUpdatesByReadStatus(
-                read = read,
-                after = after,
-                limit = limit,
-                offset = offset,
-                mapper = ::mapUpdatesWithRelations,
-            )
-        }
+        return database.updatesQueries.getUpdatesByReadStatus(
+            read = read,
+            after = after,
+            limit = limit,
+            offset = offset,
+            mapper = ::mapUpdatesWithRelations,
+        ).awaitAsList()
     }
 
     override fun subscribeAll(
@@ -37,18 +37,16 @@ class UpdatesRepositoryImpl(
         bookmarked: Boolean?,
         hideExcludedScanlators: Boolean,
     ): Flow<List<UpdatesWithRelations>> {
-        return databaseHandler.subscribeToList {
-            updatesQueries.getRecentUpdates(
-                after = after,
-                limit = limit,
-                offset = offset,
-                filterUnread = unread,
-                filterStarted = started,
-                filterBookmarked = bookmarked,
-                hideExcludedScanlators = hideExcludedScanlators.toLong(),
-                mapper = ::mapUpdatesWithRelations,
-            )
-        }
+        return database.updatesQueries.getRecentUpdates(
+            after = after,
+            limit = limit,
+            offset = offset,
+            filterUnread = unread,
+            filterStarted = started,
+            filterBookmarked = bookmarked,
+            hideExcludedScanlators = hideExcludedScanlators.toLong(),
+            mapper = ::mapUpdatesWithRelations,
+        ).subscribeToList()
     }
 
     override fun subscribeWithRead(
@@ -57,15 +55,13 @@ class UpdatesRepositoryImpl(
         limit: Long,
         offset: Long,
     ): Flow<List<UpdatesWithRelations>> {
-        return databaseHandler.subscribeToList {
-            updatesQueries.getUpdatesByReadStatus(
-                read = read,
-                after = after,
-                limit = limit,
-                offset = offset,
-                mapper = ::mapUpdatesWithRelations,
-            )
-        }
+        return database.updatesQueries.getUpdatesByReadStatus(
+            read = read,
+            after = after,
+            limit = limit,
+            offset = offset,
+            mapper = ::mapUpdatesWithRelations,
+        ).subscribeToList()
     }
 
     private fun mapUpdatesWithRelations(

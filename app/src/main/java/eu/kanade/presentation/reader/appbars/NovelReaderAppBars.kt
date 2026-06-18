@@ -80,7 +80,6 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
-import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.material.Slider
@@ -315,9 +314,8 @@ private fun NovelReaderTopBar(
         navigateUp = navigateUp,
         actions = {
             AppBarActions(
-                actions = persistentListOf<AppBar.AppBarAction>().builder()
-                    .apply {
-                        add(
+                actions = buildList {
+                    add(
                             AppBar.Action(
                                 title = stringResource(
                                     if (bookmarked) {
@@ -384,8 +382,7 @@ private fun NovelReaderTopBar(
                                 ),
                             )
                         }
-                    }
-                    .build(),
+                },
             )
         },
     )

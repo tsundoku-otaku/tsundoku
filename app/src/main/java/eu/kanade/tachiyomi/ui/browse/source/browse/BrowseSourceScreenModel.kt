@@ -28,8 +28,6 @@ import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.util.removeCovers
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -410,8 +408,6 @@ class BrowseSourceScreenModel(
     }
 
     fun searchGenre(genreName: String) {
-        if (source !is CatalogueSource) return
-
         val defaultFilters = source.getFilterList()
         var genreExists = false
 
@@ -534,7 +530,7 @@ class BrowseSourceScreenModel(
                     setDialog(
                         Dialog.ChangeMangaCategory(
                             manga,
-                            categories.mapAsCheckboxState { it.id in preselectedIds }.toImmutableList(),
+                            categories.mapAsCheckboxState { it.id in preselectedIds },
                         ),
                     )
                 }
@@ -719,10 +715,10 @@ class BrowseSourceScreenModel(
         data class AddDuplicateManga(val manga: Manga, val duplicates: List<MangaWithChapterCount>) : Dialog
         data class ChangeMangaCategory(
             val manga: Manga,
-            val initialSelection: ImmutableList<CheckboxState.State<Category>>,
+            val initialSelection: List<CheckboxState.State<Category>>,
         ) : Dialog
         data class Migrate(val target: Manga, val current: Manga) : Dialog
-        data class BulkAddLocalNovels(val categories: ImmutableList<Category>) : Dialog
+        data class BulkAddLocalNovels(val categories: List<Category>) : Dialog
         data class ConfirmDeleteLocalNovels(val mangas: Set<Manga>) : Dialog
     }
 
@@ -902,7 +898,7 @@ class BrowseSourceScreenModel(
             val cats = getCategories.await().filter {
                 it.contentType == Category.CONTENT_TYPE_ALL || it.contentType == Category.CONTENT_TYPE_NOVEL
             }
-            setDialog(Dialog.BulkAddLocalNovels(cats.toImmutableList()))
+            setDialog(Dialog.BulkAddLocalNovels(cats.toList()))
         }
     }
 

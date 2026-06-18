@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onEach
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.domain.library.model.LibraryManga
@@ -21,9 +21,16 @@ import tachiyomi.domain.manga.repository.DuplicatePair
 import tachiyomi.domain.manga.repository.MangaRepository
 import java.time.LocalDate
 import java.time.ZoneId
+import tachiyomi.data.Database
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import tachiyomi.data.subscribeToList
+import tachiyomi.data.subscribeToOne
+import tachiyomi.data.subscribeToOneOrNull
 
 class MangaRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val database: Database,
 ) : MangaRepository {
 
     private data class UrlMaintenanceRow(
@@ -46,8 +53,7 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun getMangaById(id: Long): Manga {
-        return handler.awaitOne {
-            mangasQueries.getMangaById(id) {
+        return database.mangasQueries.getMangaById(id) {
                     id,
                     source,
                     url,
@@ -81,15 +87,14 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.awaitAsOne()
     }
 
     override suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga> {
-        return handler.subscribeToOne {
-            mangasQueries.getMangaById(id) {
+        return database.mangasQueries.getMangaById(id) {
                     id,
                     source,
                     url,
@@ -123,15 +128,14 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.subscribeToOne()
     }
 
     override suspend fun getMangaByUrlAndSourceId(url: String, sourceId: Long): Manga? {
-        return handler.awaitOneOrNull {
-            mangasQueries.getMangaByUrlAndSource(
+        return database.mangasQueries.getMangaByUrlAndSource(
                 url,
                 sourceId,
             ) {
@@ -168,15 +172,14 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.awaitAsOneOrNull()
     }
 
     override suspend fun getLiteMangaByUrlAndSourceId(url: String, sourceId: Long): Manga? {
-        return handler.awaitOneOrNull {
-            mangasQueries.getLiteMangaByUrlAndSource(url, sourceId) {
+        return database.mangasQueries.getLiteMangaByUrlAndSource(url, sourceId) {
                     id,
                     source,
                     url,
@@ -234,13 +237,11 @@ class MangaRepositoryImpl(
                     notes = notes,
                     isNovel = false,
                 )
-            }
-        }
+            }.awaitAsOneOrNull()
     }
 
     override fun getMangaByUrlAndSourceIdAsFlow(url: String, sourceId: Long): Flow<Manga?> {
-        return handler.subscribeToOneOrNull {
-            mangasQueries.getMangaByUrlAndSource(
+        return database.mangasQueries.getMangaByUrlAndSource(
                 url,
                 sourceId,
             ) {
@@ -277,15 +278,14 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.subscribeToOneOrNull()
     }
 
     override suspend fun getFavorites(): List<Manga> {
-        return handler.awaitList {
-            mangasQueries.getFavorites {
+        return database.mangasQueries.getFavorites {
                     id,
                     source,
                     url,
@@ -319,15 +319,14 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun getFavoritesPaged(limit: Long, offset: Long): List<Manga> {
-        return handler.awaitList {
-            mangasQueries.getFavoritesPaged(limit, offset) {
+        return database.mangasQueries.getFavoritesPaged(limit, offset) {
                     id,
                     source,
                     url,
@@ -361,19 +360,18 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun getFavoritesCount(): Long {
-        return handler.awaitOne { mangasQueries.getFavoritesCount() }
+        return database.mangasQueries.getFavoritesCount().awaitAsOne()
     }
 
     override suspend fun getFavoritesEntry(): List<Manga> {
-        return handler.awaitList {
-            mangasQueries.getFavoritesEntry {
+        return database.mangasQueries.getFavoritesEntry {
                     id,
                     source,
                     url,
@@ -414,13 +412,56 @@ class MangaRepositoryImpl(
                     notes = "",
                     isNovel = is_novel,
                 )
-            }
-        }
+            }.awaitAsList()
+    }
+
+    override suspend fun getFavoritesEntryPaged(afterId: Long, limit: Long): List<Manga> {
+        return database.mangasQueries.getFavoritesEntryPaged(afterId, limit) {
+                    id,
+                    source,
+                    url,
+                    title,
+                    artist,
+                    author,
+                    thumbnail_url,
+                    cover_last_modified,
+                    favorite,
+                    is_novel,
+                ->
+                MangaMapper.mapManga(
+                    id = id,
+                    source = source,
+                    url = url,
+                    artist = artist,
+                    author = author,
+                    description = null,
+                    genre = null,
+                    title = title,
+                    alternativeTitles = null,
+                    status = 0,
+                    thumbnailUrl = thumbnail_url,
+                    favorite = favorite,
+                    lastUpdate = 0,
+                    nextUpdate = 0,
+                    initialized = false,
+                    viewerFlags = 0,
+                    chapterFlags = 0,
+                    coverLastModified = cover_last_modified,
+                    dateAdded = 0,
+                    updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                    calculateInterval = 0,
+                    lastModifiedAt = 0,
+                    favoriteModifiedAt = null,
+                    version = 0,
+                    isSyncing = 0,
+                    notes = "",
+                    isNovel = is_novel,
+                )
+            }.awaitAsList()
     }
 
     override fun getFavoritesEntryBySourceId(sourceId: Long): Flow<List<Manga>> {
-        return handler.subscribeToList {
-            mangasQueries.getFavoritesEntryBySourceId(sourceId) {
+        return database.mangasQueries.getFavoritesEntryBySourceId(sourceId) {
                     id,
                     source,
                     url,
@@ -461,8 +502,7 @@ class MangaRepositoryImpl(
                     notes = "",
                     isNovel = is_novel,
                 )
-            }
-        }
+            }.subscribeToList()
     }
 
     override suspend fun getFavoriteSourceAndUrl(): List<Pair<Long, String>> {
@@ -471,9 +511,7 @@ class MangaRepositoryImpl(
             return cachedFavoriteSourceUrl!!
         }
 
-        val result = handler.awaitList {
-            mangasQueries.getFavoriteSourceAndUrl { source, url -> source to url }
-        }
+        val result = database.mangasQueries.getFavoriteSourceAndUrl { source, url -> source to url }.awaitAsList()
 
         cachedFavoriteSourceUrl = result
         favoriteSourceUrlCacheTimestamp = now
@@ -481,30 +519,23 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun getFavoriteIdAndUrl(): List<Pair<Long, String>> {
-        return handler.awaitList {
-            mangasQueries.getFavoriteIdAndUrl { id, url -> id to url }
-        }
+        return database.mangasQueries.getFavoriteIdAndUrl { id, url -> id to url }.awaitAsList()
     }
 
     override suspend fun getFavoriteIdAndGenre(): List<Pair<Long, List<String>?>> {
-        return handler.awaitList {
-            mangasQueries.getFavoriteIdAndGenre { id, genre ->
+        return database.mangasQueries.getFavoriteIdAndGenre { id, genre ->
                 id to genre
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun getFavoriteIdAndTotalCount(): List<Pair<Long, Long>> {
-        return handler.awaitList {
-            mangasQueries.getFavoriteIdAndTotalCount { id, totalCount ->
+        return database.mangasQueries.getFavoriteIdAndTotalCount { id, totalCount ->
                 id to totalCount
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun getReadMangaNotInLibrary(): List<Manga> {
-        return handler.awaitList {
-            mangasQueries.getReadMangaNotInLibrary {
+        return database.mangasQueries.getReadMangaNotInLibrary {
                     id,
                     source,
                     url,
@@ -538,10 +569,10 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.awaitAsList()
     }
 
     @Volatile
@@ -588,8 +619,7 @@ class MangaRepositoryImpl(
             "MangaRepositoryImpl.getLibraryManga: Executing DB query (cache invalid/expired)\\nFull call stack:\\n  $caller"
         }
         val queryStart = System.currentTimeMillis()
-        val result = handler.awaitList {
-            mangasQueries.libraryGrid {
+        val result = database.mangasQueries.libraryGrid {
                     id,
                     source,
                     url,
@@ -661,8 +691,7 @@ class MangaRepositoryImpl(
                     bookmarkCount = bookmarkCount,
                     categories = categories,
                 )
-            }
-        }
+            }.awaitAsList()
 
         val queryDuration = System.currentTimeMillis() - queryStart
         logcat(LogPriority.INFO) {
@@ -676,8 +705,7 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun getLibraryMangaById(mangaId: Long): LibraryManga? {
-        return handler.awaitOneOrNull {
-            mangasQueries.libraryGridById(mangaId) {
+        return database.mangasQueries.libraryGridById(mangaId) {
                     id,
                     source,
                     url,
@@ -749,14 +777,12 @@ class MangaRepositoryImpl(
                     bookmarkCount = bookmarkCount,
                     categories = categories,
                 )
-            }
-        }
+            }.awaitAsOneOrNull()
     }
 
     override suspend fun getLibraryMangaByIds(mangaIds: List<Long>): List<LibraryManga> {
         if (mangaIds.isEmpty()) return emptyList()
-        return handler.awaitList {
-            mangasQueries.libraryGridByIds(mangaIds) {
+        return database.mangasQueries.libraryGridByIds(mangaIds) {
                     id,
                     source,
                     url,
@@ -828,15 +854,13 @@ class MangaRepositoryImpl(
                     bookmarkCount = bookmarkCount,
                     categories = categories,
                 )
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun getLibraryMangaForUpdate(): List<LibraryMangaForUpdate> {
         logcat(LogPriority.INFO) { "MangaRepositoryImpl.getLibraryMangaForUpdate: Executing lightweight query" }
         val queryStart = System.currentTimeMillis()
-        val result = handler.awaitList {
-            mangasQueries.libraryForUpdate {
+        val result = database.mangasQueries.libraryForUpdate {
                     id,
                     source,
                     url,
@@ -864,8 +888,7 @@ class MangaRepositoryImpl(
                     readCount = readCount,
                     categories = categories,
                 )
-            }
-        }
+            }.awaitAsList()
         val queryDuration = System.currentTimeMillis() - queryStart
         logcat(LogPriority.INFO) {
             "MangaRepositoryImpl.getLibraryMangaForUpdate: Query completed in ${queryDuration}ms, returned ${result.size} items"
@@ -875,9 +898,8 @@ class MangaRepositoryImpl(
 
     override fun getLibraryMangaAsFlow(): Flow<List<LibraryManga>> {
         logcat(LogPriority.INFO) { "MangaRepositoryImpl.getLibraryMangaAsFlow: Creating new Flow subscription" }
-        return handler.subscribeToList {
-            logcat(LogPriority.INFO) { "MangaRepositoryImpl.getLibraryMangaAsFlow: Executing libraryGrid query" }
-            mangasQueries.libraryGrid {
+        logcat(LogPriority.INFO) { "MangaRepositoryImpl.getLibraryMangaAsFlow: Executing libraryGrid query" }
+        return database.mangasQueries.libraryGrid {
                     id,
                     source,
                     url,
@@ -949,8 +971,7 @@ class MangaRepositoryImpl(
                     bookmarkCount = bookmarkCount,
                     categories = categories,
                 )
-            }
-        }
+            }.subscribeToList()
             // Log when debounce passes through
             .onEach { list ->
                 logcat(LogPriority.INFO) {
@@ -966,8 +987,7 @@ class MangaRepositoryImpl(
     }
 
     override fun getFavoritesBySourceId(sourceId: Long): Flow<List<Manga>> {
-        return handler.subscribeToList {
-            mangasQueries.getFavoriteBySourceId(sourceId) {
+        return database.mangasQueries.getFavoriteBySourceId(sourceId) {
                     id,
                     source,
                     url,
@@ -1001,15 +1021,14 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.subscribeToList()
     }
 
     override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<MangaWithChapterCount> {
-        return handler.awaitList {
-            mangasQueries.getDuplicateLibraryManga(id, title) {
+        return database.mangasQueries.getDuplicateLibraryManga(id, title) {
                     id,
                     source,
                     url,
@@ -1071,13 +1090,11 @@ class MangaRepositoryImpl(
                     totalCount = totalCount,
                     readCount = readCount,
                 )
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun findDuplicatesExact(): List<DuplicateGroup> {
-        return handler.awaitList {
-            mangasQueries.findDuplicatesExact { normalizedTitle, ids, count ->
+        return database.mangasQueries.findDuplicatesExact { normalizedTitle, ids, count ->
                 DuplicateGroup(
                     normalizedTitle = normalizedTitle ?: "",
                     ids =
@@ -1085,21 +1102,18 @@ class MangaRepositoryImpl(
                         ?: emptyList(),
                     count = count.toInt(),
                 )
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun findDuplicatesContains(): List<DuplicatePair> {
-        return handler.awaitList {
-            mangasQueries.findDuplicatesContains { idA, titleA, idB, titleB ->
+        return database.mangasQueries.findDuplicatesContains { idA, titleA, idB, titleB ->
                 DuplicatePair(
                     idA = idA,
                     titleA = titleA,
                     idB = idB,
                     titleB = titleB,
                 )
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun findFavoriteIdsMatchingMetadata(
@@ -1107,52 +1121,44 @@ class MangaRepositoryImpl(
         matchArtist: ((String) -> Boolean)?,
         matchDescription: ((String) -> Boolean)?,
     ): Triple<Set<Long>, Set<Long>, Set<Long>> {
-        return handler.await {
-            val authorIds = HashSet<Long>()
-            val artistIds = HashSet<Long>()
-            val descriptionIds = HashSet<Long>()
-            // Side-effecting mapper: each row's strings are matched and discarded as the cursor
-            // streams, so the full favorite metadata is never held in memory at once.
-            mangasQueries.getFavoriteMetadataForSearch { id, author, artist, description ->
-                if (matchAuthor != null && author != null && matchAuthor(author)) authorIds.add(id)
-                if (matchArtist != null && artist != null && matchArtist(artist)) artistIds.add(id)
-                if (matchDescription != null && description != null && matchDescription(description)) {
-                    descriptionIds.add(id)
-                }
-            }.executeAsList()
-            Triple(authorIds, artistIds, descriptionIds)
-        }
+        val authorIds = HashSet<Long>()
+        val artistIds = HashSet<Long>()
+        val descriptionIds = HashSet<Long>()
+        // Side-effecting mapper: each row's strings are matched and discarded as the cursor
+        // streams, so the full favorite metadata is never held in memory at once.
+        database.mangasQueries.getFavoriteMetadataForSearch { id, author, artist, description ->
+            if (matchAuthor != null && author != null && matchAuthor(author)) authorIds.add(id)
+            if (matchArtist != null && artist != null && matchArtist(artist)) artistIds.add(id)
+            if (matchDescription != null && description != null && matchDescription(description)) {
+                descriptionIds.add(id)
+            }
+        }.awaitAsList()
+        return Triple(authorIds, artistIds, descriptionIds)
     }
 
     override suspend fun getFavoriteIdAndTitle(): List<Pair<Long, String>> {
-        return handler.awaitList {
-            mangasQueries.getFavoriteIdAndTitle { id, title ->
+        return database.mangasQueries.getFavoriteIdAndTitle { id, title ->
                 id to title
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun findDuplicatesByUrl(): List<DuplicateGroup> {
-        return handler.awaitList {
-            mangasQueries.findDuplicatesByUrl { url, source, ids, count ->
+        return database.mangasQueries.findDuplicatesByUrl { url, source, ids, count ->
                 DuplicateGroup(
                     normalizedTitle = url, // Using URL as the group key
                     ids = ids.split(",").mapNotNull { id -> id.toLongOrNull() },
                     count = count.toInt(),
                 )
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun getFavoriteGenres(): List<Pair<Long, List<String>?>> {
         logcat(LogPriority.INFO) { "MangaRepositoryImpl.getFavoriteGenres: Executing lightweight genres query" }
         val queryStart = System.currentTimeMillis()
-        val result = handler.awaitList {
-            mangasQueries.getFavoriteGenres { id, genre ->
+        val result = database.mangasQueries.getFavoriteGenres { id, genre ->
                 // genre is already List<String>? via StringListColumnAdapter
                 id to genre
-            }
-        }
+            }.awaitAsList()
         val queryDuration = System.currentTimeMillis() - queryStart
         logcat(LogPriority.INFO) {
             "MangaRepositoryImpl.getFavoriteGenres: Query completed in ${queryDuration}ms, returned ${result.size} items"
@@ -1165,11 +1171,9 @@ class MangaRepositoryImpl(
             "MangaRepositoryImpl.getFavoriteGenresWithSource: Executing lightweight genres with source query"
         }
         val queryStart = System.currentTimeMillis()
-        val result = handler.awaitList {
-            mangasQueries.getFavoriteGenresWithSource { id, source, genre ->
+        val result = database.mangasQueries.getFavoriteGenresWithSource { id, source, genre ->
                 Triple(id, source, genre)
-            }
-        }
+            }.awaitAsList()
         val queryDuration = System.currentTimeMillis() - queryStart
         logcat(LogPriority.INFO) {
             "MangaRepositoryImpl.getFavoriteGenresWithSource: Query completed in ${queryDuration}ms, returned ${result.size} items"
@@ -1181,27 +1185,25 @@ class MangaRepositoryImpl(
         novelSourceIds: Set<Long>,
         wantNovel: Boolean?,
     ): Pair<Map<String, Int>, Int> {
-        return handler.await {
-            val counts = HashMap<String, Int>()
-            var noTagsCount = 0
-            // Side-effecting mapper: fold each row as the cursor streams it. executeAsList still
-            // builds a List<Unit> (one cheap singleton ref per row), but the genre sublists are
-            // decoded and discarded per row instead of all being held simultaneously.
-            mangasQueries.getFavoriteGenresWithSource { _, source, genre ->
-                val isNovel = source in novelSourceIds
-                if (wantNovel == null || wantNovel == isNovel) {
-                    if (genre.isNullOrEmpty()) {
-                        noTagsCount++
-                    } else {
-                        for (raw in genre) {
-                            val tag = raw.trim()
-                            if (tag.isNotEmpty()) counts[tag] = (counts[tag] ?: 0) + 1
-                        }
+        val counts = HashMap<String, Int>()
+        var noTagsCount = 0
+        // Side-effecting mapper: fold each row as the cursor streams it. awaitAsList still
+        // builds a List<Unit> (one cheap singleton ref per row), but the genre sublists are
+        // decoded and discarded per row instead of all being held simultaneously.
+        database.mangasQueries.getFavoriteGenresWithSource { _, source, genre ->
+            val isNovel = source in novelSourceIds
+            if (wantNovel == null || wantNovel == isNovel) {
+                if (genre.isNullOrEmpty()) {
+                    noTagsCount++
+                } else {
+                    for (raw in genre) {
+                        val tag = raw.trim()
+                        if (tag.isNotEmpty()) counts[tag] = (counts[tag] ?: 0) + 1
                     }
                 }
-            }.executeAsList()
-            counts to noTagsCount
-        }
+            }
+        }.awaitAsList()
+        return counts to noTagsCount
     }
 
     override suspend fun getFavoriteSourceUrlPairs(): List<Pair<Long, String>> {
@@ -1209,11 +1211,9 @@ class MangaRepositoryImpl(
             "MangaRepositoryImpl.getFavoriteSourceUrlPairs: Executing ultra-lightweight source+url query"
         }
         val queryStart = System.currentTimeMillis()
-        val result = handler.awaitList {
-            mangasQueries.getFavoriteSourceAndUrlPairs { source, url ->
+        val result = database.mangasQueries.getFavoriteSourceAndUrlPairs { source, url ->
                 source to url
-            }
-        }
+            }.awaitAsList()
         val queryDuration = System.currentTimeMillis() - queryStart
         logcat(LogPriority.INFO) {
             "MangaRepositoryImpl.getFavoriteSourceUrlPairs: Query completed in ${queryDuration}ms, returned ${result.size} items"
@@ -1226,9 +1226,7 @@ class MangaRepositoryImpl(
             "MangaRepositoryImpl.getFavoriteSourceIds: Executing ultra-lightweight source IDs query"
         }
         val queryStart = System.currentTimeMillis()
-        val result = handler.awaitList {
-            mangasQueries.getFavoriteSourceIds()
-        }
+        val result = database.mangasQueries.getFavoriteSourceIds().awaitAsList()
         val queryDuration = System.currentTimeMillis() - queryStart
         logcat(LogPriority.INFO) {
             "MangaRepositoryImpl.getFavoriteSourceIds: Query completed in ${queryDuration}ms, returned ${result.size} sources"
@@ -1239,8 +1237,7 @@ class MangaRepositoryImpl(
     override suspend fun getMangaWithCounts(ids: List<Long>): List<MangaWithChapterCount> {
         if (ids.isEmpty()) return emptyList()
         return ids.chunked(500).flatMap { chunk ->
-            handler.awaitList {
-                mangasQueries.getMangaWithCounts(chunk) {
+            database.mangasQueries.getMangaWithCounts(chunk) {
                         id,
                         source,
                         url,
@@ -1302,16 +1299,14 @@ class MangaRepositoryImpl(
                         totalCount = totalCount,
                         readCount = readCount,
                     )
-                }
-            }
+                }.awaitAsList()
         }
     }
 
     override suspend fun getMangaWithCountsLight(ids: List<Long>): List<MangaWithChapterCount> {
         if (ids.isEmpty()) return emptyList()
         return ids.chunked(500).flatMap { chunk ->
-            handler.awaitList {
-                mangasQueries.getMangaWithCountsLight(chunk) {
+            database.mangasQueries.getMangaWithCountsLight(chunk) {
                         id,
                         source,
                         url,
@@ -1373,15 +1368,13 @@ class MangaRepositoryImpl(
                         totalCount = totalCount,
                         readCount = readCount,
                     )
-                }
-            }
+                }.awaitAsList()
         }
     }
 
     override suspend fun getUpcomingManga(statuses: Set<Long>): Flow<List<Manga>> {
         val epochMillis = LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toEpochSecond() * 1000
-        return handler.subscribeToList {
-            mangasQueries.getUpcomingManga(epochMillis, statuses) {
+        return database.mangasQueries.getUpcomingManga(epochMillis, statuses) {
                     id,
                     source,
                     url,
@@ -1415,15 +1408,15 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     _,
+                _,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
-            }
-        }
+            }.subscribeToList()
     }
 
     override suspend fun resetViewerFlags(): Boolean {
         return try {
-            handler.await { mangasQueries.resetViewerFlags() }
+            database.mangasQueries.resetViewerFlags()
             true
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
@@ -1432,10 +1425,10 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun setMangaCategories(mangaId: Long, categoryIds: List<Long>) {
-        handler.await(inTransaction = true) {
-            mangas_categoriesQueries.deleteMangaCategoryByMangaId(mangaId)
+        database.transaction {
+            database.mangas_categoriesQueries.deleteMangaCategoryByMangaId(mangaId)
             categoryIds.map { categoryId ->
-                mangas_categoriesQueries.insert(mangaId, categoryId)
+                database.mangas_categoriesQueries.insert(mangaId, categoryId)
             }
         }
         // Categories are now JOINed from mangas_categories at query time, no cache update needed
@@ -1443,14 +1436,14 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun setMangasCategories(mangaIds: List<Long>, categoryIds: List<Long>) {
-        handler.await(inTransaction = true) {
+        database.transaction {
             // Delete all existing categories for the mangas first
             mangaIds.forEach { mangaId ->
-                mangas_categoriesQueries.deleteMangaCategoryByMangaId(mangaId)
+                database.mangas_categoriesQueries.deleteMangaCategoryByMangaId(mangaId)
             }
             mangaIds.forEach { mangaId ->
                 categoryIds.forEach { categoryId ->
-                    mangas_categoriesQueries.insertBulkMangaCategory(mangaId, categoryId)
+                    database.mangas_categoriesQueries.insertBulkMangaCategory(mangaId, categoryId)
                 }
             }
         }
@@ -1458,10 +1451,10 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun addMangasCategories(mangaIds: List<Long>, categoryIds: List<Long>) {
-        handler.await(inTransaction = true) {
+        database.transaction {
             mangaIds.forEach { mangaId ->
                 categoryIds.forEach { categoryId ->
-                    mangas_categoriesQueries.insertBulkMangaCategory(mangaId, categoryId)
+                    database.mangas_categoriesQueries.insertBulkMangaCategory(mangaId, categoryId)
                 }
             }
         }
@@ -1470,8 +1463,8 @@ class MangaRepositoryImpl(
 
     override suspend fun removeMangasCategories(mangaIds: List<Long>, categoryIds: List<Long>) {
         if (mangaIds.isEmpty() || categoryIds.isEmpty()) return
-        handler.await(inTransaction = true) {
-            mangas_categoriesQueries.deleteBulkMangaCategories(mangaIds, categoryIds)
+        database.transaction {
+            database.mangas_categoriesQueries.deleteBulkMangaCategories(mangaIds, categoryIds)
         }
         invalidateLibraryCacheInternal()
     }
@@ -1497,9 +1490,9 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun insertNetworkManga(manga: List<Manga>): List<Manga> {
-        return handler.await(inTransaction = true) {
+        return database.transactionWithResult {
             manga.map {
-                mangasQueries.insertNetworkManga(
+                database.mangasQueries.insertNetworkManga(
                     source = it.source,
                     url = it.url,
                     artist = it.artist,
@@ -1522,20 +1515,21 @@ class MangaRepositoryImpl(
                     updateStrategy = it.updateStrategy,
                     version = it.version,
                     isNovel = it.isNovel,
+                    memo = it.memo,
                     updateTitle = it.title.isNotBlank(),
                     updateCover = !it.thumbnailUrl.isNullOrBlank() && it.thumbnailUrl!!.contains("://"),
                     updateDetails = it.initialized,
                     mapper = MangaMapper::mapMangaFull,
                 )
-                    .executeAsOne()
+                    .awaitAsOne()
             }
         }
     }
 
     private suspend fun partialUpdate(vararg mangaUpdates: MangaUpdate) {
-        handler.await(inTransaction = true) {
+        database.transaction {
             mangaUpdates.forEach { value ->
-                mangasQueries.update(
+                database.mangasQueries.update(
                     source = value.source,
                     url = value.url,
                     artist = value.artist,
@@ -1561,12 +1555,13 @@ class MangaRepositoryImpl(
                     isSyncing = 0,
                     notes = value.notes,
                     isNovel = value.isNovel,
+                    memo = value.memo?.let(MemoColumnAdapter::encode),
                 )
             }
             val favoriteChangedIds = mangaUpdates.filter { it.favorite != null }.map { it.id }
             if (favoriteChangedIds.isNotEmpty()) {
                 favoriteChangedIds.forEach { id ->
-                    mangasQueries.recomputeAggregatesForManga(id)
+                    database.mangasQueries.recomputeAggregatesForManga(id)
                 }
             }
         }
@@ -1581,9 +1576,7 @@ class MangaRepositoryImpl(
     override suspend fun normalizeAllUrls(): Int {
         return try {
             // First check for potential duplicates
-            val duplicates = handler.awaitList {
-                mangasQueries.getPotentialNormalizationDuplicates()
-            }
+            val duplicates = database.mangasQueries.getPotentialNormalizationDuplicates().awaitAsList()
 
             if (duplicates.isNotEmpty()) {
                 logcat(LogPriority.WARN) {
@@ -1592,8 +1585,8 @@ class MangaRepositoryImpl(
                 return 0
             }
 
-            handler.await(inTransaction = true) {
-                mangasQueries.normalizeUrls()
+            database.transaction {
+                database.mangasQueries.normalizeUrls()
             }
 
             // Return approximate count (we don't have exact count from UPDATE)
@@ -1611,8 +1604,8 @@ class MangaRepositoryImpl(
             var count = 0
             val duplicates = mutableListOf<MangaRepository.DuplicateUrlInfo>()
             val seen = mutableSetOf<Pair<Long, String>>()
-            handler.await(inTransaction = true) {
-                val allManga = mangasQueries.getAllMangaUrlMaintenanceRows {
+            database.transaction {
+                val allManga = database.mangasQueries.getAllMangaUrlMaintenanceRows {
                         id,
                         source,
                         url,
@@ -1626,7 +1619,7 @@ class MangaRepositoryImpl(
                         title = title,
                         favorite = favorite,
                     )
-                }.executeAsList()
+                }.awaitAsList()
 
                 allManga.forEach { manga ->
                     val normalizedUrl = normalizeUrlForMaintenance(manga.url, removeDoubleSlashes)
@@ -1642,7 +1635,7 @@ class MangaRepositoryImpl(
                                 "Skipping duplicate: ${manga.title} (${manga.url}) would conflict with existing normalized URL"
                             }
                         } else {
-                            mangasQueries.update(
+                            database.mangasQueries.update(
                                 source = null,
                                 url = normalizedUrl,
                                 artist = null,
@@ -1668,6 +1661,7 @@ class MangaRepositoryImpl(
                                 isSyncing = null,
                                 notes = null,
                                 isNovel = null,
+                                memo = null,
                             )
                             seen.add(key)
                             count++
@@ -1691,8 +1685,8 @@ class MangaRepositoryImpl(
             val seenNormalizedUrls = mutableMapOf<Pair<Long, String>, Long>()
             val idsToDelete = mutableListOf<Long>()
 
-            handler.await(inTransaction = true) {
-                val allManga = mangasQueries.getAllMangaUrlMaintenanceRows {
+            database.transaction {
+                val allManga = database.mangasQueries.getAllMangaUrlMaintenanceRows {
                         id,
                         source,
                         url,
@@ -1706,7 +1700,7 @@ class MangaRepositoryImpl(
                         title = title,
                         favorite = favorite,
                     )
-                }.executeAsList()
+                }.awaitAsList()
 
                 // First pass: identify which manga would be kept (first occurrence of each normalized URL)
                 allManga.forEach { manga ->
@@ -1741,7 +1735,7 @@ class MangaRepositoryImpl(
                 // Delete all duplicate manga in one batch
                 // Chapters and categories are automatically deleted via ON DELETE CASCADE
                 if (idsToDelete.isNotEmpty()) {
-                    mangasQueries.deleteByIds(idsToDelete)
+                    database.mangasQueries.deleteByIds(idsToDelete)
                 }
             }
 
@@ -1756,8 +1750,8 @@ class MangaRepositoryImpl(
     override suspend fun refreshLibraryCache() {
         logcat(LogPriority.INFO) { "MangaRepositoryImpl.refreshLibraryCache: Recomputing all aggregates" }
         val queryStart = System.currentTimeMillis()
-        handler.await(inTransaction = true) {
-            mangasQueries.recomputeAllAggregates()
+        database.transaction {
+            database.mangasQueries.recomputeAllAggregates()
         }
         val queryDuration = System.currentTimeMillis() - queryStart
         logcat(LogPriority.INFO) {
@@ -1769,8 +1763,8 @@ class MangaRepositoryImpl(
     override suspend fun refreshLibraryCacheIncremental() {
         logcat(LogPriority.INFO) { "MangaRepositoryImpl.refreshLibraryCacheIncremental: Recomputing all aggregates" }
         val queryStart = System.currentTimeMillis()
-        handler.await(inTransaction = true) {
-            mangasQueries.recomputeAllAggregates()
+        database.transaction {
+            database.mangasQueries.recomputeAllAggregates()
         }
         val queryDuration = System.currentTimeMillis() - queryStart
         logcat(LogPriority.INFO) {
@@ -1783,8 +1777,8 @@ class MangaRepositoryImpl(
         logcat(LogPriority.DEBUG) {
             "MangaRepositoryImpl.refreshLibraryCacheForManga: Recomputing aggregates for manga $mangaId"
         }
-        handler.await(inTransaction = true) {
-            mangasQueries.recomputeAggregatesForManga(mangaId)
+        database.transaction {
+            database.mangasQueries.recomputeAggregatesForManga(mangaId)
         }
     }
 
@@ -1793,7 +1787,7 @@ class MangaRepositoryImpl(
         return try {
             val favoriteGenres = getFavoriteIdAndGenre()
             var count = 0
-            handler.await(inTransaction = true) {
+            database.transaction {
                 favoriteGenres.forEach { (mangaId, genres) ->
                     if (!genres.isNullOrEmpty()) {
                         // Flatten: re-split each tag on common separators that sources may use
@@ -1828,7 +1822,7 @@ class MangaRepositoryImpl(
 
                         // Only update if there's a difference
                         if (normalized != genres) {
-                            mangasQueries.update(
+                            database.mangasQueries.update(
                                 source = null,
                                 url = null,
                                 artist = null,
@@ -1853,6 +1847,7 @@ class MangaRepositoryImpl(
                                 isSyncing = null,
                                 notes = null,
                                 isNovel = null,
+                                memo = null,
                                 mangaId = mangaId,
                             )
                             count++

@@ -14,7 +14,6 @@ import eu.kanade.tachiyomi.extension.util.ExtensionInstaller
 import eu.kanade.tachiyomi.extension.util.ExtensionLoader
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,6 +25,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import logcat.LogPriority
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.model.StubSource
@@ -43,12 +43,10 @@ import java.util.Locale
  */
 class ExtensionManager(
     private val context: Context,
+    private val scope: CoroutineScope,
     private val preferences: SourcePreferences = Injekt.get(),
     private val trustExtension: TrustExtension = Injekt.get(),
 ) {
-
-    val scope = CoroutineScope(SupervisorJob())
-
     private val _isInitialized = MutableStateFlow(false)
     val isInitialized: StateFlow<Boolean> = _isInitialized.asStateFlow()
 
@@ -60,7 +58,7 @@ class ExtensionManager(
     /**
      * The installer which installs, updates and uninstalls the extensions.
      */
-    private val installer by lazy { ExtensionInstaller(context) }
+    private val installer by lazy { ExtensionInstaller(context, scope) }
 
     private val iconMap = mutableMapOf<String, Drawable>()
 
@@ -76,7 +74,11 @@ class ExtensionManager(
     val untrustedExtensionsFlow = untrustedExtensionMapFlow.mapExtensions(scope)
 
     init {
-        initExtensions()
+        // Load off the constructing thread: ExtensionLoader.loadExtensions runBlocks on the
+        // trusted-fingerprint DB flow, so doing it synchronously here froze startup when the manager
+        // was first constructed on the main thread before the DB migration had completed. Consumers
+        // already observe isInitialized / installedExtensionsFlow, so async init is safe.
+        scope.launchIO { initExtensions() }
         ExtensionInstallReceiver(InstallationListener()).register(context)
     }
 
@@ -216,11 +218,11 @@ class ExtensionManager(
                 if (extension.hasUpdate != hasUpdate) {
                     installedExtensionsMap[pkgName] = extension.copy(
                         hasUpdate = hasUpdate,
-                        repoUrl = availableExt.repoUrl,
+                        store = availableExt.store,
                     )
                 } else {
                     installedExtensionsMap[pkgName] = extension.copy(
-                        repoUrl = availableExt.repoUrl,
+                        store = availableExt.store,
                     )
                 }
                 changed = true
@@ -240,7 +242,7 @@ class ExtensionManager(
      * @param extension The extension to be installed.
      */
     fun installExtension(extension: Extension.Available): Flow<InstallStep> {
-        return installer.downloadAndInstall(api.getApkUrl(extension), extension)
+        return installer.downloadAndInstall(extension.apkUrl, extension)
     }
 
     /**

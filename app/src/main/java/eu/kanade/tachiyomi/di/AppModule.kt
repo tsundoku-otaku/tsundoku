@@ -3,7 +3,8 @@ package eu.kanade.tachiyomi.di
 import android.app.Application
 import android.content.Context
 import android.os.Build
-import androidx.core.content.ContextCompat
+import androidx.lifecycle.ProcessLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import app.cash.sqldelight.db.SqlDriver
 import com.eygraber.sqldelight.androidx.driver.AndroidxSqliteConfiguration
@@ -29,19 +30,25 @@ import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.AndroidSourceManager
 import eu.kanade.tachiyomi.source.custom.CustomSourceManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.plus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
+import logcat.LogPriority
 import nl.adaptivity.xmlutil.XmlDeclMode
 import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
 import tachiyomi.core.common.storage.AndroidStorageFolderProvider
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.AndroidDatabaseHandler
+import tachiyomi.data.Chapters
 import tachiyomi.data.Database
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.DatabaseMaintenance
 import tachiyomi.data.DateColumnAdapter
 import tachiyomi.data.History
 import tachiyomi.data.Mangas
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.domain.source.service.SourceManager
@@ -93,10 +100,14 @@ class AppModule(val app: Application) : InjektModule {
                     genreAdapter = StringListColumnAdapter,
                     update_strategyAdapter = UpdateStrategyColumnAdapter,
                     alternative_titlesAdapter = StringListColumnAdapter,
+                    memoAdapter = MemoColumnAdapter,
+                ),
+                chaptersAdapter = Chapters.Adapter(
+                    memoAdapter = MemoColumnAdapter,
                 ),
             )
         }
-        addSingletonFactory<DatabaseHandler> { AndroidDatabaseHandler(get(), get()) }
+        addSingletonFactory { DatabaseMaintenance(get()) }
 
         addSingletonFactory {
             Json {
@@ -119,19 +130,21 @@ class AppModule(val app: Application) : InjektModule {
             ProtoBuf
         }
 
+        addSingletonFactory<CoroutineScope> { ProcessLifecycleOwner.get().lifecycleScope + SupervisorJob() }
+
         addSingletonFactory { ChapterCache(app, get()) }
         addSingletonFactory { CoverCache(app) }
         addSingletonFactory { LibrarySettingsCache(app) }
 
-        addSingletonFactory { NetworkHelper(app, get()) }
+        addSingletonFactory { NetworkHelper(app, get(), get()) }
         addSingletonFactory { JavaScriptEngine(app) }
 
-        addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get()) }
-        addSingletonFactory { ExtensionManager(app) }
+        addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get(), get()) }
+        addSingletonFactory { ExtensionManager(app, get()) }
 
         addSingletonFactory { DownloadProvider(app) }
-        addSingletonFactory { DownloadManager(app) }
-        addSingletonFactory { DownloadCache(app) }
+        addSingletonFactory { DownloadManager(app, get()) }
+        addSingletonFactory { DownloadCache(app, get()) }
 
         addSingletonFactory { TrackerManager() }
         addSingletonFactory { DelayedTrackingStore(app) }
@@ -155,13 +168,22 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { LocalNovelSourceFileSystem(get()) }
         addSingletonFactory { LocalCoverManager(app, get()) }
         addSingletonFactory { LocalNovelCoverManager(app, get()) }
-        addSingletonFactory { StorageManager(app, get()) }
+        addSingletonFactory { StorageManager(app, get(), get()) }
 
         // Font management
         addSingletonFactory { eu.kanade.tachiyomi.data.font.FontManager(app, get(), get()) }
 
-        // Asynchronously init expensive components for a faster cold start
-        ContextCompat.getMainExecutor(app).execute {
+        // Asynchronously init expensive components for a faster cold start. Must run off the main
+        // thread: getMainExecutor() posts back to main, so constructing SourceManager/Database/
+        // DownloadManager there stalled startup (frozen splash, SystemJobService bind timeouts).
+        get<CoroutineScope>().launchIO {
+            // Self-heal columns/tables skipped by the merge migration renumbering (memo,
+            // extension_store, is_novel) before the heavy DB-touching singletons below query them.
+            // Runs off the main thread so it can't stall startup (previously a runBlocking in the
+            // SqlDriver factory ANR'd when the factory was first hit on the main thread).
+            runCatching { get<DatabaseMaintenance>().reconcileSchema() }
+                .onFailure { logcat(LogPriority.ERROR, it) { "Schema reconcile failed" } }
+
             get<NetworkHelper>()
 
             get<SourceManager>()

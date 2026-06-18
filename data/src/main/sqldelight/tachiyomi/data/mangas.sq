@@ -1,7 +1,8 @@
 import eu.kanade.tachiyomi.source.model.UpdateStrategy;
-import kotlin.collections.List;
 import kotlin.Boolean;
 import kotlin.String;
+import kotlin.collections.List;
+import kotlinx.serialization.json.JsonObject;
 
 CREATE TABLE mangas(
     _id INTEGER NOT NULL PRIMARY KEY,
@@ -37,7 +38,8 @@ CREATE TABLE mangas(
     latest_upload INTEGER NOT NULL DEFAULT 0,
     chapter_fetched_at INTEGER NOT NULL DEFAULT 0,
     last_read INTEGER NOT NULL DEFAULT 0,
-    bookmark_count INTEGER NOT NULL DEFAULT 0
+    bookmark_count INTEGER NOT NULL DEFAULT 0,
+    memo BLOB AS JsonObject NOT NULL DEFAULT '{}'
 );
 
 CREATE INDEX library_favorite_index ON mangas(favorite) WHERE favorite = 1;
@@ -140,6 +142,13 @@ getFavoritesEntry:
 SELECT _id, source, url, title, artist, author, thumbnail_url, cover_last_modified, favorite, is_novel
 FROM mangas
 WHERE favorite = 1;
+
+getFavoritesEntryPaged:
+SELECT _id, source, url, title, artist, author, thumbnail_url, cover_last_modified, favorite, is_novel
+FROM mangas
+WHERE favorite = 1 AND _id > :afterId
+ORDER BY _id
+LIMIT :limit;
 
 getFavoritesEntryBySourceId:
 SELECT _id, source, url, title, artist, author, thumbnail_url, cover_last_modified, favorite, is_novel
@@ -380,9 +389,10 @@ deleteByIds:
 DELETE FROM mangas
 WHERE _id IN :mangaIds;
 
-insert:
-INSERT INTO mangas(source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, version, notes, is_novel)
-VALUES (:source, :url, :artist, :author, :description, :genre, :title, :alternativeTitles, :status, :thumbnailUrl, :favorite, :lastUpdate, :nextUpdate, :initialized, :viewerFlags, :chapterFlags, :coverLastModified, :dateAdded, :updateStrategy, :calculateInterval, 0, :version, :notes, :isNovel);
+insertReturningId:
+INSERT INTO mangas(source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, version, notes, is_novel, memo)
+VALUES (:source, :url, :artist, :author, :description, :genre, :title, :alternativeTitles, :status, :thumbnailUrl, :favorite, :lastUpdate, :nextUpdate, :initialized, :viewerFlags, :chapterFlags, :coverLastModified, :dateAdded, :updateStrategy, :calculateInterval, 0, :version, :notes, :isNovel, :memo)
+RETURNING _id;
 
 update:
 UPDATE mangas SET
@@ -409,7 +419,8 @@ UPDATE mangas SET
     version = coalesce(:version, version),
     is_syncing = coalesce(:isSyncing, is_syncing),
     notes = coalesce(:notes, notes),
-    is_novel = coalesce(:isNovel, is_novel)
+    is_novel = coalesce(:isNovel, is_novel),
+    memo = coalesce(:memo, memo)
 WHERE _id = :mangaId;
 
 selectLastInsertedRowId:
@@ -485,12 +496,12 @@ insertNetworkManga {
     INSERT INTO mangas(
         source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite,
         last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added,
-        update_strategy, calculate_interval, last_modified_at, version, is_novel
+        update_strategy, calculate_interval, last_modified_at, version, is_novel, memo
     )
     SELECT
         :source, :url, :artist, :author, :description, :genre, :title, :alternativeTitles, :status, :thumbnailUrl, :favorite,
         :lastUpdate, :nextUpdate, :initialized, :viewerFlags, :chapterFlags, :coverLastModified, :dateAdded,
-        :updateStrategy, :calculateInterval, 0, :version, :isNovel
+        :updateStrategy, :calculateInterval, 0, :version, :isNovel, :memo
     WHERE NOT EXISTS(SELECT 0 FROM mangas WHERE source = :source AND url = :url);
 
     -- Update the relevant details if applicable and not favorite
@@ -506,7 +517,8 @@ insertNetworkManga {
         status = CASE WHEN :updateDetails THEN :status ELSE status END,
         update_strategy = CASE WHEN :updateDetails THEN :updateStrategy ELSE update_strategy END,
         initialized = :updateDetails,
-        is_novel = :isNovel
+        is_novel = :isNovel,
+        memo = :memo
     WHERE source = :source
     AND url = :url
     AND favorite = 0;

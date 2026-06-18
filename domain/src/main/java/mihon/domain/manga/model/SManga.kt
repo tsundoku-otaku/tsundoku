@@ -16,6 +16,7 @@ fun SManga.toDomainManga(sourceId: Long, isNovel: Boolean = false): Manga {
         thumbnailUrl = thumbnail_url,
         updateStrategy = update_strategy,
         initialized = initialized,
+        memo = memo,
         source = sourceId,
         isNovel = isNovel,
     )

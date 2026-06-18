@@ -21,11 +21,7 @@ class GetExtensionLanguages(
         ) { enabledLanguage, availableExtensions, installedJsPlugins, availableJsPlugins ->
             val extensionLangs = availableExtensions
                 .flatMap { ext ->
-                    if (ext.sources.isEmpty()) {
-                        listOf(ext.lang)
-                    } else {
-                        ext.sources.map { it.lang }
-                    }
+                    ext.sources.map { it.lang }
                 }
 
             val jsPluginLangs = (

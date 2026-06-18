@@ -1,8 +1,12 @@
 package eu.kanade.tachiyomi.source
 
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.RefreshContext
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
@@ -22,6 +26,11 @@ class SourceRefreshContextTest {
         override val id = 1L
         override val name = "Legacy"
         var legacyCallCount = 0
+        override suspend fun getPopularManga(page: Int): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getLatestUpdates(page: Int): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): SMangaUpdate = throw UnsupportedOperationException()
+        override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
         override suspend fun getChapterList(manga: SManga): List<SChapter> {
             legacyCallCount++
             return chapters
@@ -33,6 +42,11 @@ class SourceRefreshContextTest {
         override val id = 2L
         override val name = "Context"
         var receivedContext: RefreshContext? = null
+        override suspend fun getPopularManga(page: Int): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getLatestUpdates(page: Int): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): SMangaUpdate = throw UnsupportedOperationException()
+        override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
         override suspend fun getChapterList(manga: SManga): List<SChapter> =
             error("legacy path must not be used when override is present")
         override suspend fun getChapterList(manga: SManga, context: RefreshContext): List<SChapter> {

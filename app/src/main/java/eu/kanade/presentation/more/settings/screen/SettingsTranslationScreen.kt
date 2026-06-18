@@ -12,9 +12,6 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.collections.immutable.toImmutableMap
 import kotlinx.coroutines.launch
 import tachiyomi.domain.translation.model.TranslationResult
 import tachiyomi.domain.translation.service.TranslationPreferences
@@ -63,7 +60,7 @@ object SettingsTranslationScreen : SearchableSettings {
             getGeneralGroup(translationPreferences, engineManager),
             Preference.PreferenceGroup(
                 title = stringResource(MR.strings.pref_translation_queue),
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.TextPreference(
                         title = stringResource(MR.strings.pref_translation_queue),
                         subtitle = queueStatusText,
@@ -89,14 +86,14 @@ object SettingsTranslationScreen : SearchableSettings {
         val anchoringParagraphs by prefs.contextualAnchoringParagraphs().collectAsState()
 
         val engines = engineManager.engines
-        val engineEntries = engines.associate { it.id.toString() to it.name }.toImmutableMap()
+        val engineEntries = engines.associate { it.id.toString() to it.name }.toMap()
 
         val selectedEngine = engines.find { it.id == selectedEngineId } ?: engines.first()
-        val languageEntries = selectedEngine.supportedLanguages.associate { it.first to it.second }.toImmutableMap()
+        val languageEntries = selectedEngine.supportedLanguages.associate { it.first to it.second }.toMap()
 
         return Preference.PreferenceGroup(
             title = stringResource(TDMR.strings.pref_translation_general),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = prefs.translationEnabled(),
                     title = stringResource(TDMR.strings.pref_translation_enabled),
@@ -106,7 +103,7 @@ object SettingsTranslationScreen : SearchableSettings {
                     preference = prefs.selectedEngineId(),
                     title = stringResource(TDMR.strings.pref_translation_engine),
                     subtitle = selectedEngine.name + if (selectedEngine.isOffline) stringResource(MR.strings.pref_translation_offline_suffix) else "",
-                    entries = engineEntries.mapKeys { it.key.toLong() }.toImmutableMap(),
+                    entries = engineEntries.mapKeys { it.key.toLong() }.toMap(),
                     enabled = enabled,
                 ),
                 Preference.PreferenceItem.BasicListPreference(
@@ -124,7 +121,7 @@ object SettingsTranslationScreen : SearchableSettings {
                     value = targetLanguage,
                     title = stringResource(TDMR.strings.pref_translation_target_language),
                     subtitle = languageEntries[targetLanguage] ?: targetLanguage,
-                    entries = languageEntries.filterKeys { it != "auto" }.toImmutableMap(),
+                    entries = languageEntries.filterKeys { it != "auto" }.toMap(),
                     onValueChanged = { newValue ->
                         prefs.targetLanguage().set(newValue)
                         true
@@ -204,7 +201,7 @@ object SettingsTranslationScreen : SearchableSettings {
 
         return Preference.PreferenceGroup(
             title = stringResource(TDMR.strings.pref_translation_rate_limit),
-            preferenceItems = persistentListOf(
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
                     value = rateLimitDelay,
                     valueRange = 500..10000,
@@ -315,7 +312,7 @@ object SettingsTranslationScreen : SearchableSettings {
             // OpenAI
             Preference.PreferenceGroup(
                 title = "OpenAI",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.openAiApiKey(),
                         title = stringResource(TDMR.strings.pref_translation_openai_key),
@@ -337,7 +334,7 @@ object SettingsTranslationScreen : SearchableSettings {
             // NVIDIA NIM
             Preference.PreferenceGroup(
                 title = "NVIDIA NIM",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.nvidiaNimBaseUrl(),
                         title = stringResource(MR.strings.pref_translation_api_url),
@@ -359,7 +356,7 @@ object SettingsTranslationScreen : SearchableSettings {
             // DeepSeek
             Preference.PreferenceGroup(
                 title = "DeepSeek",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.deepSeekApiKey(),
                         title = stringResource(TDMR.strings.pref_translation_deepseek_key),
@@ -371,7 +368,7 @@ object SettingsTranslationScreen : SearchableSettings {
             // DeepL
             Preference.PreferenceGroup(
                 title = "DeepL",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.deepLApiKey(),
                         title = stringResource(MR.strings.pref_translation_api_key),
@@ -383,7 +380,7 @@ object SettingsTranslationScreen : SearchableSettings {
             // SYSTRAN
             Preference.PreferenceGroup(
                 title = "SYSTRAN",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.systranApiKey(),
                         title = stringResource(MR.strings.pref_translation_api_key),
@@ -395,7 +392,7 @@ object SettingsTranslationScreen : SearchableSettings {
             // Google Translate (Paid)
             Preference.PreferenceGroup(
                 title = "Google Translate",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.googleApiKey(),
                         title = stringResource(MR.strings.pref_translation_api_key),
@@ -407,14 +404,14 @@ object SettingsTranslationScreen : SearchableSettings {
             // Google Translate Free (Scraper)
             Preference.PreferenceGroup(
                 title = "Google Translate (Free)",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     testButton(engineManager.engines.first { it.name.contains("Scraper") }),
                 ),
             ),
             // Gemini (Google AI)
             Preference.PreferenceGroup(
                 title = "Gemini (Google AI)",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.geminiApiKey(),
                         title = stringResource(MR.strings.pref_translation_api_key),
@@ -431,7 +428,7 @@ object SettingsTranslationScreen : SearchableSettings {
             // LibreTranslate
             Preference.PreferenceGroup(
                 title = "LibreTranslate",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.libreTranslateUrl(),
                         title = stringResource(TDMR.strings.pref_translation_libretranslate_url),
@@ -448,7 +445,7 @@ object SettingsTranslationScreen : SearchableSettings {
             // Ollama
             Preference.PreferenceGroup(
                 title = "Ollama",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.ollamaUrl(),
                         title = stringResource(TDMR.strings.pref_translation_ollama_url),
@@ -470,14 +467,14 @@ object SettingsTranslationScreen : SearchableSettings {
             // HuggingFace
             Preference.PreferenceGroup(
                 title = "HuggingFace",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     testButton(engineManager.engines.first { it.name.contains("Hugging") }),
                 ),
             ),
             // Custom HTTP
             Preference.PreferenceGroup(
                 title = "Custom HTTP",
-                preferenceItems = persistentListOf(
+                preferenceItems = listOf(
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.customHttpUrl(),
                         title = stringResource(MR.strings.pref_translation_api_url),
@@ -491,7 +488,7 @@ object SettingsTranslationScreen : SearchableSettings {
                     Preference.PreferenceItem.ListPreference(
                         preference = prefs.customHttpMethod(),
                         title = stringResource(MR.strings.pref_translation_request_method),
-                        entries = persistentMapOf(
+                        entries = mapOf(
                             "POST" to "POST",
                             "GET" to "GET",
                         ),

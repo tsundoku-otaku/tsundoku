@@ -25,7 +25,6 @@ import eu.kanade.presentation.browse.components.BrowseSourceList
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.formattedMessage
 import eu.kanade.tachiyomi.source.Source
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.coroutines.flow.StateFlow
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.library.model.LibraryDisplayMode
@@ -98,7 +97,7 @@ fun BrowseSourceContent(
                 else -> stringResource(MR.strings.no_results_found)
             },
             actions = when {
-                source is LocalNovelSource -> persistentListOf(
+                source is LocalNovelSource -> listOf(
                     EmptyScreenAction(
                         stringRes = MR.strings.action_retry,
                         icon = Icons.Outlined.Refresh,
@@ -115,14 +114,14 @@ fun BrowseSourceContent(
                         onClick = onLocalSourceHelpClick,
                     ),
                 )
-                source is LocalSource -> persistentListOf(
+                source is LocalSource -> listOf(
                     EmptyScreenAction(
                         stringRes = MR.strings.local_source_help_guide,
                         icon = Icons.AutoMirrored.Outlined.HelpOutline,
                         onClick = onLocalSourceHelpClick,
                     ),
                 )
-                else -> persistentListOf(
+                else -> listOf(
                     EmptyScreenAction(
                         stringRes = MR.strings.action_retry,
                         icon = Icons.Outlined.Refresh,

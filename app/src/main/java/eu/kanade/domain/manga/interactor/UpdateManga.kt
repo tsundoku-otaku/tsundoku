@@ -233,6 +233,12 @@ class UpdateManga(
         )
     }
 
+    suspend fun awaitUpdateArtist(mangaId: Long, artist: String): Boolean {
+        return mangaRepository.update(
+            MangaUpdate(id = mangaId, artist = artist),
+        )
+    }
+
     suspend fun awaitUpdateStatus(mangaId: Long, status: Long): Boolean {
         return mangaRepository.update(
             MangaUpdate(id = mangaId, status = status),

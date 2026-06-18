@@ -7,8 +7,8 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import dev.icerock.moko.resources.StringResource
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.GetExtensionsByType
-import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.components.SEARCH_DEBOUNCE_MILLIS
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
@@ -38,7 +38,6 @@ import uy.kohesive.injekt.api.get
 import kotlin.time.Duration.Companion.seconds
 
 class ExtensionsScreenModel(
-    preferences: SourcePreferences = Injekt.get(),
     basePreferences: BasePreferences = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val getExtensions: GetExtensionsByType = Injekt.get(),
@@ -58,15 +57,15 @@ class ExtensionsScreenModel(
             combine(
                 state.map { it.searchQuery }
                     .distinctUntilChanged()
-                    .debounce(SEARCH_DEBOUNCE_MILLIS)
+                    .debounce(0.25.seconds)
                     .map { searchQueryPredicate(it ?: "") },
                 currentDownloads,
                 getExtensions.subscribe(),
             ) { predicate, downloads, (_updates, _installed, _available, _untrusted) ->
+                val updates = _updates.filter {
+                    !it.isNovel
+                }.filter(predicate).map(extensionMapper(downloads))
                 buildMap {
-                    val updates = _updates.filter {
-                        !it.isNovel
-                    }.filter(predicate).map(extensionMapper(downloads))
                     if (updates.isNotEmpty()) {
                         put(ExtensionUiModel.Header.Resource(MR.strings.ext_updates_pending), updates)
                     }
@@ -93,23 +92,20 @@ class ExtensionsScreenModel(
                     if (languagesWithExtensions.isNotEmpty()) {
                         putAll(languagesWithExtensions)
                     }
-                }
+                } to updates.size
             }
-                .collectLatest { items ->
+                .collectLatest { (items, updatesCount) ->
                     mutableState.update { state ->
                         state.copy(
                             isLoading = false,
                             items = items,
+                            updates = updatesCount,
                         )
                     }
                 }
         }
 
         screenModelScope.launchIO { findAvailableExtensions() }
-
-        preferences.extensionUpdatesCount.changes()
-            .onEach { mutableState.update { state -> state.copy(updates = it) } }
-            .launchIn(screenModelScope)
 
         basePreferences.extensionInstaller.changes()
             .onEach { mutableState.update { state -> state.copy(installer = it) } }
@@ -130,7 +126,7 @@ class ExtensionsScreenModel(
                 when (extension) {
                     is Extension.Installed -> extension.sources.any { source ->
                         source.name.contains(subquery, ignoreCase = true) ||
-                            (source as? HttpSource)?.baseUrl?.contains(subquery, ignoreCase = true) == true ||
+                            (source as? HttpSource)?.getHomeUrl()?.contains(subquery, ignoreCase = true) == true ||
                             source.id == subquery.toLongOrNull()
                     }
 

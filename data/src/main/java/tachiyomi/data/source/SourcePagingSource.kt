@@ -2,6 +2,7 @@ package tachiyomi.data.source
 
 import androidx.paging.PagingState
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -19,7 +20,7 @@ import uy.kohesive.injekt.api.get
 import java.util.concurrent.atomic.AtomicInteger
 
 class SourceSearchPagingSource(
-    source: CatalogueSource,
+    source: Source,
     private val query: String,
     private val filters: FilterList,
 ) : BaseSourcePagingSource(source) {
@@ -28,20 +29,20 @@ class SourceSearchPagingSource(
     }
 }
 
-class SourcePopularPagingSource(source: CatalogueSource) : BaseSourcePagingSource(source) {
+class SourcePopularPagingSource(source: Source) : BaseSourcePagingSource(source) {
     override suspend fun requestNextPage(currentPage: Int): MangasPage {
         return source.getPopularManga(currentPage)
     }
 }
 
-class SourceLatestPagingSource(source: CatalogueSource) : BaseSourcePagingSource(source) {
+class SourceLatestPagingSource(source: Source) : BaseSourcePagingSource(source) {
     override suspend fun requestNextPage(currentPage: Int): MangasPage {
         return source.getLatestUpdates(currentPage)
     }
 }
 
 abstract class BaseSourcePagingSource(
-    protected val source: CatalogueSource,
+    protected val source: Source,
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
 ) : SourcePagingSource() {
 

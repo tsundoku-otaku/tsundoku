@@ -31,6 +31,7 @@ import logcat.logcat
 import tachiyomi.domain.library.service.LibraryPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.time.Duration.Companion.milliseconds
 
 data class NovelDownloadItem(
     val mangaId: Long,
@@ -363,13 +364,13 @@ class DownloadQueueScreenModel(
     private fun launchProgressJob(download: Download) {
         val job = screenModelScope.launch {
             while (download.pages == null) {
-                delay(50)
+                delay(50.milliseconds)
             }
 
             val progressFlows = download.pages!!.map(Page::progressFlow)
             combine(progressFlows, Array<Int>::sum)
                 .distinctUntilChanged()
-                .debounce(50)
+                .debounce(50.milliseconds)
                 .collectLatest {
                     onUpdateProgress(download)
                 }

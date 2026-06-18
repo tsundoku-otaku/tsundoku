@@ -21,6 +21,7 @@ class NovelGlobalSearchScreenModel(
 
     override fun getEnabledSources(): List<CatalogueSource> {
         return super.getEnabledSources()
+            .filterIsInstance<CatalogueSource>()
             .filter { it.isNovelSource() }
             .filter { state.value.sourceFilter != SourceFilter.PinnedOnly || "${it.id}" in pinnedSources }
     }

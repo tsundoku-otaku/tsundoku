@@ -5,13 +5,13 @@ import android.net.Uri
 import eu.kanade.tachiyomi.data.backup.BackupNotifier
 import eu.kanade.tachiyomi.data.backup.BackupProtoReader
 import eu.kanade.tachiyomi.data.backup.models.BackupCategory
-import eu.kanade.tachiyomi.data.backup.models.BackupExtensionRepos
+import eu.kanade.tachiyomi.data.backup.models.BackupExtensionStore
 import eu.kanade.tachiyomi.data.backup.models.BackupManga
 import eu.kanade.tachiyomi.data.backup.models.BackupPreference
 import eu.kanade.tachiyomi.data.backup.models.BackupSource
 import eu.kanade.tachiyomi.data.backup.models.BackupSourcePreferences
 import eu.kanade.tachiyomi.data.backup.restore.restorers.CategoriesRestorer
-import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionRepoRestorer
+import eu.kanade.tachiyomi.data.backup.restore.restorers.ExtensionStoreRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.MangaRestorer
 import eu.kanade.tachiyomi.data.backup.restore.restorers.PreferenceRestorer
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
@@ -37,7 +37,7 @@ class BackupRestorer(
 
     private val categoriesRestorer: CategoriesRestorer = CategoriesRestorer(),
     private val preferenceRestorer: PreferenceRestorer = PreferenceRestorer(context),
-    private val extensionRepoRestorer: ExtensionRepoRestorer = ExtensionRepoRestorer(),
+    private val extensionStoreRestorer: ExtensionStoreRestorer = ExtensionStoreRestorer(),
     private val mangaRestorer: MangaRestorer = MangaRestorer(),
     private val parser: ProtoBuf = Injekt.get(),
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
@@ -92,8 +92,8 @@ class BackupRestorer(
         if (options.appSettings) {
             restoreAmount += 1
         }
-        if (options.extensionRepoSettings) {
-            restoreAmount += summary.backupExtensionRepo.size
+        if (options.extensionStores) {
+            restoreAmount += summary.backupExtensionStores.size
         }
         if (options.sourceSettings) {
             restoreAmount += 1
@@ -119,8 +119,8 @@ class BackupRestorer(
             if (options.libraryEntries) {
                 restoreMangaStream(uri, if (options.categories) summary.backupCategories else emptyList(), options)
             }
-            if (options.extensionRepoSettings) {
-                restoreExtensionRepos(summary.backupExtensionRepo)
+            if (options.extensionStores) {
+                restoreExtensionStores(summary.backupExtensionStores)
             }
 
             // TODO: optionally trigger online library + tracker update
@@ -132,7 +132,7 @@ class BackupRestorer(
         val backupSources = mutableListOf<BackupSource>()
         val backupPreferences = mutableListOf<BackupPreference>()
         val backupSourcePreferences = mutableListOf<BackupSourcePreferences>()
-        val backupExtensionRepo = mutableListOf<BackupExtensionRepos>()
+        val backupExtensionStores = mutableListOf<BackupExtensionStore>()
         var mangaCount = 0
 
         val reader = BackupProtoReader(context)
@@ -145,7 +145,7 @@ class BackupRestorer(
                 105 -> backupSourcePreferences.add(
                     parser.decodeFromByteArray(BackupSourcePreferences.serializer(), data),
                 )
-                106 -> backupExtensionRepo.add(parser.decodeFromByteArray(BackupExtensionRepos.serializer(), data))
+                106 -> backupExtensionStores.add(parser.decodeFromByteArray(BackupExtensionStore.serializer(), data))
             }
         }
 
@@ -155,7 +155,7 @@ class BackupRestorer(
             backupSources = backupSources,
             backupPreferences = backupPreferences,
             backupSourcePreferences = backupSourcePreferences,
-            backupExtensionRepo = backupExtensionRepo,
+            backupExtensionStores = backupExtensionStores,
         )
     }
 
@@ -190,7 +190,7 @@ class BackupRestorer(
         val backupSources: List<BackupSource>,
         val backupPreferences: List<BackupPreference>,
         val backupSourcePreferences: List<BackupSourcePreferences>,
-        val backupExtensionRepo: List<BackupExtensionRepos>,
+        val backupExtensionStores: List<BackupExtensionStore>,
     )
 
     private fun CoroutineScope.restoreCategories(backupCategories: List<BackupCategory>) = launch {
@@ -238,22 +238,22 @@ class BackupRestorer(
         )
     }
 
-    private fun CoroutineScope.restoreExtensionRepos(
-        backupExtensionRepo: List<BackupExtensionRepos>,
+    private fun CoroutineScope.restoreExtensionStores(
+        backupExtensionStores: List<BackupExtensionStore>,
     ) = launch {
-        backupExtensionRepo
+        backupExtensionStores
             .forEach {
                 ensureActive()
 
                 try {
-                    extensionRepoRestorer(it)
+                    extensionStoreRestorer(it)
                 } catch (e: Exception) {
                     errors.add(Date() to "Error Adding Repo: ${it.name} : ${e.message}")
                 }
 
                 restoreProgress += 1
                 notifier.showRestoreProgress(
-                    context.stringResource(MR.strings.extensionRepo_settings),
+                    context.stringResource(MR.strings.extensionStores),
                     restoreProgress,
                     restoreAmount,
                     isSync,

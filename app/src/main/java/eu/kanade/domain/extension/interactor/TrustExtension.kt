@@ -13,19 +13,19 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import logcat.LogPriority
 import logcat.logcat
-import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
+import mihon.domain.extension.repository.ExtensionStoreRepository
 import tachiyomi.core.common.preference.getAndSet
 
 class TrustExtension(
-    private val extensionRepoRepository: ExtensionRepoRepository,
+    private val repository: ExtensionStoreRepository,
     private val preferences: SourcePreferences,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Cached trusted fingerprints using StateFlow - automatically updates when repos change
-    private val trustedFingerprints: StateFlow<Set<String>> = extensionRepoRepository.subscribeAll()
+    private val trustedFingerprints: StateFlow<Set<String>> = repository.getAllAsFlow()
         .map { repos ->
-            val fingerprints = repos.map { it.signingKeyFingerprint }.toHashSet()
+            val fingerprints = repos.map { it.signingKey }.toHashSet()
             logcat(LogPriority.DEBUG) { "TrustExtension: Cached ${fingerprints.size} trusted fingerprints" }
             fingerprints
         }
@@ -44,7 +44,7 @@ class TrustExtension(
         if (trustedFingerprints.value.isEmpty()) {
             logcat(LogPriority.DEBUG) { "TrustExtension: Preloading - waiting for first emission" }
             // Force a fresh load if StateFlow is empty
-            extensionRepoRepository.subscribeAll().first()
+            repository.getAllAsFlow().first()
         }
         logcat(LogPriority.DEBUG) {
             "TrustExtension: Preload complete, ${trustedFingerprints.value.size} fingerprints cached"

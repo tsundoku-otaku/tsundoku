@@ -1,6 +1,8 @@
 package tachiyomi.domain.library.model
 
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
 
 /**
  * Lightweight library manga model for update checks.
@@ -54,6 +56,7 @@ data class LibraryMangaForUpdate(
             version = 0,
             notes = "",
             alternativeTitles = emptyList(),
+            memo = JsonObject.EMPTY,
         )
     }
 

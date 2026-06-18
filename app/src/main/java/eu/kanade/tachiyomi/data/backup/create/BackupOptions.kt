@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.data.backup.create
 
 import dev.icerock.moko.resources.StringResource
-import kotlinx.collections.immutable.persistentListOf
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 
@@ -15,7 +14,7 @@ data class BackupOptions(
     val history: Boolean = true,
     val readEntries: Boolean = true,
     val appSettings: Boolean = true,
-    val extensionRepoSettings: Boolean = true,
+    val extensionStores: Boolean = true,
     val sourceSettings: Boolean = true,
     val privateSettings: Boolean = false,
 ) {
@@ -30,15 +29,15 @@ data class BackupOptions(
         history,
         readEntries,
         appSettings,
-        extensionRepoSettings,
+        extensionStores,
         sourceSettings,
         privateSettings,
     )
 
-    fun canCreate() = libraryEntries || categories || appSettings || extensionRepoSettings || sourceSettings
+    fun canCreate() = libraryEntries || categories || appSettings || extensionStores || sourceSettings
 
     companion object {
-        val libraryOptions = persistentListOf(
+        val libraryOptions = listOf(
             Entry(
                 label = MR.strings.label_library,
                 getter = BackupOptions::libraryEntries,
@@ -87,16 +86,16 @@ data class BackupOptions(
             ),
         )
 
-        val settingsOptions = persistentListOf(
+        val settingsOptions = listOf(
             Entry(
                 label = MR.strings.app_settings,
                 getter = BackupOptions::appSettings,
                 setter = { options, enabled -> options.copy(appSettings = enabled) },
             ),
             Entry(
-                label = MR.strings.extensionRepo_settings,
-                getter = BackupOptions::extensionRepoSettings,
-                setter = { options, enabled -> options.copy(extensionRepoSettings = enabled) },
+                label = MR.strings.extensionStores,
+                getter = BackupOptions::extensionStores,
+                setter = { options, enabled -> options.copy(extensionStores = enabled) },
             ),
             Entry(
                 label = MR.strings.source_settings,
@@ -121,7 +120,7 @@ data class BackupOptions(
             history = array[6],
             readEntries = array[7],
             appSettings = array[8],
-            extensionRepoSettings = array[9],
+            extensionStores = array[9],
             sourceSettings = array[10],
             privateSettings = array[11],
         )

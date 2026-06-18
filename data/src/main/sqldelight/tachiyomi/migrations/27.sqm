@@ -1,0 +1,3 @@
+-- Tag extension stores by content type so manga and novel stores can be listed separately.
+-- Existing stores default to manga (0); novel stores are tagged when added from the novel screen.
+ALTER TABLE extension_store ADD COLUMN is_novel INTEGER NOT NULL DEFAULT 0;

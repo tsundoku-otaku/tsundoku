@@ -1,11 +1,15 @@
 package eu.kanade.tachiyomi.data.backup.models
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.protobuf.ProtoNumber
+import mihon.core.common.extensions.EMPTY
+import mihon.core.common.extensions.JsonObjectEmptyBytes
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.domain.chapter.model.Chapter
 
 @Serializable
-data class BackupChapter(
+class BackupChapter(
     // in 1.x some of these values have different names
     // url is called key in 1.x
     @ProtoNumber(1) var url: String,
@@ -22,6 +26,7 @@ data class BackupChapter(
     @ProtoNumber(10) var sourceOrder: Long = 0,
     @ProtoNumber(11) var lastModifiedAt: Long = 0,
     @ProtoNumber(12) var version: Long = 0,
+    @ProtoNumber(13) var memo: ByteArray = JsonObjectEmptyBytes,
 ) {
     fun toChapterImpl(): Chapter {
         return Chapter.create().copy(
@@ -37,6 +42,7 @@ data class BackupChapter(
             sourceOrder = this@BackupChapter.sourceOrder,
             lastModifiedAt = this@BackupChapter.lastModifiedAt,
             version = this@BackupChapter.version,
+            memo = MemoColumnAdapter.decode(this@BackupChapter.memo),
         )
     }
 }
@@ -57,6 +63,7 @@ val backupChapterMapper = {
         lastModifiedAt: Long,
         version: Long,
         _: Long,
+        memo: JsonObject,
     ->
     BackupChapter(
         url = url,
@@ -71,5 +78,40 @@ val backupChapterMapper = {
         sourceOrder = sourceOrder,
         lastModifiedAt = lastModifiedAt,
         version = version,
+        memo = MemoColumnAdapter.encode(memo),
+    )
+}
+
+// Backup mapper for getChaptersByMangaIdForBackup: memo arrives as raw bytes (no JsonObject
+// decode/re-encode), so backing up a large library doesn't thrash GC parsing every chapter's memo.
+val backupChapterRawMemoMapper = {
+        url: String,
+        name: String,
+        scanlator: String?,
+        read: Boolean,
+        bookmark: Boolean,
+        lastPageRead: Long,
+        chapterNumber: Double,
+        sourceOrder: Long,
+        dateFetch: Long,
+        dateUpload: Long,
+        lastModifiedAt: Long,
+        version: Long,
+        memo: ByteArray?,
+    ->
+    BackupChapter(
+        url = url,
+        name = name,
+        chapterNumber = chapterNumber.toFloat(),
+        scanlator = scanlator,
+        read = read,
+        bookmark = bookmark,
+        lastPageRead = lastPageRead,
+        dateFetch = dateFetch,
+        dateUpload = dateUpload,
+        sourceOrder = sourceOrder,
+        lastModifiedAt = lastModifiedAt,
+        version = version,
+        memo = memo ?: JsonObjectEmptyBytes,
     )
 }

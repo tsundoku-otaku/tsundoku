@@ -20,7 +20,7 @@ import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.data.DatabaseHandler
+import tachiyomi.data.DatabaseMaintenance
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -28,26 +28,26 @@ import uy.kohesive.injekt.api.get
 class DatabaseMaintenanceJob(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
 
-    private val handler: DatabaseHandler = Injekt.get()
+    private val maintenance: DatabaseMaintenance = Injekt.get()
 
     override suspend fun doWork(): Result {
         setForegroundSafely()
 
         return withIOContext {
             try {
-                val statsBefore = handler.getDatabaseStats()
+                val statsBefore = maintenance.getDatabaseStats()
                 val sizeBefore = statsBefore["total_size_bytes"] ?: 0L
 
                 updateNotification(context.stringResource(TDMR.strings.db_maintenance_running_analyze))
-                handler.analyze()
+                maintenance.analyze()
 
                 updateNotification(context.stringResource(TDMR.strings.db_maintenance_running_reindex))
-                handler.reindex()
+                maintenance.reindex()
 
                 updateNotification(context.stringResource(TDMR.strings.db_maintenance_running_vacuum))
-                handler.vacuum()
+                maintenance.vacuum()
 
-                val statsAfter = handler.getDatabaseStats()
+                val statsAfter = maintenance.getDatabaseStats()
                 val sizeAfter = statsAfter["total_size_bytes"] ?: 0L
                 val saved = sizeBefore - sizeAfter
 

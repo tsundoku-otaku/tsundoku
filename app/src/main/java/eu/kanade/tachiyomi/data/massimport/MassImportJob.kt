@@ -1087,7 +1087,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
     }
 
     private fun getImportSources(): List<CatalogueSource> {
-        return sourceManager.getCatalogueSources()
+        return sourceManager.getAll().filterIsInstance<CatalogueSource>()
             .filter { it is HttpSource || it is JsSource }
     }
 

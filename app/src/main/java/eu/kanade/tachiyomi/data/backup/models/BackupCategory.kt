@@ -11,8 +11,8 @@ class BackupCategory(
     @ProtoNumber(3) var id: Long = 0,
     // @ProtoNumber(3) val updateInterval: Int = 0, 1.x value not used in 0.x
     @ProtoNumber(100) var flags: Long = 0,
-    // Preserve content type (0=all, 1=manga, 2=novel). New field to keep compatibility.
-    @ProtoNumber(101) var contentType: Int = Category.CONTENT_TYPE_ALL,
+    // Content type (0=all, 1=manga, 2=novel). Fork-reserved 8000+ ProtoNumber block.
+    @ProtoNumber(8001) var contentType: Int = Category.CONTENT_TYPE_ALL,
 ) {
     fun toCategory(id: Long) = Category(
         id = id,

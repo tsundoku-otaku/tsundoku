@@ -15,6 +15,15 @@ data class LibraryItem(
 ) {
     val id: Long = libraryManga.id
 
+    // Groups the flat badge fields into the Badges shape the grid UI reads.
+    val badges: Badges
+        get() = Badges(
+            downloadCount = downloadCount.toInt(),
+            unreadCount = unreadCount,
+            isLocal = isLocal,
+            sourceLanguage = sourceLanguage,
+        )
+
     companion object {
         private val sourceManager: SourceManager by lazy { Injekt.get() }
     }
@@ -104,4 +113,11 @@ data class LibraryItem(
             text.contains(term, ignoreCase = true)
         }
     }
+
+    data class Badges(
+        val downloadCount: Int,
+        val unreadCount: Long,
+        val isLocal: Boolean,
+        val sourceLanguage: String,
+    )
 }

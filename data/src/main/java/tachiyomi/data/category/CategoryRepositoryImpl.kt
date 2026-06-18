@@ -2,37 +2,35 @@ package tachiyomi.data.category
 
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.data.Database
-import tachiyomi.data.DatabaseHandler
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.model.CategoryUpdate
 import tachiyomi.domain.category.repository.CategoryRepository
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import tachiyomi.data.subscribeToList
 
 class CategoryRepositoryImpl(
-    private val handler: DatabaseHandler,
+    private val database: Database,
 ) : CategoryRepository {
 
     override suspend fun get(id: Long): Category? {
-        return handler.awaitOneOrNull { categoriesQueries.getCategory(id, ::mapCategory) }
+        return database.categoriesQueries.getCategory(id, ::mapCategory).awaitAsOneOrNull()
     }
 
     override suspend fun getAll(): List<Category> {
-        return handler.awaitList { categoriesQueries.getCategories(::mapCategory) }
+        return database.categoriesQueries.getCategories(::mapCategory).awaitAsList()
     }
 
     override fun getAllAsFlow(): Flow<List<Category>> {
-        return handler.subscribeToList { categoriesQueries.getCategories(::mapCategory) }
+        return database.categoriesQueries.getCategories(::mapCategory).subscribeToList()
     }
 
     override suspend fun getCategoriesByMangaId(mangaId: Long): List<Category> {
-        return handler.awaitList {
-            categoriesQueries.getCategoriesByMangaId(mangaId, ::mapCategory)
-        }
+        return database.categoriesQueries.getCategoriesByMangaId(mangaId, ::mapCategory).awaitAsList()
     }
 
     override fun getCategoriesByMangaIdAsFlow(mangaId: Long): Flow<List<Category>> {
-        return handler.subscribeToList {
-            categoriesQueries.getCategoriesByMangaId(mangaId, ::mapCategory)
-        }
+        return database.categoriesQueries.getCategoriesByMangaId(mangaId, ::mapCategory).subscribeToList()
     }
 
     override suspend fun getCategoriesByMangaIds(mangaIds: List<Long>): Map<Long, List<Category>> {
@@ -40,63 +38,51 @@ class CategoryRepositoryImpl(
 
         val resultMap = mutableMapOf<Long, MutableList<Category>>()
         mangaIds.chunked(500).forEach { chunk ->
-            handler.awaitList {
-                categoriesQueries.getCategoriesByMangaIds(chunk) { mangaId, id, name, order, flags, contentType ->
+            database.categoriesQueries.getCategoriesByMangaIds(chunk) { mangaId, id, name, order, flags, contentType ->
                     resultMap.getOrPut(mangaId) { mutableListOf() }
                         .add(mapCategory(id, name, order, flags, contentType))
-                }
-            }
+                }.awaitAsList()
         }
         return resultMap
     }
 
     override suspend fun getAllMangaCategoryPairs(): List<Pair<Long, Long>> {
-        return handler.awaitList {
-            mangas_categoriesQueries.getAllMangaCategoryPairs { mangaId, categoryId ->
+        return database.mangas_categoriesQueries.getAllMangaCategoryPairs { mangaId, categoryId ->
                 mangaId to categoryId
-            }
-        }
+            }.awaitAsList()
     }
 
     override suspend fun getCategoriesByContentType(contentType: Int): List<Category> {
-        return handler.awaitList {
-            categoriesQueries.getCategoriesByContentType(contentType.toLong(), ::mapCategory)
-        }
+        return database.categoriesQueries.getCategoriesByContentType(contentType.toLong(), ::mapCategory).awaitAsList()
     }
 
     override fun getCategoriesByContentTypeAsFlow(contentType: Int): Flow<List<Category>> {
-        return handler.subscribeToList {
-            categoriesQueries.getCategoriesByContentType(contentType.toLong(), ::mapCategory)
-        }
+        return database.categoriesQueries.getCategoriesByContentType(contentType.toLong(), ::mapCategory).subscribeToList()
     }
 
     override suspend fun insert(category: Category) {
-        handler.await {
-            categoriesQueries.insert(
+        database.categoriesQueries.insert(
                 name = category.name,
                 order = category.order,
                 flags = category.flags,
                 contentType = category.contentType.toLong(),
             )
-        }
     }
 
     override suspend fun updatePartial(update: CategoryUpdate) {
-        handler.await {
-            updatePartialBlocking(update)
-        }
+        updatePartialBlocking(update)
     }
 
     override suspend fun updatePartial(updates: List<CategoryUpdate>) {
-        handler.await(inTransaction = true) {
+        database.transaction {
             for (update in updates) {
                 updatePartialBlocking(update)
             }
         }
     }
 
-    private fun Database.updatePartialBlocking(update: CategoryUpdate) {
-        categoriesQueries.update(
+    private suspend fun updatePartialBlocking(update: CategoryUpdate) {
+        database.categoriesQueries.update(
             name = update.name,
             order = update.order,
             flags = update.flags,
@@ -106,17 +92,13 @@ class CategoryRepositoryImpl(
     }
 
     override suspend fun updateAllFlags(flags: Long?) {
-        handler.await {
-            categoriesQueries.updateAllFlags(flags)
-        }
+        database.categoriesQueries.updateAllFlags(flags)
     }
 
     override suspend fun delete(categoryId: Long) {
-        handler.await {
-            categoriesQueries.delete(
+        database.categoriesQueries.delete(
                 categoryId = categoryId,
             )
-        }
     }
 
     private fun mapCategory(

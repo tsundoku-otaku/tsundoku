@@ -68,6 +68,7 @@ import eu.kanade.presentation.reader.appbars.NovelReaderAppBars
 import eu.kanade.presentation.reader.appbars.QuotesSheet
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
 import eu.kanade.presentation.reader.appbars.bottomBarItemInfo
+import eu.kanade.presentation.reader.components.ChapterNavigatorType
 import eu.kanade.presentation.reader.settings.ReaderSettingsDialog
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
@@ -92,6 +93,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.text.textview.NovelViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -124,6 +126,7 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
+import kotlin.time.Duration.Companion.seconds
 
 class ReaderActivity : BaseActivity() {
 
@@ -1044,6 +1047,8 @@ class ReaderActivity : BaseActivity() {
             val cropBorderWebtoon by readerPreferences.cropBordersWebtoon.collectAsState()
             val isPagerType = ReadingMode.isPagerType(viewModel.getMangaReadingMode())
             val cropEnabled = if (isPagerType) cropBorderPaged else cropBorderWebtoon
+            val verticalNavigatorForLongStrip by readerPreferences.verticalNavigatorForLongStrip.collectAsState()
+            val verticalNavigatorOnLeft by readerPreferences.verticalNavigatorOnLeft.collectAsState()
 
             ReaderAppBars(
                 visible = state.menuVisible,
@@ -1058,7 +1063,19 @@ class ReaderActivity : BaseActivity() {
                 onOpenInBrowser = ::openChapterInBrowser.takeIf { hasWebViewSupport },
                 onShare = ::shareChapter.takeIf { hasWebViewSupport },
 
-                viewer = state.viewer,
+                chapterNavigatorType = if (isPagerType || !verticalNavigatorForLongStrip) {
+                    if (state.viewer is R2LPagerViewer) {
+                        ChapterNavigatorType.HORIZONTAL_RTL
+                    } else {
+                        ChapterNavigatorType.HORIZONTAL_LTR
+                    }
+                } else {
+                    if (verticalNavigatorOnLeft) {
+                        ChapterNavigatorType.VERTICAL_LEFT
+                    } else {
+                        ChapterNavigatorType.VERTICAL_RIGHT
+                    }
+                },
                 onNextChapter = ::loadNextChapter,
                 enabledNext = state.viewerChapters?.nextChapter != null,
                 onPreviousChapter = ::loadPreviousChapter,
@@ -1868,7 +1885,7 @@ class ReaderActivity : BaseActivity() {
             }
             if (enabled) {
                 readerPreferences.customBrightnessValue.changes()
-                    .sample(100)
+                    .sample(0.1.seconds)
                     .onEach(::setCustomBrightnessValue)
                     .launchIn(lifecycleScope)
             } else {

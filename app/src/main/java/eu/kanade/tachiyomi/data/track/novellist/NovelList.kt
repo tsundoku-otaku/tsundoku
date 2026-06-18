@@ -9,8 +9,6 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.network.parseAs
-import kotlinx.collections.immutable.ImmutableList
-import kotlinx.collections.immutable.persistentListOf
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -59,7 +57,7 @@ class NovelList(id: Long) : BaseTracker(id, "NovelList") {
     override fun getRereadingStatus() = READING
     override fun getCompletionStatus() = COMPLETED
 
-    override fun getScoreList(): ImmutableList<String> = persistentListOf(
+    override fun getScoreList(): List<String> = listOf(
         "10", "9", "8", "7", "6", "5", "4", "3", "2", "1", "",
     )
 

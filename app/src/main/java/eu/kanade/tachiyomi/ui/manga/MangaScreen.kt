@@ -353,6 +353,7 @@ class MangaScreen(
                     onSaveTags = { screenModel.updateTags(it) },
                     onSaveAltTitles = { screenModel.updateAlternativeTitles(it) },
                     onSaveAuthor = { screenModel.updateAuthor(it) },
+                    onSaveArtist = { screenModel.updateArtist(it) },
                     onSaveStatus = { screenModel.updateStatus(it) },
                     onSwapMainTitle = { newMain, updatedAlts ->
                         screenModel.swapMainTitle(newMain, updatedAlts)

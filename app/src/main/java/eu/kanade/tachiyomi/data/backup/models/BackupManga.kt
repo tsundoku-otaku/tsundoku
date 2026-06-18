@@ -3,11 +3,13 @@ package eu.kanade.tachiyomi.data.backup.models
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
+import mihon.core.common.extensions.JsonObjectEmptyBytes
+import tachiyomi.data.MemoColumnAdapter
 import tachiyomi.domain.manga.model.Manga
 
 @Suppress("DEPRECATION")
 @Serializable
-data class BackupManga(
+class BackupManga(
     // in 1.x some of these values have different names
     @ProtoNumber(1) var source: Long,
     // url is called key in 1.x
@@ -43,8 +45,9 @@ data class BackupManga(
     @ProtoNumber(109) var version: Long = 0,
     @ProtoNumber(110) var notes: String = "",
     @ProtoNumber(111) var initialized: Boolean = false,
-    // Tsundoku values start here
-    @ProtoNumber(112) var isNovel: Boolean = false,
+    @ProtoNumber(112) var memo: ByteArray = JsonObjectEmptyBytes,
+    // Fork fields use a reserved 8000+ ProtoNumber block so they never collide with new upstream fields.
+    @ProtoNumber(8000) var isNovel: Boolean = false,
 ) {
     fun getMangaImpl(): Manga {
         return Manga.create().copy(
@@ -68,6 +71,7 @@ data class BackupManga(
             notes = this@BackupManga.notes,
             initialized = this@BackupManga.initialized,
             isNovel = this@BackupManga.isNovel,
+            memo = MemoColumnAdapter.decode(this@BackupManga.memo),
         )
     }
 }

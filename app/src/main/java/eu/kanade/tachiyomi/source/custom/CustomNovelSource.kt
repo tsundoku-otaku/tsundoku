@@ -744,7 +744,7 @@ class CustomNovelSource(
         return parseChapterList(document, selectors)
     }
 
-    override fun chapterPageParse(response: Response): SChapter {
+    fun chapterPageParse(response: Response): SChapter {
         val document = response.asJsoup()
         val selectors = config.selectors.chapters
 

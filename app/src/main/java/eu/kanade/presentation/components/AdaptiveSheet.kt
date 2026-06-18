@@ -28,7 +28,7 @@ fun NavigatorAdaptiveSheet(
         content = { sheetNavigator ->
             AdaptiveSheet(
                 onDismissRequest = onDismissRequest,
-                enableSwipeDismiss = enableSwipeDismiss(sheetNavigator),
+                enableImplicitDismiss = enableSwipeDismiss(sheetNavigator),
             ) {
                 ScreenTransition(
                     navigator = sheetNavigator,
@@ -63,7 +63,7 @@ fun NavigatorAdaptiveSheet(
 fun AdaptiveSheet(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
-    enableSwipeDismiss: Boolean = true,
+    enableImplicitDismiss: Boolean = true,
     properties: DialogProperties = dialogProperties,
     content: @Composable () -> Unit,
 ) {
@@ -75,7 +75,7 @@ fun AdaptiveSheet(
     ) {
         AdaptiveSheetImpl(
             isTabletUi = isTabletUi,
-            enableSwipeDismiss = enableSwipeDismiss,
+            enableImplicitDismiss = enableImplicitDismiss,
             onDismissRequest = onDismissRequest,
             modifier = modifier,
         ) {

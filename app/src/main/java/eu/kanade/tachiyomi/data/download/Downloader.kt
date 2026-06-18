@@ -24,7 +24,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +49,6 @@ import okhttp3.Response
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.storage.extension
 import tachiyomi.core.common.util.lang.launchIO
-import tachiyomi.core.common.util.lang.launchNow
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.ImageUtil
 import tachiyomi.core.common.util.system.logcat
@@ -73,6 +71,7 @@ import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * This class is the one in charge of downloading chapters.
@@ -83,6 +82,7 @@ class Downloader(
     private val context: Context,
     private val provider: DownloadProvider,
     private val cache: DownloadCache,
+    private val scope: CoroutineScope,
     private val sourceManager: SourceManager = Injekt.get(),
     private val chapterCache: ChapterCache = Injekt.get(),
     private val downloadPreferences: DownloadPreferences = Injekt.get(),
@@ -119,7 +119,6 @@ class Downloader(
      */
     private val notifier by lazy { DownloadNotifier(context) }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var downloaderJob: Job? = null
 
     // Used to avoid spamming warning notifications during bulk queueing.
@@ -138,8 +137,10 @@ class Downloader(
     var isPaused: Boolean = false
 
     init {
-        launchNow {
-            val chapters = async { store.restore() }
+        // restore() does blocking DB lookups per queued download; keep it off the main thread or a
+        // large restored queue stalls app startup (splash freeze / ANR).
+        scope.launch {
+            val chapters = async(Dispatchers.IO) { store.restore() }
             addAllToQueue(chapters.await())
         }
     }
@@ -248,7 +249,7 @@ class Downloader(
     private fun launchDownloaderJob() {
         if (isRunning) return
 
-        downloaderJob = scope.launch {
+        downloaderJob = scope.launchIO {
             val activeDownloadsFlow = combine(
                 queueState,
                 downloadPreferences.parallelSourceLimit.changes(),
@@ -451,7 +452,7 @@ class Downloader(
         val wasEmpty = queueState.value.isEmpty()
 
         // Use a background thread for the heavy lifting of checking file existence
-        launchIO {
+        scope.launchIO {
             val (_, downloadedDirs) = provider.findChapterDirs(chapters, manga, source)
             val downloadedChapterIds = HashSet<Long>(downloadedDirs.size)
             for (i in downloadedDirs.indices) {
@@ -836,7 +837,7 @@ class Downloader(
             // Retry 3 times, waiting 2, 4 and 8 seconds between attempts.
             .retryWhen { _, attempt ->
                 if (attempt < 3) {
-                    delay((2L shl attempt.toInt()) * 1000)
+                    delay((2L shl attempt.toInt()).seconds)
                     true
                 } else {
                     false

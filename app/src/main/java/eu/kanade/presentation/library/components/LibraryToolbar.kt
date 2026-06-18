@@ -20,8 +20,6 @@ import androidx.compose.ui.unit.sp
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.SearchToolbar
-import kotlinx.collections.immutable.persistentListOf
-import kotlinx.collections.immutable.toImmutableList
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.Pill
@@ -163,7 +161,7 @@ private fun LibraryRegularToolbar(
                 )
             }
 
-            AppBarActions(actions.toImmutableList())
+            AppBarActions(actions.toList())
         },
         scrollBehavior = scrollBehavior,
     )
@@ -180,7 +178,7 @@ private fun LibrarySelectionToolbar(
         titleContent = { Text(text = "$selectedCount") },
         actions = {
             AppBarActions(
-                persistentListOf(
+                listOf(
                     AppBar.Action(
                         title = stringResource(MR.strings.action_select_all),
                         icon = Icons.Outlined.SelectAll,

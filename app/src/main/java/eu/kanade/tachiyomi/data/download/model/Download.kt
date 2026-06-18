@@ -15,8 +15,11 @@ import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.source.service.SourceManager
+import kotlinx.serialization.json.JsonObject
+import mihon.core.common.extensions.EMPTY
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import kotlin.time.Duration.Companion.milliseconds
 
 data class Download(
     val source: CatalogueSource,
@@ -73,7 +76,7 @@ data class Download(
         if (pages == null) {
             emit(0)
             while (pages == null) {
-                delay(50)
+                delay(50.milliseconds)
             }
         }
 
@@ -81,7 +84,7 @@ data class Download(
         emitAll(combine(progressFlows) { it.average().toInt() })
     }
         .distinctUntilChanged()
-        .debounce(50)
+        .debounce(50.milliseconds)
 
     val progress: Int
         get() {
@@ -147,6 +150,7 @@ data class Download(
             lastModifiedAt = 0,
             version = 1,
             locked = false,
+            memo = JsonObject.EMPTY,
         )
     }
 }
