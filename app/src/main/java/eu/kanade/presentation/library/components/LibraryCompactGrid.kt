@@ -22,7 +22,7 @@ internal fun LibraryCompactGrid(
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
     onLoadMore: (() -> Unit)? = null,
-    loadMoreKey: Int = 0,
+    loadMoreKey: Long = 0,
 ) {
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),

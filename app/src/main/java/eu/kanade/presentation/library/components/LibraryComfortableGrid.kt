@@ -22,7 +22,7 @@ internal fun LibraryComfortableGrid(
     onGlobalSearchClicked: () -> Unit,
     titleMaxLines: Int = 2,
     onLoadMore: (() -> Unit)? = null,
-    loadMoreKey: Int = 0,
+    loadMoreKey: Long = 0,
 ) {
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),

@@ -53,7 +53,7 @@ fun LibraryContent(
     paginationEnabled: Boolean = false,
     onCategoryFirstVisible: (Category) -> Unit = {},
     onLoadMore: (Category) -> Unit = {},
-    getLoadMoreKey: (Category) -> Int = { 0 },
+    getLoadMoreKey: (Category) -> Long = { 0 },
     isCategoryLoading: (Category) -> Boolean = { false },
 ) {
     Column(

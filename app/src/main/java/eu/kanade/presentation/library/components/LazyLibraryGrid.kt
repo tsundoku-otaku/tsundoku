@@ -36,7 +36,7 @@ internal fun LazyLibraryGrid(
  * even when in-memory filters hid the whole page, so a filtered-out page can't dead-end the
  * category. The key stops changing once the category is exhausted. No-op when [onLoadMore] null.
  */
-internal fun LazyGridScope.loadMoreSentinel(loadKey: Int, onLoadMore: (() -> Unit)?) {
+internal fun LazyGridScope.loadMoreSentinel(loadKey: Long, onLoadMore: (() -> Unit)?) {
     if (onLoadMore == null) return
     item(
         span = { GridItemSpan(maxLineSpan) },
@@ -46,7 +46,7 @@ internal fun LazyGridScope.loadMoreSentinel(loadKey: Int, onLoadMore: (() -> Uni
     }
 }
 
-internal fun LazyListScope.loadMoreSentinel(loadKey: Int, onLoadMore: (() -> Unit)?) {
+internal fun LazyListScope.loadMoreSentinel(loadKey: Long, onLoadMore: (() -> Unit)?) {
     if (onLoadMore == null) return
     item(contentType = "library_load_more") {
         LaunchedEffect(loadKey) { onLoadMore() }

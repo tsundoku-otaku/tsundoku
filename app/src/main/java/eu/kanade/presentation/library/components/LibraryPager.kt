@@ -50,7 +50,7 @@ fun LibraryPager(
     paginationEnabled: Boolean = false,
     onCategoryFirstVisible: (Category) -> Unit = {},
     onLoadMore: (Category) -> Unit = {},
-    getLoadMoreKey: (Category) -> Int = { 0 },
+    getLoadMoreKey: (Category) -> Long = { 0 },
     isCategoryLoading: (Category) -> Boolean = { false },
 ) {
     HorizontalPager(
@@ -66,7 +66,6 @@ fun LibraryPager(
         val items = getItemsForCategory(category)
 
         if (paginationEnabled) {
-            // Request the first page once this category page is composed.
             LaunchedEffect(category.id) { onCategoryFirstVisible(category) }
         }
 
@@ -97,7 +96,7 @@ fun LibraryPager(
             null
         }
         // Generation key (paginated) drives sentinel re-fire; item count otherwise.
-        val loadMoreKey = if (paginationEnabled) getLoadMoreKey(category) else items.size
+        val loadMoreKey = if (paginationEnabled) getLoadMoreKey(category) else items.size.toLong()
 
         val displayMode by getDisplayMode(page)
         val columns by if (displayMode != LibraryDisplayMode.List) {

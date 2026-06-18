@@ -483,13 +483,22 @@ class GetLibraryManga(
         // Fetch one extra row to peek past the page boundary: its presence means there is a next
         // page, and its absence means there isn't. Avoids reporting hasMore=true for an exactly
         // full final page (which would later fire a wasted empty load).
-        val fetched = mangaRepository.getLibraryMangaPage(
-            categoryId = key.categoryId,
-            isNovel = key.isNovel,
-            limit = size.toLong() + 1,
-            offset = loaded.toLong() * size,
-            spec = keySpec[key] ?: LibraryPageSpec(),
-        )
+        val fetched = try {
+            mangaRepository.getLibraryMangaPage(
+                categoryId = key.categoryId,
+                isNovel = key.isNovel,
+                limit = size.toLong() + 1,
+                offset = loaded.toLong() * size,
+                spec = keySpec[key] ?: LibraryPageSpec(),
+            )
+        } catch (e: Exception) {
+            // Leave counts untouched so the page can be retried; don't let the collector die.
+            logcat(LogPriority.ERROR, e) {
+                "GetLibraryManga: page load failed (category=${key.categoryId}, novel=${key.isNovel})"
+            }
+            _isLoading.value = false
+            return
+        }
         val hasMore = fetched.size > size
         val page = if (hasMore) fetched.take(size) else fetched
         loadedPageCount[key] = loaded + 1
@@ -510,18 +519,34 @@ class GetLibraryManga(
         val rebuilt = ArrayList<LibraryManga>()
         val seen = HashSet<Long>()
         for ((key, count) in keys) {
-            val total = count.toLong() * size
-            // Same N+1 peek as loadPageLocked, scaled to the number of pages already loaded.
-            val fetched = mangaRepository.getLibraryMangaPage(
-                categoryId = key.categoryId,
-                isNovel = key.isNovel,
-                limit = total + 1,
-                offset = 0,
-                spec = keySpec[key] ?: LibraryPageSpec(),
-            )
-            pageHasMore[key] = fetched.size > total
-            val page = if (fetched.size > total) fetched.take(total.toInt()) else fetched
-            for (m in page) if (seen.add(m.id)) rebuilt.add(m)
+            val spec = keySpec[key] ?: LibraryPageSpec()
+            var page = 0
+            var hasMore = true
+            // Refetch in page-sized chunks (same N+1 peek as loadPageLocked) instead of one large
+            // query, so the per-page memory ceiling still holds while restoring a deep scroll.
+            while (page < count && hasMore) {
+                val fetched = try {
+                    mangaRepository.getLibraryMangaPage(
+                        categoryId = key.categoryId,
+                        isNovel = key.isNovel,
+                        limit = size.toLong() + 1,
+                        offset = page.toLong() * size,
+                        spec = spec,
+                    )
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e) {
+                        "GetLibraryManga: page reload failed (category=${key.categoryId}, novel=${key.isNovel})"
+                    }
+                    break
+                }
+                hasMore = fetched.size > size
+                val slice = if (hasMore) fetched.take(size) else fetched
+                for (m in slice) if (seen.add(m.id)) rebuilt.add(m)
+                page++
+            }
+            // Data may have shrunk since the original load; track what was actually restored.
+            loadedPageCount[key] = page
+            pageHasMore[key] = hasMore
         }
         _libraryState.value = rebuilt
     }

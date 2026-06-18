@@ -644,9 +644,9 @@ WHERE M.favorite = 1
   AND M.source NOT IN :excludedSourceIds
   AND (
     :searchTerm = ''
-    OR M.title LIKE '%' || :searchTerm || '%'
-    OR M.url LIKE '%' || :searchTerm || '%'
-    OR coalesce(M.genre, '') LIKE '%' || :searchTerm || '%'
+    OR M.title LIKE '%' || :searchTerm || '%' ESCAPE '\'
+    OR M.url LIKE '%' || :searchTerm || '%' ESCAPE '\'
+    OR coalesce(M.genre, '') LIKE '%' || :searchTerm || '%' ESCAPE '\'
   )
   -- Included-tag prefilter (superset of the exact in-memory match): keep rows whose genre
   -- contains ANY of the U+001F-joined lowercased tags. The CTE splits the param into rows so an
@@ -666,6 +666,9 @@ WHERE M.favorite = 1
         AND lower(coalesce(M.genre, '')) LIKE '%' || inc.tag || '%'
     )
   )
+-- M._id is the final tiebreaker so the order is total and stable across pages. A row whose mutable
+-- sort key (last_read, unread, total_count, latest_upload, chapter_fetched_at) changes between page
+-- fetches can shift position and be skipped until the next reset; acceptable for this mode.
 ORDER BY
     CASE WHEN :sortType = 0 AND :sortAscending = 1 THEN M.title END COLLATE NOCASE ASC,
     CASE WHEN :sortType = 0 AND :sortAscending = 0 THEN M.title END COLLATE NOCASE DESC,

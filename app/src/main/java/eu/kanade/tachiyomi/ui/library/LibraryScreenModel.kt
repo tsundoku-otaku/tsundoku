@@ -1145,7 +1145,7 @@ class LibraryScreenModel(
             val parsed = LibrarySearchSpec.parse(query, useRegex = false, searchByUrl = false)
             val single = parsed.subTerms.singleOrNull()
             if (parsed.field == LibrarySearchSpec.Field.DEFAULT && single != null && !single.negate) {
-                single.text
+                escapeLike(single.text)
             } else {
                 ""
             }
@@ -1172,6 +1172,10 @@ class LibraryScreenModel(
         }
         return map
     }
+
+    /** Escape LIKE wildcards so a literal term doesn't widen the SQL prefilter (pairs with ESCAPE '\'). */
+    private fun escapeLike(text: String): String =
+        text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     /**
      * Included-tag prefilter for the SQL page query: U+001F-joined, lowercased tags. Only emitted
@@ -2039,10 +2043,10 @@ class LibraryScreenModel(
         // Sentinel re-fire key: changes on every per-category fetch (paginationGeneration) and on
         // every filter/sort/search reset (paginationResetToken), so the sentinel keeps draining
         // until the category fills or is exhausted.
-        fun categoryLoadKey(category: Category): Int =
-            // Wide multiplier so a high per-category generation (deep drain) can't collide with a
-            // later reset token and silence the sentinel.
-            (paginationResetToken * 10_000_019) + (paginationGeneration[category.id] ?: 0)
+        fun categoryLoadKey(category: Category): Long =
+            // Long + wide multiplier so a high per-category generation (deep drain) can't collide
+            // with a later reset token and silence the sentinel.
+            (paginationResetToken.toLong() * 10_000_019L) + (paginationGeneration[category.id] ?: 0)
 
         fun getToolbarTitle(
             defaultTitle: String,
