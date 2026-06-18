@@ -363,7 +363,7 @@ class HtmlUtilsTest {
         assertTrue(out.contains("<h1>Chapter 1</h1>"), "heading beyond search limit must be preserved")
     }
 
-    // ── flattenTables ─────────────────────────────────────────────────────────
+    // ── extractTables ─────────────────────────────────────────────────────────
 
     @Test
     fun `extractTables pulls table into a model and leaves a sentinel`() {
