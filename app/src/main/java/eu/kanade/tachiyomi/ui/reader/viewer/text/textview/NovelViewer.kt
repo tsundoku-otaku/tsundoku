@@ -384,8 +384,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         lastSavedTtsChunkIndex = chunkIndex
         val total = ttsController.ttsChunks.size
         if (total <= 0) return
-        val chapterIdx = ttsController.ttsPlaybackChapterIndex
-        val loaded = loadedChapters.getOrNull(chapterIdx) ?: return
+        // Prefer the chapter id over the index: trimming read chapters shifts indices, so an id
+        // lookup can't save progress against the wrong chapter if the index is momentarily stale.
+        val loaded = (ttsController.ttsPlaybackChapterId?.let { id ->
+            loadedChapters.firstOrNull { it.chapter.chapter.id == id }
+        } ?: loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex)) ?: return
         val page = loaded.chapter.pages?.firstOrNull() ?: return
         val percent = (((chunkIndex + 1) * 100f) / total).roundToInt().coerceIn(0, 100)
         activity.saveNovelProgress(page, percent)
@@ -1034,7 +1037,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private val ttsKeepBehindChapters = 1
 
     // Drops chapters far behind the TTS head and scrolls back their height so the read chapter
-    // doesn't jump. Autoplay only. Trimming shifts currentChapterIndex; next startTts re-derives it.
+    // doesn't jump. Autoplay only. Decrements currentChapterIndex and ttsPlaybackChapterIndex by
+    // removeCount to match the now-shorter loadedChapters, else reads/progress saves point at the
+    // wrong chapter.
     private fun trimReadChaptersForTts() {
         if (!ttsController.isTtsAutoPlay) return
         val removeCount = currentChapterIndex - ttsKeepBehindChapters
@@ -1055,6 +1060,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             contentContainer.removeView(lc.block.container)
         }
         chapterQueue.removeFirstN(removeCount)
+        // Shift the absolute indices down by the number of chapters removed from the front.
+        currentChapterIndex = (currentChapterIndex - removeCount).coerceAtLeast(0)
+        ttsController.shiftPlaybackChapterIndex(removeCount)
         // Removed views were above the viewport; compensate so the read chapter stays put.
         if (removedHeight > 0) scrollView.scrollBy(0, -removedHeight)
         scrollView.post { isRestoringScroll = false }

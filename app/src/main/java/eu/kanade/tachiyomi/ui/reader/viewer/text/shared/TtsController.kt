@@ -128,6 +128,15 @@ class TtsController(
         })
     }
 
+    /**
+     * Shift the cached playback chapter index when chapters are removed from the front of the
+     * loaded queue (TTS chapter trimming). [ttsPlaybackChapterId] is unaffected, so id-based
+     * lookups stay correct regardless. Floors at 0.
+     */
+    fun shiftPlaybackChapterIndex(removedFromFront: Int) {
+        ttsPlaybackChapterIndex = (ttsPlaybackChapterIndex - removedFromFront).coerceAtLeast(0)
+    }
+
     fun speak(text: String, chapterIndex: Int = 0, chapterId: Long? = null) {
         if (!ttsInitialized || tts == null) {
             logcat(LogPriority.WARN) { "TTS not initialized, cannot speak" }
