@@ -70,29 +70,57 @@ class MassImport(
         return sourceManager.getAll().filterIsInstance<CatalogueSource>().filter { it is HttpSource || it is JsSource }
     }
 
-    private fun findMatchingSource(url: String, sources: List<CatalogueSource>): CatalogueSource? {
-        val normalizedUrl = stripScheme(url).removePrefix("www.").removeSuffix("/")
+    // Single source-matching algorithm shared by the analysis preview and the worker
+    // (MassImportJob delegates here) so the dialog's "valid" classification can't disagree with
+    // what the import actually resolves. Host + path-prefix match, not a raw string startsWith:
+    // startsWith broke on www./mirror-subdomain differences.
+    fun findMatchingSource(
+        url: String,
+        sources: List<CatalogueSource> = getAllSources(),
+        preferredSourceId: Long? = null,
+    ): CatalogueSource? {
+        val urlHost = try {
+            URI(url).host?.lowercase()?.removePrefix("www.")
+        } catch (_: Exception) {
+            null
+        }
         val matchingSources = sources.filter { source ->
             try {
-                val baseUrl = stripScheme(getSourceBaseUrl(source)).removePrefix("www.").removeSuffix("/")
-                normalizedUrl.startsWith(baseUrl)
+                val rawBase = getSourceBaseUrl(source)
+                val baseForUri = if (rawBase.startsWith("http")) rawBase else "https://$rawBase"
+                val baseUri = URI(baseForUri)
+                val baseHost = baseUri.host?.lowercase()?.removePrefix("www.")
+                val basePath = baseUri.path?.trimEnd('/')
+                if (baseHost.isNullOrEmpty() || urlHost.isNullOrEmpty()) return@filter false
+
+                val hostMatches = urlHost == baseHost ||
+                    urlHost.endsWith(".$baseHost") ||
+                    baseHost.endsWith(".$urlHost")
+                if (!hostMatches) return@filter false
+
+                if (!basePath.isNullOrBlank() && basePath != "/") {
+                    val urlPath = URI(url).path ?: ""
+                    urlPath.startsWith(basePath)
+                } else {
+                    true
+                }
             } catch (_: Exception) {
                 false
             }
         }
 
         if (matchingSources.isEmpty()) {
-            val hostKey = try {
-                URI(url).host?.lowercase()?.removePrefix("www.")
-            } catch (_: Exception) {
-                null
-            }
-            if (hostKey == null || missingSourceHostLogCache.putIfAbsent(hostKey, true) == null) {
-                logcat(LogPriority.WARN) { "MassImport: No source match for $url host=$hostKey" }
+            if (urlHost == null || missingSourceHostLogCache.putIfAbsent(urlHost, true) == null) {
+                logcat(LogPriority.WARN) { "MassImport: No source match for $url host=$urlHost" }
             }
             return null
         }
         if (matchingSources.size == 1) return matchingSources.first()
+
+        // Prefer the caller's source (e.g. the currently browsed source) when it matches.
+        if (preferredSourceId != null) {
+            matchingSources.firstOrNull { it.id == preferredSourceId }?.let { return it }
+        }
 
         val enabledLanguages = sourcePreferences.enabledLanguages.get()
         val disabledSources = sourcePreferences.disabledSources.get()
