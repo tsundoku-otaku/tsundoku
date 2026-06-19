@@ -37,6 +37,7 @@ class GetLibraryManga(
     private data class PageKey(val categoryId: Long, val isNovel: Boolean)
     private val loadedPageCount = mutableMapOf<PageKey, Int>()
     private val pageHasMore = mutableMapOf<PageKey, Boolean>()
+
     // Per-key query spec (global filters/search + that category's sort), reconciled by
     // [applyPageSpecs]. A change there triggers a full reset and reload.
     private val keySpec = mutableMapOf<PageKey, LibraryPageSpec>()

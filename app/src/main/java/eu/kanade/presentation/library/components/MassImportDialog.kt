@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.presentation.library.components
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,10 +31,10 @@ import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -80,7 +82,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.i18n.MR
@@ -88,6 +89,7 @@ import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.File
 
 // Clipboard crosses a binder transaction (~1MB cap); past this count a huge list would throw
 // TransactionTooLargeException, so the user is pointed at export-to-file instead.
@@ -233,7 +235,7 @@ fun MassImportDialog(
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
-                                context.toast("${toastErrorExportingUrls}: ${e.message.orEmpty()}")
+                                context.toast("$toastErrorExportingUrls: ${e.message.orEmpty()}")
                             }
                         }
                     }
@@ -259,7 +261,7 @@ fun MassImportDialog(
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
-                                context.toast("${toastErrorExportingUrls}: ${e.message.orEmpty()}")
+                                context.toast("$toastErrorExportingUrls: ${e.message.orEmpty()}")
                             }
                         }
                     }
@@ -313,7 +315,9 @@ fun MassImportDialog(
                             if (hasCompleted) {
                                 TooltipBox(
                                     positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                                    tooltip = { PlainTooltip { Text(stringResource(TDMR.strings.mass_import_clear_done)) } },
+                                    tooltip = {
+                                        PlainTooltip { Text(stringResource(TDMR.strings.mass_import_clear_done)) }
+                                    },
                                     state = rememberTooltipState(),
                                 ) {
                                     IconButton(
@@ -322,7 +326,7 @@ fun MassImportDialog(
                                         Icon(
                                             imageVector = Icons.Outlined.ClearAll,
                                             contentDescription = stringResource(TDMR.strings.mass_import_clear_done),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
                                 }
@@ -348,7 +352,7 @@ fun MassImportDialog(
                                         Icon(
                                             imageVector = Icons.Outlined.Pause,
                                             contentDescription = "Pause All",
-                                            tint = MaterialTheme.colorScheme.primary
+                                            tint = MaterialTheme.colorScheme.primary,
                                         )
                                     }
                                 }
@@ -365,7 +369,7 @@ fun MassImportDialog(
                                         Icon(
                                             imageVector = Icons.Outlined.PlayArrow,
                                             contentDescription = "Resume All",
-                                            tint = MaterialTheme.colorScheme.primary
+                                            tint = MaterialTheme.colorScheme.primary,
                                         )
                                     }
                                 }
@@ -374,7 +378,9 @@ fun MassImportDialog(
                             if (hasRunningState || hasPausedState) {
                                 TooltipBox(
                                     positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
-                                    tooltip = { PlainTooltip { Text(stringResource(TDMR.strings.mass_import_cancel_all)) } },
+                                    tooltip = {
+                                        PlainTooltip { Text(stringResource(TDMR.strings.mass_import_cancel_all)) }
+                                    },
                                     state = rememberTooltipState(),
                                 ) {
                                     IconButton(
@@ -383,7 +389,7 @@ fun MassImportDialog(
                                         Icon(
                                             imageVector = Icons.Outlined.Cancel,
                                             contentDescription = stringResource(TDMR.strings.mass_import_cancel_all),
-                                            tint = MaterialTheme.colorScheme.error
+                                            tint = MaterialTheme.colorScheme.error,
                                         )
                                     }
                                 }
@@ -449,7 +455,10 @@ fun MassImportDialog(
                                                 errors.size > CLIPBOARD_COPY_LIMIT ->
                                                     context.toast(toastCopyTooLarge)
                                                 else -> {
-                                                    context.copyToClipboard(clipboardErrorsLabel, errors.joinToString("\n"))
+                                                    context.copyToClipboard(
+                                                        clipboardErrorsLabel,
+                                                        errors.joinToString("\n"),
+                                                    )
                                                     context.toast(String.format(toastCopiedErrors, errors.size))
                                                 }
                                             }
@@ -667,7 +676,7 @@ fun MassImportDialog(
                                     urlText = ""
                                 },
                             ) {
-                                    Icon(
+                                Icon(
                                     imageVector = Icons.Outlined.ArrowDropDown,
                                     contentDescription = stringResource(TDMR.strings.mass_import_cd_add_to_pending),
                                 )
@@ -740,7 +749,10 @@ fun MassImportDialog(
                             )
                             if (analysis.alreadyInLibrary.isNotEmpty()) {
                                 Text(
-                                    text = stringResource(TDMR.strings.mass_import_analysis_already_in_library, analysis.alreadyInLibrary.size),
+                                    text = stringResource(
+                                        TDMR.strings.mass_import_analysis_already_in_library,
+                                        analysis.alreadyInLibrary.size,
+                                    ),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -848,7 +860,7 @@ fun MassImportDialog(
                     onClick = {
                         MassImportJob.clearCompleted(context)
                         showClearCompletedConfirm = false
-                    }
+                    },
                 ) {
                     Text(stringResource(TDMR.strings.mass_import_button_clear))
                 }
@@ -871,7 +883,7 @@ fun MassImportDialog(
                     onClick = {
                         pendingUrls = ""
                         showClearPendingConfirm = false
-                    }
+                    },
                 ) {
                     Text(stringResource(TDMR.strings.mass_import_button_clear))
                 }
@@ -894,7 +906,7 @@ fun MassImportDialog(
                     onClick = {
                         MassImportJob.stop(context)
                         showCancelAllConfirm = false
-                    }
+                    },
                 ) {
                     Text(stringResource(TDMR.strings.mass_import_button_cancel_all))
                 }
@@ -972,7 +984,11 @@ private fun BatchItem(
                         positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
                         tooltip = {
                             PlainTooltip {
-                                Text(stringResource(if (expanded) TDMR.strings.mass_import_tooltip_collapse_details else TDMR.strings.mass_import_tooltip_expand_details))
+                                Text(
+                                    stringResource(
+                                        if (expanded) TDMR.strings.mass_import_tooltip_collapse_details else TDMR.strings.mass_import_tooltip_expand_details,
+                                    ),
+                                )
                             }
                         },
                         state = rememberTooltipState(),
@@ -1048,12 +1064,12 @@ private fun BatchItem(
                                 onClick = onCancel,
                                 modifier = Modifier.size(24.dp),
                             ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Cancel,
-                                        contentDescription = stringResource(TDMR.strings.mass_import_cd_cancel),
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.error,
-                                    )
+                                Icon(
+                                    imageVector = Icons.Outlined.Cancel,
+                                    contentDescription = stringResource(TDMR.strings.mass_import_cd_cancel),
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
                             }
                         }
                     }
@@ -1146,11 +1162,11 @@ private fun BatchItem(
                         state = rememberTooltipState(),
                     ) {
                         IconButton(onClick = onCopyUrls, modifier = Modifier.size(32.dp)) {
-                                Icon(
-                                    Icons.Outlined.ContentCopy,
-                                    contentDescription = stringResource(TDMR.strings.mass_import_cd_copy_urls),
-                                    modifier = Modifier.size(18.dp),
-                                )
+                            Icon(
+                                Icons.Outlined.ContentCopy,
+                                contentDescription = stringResource(TDMR.strings.mass_import_cd_copy_urls),
+                                modifier = Modifier.size(18.dp),
+                            )
                         }
                     }
 
@@ -1183,12 +1199,12 @@ private fun BatchItem(
                             state = rememberTooltipState(),
                         ) {
                             IconButton(onClick = onCopyErrors, modifier = Modifier.size(32.dp)) {
-                                    Icon(
-                                        Icons.Outlined.ContentCopy,
-                                        contentDescription = stringResource(TDMR.strings.mass_import_cd_copy_errors),
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.error,
-                                    )
+                                Icon(
+                                    Icons.Outlined.ContentCopy,
+                                    contentDescription = stringResource(TDMR.strings.mass_import_cd_copy_errors),
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
                             }
                         }
 
@@ -1240,7 +1256,6 @@ private fun BatchItem(
                             }
                         }
                     }
-
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1294,7 +1309,7 @@ private fun BatchItem(
                     onClick = {
                         onRemove()
                         showRemoveConfirm = false
-                    }
+                    },
                 ) {
                     Text(stringResource(TDMR.strings.mass_import_confirm_remove_button))
                 }
@@ -1307,4 +1322,3 @@ private fun BatchItem(
         )
     }
 }
-

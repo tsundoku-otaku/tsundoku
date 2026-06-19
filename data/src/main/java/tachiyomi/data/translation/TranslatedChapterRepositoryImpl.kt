@@ -128,13 +128,13 @@ class TranslatedChapterRepositoryImpl(
 
     // ── Metadata helpers ──────────────────────────────────────────────
 
-    private val META_PREFIX = "<!-- tsundoku-meta:"
-    private val META_SUFFIX = " -->"
-    private val META_REGEX = Regex("^<!-- tsundoku-meta:(.+?):(-?\\d+)(?::([a-f0-9]{64}))? -->\\n?")
+    private val metaPrefix = "<!-- tsundoku-meta:"
+    private val metaSuffix = " -->"
+    private val metaRegex = Regex("^<!-- tsundoku-meta:(.+?):(-?\\d+)(?::([a-f0-9]{64}))? -->\\n?")
 
     private fun buildMetaComment(engineId: String, dateTranslated: Long, sourceContentHash: String? = null): String {
         val hashPart = if (!sourceContentHash.isNullOrEmpty()) ":$sourceContentHash" else ""
-        return "$META_PREFIX$engineId:$dateTranslated$hashPart$META_SUFFIX\n"
+        return "$metaPrefix$engineId:$dateTranslated$hashPart$metaSuffix\n"
     }
 
     private fun computeSourceHash(content: String): String {
@@ -159,7 +159,7 @@ class TranslatedChapterRepositoryImpl(
             logcat(LogPriority.ERROR, e) { "Failed to read translation file: ${file.name}" }
             return null
         }
-        val match = META_REGEX.find(raw)
+        val match = metaRegex.find(raw)
         return if (match != null) {
             FileMeta(
                 engineId = match.groupValues[1],

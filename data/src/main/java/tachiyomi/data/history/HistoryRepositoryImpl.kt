@@ -1,19 +1,19 @@
 ﻿package tachiyomi.data.history
 
+import app.cash.sqldelight.async.coroutines.awaitAsList
+import app.cash.sqldelight.async.coroutines.awaitAsOne
+import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
 import kotlinx.coroutines.flow.Flow
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.data.Database
+import tachiyomi.data.subscribeToList
 import tachiyomi.domain.history.model.History
 import tachiyomi.domain.history.model.HistoryUpdate
 import tachiyomi.domain.history.model.HistoryWithRelations
 import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.manga.model.MangaCover
 import java.util.Date
-import tachiyomi.data.Database
-import app.cash.sqldelight.async.coroutines.awaitAsList
-import app.cash.sqldelight.async.coroutines.awaitAsOne
-import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
-import tachiyomi.data.subscribeToList
 
 class HistoryRepositoryImpl(
     private val database: Database,
@@ -58,11 +58,19 @@ class HistoryRepositoryImpl(
     )
 
     override fun getHistory(query: String, limit: Long): Flow<List<HistoryWithRelations>> {
-        return database.historyQueries.getHistoryWithRelations(query, limit, ::mapHistoryWithRelations).subscribeToList()
+        return database.historyQueries.getHistoryWithRelations(
+            query,
+            limit,
+            ::mapHistoryWithRelations,
+        ).subscribeToList()
     }
 
     override fun getHistoryGrouped(query: String, limit: Long): Flow<List<HistoryWithRelations>> {
-        return database.historyQueries.getHistoryWithRelationsGrouped(query, limit, ::mapHistoryWithRelations).subscribeToList()
+        return database.historyQueries.getHistoryWithRelationsGrouped(
+            query,
+            limit,
+            ::mapHistoryWithRelations,
+        ).subscribeToList()
     }
 
     override suspend fun getLastHistory(): HistoryWithRelations? {
@@ -106,10 +114,10 @@ class HistoryRepositoryImpl(
     override suspend fun upsertHistory(historyUpdate: HistoryUpdate) {
         try {
             database.historyQueries.upsert(
-                    historyUpdate.chapterId,
-                    historyUpdate.readAt,
-                    historyUpdate.sessionReadDuration,
-                )
+                historyUpdate.chapterId,
+                historyUpdate.readAt,
+                historyUpdate.sessionReadDuration,
+            )
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, throwable = e)
         }

@@ -1,12 +1,12 @@
 package eu.kanade.tachiyomi.util.source
 
+import androidx.core.net.toUri
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import androidx.core.net.toUri
 
 fun resolveRelativeUrl(baseUrl: String, pathOrUrl: String): String {
     val value = pathOrUrl.trim()

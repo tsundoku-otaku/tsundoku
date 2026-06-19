@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.reader
 
 import android.app.Application
@@ -272,7 +274,7 @@ class ReaderViewModel @JvmOverloads constructor(
             .map(::ReaderChapter)
     }
 
-            private val pendingTranslationAheadChapterIds = mutableSetOf<Long>()
+    private val pendingTranslationAheadChapterIds = mutableSetOf<Long>()
 
     private val incognitoMode: Boolean by lazy { getIncognitoState.await(manga?.source) }
     private val downloadAheadAmount = downloadPreferences.autoDownloadWhileReading.get()
@@ -1540,7 +1542,8 @@ class ReaderViewModel @JvmOverloads constructor(
                     val idStr = (jsonObj["id"] as? kotlinx.serialization.json.JsonPrimitive)?.content
                     if (idStr == "-1") continue
                     val id = idStr?.toLongOrNull() ?: continue
-                    val htmlContent = (jsonObj["content"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: continue
+                    val htmlContent =
+                        (jsonObj["content"] as? kotlinx.serialization.json.JsonPrimitive)?.content ?: continue
 
                     val chapter = chapterList.find { it.chapter.id == id }?.chapter?.toDomainChapter() ?: continue
                     saveSingleChapterEdits(m, chapter, s, htmlContent)
@@ -1567,13 +1570,29 @@ class ReaderViewModel @JvmOverloads constructor(
         s: Source,
         htmlContent: String,
     ) {
-        val isDownloaded = downloadManager.isChapterDownloaded(chapter.name, chapter.scanlator, chapter.url, m.title, m.source)
+        val isDownloaded = downloadManager.isChapterDownloaded(
+            chapter.name,
+            chapter.scanlator,
+            chapter.url,
+            m.title,
+            m.source,
+        )
         val mangaDir = downloadProvider.getMangaDir(m.title, s).getOrNull() ?: return
         val validName = downloadProvider.getValidChapterDirNames(chapter.name, chapter.scanlator, chapter.url).first()
 
         try {
             val tmpDir = mangaDir.createDirectory(validName + "_tmp") ?: return
-            val existingDir = if (isDownloaded) downloadProvider.findChapterDir(chapter.name, chapter.scanlator, chapter.url, m.title, s) else null
+            val existingDir = if (isDownloaded) {
+                downloadProvider.findChapterDir(
+                    chapter.name,
+                    chapter.scanlator,
+                    chapter.url,
+                    m.title,
+                    s,
+                )
+            } else {
+                null
+            }
             val context: android.app.Application = uy.kohesive.injekt.Injekt.get()
 
             if (existingDir != null) {
@@ -1588,7 +1607,9 @@ class ReaderViewModel @JvmOverloads constructor(
                         }
                     }
                 } else if (existingDir.isDirectory) {
-                    existingDir.listFiles()?.filter { it.isFile && it.name?.endsWith(".html") == false }?.forEach { file ->
+                    existingDir.listFiles()?.filter {
+                        it.isFile && it.name?.endsWith(".html") == false
+                    }?.forEach { file ->
                         tmpDir.createFile(file.name!!)?.openOutputStream()?.use { os ->
                             file.openInputStream().use { it.copyTo(os) }
                         }
@@ -1598,7 +1619,9 @@ class ReaderViewModel @JvmOverloads constructor(
 
             // Process HTML to include images
             val embedder = eu.kanade.tachiyomi.util.chapter.ChapterImageEmbedder()
-            val baseUrl = (s as? eu.kanade.tachiyomi.source.online.HttpSource)?.baseUrl ?: chapter.url.takeIf { it.startsWith("http") }
+            val baseUrl =
+                (s as? eu.kanade.tachiyomi.source.online.HttpSource)?.baseUrl
+                    ?: chapter.url.takeIf { it.startsWith("http") }
             val processedHtml = embedder.processHtml(htmlContent, baseUrl, tmpDir)
 
             val targetFile = tmpDir.createFile("001.html") ?: return

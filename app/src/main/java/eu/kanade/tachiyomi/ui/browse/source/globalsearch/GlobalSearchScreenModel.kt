@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.ui.browse.source.globalsearch
 
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isNovelSource
 
 class GlobalSearchScreenModel(
     initialQuery: String = "",

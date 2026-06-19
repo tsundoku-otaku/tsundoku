@@ -93,8 +93,8 @@ class LibrarySettingsScreenModel(
     val tagOptionsExpanded = _tagOptionsExpanded.asStateFlow()
 
     // Flags to track if we've attempted to load from disk cache
-    private val _extensionsLoaded = AtomicBoolean(false)
-    private val _tagsLoaded = AtomicBoolean(false)
+    private val extensionsLoaded = AtomicBoolean(false)
+    private val tagsLoaded = AtomicBoolean(false)
 
     init {
         // Auto-load extensions on initialization to fix first-time loading issue
@@ -219,11 +219,11 @@ class LibrarySettingsScreenModel(
             _extensionsLoading.value = true
             try {
                 // Try loading from disk cache first if not forced and not loaded yet
-                if (!forceRefresh && !_extensionsLoaded.get()) {
+                if (!forceRefresh && !extensionsLoaded.get()) {
                     val cached = librarySettingsCache.loadExtensions(type.name)
                     if (cached != null && cached.isNotEmpty()) {
                         _extensionsFlow.value = cached
-                        _extensionsLoaded.set(true)
+                        extensionsLoaded.set(true)
                         _extensionsLoading.value = false
                         return@launchIO
                     }
@@ -259,7 +259,7 @@ class LibrarySettingsScreenModel(
 
                 _extensionsFlow.value = extensions
                 librarySettingsCache.saveExtensions(type.name, extensions)
-                _extensionsLoaded.set(true)
+                extensionsLoaded.set(true)
             } catch (e: Exception) {
                 // Ignore error, keep empty list
             } finally {
@@ -278,17 +278,21 @@ class LibrarySettingsScreenModel(
         screenModelScope.launchIO {
             _tagsLoading.value = true
             try {
-                logcat(LogPriority.INFO) { "LibrarySettingsScreenModel: refreshTags(forceRefresh=$forceRefresh, type=$type)" }
+                logcat(LogPriority.INFO) {
+                    "LibrarySettingsScreenModel: refreshTags(forceRefresh=$forceRefresh, type=$type)"
+                }
 
                 // Skip cache when filtering by type - we need fresh filtered data
                 // Cache is only useful for All type
-                if (!forceRefresh && !_tagsLoaded.get() && type == LibraryScreenModel.LibraryType.All) {
+                if (!forceRefresh && !tagsLoaded.get() && type == LibraryScreenModel.LibraryType.All) {
                     val cached = librarySettingsCache.loadTags()
                     if (cached != null) {
-                        logcat(LogPriority.DEBUG) { "LibrarySettingsScreenModel: Loaded ${cached.first.size} tags from cache" }
+                        logcat(LogPriority.DEBUG) {
+                            "LibrarySettingsScreenModel: Loaded ${cached.first.size} tags from cache"
+                        }
                         _tagsFlow.value = cached.first
                         _noTagsCountFlow.value = cached.second
-                        _tagsLoaded.set(true)
+                        tagsLoaded.set(true)
                         _tagsLoading.value = false
                         return@launchIO
                     }
@@ -297,7 +301,9 @@ class LibrarySettingsScreenModel(
                 // Aggregate tag counts in the DB layer (folds the cursor) instead of loading every
                 // favorite's genres into memory at once — the old full-list load could OOM a large
                 // library, especially while a mass import already had the heap under pressure.
-                logcat(LogPriority.INFO) { "LibrarySettingsScreenModel: Loading tags from database (streaming aggregation)..." }
+                logcat(LogPriority.INFO) {
+                    "LibrarySettingsScreenModel: Loading tags from database (streaming aggregation)..."
+                }
                 // Classify via getOrStub so favorites from uninstalled extensions keep their DB
                 // is_novel flag; getCatalogueSources() only sees loaded sources.
                 val novelSourceIds = getLibraryManga.awaitSourceIds()
@@ -321,7 +327,9 @@ class LibrarySettingsScreenModel(
                     }
                 }
 
-                logcat(LogPriority.INFO) { "LibrarySettingsScreenModel: Found ${tagCounts.size} unique tags, $noTagsCount items without tags (type=$type)" }
+                logcat(LogPriority.INFO) {
+                    "LibrarySettingsScreenModel: Found ${tagCounts.size} unique tags, $noTagsCount items without tags (type=$type)"
+                }
 
                 val tagsList = tagCounts.entries
                     .sortedByDescending { it.value }
@@ -334,7 +342,7 @@ class LibrarySettingsScreenModel(
                 if (type == LibraryScreenModel.LibraryType.All) {
                     librarySettingsCache.saveTags(tagsList, noTagsCount)
                 }
-                _tagsLoaded.set(true)
+                tagsLoaded.set(true)
                 logcat(LogPriority.INFO) { "LibrarySettingsScreenModel: refreshTags completed" }
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "LibrarySettingsScreenModel: Error refreshing tags" }

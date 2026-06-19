@@ -1,8 +1,8 @@
 package mihon.core.archive
 
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Document
 import org.jsoup.nodes.DataNode
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.parser.Parser
@@ -327,7 +327,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
 
         return toc.mapIndexed { index, chapter ->
             val rawTitle = chapter.title.trim()
-            val isSubsection = SUBSECTION_TITLE_REGEX.matches(rawTitle)
+            val isSubsection = subsectionTitleRegex.matches(rawTitle)
 
             val normalizedTitle = when {
                 rawTitle.isBlank() -> "Chapter ${index + 1}"
@@ -343,7 +343,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         }
     }
 
-    private val SUBSECTION_TITLE_REGEX =
+    private val subsectionTitleRegex =
         Regex("(?i)^(part|section|episode|ep\\.?|act|book|volume|vol\\.?|chapter|ch\\.?)\\s*[0-9ivxlcdm]+\\b")
 
     /**
@@ -437,7 +437,6 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         val images: Map<String, ByteArray>,
     )
 
-
     fun extractChapterForExport(chapterHref: String): ChapterExportData {
         val collected = linkedMapOf<String, ByteArray>()
         val html = getChapterContentInternal(
@@ -448,7 +447,6 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         )
         return ChapterExportData(html, collected)
     }
-
 
     private fun getChapterContentInternal(
         chapterHref: String,
@@ -544,7 +542,10 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
 
                                 val cssDir = getParentDirectory(cssPath)
                                 val assetPath =
-                                    resolveZipPath(cssDir, assetUrl.substringBefore("?").substringBefore("#").urlDecoded())
+                                    resolveZipPath(
+                                        cssDir,
+                                        assetUrl.substringBefore("?").substringBefore("#").urlDecoded(),
+                                    )
                                 inlineAssetAsDataUri(assetPath)?.let { "url('$it')" } ?: match.value
                             }
 

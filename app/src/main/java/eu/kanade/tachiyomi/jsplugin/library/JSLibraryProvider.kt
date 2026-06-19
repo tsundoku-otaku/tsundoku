@@ -18,6 +18,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.Buffer
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -28,7 +29,6 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
-import okio.Buffer
 import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -318,8 +318,10 @@ class JSLibraryProvider(
                 val body = extractBody(init, headersMap)
 
                 // Check if this is binary data encoded as base64
-                val isBinaryBase64 = headersMap.entries.any { it.key.equals("x-binary-base64", ignoreCase = true) && it.value.equals("true", ignoreCase = true) }
-
+                val isBinaryBase64 = headersMap.entries.any {
+                    it.key.equals("x-binary-base64", ignoreCase = true) &&
+                        it.value.equals("true", ignoreCase = true)
+                }
 
                 val requestBuilder = Request.Builder().url(normalizedUrl)
 
@@ -327,20 +329,23 @@ class JSLibraryProvider(
                 val headersBuilder = Headers.Builder()
                 headersMap.forEach { (key, value) ->
                     val lowerKey = key.lowercase()
-                    if (lowerKey !in listOf("accept-encoding", "host", "connection", "content-length", "x-binary-base64")) {
+                    if (lowerKey !in
+                        listOf("accept-encoding", "host", "connection", "content-length", "x-binary-base64")
+                    ) {
                         headersBuilder.add(key, value)
                     }
                 }
                 requestBuilder.headers(headersBuilder.build())
-
-
 
                 // Set body for non-GET requests
                 if (method != "GET" && body != null) {
                     if (isBinaryBase64) {
                         try {
                             val binaryData = Base64.decode(body, Base64.DEFAULT)
-                            requestBuilder.method(method, binaryData.toRequestBody("application/grpc-web+proto".toMediaType()))
+                            requestBuilder.method(
+                                method,
+                                binaryData.toRequestBody("application/grpc-web+proto".toMediaType()),
+                            )
                         } catch (e: Exception) {
                             requestBuilder.method(method, body.toRequestBody(detectContentType(headersMap)))
                         }
@@ -359,8 +364,6 @@ class JSLibraryProvider(
                     } else {
                         String(responseBytes, StandardCharsets.UTF_8)
                     }
-
-
 
                     // Keep WebView cookie store in sync with OkHttp responses.
                     try {
@@ -416,7 +419,9 @@ class JSLibraryProvider(
         if (value.startsWith("http://") || value.startsWith("https://")) {
             if (base.isNotBlank() && value.startsWith(base)) {
                 val suffix = value.removePrefix(base)
-                if (suffix.isNotEmpty() && !suffix.startsWith("/") && !suffix.startsWith("?") && !suffix.startsWith("#")) {
+                if (suffix.isNotEmpty() && !suffix.startsWith("/") && !suffix.startsWith("?") &&
+                    !suffix.startsWith("#")
+                ) {
                     return "$base/${suffix.removePrefix("/")}"
                 }
             }
@@ -469,7 +474,12 @@ class JSLibraryProvider(
                         is List<*> -> v.filterNotNull()
                         else -> listOf(v)
                     }
-                    values.joinToString("&") { "${java.net.URLEncoder.encode(k, "UTF-8")}=${java.net.URLEncoder.encode(it.toString(), "UTF-8")}" }
+                    values.joinToString("&") {
+                        "${java.net.URLEncoder.encode(
+                            k,
+                            "UTF-8",
+                        )}=${java.net.URLEncoder.encode(it.toString(), "UTF-8")}"
+                    }
                 }
             }
             else -> body.toString()
@@ -1154,7 +1164,6 @@ class JSLibraryProvider(
         return normalized
     }
 
-
     private fun cheerioFilter(handle: Int, selector: String): Int {
         val normalizedSelector = normalizeSelectorForJsoup(selector)
         val el = elementCache[handle]
@@ -1242,7 +1251,9 @@ class JSLibraryProvider(
             val toRemove = sortedKeys.take(maxOf(0, sortedKeys.size - keepRecent))
             toRemove.forEach { elementCache.remove(it) }
             if (toRemove.isNotEmpty()) {
-                logcat(LogPriority.DEBUG) { "[$pluginId] Trimmed cache: removed ${toRemove.size} old elements, kept ${elementCache.size}" }
+                logcat(LogPriority.DEBUG) {
+                    "[$pluginId] Trimmed cache: removed ${toRemove.size} old elements, kept ${elementCache.size}"
+                }
             }
         }
     }

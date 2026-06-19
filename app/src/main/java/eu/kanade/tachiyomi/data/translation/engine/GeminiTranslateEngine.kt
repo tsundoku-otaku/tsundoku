@@ -35,7 +35,6 @@ class GeminiTranslateEngine(
     override val supportedLanguages: List<Pair<String, String>> =
         LanguageCodes.COMMON_LANGUAGES
 
-
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true

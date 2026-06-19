@@ -105,13 +105,17 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
             when (filter) {
                 is OrderBy.Popular -> {
                     novelEntries = if (filter.state!!.ascending) {
-                        novelEntries.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) {
-                            if (it.isDirectory) it.name.orEmpty() else it.nameWithoutExtension.orEmpty()
-                        })
+                        novelEntries.sortedWith(
+                            compareBy(String.CASE_INSENSITIVE_ORDER) {
+                                if (it.isDirectory) it.name.orEmpty() else it.nameWithoutExtension.orEmpty()
+                            },
+                        )
                     } else {
-                        novelEntries.sortedWith(compareByDescending(String.CASE_INSENSITIVE_ORDER) {
-                            if (it.isDirectory) it.name.orEmpty() else it.nameWithoutExtension.orEmpty()
-                        })
+                        novelEntries.sortedWith(
+                            compareByDescending(String.CASE_INSENSITIVE_ORDER) {
+                                if (it.isDirectory) it.name.orEmpty() else it.nameWithoutExtension.orEmpty()
+                            },
+                        )
                     }
                 }
                 is OrderBy.Latest -> {
@@ -560,7 +564,6 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
             "htm",
             "xhtml",
         )
-
     }
 
     private fun resolveNovelEntry(url: String): UniFile? {

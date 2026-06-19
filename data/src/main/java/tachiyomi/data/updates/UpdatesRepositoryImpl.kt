@@ -3,11 +3,11 @@
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.core.common.util.lang.toLong
+import tachiyomi.data.Database
+import tachiyomi.data.subscribeToList
 import tachiyomi.domain.manga.model.MangaCover
 import tachiyomi.domain.updates.model.UpdatesWithRelations
 import tachiyomi.domain.updates.repository.UpdatesRepository
-import tachiyomi.data.Database
-import tachiyomi.data.subscribeToList
 
 class UpdatesRepositoryImpl(
     private val database: Database,

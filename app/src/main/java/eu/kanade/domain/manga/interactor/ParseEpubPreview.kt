@@ -144,7 +144,9 @@ class ParseEpubPreview {
                     )
                 }
 
-            val fallbackPosition = metadata.selectFirst("meta[property=group-position], meta[name=calibre:series_index]")
+            val fallbackPosition = metadata.selectFirst(
+                "meta[property=group-position], meta[name=calibre:series_index]",
+            )
             val position = parseCollectionPosition(refinedPosition) ?: parseCollectionPosition(fallbackPosition)
 
             CollectionMetadata(collection, position)

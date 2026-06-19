@@ -5,11 +5,11 @@ import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.PixelFormat
 import android.graphics.drawable.Drawable
-import androidx.core.graphics.drawable.toDrawable
 import android.text.Html
 import android.text.SpannableStringBuilder
 import android.util.Base64
 import android.widget.TextView
+import androidx.core.graphics.drawable.toDrawable
 import androidx.core.text.PrecomputedTextCompat
 import androidx.core.widget.TextViewCompat
 import coil3.asDrawable
@@ -19,8 +19,6 @@ import coil3.network.httpHeaders
 import coil3.request.ImageRequest
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.online.HttpSource
-import coil3.size.Dimension as CoilDimension
-import coil3.size.Size as CoilSize
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import kotlinx.coroutines.CoroutineScope
@@ -31,6 +29,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import logcat.logcat
+import coil3.size.Dimension as CoilDimension
+import coil3.size.Size as CoilSize
 
 internal class DrawableWrapper : Drawable() {
     var innerDrawable: Drawable? = null

@@ -74,5 +74,4 @@ object NovelMarkdownUtils {
         val paragraphs = escaped.lines().filter { it.isNotBlank() }.joinToString("\n") { "<p>$it</p>" }
         return paragraphs.ifBlank { "<p>$escaped</p>" }
     }
-
 }

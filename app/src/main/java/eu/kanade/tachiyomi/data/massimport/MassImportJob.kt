@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.data.massimport
 
 import android.content.Context
@@ -69,20 +71,26 @@ import kotlin.random.Random
 private const val MEMORY_PRESSURE_THRESHOLD = 0.75
 private const val GC_DELAY_MS = 500L
 private const val MIN_FREE_MEMORY_BYTES = 50 * 1024 * 1024L
+
 // Cap the throttle wait so a permanently-pressured heap can't deadlock the import.
 private const val MAX_MEMORY_WAIT_ITERATIONS = 20
+
 // Upper bound on parallel fetches; matches the settings slider max.
 private const val MAX_CONCURRENCY = 30
+
 // How many URLs to look ahead when spreading same-host URLs apart (see interleaveByHost).
 // Caps the reorder buffer so a huge file stays small in memory.
 private const val MAX_LOOKAHEAD = 512
+
 // Bound the retained per-URL error detail so a mostly-failing huge import can't OOM.
 private const val MAX_TRACKED_ERRORS = 2000
+
 // Hard ceiling on a single source fetch so one hanging/oversized request can't freeze
 // the batch (at low concurrency one stuck URL blocks all the rest).
 private const val FETCH_TIMEOUT_MS = 60_000L
 private const val NOTIFICATION_THROTTLE_MS = 1000L
 private const val NOTIFICATION_MIN_DELTA = 5
+
 // Cap the per-URL error detail dumped into the completion result file; the full set stays in the
 // in-app error log. Stops a mostly-failing huge import from writing a gigantic results file.
 private const val RESULT_FILE_ERROR_CAP = 5000
@@ -505,213 +513,254 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // not counted (see countBaseline).
         val indexCounter = AtomicInteger(resumeOffset)
         try {
-        urlFlow
-            // Resume: skip the already-processed prefix.
-            .let { if (resumeOffset > 0) it.drop(resumeOffset) else it }
-            .map { indexCounter.getAndIncrement() to it }
-            // Spread same-host URLs apart so one slow source doesn't fill every slot below.
-            .interleaveByHost(MAX_LOOKAHEAD)
-            .flatMapMerge(concurrency) { (urlIndex, url) ->
-                val shouldCount = urlIndex >= countBaseline
-                if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
-                    return@flatMapMerge flow {
+            urlFlow
+                // Resume: skip the already-processed prefix.
+                .let { if (resumeOffset > 0) it.drop(resumeOffset) else it }
+                .map { indexCounter.getAndIncrement() to it }
+                // Spread same-host URLs apart so one slow source doesn't fill every slot below.
+                .interleaveByHost(MAX_LOOKAHEAD)
+                .flatMapMerge(concurrency) { (urlIndex, url) ->
+                    val shouldCount = urlIndex >= countBaseline
+                    if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+                        return@flatMapMerge flow {
+                            if (shouldCount) {
+                                skippedCount.incrementAndGet()
+                                recordSkip(url, "Not a valid URL")
+                                val done = completedCount.incrementAndGet()
+                                updateBatchProgress(
+                                    batchId,
+                                    done,
+                                    addedCount.get(),
+                                    skippedCount.get(),
+                                    erroredCount.get(),
+                                )
+                            }
+                        }
+                    }
+                    val source = getCachedSource(url) ?: return@flatMapMerge flow {
                         if (shouldCount) {
                             skippedCount.incrementAndGet()
-                            recordSkip(url, "Not a valid URL")
+                            recordSkip(url, "No matching source installed (or host excluded)")
                             val done = completedCount.incrementAndGet()
                             updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get())
                         }
                     }
-                }
-                val source = getCachedSource(url) ?: return@flatMapMerge flow {
-                    if (shouldCount) {
-                        skippedCount.incrementAndGet()
-                        recordSkip(url, "No matching source installed (or host excluded)")
-                        val done = completedCount.incrementAndGet()
-                        updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get())
-                    }
-                }
 
-                flow {
-                    // Concurrent duplicate: processing both wastes a fetch and double-counts
-                    // "added" (the insert itself is insert-if-not-exists, so no corruption).
-                    if (!inFlightUrls.add(url)) {
-                        if (shouldCount) {
-                            skippedCount.incrementAndGet()
-                            recordSkip(url, "Duplicate")
-                            val done = completedCount.incrementAndGet()
-                            updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get())
+                    flow {
+                        // Concurrent duplicate: processing both wastes a fetch and double-counts
+                        // "added" (the insert itself is insert-if-not-exists, so no corruption).
+                        if (!inFlightUrls.add(url)) {
+                            if (shouldCount) {
+                                skippedCount.incrementAndGet()
+                                recordSkip(url, "Duplicate")
+                                val done = completedCount.incrementAndGet()
+                                updateBatchProgress(
+                                    batchId,
+                                    done,
+                                    addedCount.get(),
+                                    skippedCount.get(),
+                                    erroredCount.get(),
+                                )
+                            }
+                            return@flow
                         }
-                        return@flow
-                    }
-                    if (!awaitResumed(batchId)) {
-                        inFlightUrls.remove(url)
-                        return@flow
-                    }
+                        if (!awaitResumed(batchId)) {
+                            inFlightUrls.remove(url)
+                            return@flow
+                        }
 
-                    val failures = sourceConsecutiveFailures.computeIfAbsent(source.id) { AtomicInteger(0) }.get()
-                    if (maxSourceFailures > 0 && failures >= maxSourceFailures) {
-                        if (shouldCount) {
-                            erroredCount.incrementAndGet()
-                            recordError(url, "Source skipped: $failures consecutive failures")
-                            val done = completedCount.incrementAndGet()
-                            updateBatchProgress(
-                                batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get(),
-                                erroredUrlsPreview = synchronized(erroredUrls) { erroredUrls.take(10) },
+                        val failures = sourceConsecutiveFailures.computeIfAbsent(source.id) { AtomicInteger(0) }.get()
+                        if (maxSourceFailures > 0 && failures >= maxSourceFailures) {
+                            if (shouldCount) {
+                                erroredCount.incrementAndGet()
+                                recordError(url, "Source skipped: $failures consecutive failures")
+                                val done = completedCount.incrementAndGet()
+                                updateBatchProgress(
+                                    batchId,
+                                    done,
+                                    addedCount.get(),
+                                    skippedCount.get(),
+                                    erroredCount.get(),
+                                    erroredUrlsPreview = synchronized(erroredUrls) { erroredUrls.take(10) },
+                                )
+                            }
+                            inFlightUrls.remove(url)
+                            return@flow
+                        }
+
+                        // Cheap DB pre-check before the throttle queue: on re-runs most URLs are
+                        // already in the library and would otherwise each pay the per-source delay
+                        // plus a network resolve just to be skipped one by one. A miss (resolved DB
+                        // url differs from the normalized input) falls through to the full path,
+                        // which re-checks after resolving.
+                        val preMatch = runCatching {
+                            val raw = massImportInteractor.extractPathFromUrl(
+                                url,
+                                massImportInteractor.getSourceBaseUrl(source),
+                                source,
                             )
+                            if (raw.isEmpty()) {
+                                null
+                            } else {
+                                // raw already comes back normalized from extractPathFromUrl.
+                                getMangaByUrlAndSourceId.await(raw, source.id)
+                            }
+                        }.getOrNull()
+                        if (preMatch?.favorite == true) {
+                            if (shouldCount) {
+                                skippedCount.incrementAndGet()
+                                recordSkip(url, "Already in library")
+                                val done = completedCount.incrementAndGet()
+                                updateBatchProgress(
+                                    batchId,
+                                    done,
+                                    addedCount.get(),
+                                    skippedCount.get(),
+                                    erroredCount.get(),
+                                )
+                            }
+                            inFlightUrls.remove(url)
+                            return@flow
                         }
-                        inFlightUrls.remove(url)
-                        return@flow
-                    }
 
-                    // Cheap DB pre-check before the throttle queue: on re-runs most URLs are
-                    // already in the library and would otherwise each pay the per-source delay
-                    // plus a network resolve just to be skipped one by one. A miss (resolved DB
-                    // url differs from the normalized input) falls through to the full path,
-                    // which re-checks after resolving.
-                    val preMatch = runCatching {
-                        val raw = massImportInteractor.extractPathFromUrl(
-                            url,
-                            massImportInteractor.getSourceBaseUrl(source),
-                            source,
-                        )
-                        if (raw.isEmpty()) {
-                            null
-                        } else {
-                            // raw already comes back normalized from extractPathFromUrl.
-                            getMangaByUrlAndSourceId.await(raw, source.id)
-                        }
-                    }.getOrNull()
-                    if (preMatch?.favorite == true) {
-                        if (shouldCount) {
-                            skippedCount.incrementAndGet()
-                            recordSkip(url, "Already in library")
-                            val done = completedCount.incrementAndGet()
-                            updateBatchProgress(batchId, done, addedCount.get(), skippedCount.get(), erroredCount.get())
-                        }
-                        inFlightUrls.remove(url)
-                        return@flow
-                    }
+                        waitForMemoryPressure()
 
-                    waitForMemoryPressure()
-
-                    var erroredThisUrl = false
-                    var cancelledWhileQueued = false
-                    try {
-                        // Hold the per-source permit across delay + fetch so same-source requests
-                        // run serially spaced by delayMs. Pause is re-checked after acquiring the
-                        // permit (queued URLs would otherwise keep importing long after pause),
-                        // but parking happens OUTSIDE it — semaphores are global, so a paused
-                        // batch holding one would starve other batches on the same source.
-                        val success = if (shouldThrottle) {
-                            val sourceSemaphore = sourceSemaphores.computeIfAbsent(source.id) { Semaphore(1) }
-                            val (baseDelay, randomRange) = getDelayForSource(source.id)
-                            val delayMs = baseDelay + if (randomRange > 0) Random.nextLong(0, randomRange) else 0L
-                            var result: Boolean? = null
-                            var settled = false
-                            while (!settled) {
-                                if (!awaitResumed(batchId)) break // cancelled; result stays null
-                                settled = sourceSemaphore.withPermit {
-                                    when (batchStatus(batchId)) {
-                                        BatchStatus.Cancelled -> true // done; result stays null
-                                        // Release the permit and park outside the loop.
-                                        BatchStatus.Paused -> false
-                                        else -> {
-                                            delay(delayMs)
-                                            activeImports[url] = true
-                                            updateNotification(
-                                                completedCount.get(),
-                                                totalCount,
-                                                "Processing: ${activeImports.size} active",
-                                            )
-                                            // Remove when the fetch returns so the "active" count
-                                            // in the notification reflects only in-progress URLs.
-                                            result = try {
-                                                processUrlWithSource(
-                                                    url, source, addToLibrary, fetchDetails, categoryId,
-                                                    fetchChapters, pendingAddIds, flushBatchSize,
+                        var erroredThisUrl = false
+                        var cancelledWhileQueued = false
+                        try {
+                            // Hold the per-source permit across delay + fetch so same-source requests
+                            // run serially spaced by delayMs. Pause is re-checked after acquiring the
+                            // permit (queued URLs would otherwise keep importing long after pause),
+                            // but parking happens OUTSIDE it — semaphores are global, so a paused
+                            // batch holding one would starve other batches on the same source.
+                            val success = if (shouldThrottle) {
+                                val sourceSemaphore = sourceSemaphores.computeIfAbsent(source.id) { Semaphore(1) }
+                                val (baseDelay, randomRange) = getDelayForSource(source.id)
+                                val delayMs = baseDelay + if (randomRange > 0) Random.nextLong(0, randomRange) else 0L
+                                var result: Boolean? = null
+                                var settled = false
+                                while (!settled) {
+                                    if (!awaitResumed(batchId)) break // cancelled; result stays null
+                                    settled = sourceSemaphore.withPermit {
+                                        when (batchStatus(batchId)) {
+                                            BatchStatus.Cancelled -> true // done; result stays null
+                                            // Release the permit and park outside the loop.
+                                            BatchStatus.Paused -> false
+                                            else -> {
+                                                delay(delayMs)
+                                                activeImports[url] = true
+                                                updateNotification(
+                                                    completedCount.get(),
+                                                    totalCount,
+                                                    "Processing: ${activeImports.size} active",
                                                 )
-                                            } finally {
-                                                activeImports.remove(url)
+                                                // Remove when the fetch returns so the "active" count
+                                                // in the notification reflects only in-progress URLs.
+                                                result = try {
+                                                    processUrlWithSource(
+                                                        url,
+                                                        source,
+                                                        addToLibrary,
+                                                        fetchDetails,
+                                                        categoryId,
+                                                        fetchChapters,
+                                                        pendingAddIds,
+                                                        flushBatchSize,
+                                                    )
+                                                } finally {
+                                                    activeImports.remove(url)
+                                                }
+                                                true
                                             }
-                                            true
                                         }
                                     }
                                 }
-                            }
-                            result
-                        } else {
-                            if (!awaitResumed(batchId)) {
-                                null
+                                result
                             } else {
-                                activeImports[url] = true
-                                updateNotification(
-                                    completedCount.get(),
-                                    totalCount,
-                                    "Processing: ${activeImports.size} active",
-                                )
-                                try {
-                                    processUrlWithSource(
-                                        url, source, addToLibrary, fetchDetails, categoryId,
-                                        fetchChapters, pendingAddIds, flushBatchSize,
+                                if (!awaitResumed(batchId)) {
+                                    null
+                                } else {
+                                    activeImports[url] = true
+                                    updateNotification(
+                                        completedCount.get(),
+                                        totalCount,
+                                        "Processing: ${activeImports.size} active",
                                     )
-                                } finally {
-                                    activeImports.remove(url)
+                                    try {
+                                        processUrlWithSource(
+                                            url,
+                                            source,
+                                            addToLibrary,
+                                            fetchDetails,
+                                            categoryId,
+                                            fetchChapters,
+                                            pendingAddIds,
+                                            flushBatchSize,
+                                        )
+                                    } finally {
+                                        activeImports.remove(url)
+                                    }
                                 }
                             }
-                        }
-                        when (success) {
-                            true -> {
-                                sourceConsecutiveFailures[source.id]?.set(0)
-                                if (shouldCount) addedCount.incrementAndGet()
-                            }
-                            false -> {
-                                if (shouldCount) {
-                                    skippedCount.incrementAndGet()
-                                    recordSkip(url, "Already in library")
+                            when (success) {
+                                true -> {
+                                    sourceConsecutiveFailures[source.id]?.set(0)
+                                    if (shouldCount) addedCount.incrementAndGet()
+                                }
+                                false -> {
+                                    if (shouldCount) {
+                                        skippedCount.incrementAndGet()
+                                        recordSkip(url, "Already in library")
+                                    }
+                                }
+                                // null: batch was cancelled while queued — nothing processed.
+                                null -> {
+                                    cancelledWhileQueued = true
+                                    return@flow
                                 }
                             }
-                            // null: batch was cancelled while queued — nothing processed.
-                            null -> {
-                                cancelledWhileQueued = true
-                                return@flow
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            sourceConsecutiveFailures[source.id]?.incrementAndGet()
+                            logcat(LogPriority.ERROR, e) { "Error importing $url" }
+                            if (shouldCount) {
+                                erroredCount.incrementAndGet()
+                                erroredThisUrl = true
+                                recordError(url, e.message ?: "Unknown error")
                             }
-                        }
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
-                        sourceConsecutiveFailures[source.id]?.incrementAndGet()
-                        logcat(LogPriority.ERROR, e) { "Error importing $url" }
-                        if (shouldCount) {
-                            erroredCount.incrementAndGet()
-                            erroredThisUrl = true
-                            recordError(url, e.message ?: "Unknown error")
-                        }
-                    } finally {
-                        inFlightUrls.remove(url)
-                        activeImports.remove(url)
-                        // Cancelled-while-queued URLs were never processed, and resume-overlap URLs
-                        // were already counted before the pause; don't count either.
-                        if (!cancelledWhileQueued && shouldCount) {
-                            val done = completedCount.incrementAndGet()
-                            updateNotification(done, totalCount, "Processed $done/$totalCount")
+                        } finally {
+                            inFlightUrls.remove(url)
+                            activeImports.remove(url)
+                            // Cancelled-while-queued URLs were never processed, and resume-overlap URLs
+                            // were already counted before the pause; don't count either.
+                            if (!cancelledWhileQueued && shouldCount) {
+                                val done = completedCount.incrementAndGet()
+                                updateNotification(done, totalCount, "Processed $done/$totalCount")
 
-                            updateBatchProgress(
-                                batchId,
-                                done,
-                                addedCount.get(),
-                                skippedCount.get(),
-                                erroredCount.get(),
-                                erroredUrlsPreview = if (erroredThisUrl) synchronized(erroredUrls) { erroredUrls.take(10) } else null,
-                            )
-                            if (!shouldThrottle) {
-                                delay(10)
+                                @Suppress("ktlint:standard:max-line-length")
+                                updateBatchProgress(
+                                    batchId,
+                                    done,
+                                    addedCount.get(),
+                                    skippedCount.get(),
+                                    erroredCount.get(),
+                                    erroredUrlsPreview = if (erroredThisUrl) {
+                                        synchronized(erroredUrls) {
+                                            erroredUrls.take(10)
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                if (!shouldThrottle) {
+                                    delay(10)
+                                }
                             }
                         }
+                        emit(Unit)
                     }
-                    emit(Unit)
                 }
-            }
-            .collect()
+                .collect()
         } catch (e: CancellationException) {
             // Non-suspending IO, safe in a cancelled coroutine; keeps the buffered log tails.
             flushErrorLog()
@@ -733,9 +782,13 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         )
 
         updateBatchProgress(
-            batchId, completedCount.get(),
-            addedCount.get(), skippedCount.get(), erroredCount.get(),
-            erroredUrls.toList(), errorMessages.toMap(),
+            batchId,
+            completedCount.get(),
+            addedCount.get(),
+            skippedCount.get(),
+            erroredCount.get(),
+            erroredUrls.toList(),
+            errorMessages.toMap(),
         )
 
         try {
@@ -804,7 +857,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val restored = meta.toBatch(urls)
         _sharedQueue.update { list -> if (list.any { it.id == batchId }) list else list + restored }
     }
-
 
     private fun startRunningUnlessPaused(batchId: String) {
         if (batchId.isEmpty()) return
@@ -912,7 +964,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
     ): Boolean {
         // `false` = intentionally skipped (already in library); genuine failures must throw so
         // they're classified errored and captured for retry.
-        val rawPath = massImportInteractor.extractPathFromUrl(url, massImportInteractor.getSourceBaseUrl(source), source)
+        @Suppress("ktlint:standard:max-line-length")
+        val rawPath = massImportInteractor.extractPathFromUrl(
+            url,
+            massImportInteractor.getSourceBaseUrl(source),
+            source,
+        )
         if (rawPath.isEmpty()) throw IllegalStateException("Could not extract a path from URL")
 
         val normalizedPath = massImportInteractor.normalizeUrl(rawPath)
@@ -924,7 +981,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             val resolvedManga = runCatching {
                 withTimeoutOrNull(FETCH_TIMEOUT_MS) {
                     if (source is eu.kanade.tachiyomi.source.online.ResolvableSource &&
-                        source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga) {
+                        source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga
+                    ) {
                         source.getManga(url)
                     } else {
                         null
@@ -1035,7 +1093,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val now = System.currentTimeMillis()
         val progressDelta = current - lastNotifiedProgress
         val statusChanged = status != lastNotificationStatus
-        val shouldNotify = statusChanged || progressDelta >= NOTIFICATION_MIN_DELTA || (now - lastNotificationTime) >= NOTIFICATION_THROTTLE_MS
+
+        @Suppress("ktlint:standard:max-line-length")
+        val shouldNotify =
+            statusChanged || progressDelta >= NOTIFICATION_MIN_DELTA ||
+                (now - lastNotificationTime) >= NOTIFICATION_THROTTLE_MS
 
         if (shouldNotify) {
             // Create a new notification builder each time to avoid ConcurrentModificationException
@@ -1047,10 +1109,13 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 setProgress(total, current, false)
                 setOngoing(true)
                 setOnlyAlertOnce(true)
+                @Suppress("ktlint:standard:max-line-length")
                 addAction(
                     android.R.drawable.ic_menu_close_clear_cancel,
                     context.stringResource(MR.strings.action_cancel),
-                    eu.kanade.tachiyomi.data.notification.NotificationReceiver.cancelMassImportPendingBroadcast(context),
+                    eu.kanade.tachiyomi.data.notification.NotificationReceiver.cancelMassImportPendingBroadcast(
+                        context,
+                    ),
                 )
             }.build()
             context.notify(Notifications.ID_MASS_IMPORT_PROGRESS, notification)
@@ -1147,7 +1212,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         if (!pressured()) return
 
-         memoryPressureMutex.withLock {
+        memoryPressureMutex.withLock {
             if (!pressured()) return
             var iteration = 0
             while (iteration < MAX_MEMORY_WAIT_ITERATIONS) {
@@ -1224,7 +1289,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         Running,
         Completed,
         Cancelled,
-        Paused
+        Paused,
     }
 
     companion object {
@@ -1239,6 +1304,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         const val KEY_BATCH_ID = "batchId"
         const val KEY_EXCLUDED_HOSTS = "excludedHosts"
         const val KEY_PREFERRED_SOURCE_ID = "preferredSourceId"
+
         // Resume cursor: how many leading URLs to skip because they were already done
         // before the pause.
         const val KEY_RESUME_OFFSET = "resumeOffset"
@@ -1718,8 +1784,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             runCatching { File(context.cacheDir, "mass_import_$batchId.txt").delete() }
             _sharedQueue.update { list ->
                 list.map {
+                    @Suppress("ktlint:standard:max-line-length")
                     if (it.id == batchId &&
-                        (it.status == BatchStatus.Pending || it.status == BatchStatus.Running || it.status == BatchStatus.Paused)
+                        (
+                            it.status == BatchStatus.Pending || it.status == BatchStatus.Running ||
+                                it.status == BatchStatus.Paused
+                            )
                     ) {
                         it.copy(status = BatchStatus.Cancelled)
                     } else {
@@ -1917,7 +1987,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             }
         }
 
-
         fun removeBatch(context: Context, batchId: String) {
             context.workManager.cancelUniqueWork("${TAG}_$batchId")
             runCatching { File(context.cacheDir, "mass_import_$batchId.txt").delete() }
@@ -2079,9 +2148,5 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 )
             }
         }
-
     }
 }
-
-
-

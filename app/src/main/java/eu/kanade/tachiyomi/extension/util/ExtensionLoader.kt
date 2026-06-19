@@ -326,10 +326,12 @@ internal object ExtensionLoader {
             return LoadResult.Error
         }
 
-        val sources = (appInfo.metaData.getString("$metaNs.class") ?: run {
-            logcat(LogPriority.WARN) { "Missing source class for extension $extName ($pkgName)" }
-            return LoadResult.Error
-        })
+        val sources = (
+            appInfo.metaData.getString("$metaNs.class") ?: run {
+                logcat(LogPriority.WARN) { "Missing source class for extension $extName ($pkgName)" }
+                return LoadResult.Error
+            }
+            )
             .split(";")
             .map {
                 val sourceClass = it.trim()

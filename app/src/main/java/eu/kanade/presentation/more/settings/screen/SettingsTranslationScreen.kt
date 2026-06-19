@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.presentation.more.settings.screen
 
 import androidx.compose.runtime.Composable
@@ -51,8 +53,18 @@ object SettingsTranslationScreen : SearchableSettings {
         val isPaused by translationService.isPaused.collectAsState()
         val queueStatusText = when {
             progress.isCancelling -> stringResource(MR.strings.pref_translation_status_cancelling)
-            progress.isRunning && isPaused -> stringResource(MR.strings.pref_translation_status_paused, progress.completedChapters, progress.totalChapters)
-            progress.isRunning -> stringResource(MR.strings.pref_translation_status_translating, progress.currentChapterName ?: "...", "", progress.completedChapters, progress.totalChapters)
+            progress.isRunning && isPaused -> stringResource(
+                MR.strings.pref_translation_status_paused,
+                progress.completedChapters,
+                progress.totalChapters,
+            )
+            progress.isRunning -> stringResource(
+                MR.strings.pref_translation_status_translating,
+                progress.currentChapterName ?: "...",
+                "",
+                progress.completedChapters,
+                progress.totalChapters,
+            )
             else -> stringResource(MR.strings.pref_translation_status_idle)
         }
 
@@ -64,7 +76,9 @@ object SettingsTranslationScreen : SearchableSettings {
                     Preference.PreferenceItem.TextPreference(
                         title = stringResource(MR.strings.pref_translation_queue),
                         subtitle = queueStatusText,
-                        onClick = { navigator.push(eu.kanade.tachiyomi.ui.download.DownloadQueueScreen(initialTab = 2)) },
+                        onClick = {
+                            navigator.push(eu.kanade.tachiyomi.ui.download.DownloadQueueScreen(initialTab = 2))
+                        },
                     ),
                 ),
             ),
@@ -102,7 +116,15 @@ object SettingsTranslationScreen : SearchableSettings {
                 Preference.PreferenceItem.ListPreference(
                     preference = prefs.selectedEngineId(),
                     title = stringResource(TDMR.strings.pref_translation_engine),
-                    subtitle = selectedEngine.name + if (selectedEngine.isOffline) stringResource(MR.strings.pref_translation_offline_suffix) else "",
+                    subtitle =
+                    selectedEngine.name +
+                        if (selectedEngine.isOffline) {
+                            stringResource(
+                                MR.strings.pref_translation_offline_suffix,
+                            )
+                        } else {
+                            ""
+                        },
                     entries = engineEntries.mapKeys { it.key.toLong() }.toMap(),
                     enabled = enabled,
                 ),
@@ -338,12 +360,24 @@ object SettingsTranslationScreen : SearchableSettings {
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.nvidiaNimBaseUrl(),
                         title = stringResource(MR.strings.pref_translation_api_url),
-                        subtitle = if (nvidiaNimBaseUrl.isNotBlank()) nvidiaNimBaseUrl else stringResource(TDMR.strings.not_set),
+                        subtitle = if (nvidiaNimBaseUrl.isNotBlank()) {
+                            nvidiaNimBaseUrl
+                        } else {
+                            stringResource(
+                                TDMR.strings.not_set,
+                            )
+                        },
                     ),
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.nvidiaNimApiKey(),
                         title = stringResource(MR.strings.pref_translation_api_key),
-                        subtitle = if (nvidiaNimApiKey.isNotBlank()) "••••••••" else stringResource(TDMR.strings.not_set),
+                        subtitle = if (nvidiaNimApiKey.isNotBlank()) {
+                            "••••••••"
+                        } else {
+                            stringResource(
+                                TDMR.strings.not_set,
+                            )
+                        },
                     ),
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.nvidiaNimModel(),
@@ -437,7 +471,13 @@ object SettingsTranslationScreen : SearchableSettings {
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.libreTranslateApiKey(),
                         title = stringResource(MR.strings.pref_translation_api_key),
-                        subtitle = if (libreTranslateKey.isNotBlank()) "••••••••" else stringResource(TDMR.strings.not_set),
+                        subtitle = if (libreTranslateKey.isNotBlank()) {
+                            "••••••••"
+                        } else {
+                            stringResource(
+                                TDMR.strings.not_set,
+                            )
+                        },
                     ),
                     testButton(engineManager.engines.first { it.name.contains("Libre") }),
                 ),
@@ -478,12 +518,24 @@ object SettingsTranslationScreen : SearchableSettings {
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.customHttpUrl(),
                         title = stringResource(MR.strings.pref_translation_api_url),
-                        subtitle = if (customHttpUrl.isNotBlank()) customHttpUrl else stringResource(TDMR.strings.not_set),
+                        subtitle = if (customHttpUrl.isNotBlank()) {
+                            customHttpUrl
+                        } else {
+                            stringResource(
+                                TDMR.strings.not_set,
+                            )
+                        },
                     ),
                     Preference.PreferenceItem.EditTextPreference(
                         preference = prefs.customHttpApiKey(),
                         title = stringResource(MR.strings.pref_translation_api_key),
-                        subtitle = if (customHttpApiKey.isNotBlank()) "••••••••" else stringResource(TDMR.strings.not_set),
+                        subtitle = if (customHttpApiKey.isNotBlank()) {
+                            "••••••••"
+                        } else {
+                            stringResource(
+                                TDMR.strings.not_set,
+                            )
+                        },
                     ),
                     Preference.PreferenceItem.ListPreference(
                         preference = prefs.customHttpMethod(),

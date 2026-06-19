@@ -89,6 +89,7 @@ class JsSource(
     // Raw JSON of plugin.filters / plugin.pluginSettings. Static per plugin version; caching it
     // limits the runBlocking JS execution in getFilterList/setupPreferenceScreen to the first call.
     @Volatile private var filtersJsonCache: String? = null
+
     @Volatile private var pluginSettingsJsonCache: String? = null
 
     companion object {
@@ -814,6 +815,7 @@ class JsSource(
     // plugins that use a prefix without a trailing slash need the
     // leading slash kept.
     @Volatile private var resolveUrlPrefixProbe: String? = null
+
     @Volatile private var resolveUrlProbed = false
 
     private suspend fun pluginPrefixEndsWithSlash(): Boolean? {
@@ -916,7 +918,10 @@ class JsSource(
                     val obj = item.jsonObject
                     SManga.create().apply {
                         title = obj["name"]?.jsonPrimitive?.content?.decodeEntities() ?: return@mapNotNull null
-                        url = (obj["path"]?.jsonPrimitive?.content ?: return@mapNotNull null).let { if (it.startsWith("/")) it else "/$it" }
+                        url =
+                            (obj["path"]?.jsonPrimitive?.content ?: return@mapNotNull null).let {
+                                if (it.startsWith("/")) it else "/$it"
+                            }
                         // Ensure thumbnail_url is a valid URL or null
                         val coverUrl = obj["cover"]?.jsonPrimitive?.content
                         thumbnail_url = when {
@@ -993,7 +998,7 @@ class JsSource(
                 )
                 genre = obj["genres"]?.jsonPrimitive?.content?.decodeEntities()
                     ?: obj["tags"]?.jsonPrimitive?.content?.decodeEntities()
-                        ?: obj["genre"]?.jsonPrimitive?.content?.decodeEntities()
+                    ?: obj["genre"]?.jsonPrimitive?.content?.decodeEntities()
                 // Parse alternative names if available
                 val altNames = obj["alternativeNames"]?.jsonPrimitive?.content?.decodeEntities()
                     ?: obj["altNames"]?.jsonPrimitive?.content?.decodeEntities()
@@ -1422,4 +1427,3 @@ class JsSource(
         return normalizePluginContent(raw)
     }
 }
-

@@ -55,7 +55,7 @@ abstract class BaseSourcePagingSource(
     // Capture the generation at creation time — only update the shared counter
     // if this instance's generation still matches (prevents stale paging sources
     // from corrupting the counter after a listing switch).
-    private val myGeneration = _generation.get()
+    private val myGeneration = generation.get()
 
     abstract suspend fun requestNextPage(currentPage: Int): MangasPage
 
@@ -81,7 +81,7 @@ abstract class BaseSourcePagingSource(
             lastLoadTime = System.currentTimeMillis()
 
             // Update global page tracker only if this paging source is still current
-            if (myGeneration == _generation.get() && page.toInt() > highestPageLoaded) {
+            if (myGeneration == generation.get() && page.toInt() > highestPageLoaded) {
                 highestPageLoaded = page.toInt()
                 _currentPage.value = highestPageLoaded
             }
@@ -114,7 +114,7 @@ abstract class BaseSourcePagingSource(
 
         // Generation counter — incremented on every pager reset so stale paging
         // sources (from a previous listing/filter) don't update the shared counter.
-        private val _generation = AtomicInteger(0)
+        private val generation = AtomicInteger(0)
 
         // Global current page state for UI display
         private val _currentPage = MutableStateFlow(1)
@@ -127,14 +127,14 @@ abstract class BaseSourcePagingSource(
         // Reset page counter (call when creating new pager)
         // Also resets the initial page override so future searches start from page 1
         fun resetPageCounter() {
-            _generation.incrementAndGet()
+            generation.incrementAndGet()
             _initialPageOverride = 1
             _currentPage.value = 1
         }
 
         // Set initial page for next pager creation
         fun setInitialPage(page: Int) {
-            _generation.incrementAndGet()
+            generation.incrementAndGet()
             _initialPageOverride = page
             _currentPage.value = page
         }

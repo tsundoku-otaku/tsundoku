@@ -74,29 +74,117 @@ object ThemeUtils {
         val typedValue = android.util.TypedValue()
         val appTheme = activity.theme
 
-        val mdSysColorPrimary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorPrimary, 0xFF006A6A)
-        val mdSysColorOnPrimary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnPrimary, 0xFFFFFFFF)
-        val mdSysColorPrimaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorPrimaryContainer, 0xFF6FF7F6)
-        val mdSysColorOnPrimaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnPrimaryContainer, 0xFF002020)
-        val mdSysColorSecondary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSecondary, 0xFF006A6A)
-        val mdSysColorOnSecondary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSecondary, 0xFFFFFFFF)
-        val mdSysColorSecondaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSecondaryContainer, 0xFF6FF7F6)
-        val mdSysColorOnSecondaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSecondaryContainer, 0xFF002020)
-        val mdSysColorTertiary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorTertiary, 0xFF006A6A)
-        val mdSysColorOnTertiary = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnTertiary, 0xFFFFFFFF)
-        val mdSysColorTertiaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorTertiaryContainer, 0xFF6FF7F6)
-        val mdSysColorOnTertiaryContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnTertiaryContainer, 0xFF002020)
-        val mdSysColorError = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorError, 0xFFB3261E)
-        val mdSysColorOnError = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnError, 0xFFFFFFFF)
-        val mdSysColorErrorContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorErrorContainer, 0xFFF9DEDC)
-        val mdSysColorOnErrorContainer = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnErrorContainer, 0xFF410E0B)
-        val mdSysColorBackground = resolveColorAttribute(appTheme, typedValue, android.R.attr.colorBackground, readerBgColor.toLong())
-        val mdSysColorOnBackground = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnBackground, readerTextColor.toLong())
-        val mdSysColorSurface = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSurface, readerBgColor.toLong())
-        val mdSysColorOnSurface = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSurface, readerTextColor.toLong())
-        val mdSysColorSurfaceVariant = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSurfaceVariant, 0xFFCCC7C0)
-        val mdSysColorOnSurfaceVariant = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF49454E)
-        val mdSysColorOutline = resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOutline, 0xFF79747E)
+        val mdSysColorPrimary =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorPrimary, 0xFF006A6A)
+        val mdSysColorOnPrimary =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnPrimary, 0xFFFFFFFF)
+        val mdSysColorPrimaryContainer =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorPrimaryContainer,
+                0xFF6FF7F6,
+            )
+        val mdSysColorOnPrimaryContainer =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorOnPrimaryContainer,
+                0xFF002020,
+            )
+        val mdSysColorSecondary =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorSecondary, 0xFF006A6A)
+        val mdSysColorOnSecondary =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnSecondary, 0xFFFFFFFF)
+        val mdSysColorSecondaryContainer =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorSecondaryContainer,
+                0xFF6FF7F6,
+            )
+        val mdSysColorOnSecondaryContainer =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorOnSecondaryContainer,
+                0xFF002020,
+            )
+        val mdSysColorTertiary =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorTertiary, 0xFF006A6A)
+        val mdSysColorOnTertiary =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnTertiary, 0xFFFFFFFF)
+        val mdSysColorTertiaryContainer =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorTertiaryContainer,
+                0xFF6FF7F6,
+            )
+        val mdSysColorOnTertiaryContainer =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorOnTertiaryContainer,
+                0xFF002020,
+            )
+        val mdSysColorError =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorError, 0xFFB3261E)
+        val mdSysColorOnError =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOnError, 0xFFFFFFFF)
+        val mdSysColorErrorContainer =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorErrorContainer,
+                0xFFF9DEDC,
+            )
+        val mdSysColorOnErrorContainer =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorOnErrorContainer,
+                0xFF410E0B,
+            )
+        val mdSysColorBackground =
+            resolveColorAttribute(appTheme, typedValue, android.R.attr.colorBackground, readerBgColor.toLong())
+        val mdSysColorOnBackground =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorOnBackground,
+                readerTextColor.toLong(),
+            )
+        val mdSysColorSurface =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorSurface,
+                readerBgColor.toLong(),
+            )
+        val mdSysColorOnSurface =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorOnSurface,
+                readerTextColor.toLong(),
+            )
+        val mdSysColorSurfaceVariant =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorSurfaceVariant,
+                0xFFCCC7C0,
+            )
+        val mdSysColorOnSurfaceVariant =
+            resolveColorAttribute(
+                appTheme,
+                typedValue,
+                com.google.android.material.R.attr.colorOnSurfaceVariant,
+                0xFF49454E,
+            )
+        val mdSysColorOutline =
+            resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOutline, 0xFF79747E)
 
         val mdHexColorPrimary = colorToHex(mdSysColorPrimary)
         val mdHexColorOnPrimary = colorToHex(mdSysColorOnPrimary)

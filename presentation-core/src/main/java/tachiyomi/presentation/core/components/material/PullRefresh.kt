@@ -112,12 +112,20 @@ fun PullRefresh(
     }
 
     val containerColor by animateColorAsState(
-        targetValue = if (inForceZone) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
+        targetValue = if (inForceZone) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
         animationSpec = tween(200),
         label = "pullIndicatorContainer",
     )
     val indicatorColor by animateColorAsState(
-        targetValue = if (inForceZone) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        targetValue = if (inForceZone) {
+            MaterialTheme.colorScheme.onErrorContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
         animationSpec = tween(200),
         label = "pullIndicatorContent",
     )

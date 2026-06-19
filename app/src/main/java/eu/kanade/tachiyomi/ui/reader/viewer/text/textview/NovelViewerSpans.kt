@@ -78,10 +78,14 @@ internal class RoundedOutlineSpan(
         val isLastLine = spanEnd in start..end
         val topR = if (isFirstLine) cornerRadiusPx else 0f
         val botR = if (isLastLine) cornerRadiusPx else 0f
-        radii[0] = topR; radii[1] = topR // top-left
-        radii[2] = topR; radii[3] = topR // top-right
-        radii[4] = botR; radii[5] = botR // bottom-right
-        radii[6] = botR; radii[7] = botR // bottom-left
+        radii[0] = topR
+        radii[1] = topR // top-left
+        radii[2] = topR
+        radii[3] = topR // top-right
+        radii[4] = botR
+        radii[5] = botR // bottom-right
+        radii[6] = botR
+        radii[7] = botR // bottom-left
 
         val originalStyle = p.style
         val originalColor = p.color

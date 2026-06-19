@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
+import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Delete
@@ -26,8 +28,6 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.FormatAlignCenter
 import androidx.compose.material.icons.outlined.FormatAlignJustify
-import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
-import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -68,8 +68,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.data.font.FontManager
-import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -562,7 +562,9 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
             if (idx == 0) {
                 FilterChip(
                     selected = effectiveNavigationModeNovel == 0,
-                    onClick = { screenModel.preferences.navigationModeNovel.set(ReaderPreferences.TAPZONE_DISABLED_INDEX) },
+                    onClick = {
+                        screenModel.preferences.navigationModeNovel.set(ReaderPreferences.TAPZONE_DISABLED_INDEX)
+                    },
                     label = { Text(stringResource(res)) },
                 )
             } else if (idx != ReaderPreferences.TAPZONE_DISABLED_INDEX) {
@@ -587,7 +589,10 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         effectiveNavigationModeNovel != ReaderPreferences.TAPZONE_CENTER_INDEX
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text(stringResource(MR.strings.pref_read_with_tapping_inverted), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                stringResource(MR.strings.pref_read_with_tapping_inverted),
+                style = MaterialTheme.typography.bodyMedium,
+            )
             SettingsChipRow("") {
                 ReaderPreferences.TappingInvertMode.entries.forEach { entry ->
                     FilterChip(
@@ -708,7 +713,6 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
             )
         }
     }
-
 }
 
 @Composable
@@ -1282,7 +1286,7 @@ private fun RegexEditDialog(
                 // Hint text for current mode
                 Text(
                     text = stringResource(
-                        if (isRegex) TDMR.strings.novel_regex_pattern else TDMR.strings.novel_find_text
+                        if (isRegex) TDMR.strings.novel_regex_pattern else TDMR.strings.novel_find_text,
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
@@ -1599,7 +1603,10 @@ internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
                 Int.MIN_VALUE to "Custom",
             ).forEach { (colorValue, label) ->
                 val selected = if (colorValue == Int.MIN_VALUE) {
-                    listOf(0xFFFFD54F.toInt(), 0xFF90CAF9.toInt(), 0xFFA5D6A7.toInt(), 0xFFF48FB1.toInt()).none { it == ttsHighlightColor }
+                    listOf(0xFFFFD54F.toInt(), 0xFF90CAF9.toInt(), 0xFFA5D6A7.toInt(), 0xFFF48FB1.toInt()).none {
+                        it ==
+                            ttsHighlightColor
+                    }
                 } else {
                     ttsHighlightColor == colorValue
                 }
@@ -1626,7 +1633,10 @@ internal fun ColumnScope.NovelTtsTab(screenModel: ReaderSettingsScreenModel) {
                 Int.MIN_VALUE to "Custom",
             ).forEach { (colorValue, label) ->
                 val selected = if (colorValue == Int.MIN_VALUE) {
-                    listOf(0xFF111111.toInt(), 0xFFFFFFFF.toInt(), 0xFF1E3A8A.toInt(), 0xFF7F1D1D.toInt()).none { it == ttsHighlightTextColor }
+                    listOf(0xFF111111.toInt(), 0xFFFFFFFF.toInt(), 0xFF1E3A8A.toInt(), 0xFF7F1D1D.toInt()).none {
+                        it ==
+                            ttsHighlightTextColor
+                    }
                 } else {
                     ttsHighlightTextColor == colorValue
                 }
@@ -1725,7 +1735,11 @@ private fun ColorPickerDialog(
                     onValueChange = {
                         val newRed = it.toInt()
                         red = newRed
-                        hexInput = String.format("%06X", ((0xFF shl 24) or (newRed shl 16) or (green shl 8) or blue) and 0xFFFFFF)
+                        hexInput =
+                            String.format(
+                                "%06X",
+                                ((0xFF shl 24) or (newRed shl 16) or (green shl 8) or blue) and 0xFFFFFF,
+                            )
                     },
                     valueRange = 0f..255f,
                     modifier = Modifier.fillMaxWidth(),
@@ -1738,7 +1752,11 @@ private fun ColorPickerDialog(
                     onValueChange = {
                         val newGreen = it.toInt()
                         green = newGreen
-                        hexInput = String.format("%06X", ((0xFF shl 24) or (red shl 16) or (newGreen shl 8) or blue) and 0xFFFFFF)
+                        hexInput =
+                            String.format(
+                                "%06X",
+                                ((0xFF shl 24) or (red shl 16) or (newGreen shl 8) or blue) and 0xFFFFFF,
+                            )
                     },
                     valueRange = 0f..255f,
                     modifier = Modifier.fillMaxWidth(),
@@ -1751,7 +1769,11 @@ private fun ColorPickerDialog(
                     onValueChange = {
                         val newBlue = it.toInt()
                         blue = newBlue
-                        hexInput = String.format("%06X", ((0xFF shl 24) or (red shl 16) or (green shl 8) or newBlue) and 0xFFFFFF)
+                        hexInput =
+                            String.format(
+                                "%06X",
+                                ((0xFF shl 24) or (red shl 16) or (green shl 8) or newBlue) and 0xFFFFFF,
+                            )
                     },
                     valueRange = 0f..255f,
                     modifier = Modifier.fillMaxWidth(),

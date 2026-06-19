@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import logcat.LogPriority
@@ -34,20 +36,34 @@ object HtmlUtils {
         Regex("""part\s*\d+""", RegexOption.IGNORE_CASE),
     )
 
-    private val scriptTagRegex = Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    @Suppress("ktlint:standard:max-line-length")
+    private val scriptTagRegex =
+        Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val scriptSelfClosingRegex = Regex("<script[^>]*/>", RegexOption.IGNORE_CASE)
-    private val styleTagRegex = Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+    @Suppress("ktlint:standard:max-line-length")
+    private val styleTagRegex =
+        Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val styleSelfClosingRegex = Regex("<style[^>]*/>", RegexOption.IGNORE_CASE)
     private val linkStylesheetRegex1 = Regex("<link[^>]*rel[^>]*stylesheet[^>]*>", RegexOption.IGNORE_CASE)
     private val linkStylesheetRegex2 = Regex("<link[^>]*stylesheet[^>]*rel[^>]*>", RegexOption.IGNORE_CASE)
-    private val noscriptTagRegex = Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+    @Suppress("ktlint:standard:max-line-length")
+    private val noscriptTagRegex =
+        Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val htmlCommentRegex = Regex("<!--.*?-->", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val encodedCommentRegex = Regex("&lt;!--.*?--&gt;", RegexOption.DOT_MATCHES_ALL)
 
     private val imgTagRegex = Regex("<img[^>]*>", RegexOption.IGNORE_CASE)
     private val imageTagRegex = Regex("</?image[^>]*>", RegexOption.IGNORE_CASE)
-    private val videoTagRegex = Regex("<video[^>]*>.*?</video>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    private val audioTagRegex = Regex("<audio[^>]*>.*?</audio>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+    @Suppress("ktlint:standard:max-line-length")
+    private val videoTagRegex =
+        Regex("<video[^>]*>.*?</video>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+    @Suppress("ktlint:standard:max-line-length")
+    private val audioTagRegex =
+        Regex("<audio[^>]*>.*?</audio>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     private val sourceTagRegex = Regex("<source[^>]*>", RegexOption.IGNORE_CASE)
 
     fun isPlainTextChapter(chapterUrl: String?): Boolean {
@@ -129,6 +145,7 @@ object HtmlUtils {
         }
     }
 
+    @Suppress("ktlint:standard:max-line-length")
     private fun plainTextToHtml(text: String): String {
         val normalized = normalizePlainTextContent(text)
         // Unescape any HTML entities before re-escaping to avoid double-encoding.

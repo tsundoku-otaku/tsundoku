@@ -144,9 +144,9 @@ class ChapterQueueTest {
         q.append(Item(2))
         q.append(Item(3))
         q.currentIndex = 2
-        q.removeFirstN(10)        // remove more than exist
+        q.removeFirstN(10) // remove more than exist
         assertEquals(0, q.size)
-        assertEquals(0, q.currentIndex)  // must not underflow
+        assertEquals(0, q.currentIndex) // must not underflow
         assertTrue(q.isEmpty())
         assertFalse(q.contains(1))
         assertFalse(q.contains(2))
@@ -157,8 +157,8 @@ class ChapterQueueTest {
     fun `removeFirstN partial removal keeps cursor pointing at same chapter`() {
         val q = queue()
         for (i in 1L..5L) q.append(Item(i))
-        q.currentIndex = 3   // pointing at Item(4)
-        q.removeFirstN(2)    // remove Item(1) and Item(2)
+        q.currentIndex = 3 // pointing at Item(4)
+        q.removeFirstN(2) // remove Item(1) and Item(2)
         assertEquals(3, q.size)
         // cursor was at 3, 2 items removed → now at 1, still pointing at Item(4)
         assertEquals(1, q.currentIndex)

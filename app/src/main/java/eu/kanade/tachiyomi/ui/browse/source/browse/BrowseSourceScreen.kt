@@ -56,13 +56,13 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.core.util.ifSourcesLoaded
 import eu.kanade.domain.manga.model.toSManga
-import eu.kanade.presentation.category.visualName
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.BrowseSourceContent
 import eu.kanade.presentation.browse.MissingSourceScreen
 import eu.kanade.presentation.browse.components.BrowseSourceToolbar
 import eu.kanade.presentation.browse.components.RemoveMangaDialog
 import eu.kanade.presentation.category.components.ChangeCategoryDialog
+import eu.kanade.presentation.category.visualName
 import eu.kanade.presentation.library.components.MassImportDialog
 import eu.kanade.presentation.manga.DuplicateMangaDialog
 import eu.kanade.presentation.util.AssistContentScreen
@@ -411,7 +411,9 @@ data class BrowseSourceScreen(
                                             modifier = Modifier.size(FilterChipDefaults.IconSize),
                                         )
                                     },
-                                    label = { Text(text = stringResource(TDMR.strings.local_novel_source_add_to_library)) },
+                                    label = {
+                                        Text(text = stringResource(TDMR.strings.local_novel_source_add_to_library))
+                                    },
                                 )
                                 FilterChip(
                                     selected = true,
@@ -419,7 +421,10 @@ data class BrowseSourceScreen(
                                         screenModel.refreshLocalNovelCovers(state.selection) { count ->
                                             scope.launchIO {
                                                 snackbarHostState.showSnackbar(
-                                                    context.stringResource(TDMR.strings.local_novel_source_covers_refreshed, count),
+                                                    context.stringResource(
+                                                        TDMR.strings.local_novel_source_covers_refreshed,
+                                                        count,
+                                                    ),
                                                     duration = SnackbarDuration.Short,
                                                 )
                                             }
@@ -432,7 +437,9 @@ data class BrowseSourceScreen(
                                             modifier = Modifier.size(FilterChipDefaults.IconSize),
                                         )
                                     },
-                                    label = { Text(text = stringResource(TDMR.strings.local_novel_source_refresh_covers)) },
+                                    label = {
+                                        Text(text = stringResource(TDMR.strings.local_novel_source_refresh_covers))
+                                    },
                                 )
                                 FilterChip(
                                     selected = true,
@@ -609,7 +616,10 @@ data class BrowseSourceScreen(
                                     if (failed > 0) {
                                         scope.launchIO {
                                             snackbarHostState.showSnackbar(
-                                                context.stringResource(TDMR.strings.local_novel_source_delete_failed, failed),
+                                                context.stringResource(
+                                                    TDMR.strings.local_novel_source_delete_failed,
+                                                    failed,
+                                                ),
                                                 duration = SnackbarDuration.Long,
                                             )
                                         }
@@ -645,7 +655,10 @@ data class BrowseSourceScreen(
             val selected = screenModel.state.value.selection
             val initialText = selected.joinToString("\n") { manga ->
                 when (val resolvedSource = screenModel.source) {
-                    is eu.kanade.tachiyomi.jsplugin.source.JsSource -> resolveRelativeUrl(resolvedSource.baseUrl, manga.url)
+                    is eu.kanade.tachiyomi.jsplugin.source.JsSource -> resolveRelativeUrl(
+                        resolvedSource.baseUrl,
+                        manga.url,
+                    )
                     is HttpSource -> resolveRelativeUrl(resolvedSource.baseUrl, manga.url)
                     else -> manga.url
                 }

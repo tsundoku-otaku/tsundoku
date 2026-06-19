@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package mihon.core.archive
 
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -63,9 +65,15 @@ class EpubWriterTest {
     fun `detectImageType returns webp for WEBP magic bytes`() {
         val bytes = ByteArray(12).also { b ->
             // RIFF
-            b[0] = 0x52; b[1] = 0x49; b[2] = 0x46; b[3] = 0x46
+            b[0] = 0x52
+            b[1] = 0x49
+            b[2] = 0x46
+            b[3] = 0x46
             // WEBP at bytes 8-11
-            b[8] = 0x57; b[9] = 0x45; b[10] = 0x42; b[11] = 0x50
+            b[8] = 0x57
+            b[9] = 0x45
+            b[10] = 0x42
+            b[11] = 0x50
         }
         assertEquals("image/webp" to "webp", EpubWriter.detectImageType(bytes))
     }
@@ -146,8 +154,17 @@ class EpubWriterTest {
     @Test
     fun `chapter image is written to correct EPUB path`() {
         val imgBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 0)
-        val img = EpubWriter.EmbeddedImage(id = "image_0.jpg", bytes = imgBytes, mimeType = "image/jpeg", extension = "jpg")
-        val chapter = EpubWriter.Chapter(title = "Ch 1", content = """<img src="tsundoku-novel-image://image_0.jpg"/>""", images = listOf(img))
+        val img = EpubWriter.EmbeddedImage(
+            id = "image_0.jpg",
+            bytes = imgBytes,
+            mimeType = "image/jpeg",
+            extension = "jpg",
+        )
+        val chapter = EpubWriter.Chapter(
+            title = "Ch 1",
+            content = """<img src="tsundoku-novel-image://image_0.jpg"/>""",
+            images = listOf(img),
+        )
         val entries = buildEpub(chapters = listOf(chapter))
         assertNotNull(entries["OEBPS/images/chapter0000_image_0.jpg"], "Image must be stored at chapter-scoped path")
     }
@@ -155,8 +172,17 @@ class EpubWriterTest {
     @Test
     fun `chapter image is listed in OPF manifest`() {
         val imgBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 0)
-        val img = EpubWriter.EmbeddedImage(id = "image_0.jpg", bytes = imgBytes, mimeType = "image/jpeg", extension = "jpg")
-        val chapter = EpubWriter.Chapter(title = "Ch 1", content = """<img src="tsundoku-novel-image://image_0.jpg"/>""", images = listOf(img))
+        val img = EpubWriter.EmbeddedImage(
+            id = "image_0.jpg",
+            bytes = imgBytes,
+            mimeType = "image/jpeg",
+            extension = "jpg",
+        )
+        val chapter = EpubWriter.Chapter(
+            title = "Ch 1",
+            content = """<img src="tsundoku-novel-image://image_0.jpg"/>""",
+            images = listOf(img),
+        )
         val opf = buildEpub(chapters = listOf(chapter)).text("OEBPS/content.opf")
         assertTrue(opf.contains("chapter0000_image_0.jpg"), "Manifest must reference the image file")
         assertTrue(opf.contains("image/jpeg"), "Manifest must include correct MIME type")
@@ -167,8 +193,17 @@ class EpubWriterTest {
     @Test
     fun `tsundoku-novel-image URLs are rewritten to EPUB-relative paths`() {
         val imgBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 0)
-        val img = EpubWriter.EmbeddedImage(id = "image_0.jpg", bytes = imgBytes, mimeType = "image/jpeg", extension = "jpg")
-        val chapter = EpubWriter.Chapter(title = "Ch 1", content = """<img src="tsundoku-novel-image://image_0.jpg"/>""", images = listOf(img))
+        val img = EpubWriter.EmbeddedImage(
+            id = "image_0.jpg",
+            bytes = imgBytes,
+            mimeType = "image/jpeg",
+            extension = "jpg",
+        )
+        val chapter = EpubWriter.Chapter(
+            title = "Ch 1",
+            content = """<img src="tsundoku-novel-image://image_0.jpg"/>""",
+            images = listOf(img),
+        )
         val chapterXhtml = buildEpub(chapters = listOf(chapter)).text("OEBPS/chapter0000.xhtml")
         assertFalse(chapterXhtml.contains("tsundoku-novel-image://"), "tsundoku-novel-image:// must be rewritten")
         assertTrue(chapterXhtml.contains("images/chapter0000_image_0.jpg"), "Rewritten path must point to EPUB image")
@@ -189,7 +224,12 @@ class EpubWriterTest {
     @Test
     fun `picture element sources are stripped and img is kept`() {
         val imgBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 0)
-        val img = EpubWriter.EmbeddedImage(id = "image_0.jpg", bytes = imgBytes, mimeType = "image/jpeg", extension = "jpg")
+        val img = EpubWriter.EmbeddedImage(
+            id = "image_0.jpg",
+            bytes = imgBytes,
+            mimeType = "image/jpeg",
+            extension = "jpg",
+        )
         val chapter = EpubWriter.Chapter(
             title = "Ch 1",
             content = """<picture><source srcset="https://cdn.example.com/big.webp" type="image/webp"/><img src="tsundoku-novel-image://image_0.jpg"/></picture>""",
@@ -215,9 +255,22 @@ class EpubWriterTest {
     @Test
     fun `images from different chapters use chapter-scoped paths`() {
         val imgBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 0)
-        val img = EpubWriter.EmbeddedImage(id = "image_0.jpg", bytes = imgBytes, mimeType = "image/jpeg", extension = "jpg")
-        val ch0 = EpubWriter.Chapter(title = "Ch 0", content = """<img src="tsundoku-novel-image://image_0.jpg"/>""", images = listOf(img))
-        val ch1 = EpubWriter.Chapter(title = "Ch 1", content = """<img src="tsundoku-novel-image://image_0.jpg"/>""", images = listOf(img))
+        val img = EpubWriter.EmbeddedImage(
+            id = "image_0.jpg",
+            bytes = imgBytes,
+            mimeType = "image/jpeg",
+            extension = "jpg",
+        )
+        val ch0 = EpubWriter.Chapter(
+            title = "Ch 0",
+            content = """<img src="tsundoku-novel-image://image_0.jpg"/>""",
+            images = listOf(img),
+        )
+        val ch1 = EpubWriter.Chapter(
+            title = "Ch 1",
+            content = """<img src="tsundoku-novel-image://image_0.jpg"/>""",
+            images = listOf(img),
+        )
         val entries = buildEpub(chapters = listOf(ch0, ch1))
 
         assertNotNull(entries["OEBPS/images/chapter0000_image_0.jpg"], "Chapter 0 image must be stored")
@@ -251,7 +304,6 @@ class EpubWriterTest {
         assertNotNull(entries["OEBPS/chapter0000.xhtml"], "chapter0000.xhtml must be present")
         assertEquals("application/epub+zip", entries.text("mimetype"))
     }
-
 
     @Test
     fun `toc ncx has one navPoint per chapter in order`() {
@@ -312,7 +364,6 @@ class EpubWriterTest {
             "Spine must declare toc=\"ncx\" so EPUB 2 readers pick up the NCX",
         )
     }
-
 
     @Test
     fun `custom CSS body is written as standalone stylesheet entry`() {
@@ -447,7 +498,6 @@ class EpubWriterTest {
         assertTrue(EpubWriter.CUSTOM_JS_PATH.endsWith(".js"))
     }
 
-
     @Test
     fun `joined multi-volume EPUB embeds CSS and JS for every chapter`() {
         val chapters = (1..6).map { idx ->
@@ -478,9 +528,15 @@ class EpubWriterTest {
     fun `split-volume export writes one self-contained EPUB per volume with CSS and JS`() {
         data class Volume(val title: String, val chapters: List<EpubWriter.Chapter>)
         val volumes = listOf(
-            Volume("Vol 1", listOf(EpubWriter.Chapter("v1c1", "<p>v1c1</p>"), EpubWriter.Chapter("v1c2", "<p>v1c2</p>"))),
+            Volume(
+                "Vol 1",
+                listOf(EpubWriter.Chapter("v1c1", "<p>v1c1</p>"), EpubWriter.Chapter("v1c2", "<p>v1c2</p>")),
+            ),
             Volume("Vol 2", listOf(EpubWriter.Chapter("v2c1", "<p>v2c1</p>"))),
-            Volume("Vol 3", listOf(EpubWriter.Chapter("v3c1", "<p>v3c1</p>"), EpubWriter.Chapter("v3c2", "<p>v3c2</p>"))),
+            Volume(
+                "Vol 3",
+                listOf(EpubWriter.Chapter("v3c1", "<p>v3c1</p>"), EpubWriter.Chapter("v3c2", "<p>v3c2</p>")),
+            ),
         )
 
         volumes.forEach { volume ->

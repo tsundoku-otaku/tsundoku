@@ -1,9 +1,9 @@
 package eu.kanade.tachiyomi.source.custom
 
+import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -44,22 +44,48 @@ class CustomNovelSourceTest {
         val page = Page(0, "https://old.example/chapter-1")
         val mangasPage = MangasPage(listOf(manga), hasNextPage = true)
 
-        assertEquals("https://custom.example/novel", rebaseCustomSourceManga(manga, "https://custom.example", "https://old.example").url)
-        assertEquals("https://custom.example/cover.jpg", rebaseCustomSourceManga(manga, "https://custom.example", "https://old.example").thumbnail_url)
-        assertEquals("https://custom.example/chapter-1", rebaseCustomSourceChapter(chapter, "https://custom.example", "https://old.example").url)
-        assertEquals("https://custom.example/chapter-1", rebaseCustomSourcePage(page, "https://custom.example", "https://old.example").url)
         assertEquals(
             "https://custom.example/novel",
-            rebaseCustomSourceMangasPage(mangasPage, "https://custom.example", "https://old.example").mangas.first().url,
+            rebaseCustomSourceManga(manga, "https://custom.example", "https://old.example").url,
         )
-        assertTrue(rebaseCustomSourcePage(page, "https://custom.example", "https://old.example").url.startsWith("https://custom.example"))
+        assertEquals(
+            "https://custom.example/cover.jpg",
+            rebaseCustomSourceManga(manga, "https://custom.example", "https://old.example").thumbnail_url,
+        )
+        assertEquals(
+            "https://custom.example/chapter-1",
+            rebaseCustomSourceChapter(chapter, "https://custom.example", "https://old.example").url,
+        )
+        assertEquals(
+            "https://custom.example/chapter-1",
+            rebaseCustomSourcePage(page, "https://custom.example", "https://old.example").url,
+        )
+        assertEquals(
+            "https://custom.example/novel",
+            rebaseCustomSourceMangasPage(
+                mangasPage,
+                "https://custom.example",
+                "https://old.example",
+            ).mangas.first().url,
+        )
+        assertTrue(
+            rebaseCustomSourcePage(
+                page,
+                "https://custom.example",
+                "https://old.example",
+            ).url.startsWith("https://custom.example"),
+        )
     }
 
     @Test
     fun `toBaseSourceUrl restores delegated host from custom url`() {
         assertEquals(
             "https://old.example/series/test",
-            mapCustomUrlToSourceUrl("https://custom.example/series/test", "https://custom.example", "https://old.example"),
+            mapCustomUrlToSourceUrl(
+                "https://custom.example/series/test",
+                "https://custom.example",
+                "https://old.example",
+            ),
         )
         assertEquals(
             "https://old.example/series/test",
@@ -78,7 +104,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://custom.example/library-of-heavens-path.html",
             rebaseCustomSourceUrl(absoluteUrl, customBase, sourceBase),
-            "URL starting with sourceBase should be converted to custom base"
+            "URL starting with sourceBase should be converted to custom base",
         )
     }
 
@@ -91,7 +117,7 @@ class CustomNovelSourceTest {
         assertEquals(
             absoluteUrl,
             rebaseCustomSourceUrl(absoluteUrl, customBase, null),
-            "Absolute URLs should be returned unchanged when no sourceBase provided"
+            "Absolute URLs should be returned unchanged when no sourceBase provided",
         )
     }
 
@@ -161,7 +187,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://custom.example/library-of-heavens-path.html",
             rebasedForCustom,
-            "Source absolute URL should be converted to custom host"
+            "Source absolute URL should be converted to custom host",
         )
 
         // Scenario 2: We need to convert custom URL back to source for HTTP request
@@ -170,7 +196,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://website1.com/library-of-heavens-path.html",
             convertedToSource,
-            "Custom URL should be converted back to source host"
+            "Custom URL should be converted back to source host",
         )
 
         // Scenario 3: The interceptor should then rewrite source host back to custom for the actual request
@@ -183,7 +209,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://custom.example/library-of-heavens-path.html",
             finalInterceptedUrl,
-            "Interceptor should rewrite source URLs to custom base"
+            "Interceptor should rewrite source URLs to custom base",
         )
     }
 
@@ -206,7 +232,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://custom.example/library-of-heavens-path.html",
             interceptorResult,
-            "Interceptor correctly rewrites original sourceBase URL to custom"
+            "Interceptor correctly rewrites original sourceBase URL to custom",
         )
     }
 
@@ -230,7 +256,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://custom.example/library-of-heavens-path.html",
             interceptorResult,
-            "This should work, but only by luck since URL is already custom"
+            "This should work, but only by luck since URL is already custom",
         )
 
         // But the REAL problem: what if the URL is a relative path?
@@ -247,7 +273,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://custom.example/library-of-heavens-path.html",
             interceptorResultFromRelative,
-            "This also works, but again only by accident"
+            "This also works, but again only by accident",
         )
     }
 
@@ -264,7 +290,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://website1redirect.net/chapter-1",
             result1,
-            "Already absolute URLs from redirects should be used as-is, not concatenated with baseUrl"
+            "Already absolute URLs from redirects should be used as-is, not concatenated with baseUrl",
         )
 
         // Case 2: Root-relative URL
@@ -273,7 +299,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://website1.com/chapter-1",
             result2,
-            "Root-relative URLs should be concatenated with baseUrl"
+            "Root-relative URLs should be concatenated with baseUrl",
         )
 
         // Case 3: Relative URL without leading slash
@@ -282,7 +308,7 @@ class CustomNovelSourceTest {
         assertEquals(
             "https://website1.com/chapter-1",
             result3,
-            "Relative URLs should be concatenated with baseUrl and a slash"
+            "Relative URLs should be concatenated with baseUrl and a slash",
         )
 
         // Case 4: Empty or null URL
@@ -290,7 +316,7 @@ class CustomNovelSourceTest {
         assertEquals(
             baseUrl,
             result4,
-            "Empty URL should return baseUrl"
+            "Empty URL should return baseUrl",
         )
 
         // Case 5: HTTP URL (also absolute)
@@ -299,9 +325,8 @@ class CustomNovelSourceTest {
         assertEquals(
             "http://example.com/page",
             result5,
-            "HTTP absolute URLs should be used as-is"
+            "HTTP absolute URLs should be used as-is",
         )
-
     }
 
     // Helper function that mirrors buildAbsoluteUrl logic for testing

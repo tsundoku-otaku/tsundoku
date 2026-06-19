@@ -53,7 +53,11 @@ object TtsTextUtils {
     fun findParagraphs(text: String): List<ParagraphInfo> {
         val paragraphs = mutableListOf<ParagraphInfo>()
 
-        val doc = try { Jsoup.parseBodyFragment(text) } catch (_: Exception) { null }
+        val doc = try {
+            Jsoup.parseBodyFragment(text)
+        } catch (_: Exception) {
+            null
+        }
         val plainText = doc?.text() ?: text.replace(Regex("<[^>]+>"), " ")
         val blocks = doc?.select("p, div, section, article, h1, h2, h3, h4, h5, h6, li")
 

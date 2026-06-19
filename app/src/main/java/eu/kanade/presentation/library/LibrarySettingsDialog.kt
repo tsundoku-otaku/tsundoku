@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.presentation.library
 
 import android.content.res.Configuration
@@ -671,7 +673,16 @@ private fun ColumnScope.TagsPage(
     // these prefs are shared across the manga/novel/all libraries, so a tag included on one type
     // would otherwise silently filter another to empty while nothing appears selected. They land in
     // the active partition below, pinned to the top.
-    val sortedTags = remember(tags, tagSortByName, tagSortAscending, committedTagQuery, includedTags, excludedTags, tagCaseSensitive) {
+    val sortedTags =
+        remember(
+            tags,
+            tagSortByName,
+            tagSortAscending,
+            committedTagQuery,
+            includedTags,
+            excludedTags,
+            tagCaseSensitive,
+        ) {
         val loadedKeys = if (tagCaseSensitive) {
             tags.mapTo(HashSet()) { it.first }
         } else {
@@ -694,49 +705,26 @@ private fun ColumnScope.TagsPage(
             }
         }
 
-        val (activeTags, inactiveTags) = filtered.partition { (tag, _) ->
-            tag in includedTags || tag in excludedTags
-        }
-
-        val sortComparator: Comparator<Pair<String, Int>> = if (tagSortByName) {
-            if (tagSortAscending) {
-                compareBy { it.first.lowercase() }
-            } else {
-                compareByDescending { it.first.lowercase() }
+                val (activeTags, inactiveTags) = filtered.partition { (tag, _) ->
+                tag in includedTags || tag in excludedTags
             }
-        } else {
-            if (tagSortAscending) {
-                compareBy { it.second }
+
+            val sortComparator: Comparator<Pair<String, Int>> = if (tagSortByName) {
+                if (tagSortAscending) {
+                    compareBy { it.first.lowercase() }
+                } else {
+                    compareByDescending { it.first.lowercase() }
+                }
             } else {
-                compareByDescending { it.second }
+                if (tagSortAscending) {
+                    compareBy { it.second }
+                } else {
+                    compareByDescending { it.second }
+                }
             }
-        }
 
-        activeTags.sortedWith(sortComparator) + inactiveTags.sortedWith(sortComparator)
-    }
-
-    if (sortedTags.isEmpty() && !isLoading) {
-        Text(
-            text = "No tags found in library",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
-        )
-    } else if (isLoading && sortedTags.isEmpty()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Loading tags...")
+            activeTags.sortedWith(sortComparator) + inactiveTags.sortedWith(sortComparator)
         }
-    } else {
-        Text(
-            text = "Tap to include, tap again to exclude, tap again to clear",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 4.dp),
-        )
 
         Text(
             text = "${sortedTags.size} tags",

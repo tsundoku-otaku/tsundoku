@@ -577,7 +577,9 @@ class TranslationService(
                             } else {
                                 translated
                             }
-                            val translatedParagraphs = TranslationHtmlUtils.splitParagraphsPreserving(cleanedTranslation)
+                            val translatedParagraphs = TranslationHtmlUtils.splitParagraphsPreserving(
+                                cleanedTranslation,
+                            )
                             // Update previous chunk tracking for next iteration
                             previousRawParagraphs = chunkParagraphsList[chunkIndex]
                             previousTranslatedParagraphs = translatedParagraphs.ifEmpty { listOf(cleanedTranslation) }

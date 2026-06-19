@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -45,6 +47,7 @@ class ContentPipelineTest {
 
     @Test
     fun `regex rules apply to TEXT_VIEW target`() = runBlocking {
+        @Suppress("ktlint:standard:max-line-length")
         val rules = """[{"title":"r","pattern":"foo","replacement":"bar","isRegex":false,"enabled":true,"caseSensitive":false,"matchWholeWord":false}]"""
         val pipeline = pipelineWith(rules)
         val result = pipeline.process("<p>foo</p>", cfg(url = "x.html", target = RenderTarget.TEXT_VIEW))
@@ -54,6 +57,7 @@ class ContentPipelineTest {
 
     @Test
     fun `regex rules apply to WEB_VIEW target`() = runBlocking {
+        @Suppress("ktlint:standard:max-line-length")
         val rules = """[{"title":"r","pattern":"foo","replacement":"bar","isRegex":false,"enabled":true,"caseSensitive":false,"matchWholeWord":false}]"""
         val pipeline = pipelineWith(rules)
         val result = pipeline.process("<p>foo</p>", cfg(url = "x.html", target = RenderTarget.WEB_VIEW))
@@ -63,6 +67,7 @@ class ContentPipelineTest {
 
     @Test
     fun `regex rules apply to plain-text chapters`() = runBlocking {
+        @Suppress("ktlint:standard:max-line-length")
         val rules = """[{"title":"r","pattern":"foo","replacement":"bar","isRegex":false,"enabled":true,"caseSensitive":false,"matchWholeWord":false}]"""
         val pipeline = pipelineWith(rules)
         val result = pipeline.process("foo bar baz", cfg(url = "/path/x.txt"))
@@ -198,6 +203,7 @@ class ContentPipelineTest {
 
     @Test
     fun `regex pattern targeting HTML tag matches post-normalize html chapter`() = runBlocking {
+        @Suppress("ktlint:standard:max-line-length")
         val rules = """[{"title":"r","pattern":"<p>","replacement":"<P>","isRegex":false,"enabled":true,"caseSensitive":true,"matchWholeWord":false}]"""
         val pipeline = pipelineWith(rules)
         val result = pipeline.process("<p>foo</p>", cfg(url = "x.html"))
@@ -209,6 +215,7 @@ class ContentPipelineTest {
         // Plain-text mode uses HtmlUtils.normalizePlainTextContent which only strips
         // NUL bytes and normalizes line endings. Regex sees content equivalent to
         // raw input, so a literal rule still matches.
+        @Suppress("ktlint:standard:max-line-length")
         val rules = """[{"title":"r","pattern":"foo","replacement":"bar","isRegex":false,"enabled":true,"caseSensitive":true,"matchWholeWord":false}]"""
         val pipeline = pipelineWith(rules)
         val result = pipeline.process("foo\r\nbaz", cfg(url = "/path/foo.txt"))

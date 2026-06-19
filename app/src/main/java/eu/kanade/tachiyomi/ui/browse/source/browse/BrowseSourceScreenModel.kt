@@ -14,8 +14,8 @@ import androidx.paging.map
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.preference.asState
-import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.source.interactor.ManageFilterPresets
 import eu.kanade.domain.source.model.FilterPreset
@@ -59,14 +59,14 @@ import tachiyomi.domain.manga.interactor.GetFavoritesEntry
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.toMangaUpdate
-import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.interactor.GetRemoteManga
 import tachiyomi.domain.source.service.SourceManager
-import tachiyomi.source.local.LocalNovelSource
 import tachiyomi.domain.translation.model.TranslationResult
 import tachiyomi.domain.translation.service.TranslationPreferences
+import tachiyomi.source.local.LocalNovelSource
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
@@ -114,7 +114,7 @@ class BrowseSourceScreenModel(
     val targetEndPage: StateFlow<Int?> = _targetEndPage.asStateFlow()
 
     // Forces the browse pager to recreate after file-system updates like delete/refresh.
-    private val _refreshGeneration = MutableStateFlow(0L)
+    private val refreshGeneration = MutableStateFlow(0L)
 
     /**
      * Jump to a specific page. This recreates the pager starting from that page.
@@ -149,7 +149,7 @@ class BrowseSourceScreenModel(
     val filterPresets: StateFlow<List<FilterPreset>> = _filterPresets.asStateFlow()
 
     // Cached categories for fast access - loaded once and kept in memory
-    private val _cachedCategories = MutableStateFlow<List<Category>>(emptyList())
+    private val cachedCategories = MutableStateFlow<List<Category>>(emptyList())
 
     // Remember last selected category IDs for re-use
     private var lastSelectedCategoryIds: List<Long> = emptyList()
@@ -165,7 +165,7 @@ class BrowseSourceScreenModel(
 
         // Preload categories in background for fast access when adding favorites
         screenModelScope.launch {
-            _cachedCategories.value = getCategories.subscribe()
+            cachedCategories.value = getCategories.subscribe()
                 .firstOrNull()
                 ?.filterNot { it.isSystemCategory }
                 .orEmpty()
@@ -240,9 +240,11 @@ class BrowseSourceScreenModel(
         state.map { Triple(it.listing.query, it.filters, it.filters.hashCode()) }
             .distinctUntilChanged { old, new -> old.first == new.first && old.third == new.third },
         _initialPage,
-        _refreshGeneration,
+        refreshGeneration,
     ) { (query, filters, _), startPage, _ ->
-        logcat(LogPriority.DEBUG) { "Creating new Pager for query='$query', filters=${filters.hashCode()}, startPage=$startPage" }
+        logcat(LogPriority.DEBUG) {
+            "Creating new Pager for query='$query', filters=${filters.hashCode()}, startPage=$startPage"
+        }
         // Set both generation and displayed current page to this pager's start page.
         tachiyomi.data.source.BaseSourcePagingSource.setInitialPage(startPage.toInt())
         Pager(
@@ -310,7 +312,9 @@ class BrowseSourceScreenModel(
 
     fun setFilters(filters: FilterList) {
         if (source !is CatalogueSource) return
-        logcat(LogPriority.DEBUG) { "setFilters called (updating pendingFilters), filters hashCode: ${filters.hashCode()}" }
+        logcat(LogPriority.DEBUG) {
+            "setFilters called (updating pendingFilters), filters hashCode: ${filters.hashCode()}"
+        }
 
         // Update only pendingFilters - this doesn't trigger search
         mutableState.update {
@@ -368,10 +372,12 @@ class BrowseSourceScreenModel(
                         if (groupIndex < dstFilter.state.size) {
                             val dstGroupFilter = dstFilter.state[groupIndex]
                             when {
-                                srcGroupFilter is SourceModelFilter.CheckBox && dstGroupFilter is SourceModelFilter.CheckBox -> {
+                                srcGroupFilter is SourceModelFilter.CheckBox &&
+                                    dstGroupFilter is SourceModelFilter.CheckBox -> {
                                     dstGroupFilter.state = srcGroupFilter.state
                                 }
-                                srcGroupFilter is SourceModelFilter.TriState && dstGroupFilter is SourceModelFilter.TriState -> {
+                                srcGroupFilter is SourceModelFilter.TriState &&
+                                    dstGroupFilter is SourceModelFilter.TriState -> {
                                     dstGroupFilter.state = srcGroupFilter.state
                                 }
                             }
@@ -495,7 +501,7 @@ class BrowseSourceScreenModel(
             val contentType = if (isNovel) Category.CONTENT_TYPE_NOVEL else Category.CONTENT_TYPE_MANGA
 
             // Use cached categories for instant response, filtered by content type
-            val allCategories = _cachedCategories.value.ifEmpty { getCategories() }
+            val allCategories = cachedCategories.value.ifEmpty { getCategories() }
             // Filter categories: show content-type specific + universal (CONTENT_TYPE_ALL) categories
             val categories = allCategories.filter {
                 it.contentType == contentType || it.contentType == Category.CONTENT_TYPE_ALL
@@ -552,7 +558,7 @@ class BrowseSourceScreenModel(
      */
     suspend fun getCategories(): List<Category> {
         // Use cached categories for fast access - they're preloaded in init
-        val cached = _cachedCategories.value
+        val cached = cachedCategories.value
         return if (cached.isNotEmpty()) {
             cached
         } else {
@@ -948,7 +954,7 @@ class BrowseSourceScreenModel(
     }
 
     fun refreshBrowseResults() {
-        _refreshGeneration.update { it + 1 }
+        refreshGeneration.update { it + 1 }
     }
 
     fun massImportToCategory(categoryId: Long?) {

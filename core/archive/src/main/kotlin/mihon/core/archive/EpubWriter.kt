@@ -56,7 +56,13 @@ class EpubWriter(
     ) {
         val bookId = UUID.randomUUID().toString()
 
-        val (coverMimeType, coverExtension) = if (coverImage != null) detectImageType(coverImage) else "image/jpeg" to "jpg"
+        val (coverMimeType, coverExtension) = if (coverImage !=
+            null
+        ) {
+            detectImageType(coverImage)
+        } else {
+            "image/jpeg" to "jpg"
+        }
         val coverFileName = "cover.$coverExtension"
 
         val cssBody = customCss?.takeIf { it.isNotBlank() }
@@ -208,7 +214,9 @@ class EpubWriter(
                     val altText = source?.attr("alt")?.ifBlank { picture.attr("alt") }
                     if (!altText.isNullOrBlank()) newImg.attr("alt", altText)
                     newImg
-                } else null
+                } else {
+                    null
+                }
             }
 
             if (img != null) {
@@ -304,24 +312,34 @@ $navPoints
         val chapterProperties = if (hasCustomJs) " properties=\"scripted\"" else ""
 
         val manifestItems = buildString {
-            appendLine("""        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>""")
+            appendLine(
+                """        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>""",
+            )
             appendLine("""        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>""")
             if (hasCover) {
-                appendLine("""        <item id="cover-image" href="images/$coverFileName" media-type="$coverMimeType" properties="cover-image"/>""")
+                appendLine(
+                    """        <item id="cover-image" href="images/$coverFileName" media-type="$coverMimeType" properties="cover-image"/>""",
+                )
             }
             if (hasCustomCss) {
                 appendLine("""        <item id="tsundoku-style" href="$CUSTOM_CSS_PATH" media-type="text/css"/>""")
             }
             if (hasCustomJs) {
-                appendLine("""        <item id="tsundoku-script" href="$CUSTOM_JS_PATH" media-type="application/javascript"/>""")
+                appendLine(
+                    """        <item id="tsundoku-script" href="$CUSTOM_JS_PATH" media-type="application/javascript"/>""",
+                )
             }
             chapters.forEachIndexed { chIdx, chapter ->
                 val prefix = chapterFilePrefix(chIdx)
-                appendLine("""        <item id="$prefix" href="$prefix.xhtml" media-type="application/xhtml+xml"$chapterProperties/>""")
+                appendLine(
+                    """        <item id="$prefix" href="$prefix.xhtml" media-type="application/xhtml+xml"$chapterProperties/>""",
+                )
                 chapter.images.forEach { img ->
                     val epubFileName = chapterImageFileName(prefix, img)
                     val manifestId = "$prefix-img-${img.id.replace('.', '-').replace('_', '-')}"
-                    appendLine("""        <item id="$manifestId" href="images/$epubFileName" media-type="${img.mimeType}"/>""")
+                    appendLine(
+                        """        <item id="$manifestId" href="images/$epubFileName" media-type="${img.mimeType}"/>""",
+                    )
                 }
             }
         }.trimEnd()
@@ -389,7 +407,7 @@ $spineItems
 
     private fun chapterImageFileName(chapterPrefix: String, img: EmbeddedImage): String {
         val baseName = img.id.substringBeforeLast(".", img.id)
-        return "${chapterPrefix}_${baseName}.${img.extension}"
+        return "${chapterPrefix}_$baseName.${img.extension}"
     }
 
     companion object {

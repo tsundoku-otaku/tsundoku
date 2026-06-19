@@ -144,7 +144,6 @@ class MultiVolumeChapterMergerTest {
         assertEquals(emptyList<FakeChapter>(), regroup(emptyList()))
     }
 
-
     @Test
     fun `merger output supports both join and split volume export modes`() {
         val chapters = listOf(

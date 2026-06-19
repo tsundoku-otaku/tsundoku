@@ -320,7 +320,10 @@ class CustomSourceManager(
                                 "No novels found (URL may need adjustment - some sites have novels on homepage without page param)"
                             },
                         )
-                        page2?.let { append(" · "); append(it.second) }
+                        page2?.let {
+                            append(" · ")
+                            append(it.second)
+                        }
                     },
                     data = buildMap {
                         popular.mangas.firstOrNull()?.let {
@@ -350,7 +353,10 @@ class CustomSourceManager(
                     success = success && (page2?.first ?: true),
                     message = buildString {
                         append(if (success) "Found ${latest.mangas.size} novels" else "No novels found")
-                        page2?.let { append(" · "); append(it.second) }
+                        page2?.let {
+                            append(" · ")
+                            append(it.second)
+                        }
                     },
                     data = buildMap {
                         latest.mangas.firstOrNull()?.let {
@@ -392,7 +398,10 @@ class CustomSourceManager(
                                 "No results found for '$searchQuery'"
                             },
                         )
-                        page2?.let { append(" · "); append(it.second) }
+                        page2?.let {
+                            append(" · ")
+                            append(it.second)
+                        }
                     },
                     data = buildMap {
                         search.mangas.take(3).forEachIndexed { index, manga ->

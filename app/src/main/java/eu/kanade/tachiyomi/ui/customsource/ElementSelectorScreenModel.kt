@@ -137,7 +137,14 @@ class ElementSelectorScreenModel(
             selectorConfig.latestPage2Url.isNotBlank()
         val latestPage1 = selectorConfig.latestUrl.ifBlank { selectorConfig.popularUrl }.trim().trimEnd('/')
         val latestUrl = if (hasLatest) latestPage1.ifBlank { popularUrl } else null
-        val latestPagedUrl = if (hasLatest) derivePagedFromPair(latestPage1, selectorConfig.latestPage2Url.trim()) else null
+        val latestPagedUrl = if (hasLatest) {
+            derivePagedFromPair(
+                latestPage1,
+                selectorConfig.latestPage2Url.trim(),
+            )
+        } else {
+            null
+        }
 
         val searchUrl = selectorConfig.searchUrl.ifBlank { "$baseUrl/?s={query}" }
         val searchPagedUrl = run {

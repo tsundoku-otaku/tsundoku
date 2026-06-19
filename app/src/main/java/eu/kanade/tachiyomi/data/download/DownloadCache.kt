@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.core.net.toUri
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.extension.ExtensionManager
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -55,8 +57,6 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.seconds
-import eu.kanade.tachiyomi.source.CatalogueSource
-import kotlinx.coroutines.flow.map
 
 /**
  * Cache where we dump the downloads directory from the filesystem. This class is needed because
@@ -416,7 +416,8 @@ class DownloadCache(
                                         // Folder of images
                                         it.isDirectory -> it.name
                                         // CBZ files
-                                        it.isFile && (it.extension == "cbz" || it.extension == "zip") -> it.nameWithoutExtension
+                                        it.isFile && (it.extension == "cbz" || it.extension == "zip") ->
+                                            it.nameWithoutExtension
                                         // Anything else is irrelevant
                                         else -> null
                                     }

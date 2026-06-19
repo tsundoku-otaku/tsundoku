@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.data.massimport
 
 import android.content.Context
@@ -23,7 +25,10 @@ object MassImportStore {
     private const val ERRORS_INFIX = "_errors"
     private const val SKIPPED_INFIX = "_skipped"
 
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     private val ioLock = Any()
 
@@ -54,11 +59,13 @@ object MassImportStore {
     private fun urlsName(batchId: String) = "$URLS_PREFIX$batchId$URLS_SUFFIX"
     private fun metaName(batchId: String) = "$URLS_PREFIX$batchId$META_SUFFIX"
     private fun errorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$LOG_SUFFIX"
+
     // Skipped is single-column (url only), so it's a plain `.txt` url list, not CSV.
     private fun skippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$URLS_SUFFIX"
 
     // Pre-CSV error logs used `.txt` with `url<TAB>message` lines; still read/cleaned for old batches.
     private fun legacyErrorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$URLS_SUFFIX"
+
     // Older builds wrote skipped urls to a `.csv`; still read/cleaned for old batches.
     private fun legacySkippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$LOG_SUFFIX"
 
@@ -72,6 +79,7 @@ object MassImportStore {
     fun saveUrls(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, urls: List<String>) {
         if (batchId.isEmpty()) return
         val dir = dir() ?: run {
+            @Suppress("ktlint:standard:max-line-length")
             logcat(LogPriority.WARN) {
                 "MassImportStore: no mass_import directory (base storage not configured?); skipped saving urls for $batchId"
             }
@@ -101,7 +109,12 @@ object MassImportStore {
      * Stream a (possibly lazy, single-use) sequence of URLs to disk without materializing it as a
      * List or joined String. Returns the number of URLs written.
      */
-    fun saveUrlsStreaming(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, urls: Sequence<String>): Int {
+    @Suppress("ktlint:standard:max-line-length")
+    fun saveUrlsStreaming(
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        batchId: String,
+        urls: Sequence<String>,
+    ): Int {
         if (batchId.isEmpty()) return 0
         val dir = dir() ?: run {
             logcat(LogPriority.WARN) {
@@ -205,9 +218,20 @@ object MassImportStore {
         clearLog(batchId, ::skippedName, ::legacySkippedName)
 
     /** Append CSV lines: `url,message` for errors, bare url for skipped. Messages flattened to one line. */
-    fun appendErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, entries: List<Pair<String, String>>) =
+    @Suppress("ktlint:standard:max-line-length")
+    fun appendErrors(
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        batchId: String,
+        entries: List<Pair<String, String>>,
+    ) =
         appendLog(batchId, ::errorsName, entries, withMessage = true)
-    fun appendSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, entries: List<Pair<String, String>>) =
+
+    @Suppress("ktlint:standard:max-line-length")
+    fun appendSkipped(
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        batchId: String,
+        entries: List<Pair<String, String>>,
+    ) =
         appendLog(batchId, ::skippedName, entries, withMessage = false)
 
     /** Load a full log as (url, message) pairs, deduped by url keeping first message. */
@@ -297,7 +321,12 @@ object MassImportStore {
             value
         }
 
-    private fun loadLog(batchId: String, nameFor: (String) -> String, legacyNameFor: (String) -> String): List<Pair<String, String>> {
+    @Suppress("ktlint:standard:max-line-length")
+    private fun loadLog(
+        batchId: String,
+        nameFor: (String) -> String,
+        legacyNameFor: (String) -> String,
+    ): List<Pair<String, String>> {
         if (batchId.isEmpty()) return emptyList()
         val dir = dir() ?: return emptyList()
         return runCatching {
@@ -320,7 +349,11 @@ object MassImportStore {
      * pipe straight to disk (result file, export, retry) where the on-disk log can be huge and a
      * full [loadErrors] materialization would OOM.
      */
-    fun forEachError(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, action: (String, String) -> Unit) {
+    fun forEachError(
+        @Suppress("UNUSED_PARAMETER") context: Context,
+        batchId: String,
+        action: (String, String) -> Unit,
+    ) {
         if (batchId.isEmpty()) return
         val dir = dir() ?: return
         runCatching {

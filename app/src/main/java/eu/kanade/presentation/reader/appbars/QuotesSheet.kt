@@ -14,8 +14,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -218,14 +218,14 @@ fun QuotesSheet(
                 Column(
                     modifier = Modifier.verticalScroll(rememberScrollState()),
                 ) {
-                TextField(
-                    value = editedContent.value,
-                    onValueChange = { editedContent.value = it },
-                    label = { Text(stringResource(TDMR.strings.quotes_content_label)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 5,
-                    maxLines = 12,
-                )
+                    TextField(
+                        value = editedContent.value,
+                        onValueChange = { editedContent.value = it },
+                        label = { Text(stringResource(TDMR.strings.quotes_content_label)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 5,
+                        maxLines = 12,
+                    )
                 }
             },
             confirmButton = {
@@ -337,7 +337,7 @@ fun QuotesSheet(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clickable(onClick = onDismiss)
+                    .clickable(onClick = onDismiss),
             )
             Column(
                 modifier = Modifier
@@ -373,7 +373,7 @@ fun QuotesSheet(
                             .size(width = 40.dp, height = 4.dp)
                             .clip(RoundedCornerShape(2.dp))
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                            .clickable { isExpanded = !isExpanded }
+                            .clickable { isExpanded = !isExpanded },
                     )
                 }
 
@@ -397,7 +397,11 @@ fun QuotesSheet(
                             Icon(
                                 imageVector = Icons.Outlined.Reorder,
                                 contentDescription = "Reorder quotes",
-                                tint = if (isReorderMode.value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                tint = if (isReorderMode.value) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                             )
                         }
                         IconButton(
@@ -442,7 +446,7 @@ fun QuotesSheet(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clickable(onClick = onDismiss)
+                    .clickable(onClick = onDismiss),
             )
             Column(
                 modifier = Modifier
@@ -478,7 +482,7 @@ fun QuotesSheet(
                             .size(width = 40.dp, height = 4.dp)
                             .clip(RoundedCornerShape(2.dp))
                             .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
-                            .clickable { isExpanded = !isExpanded }
+                            .clickable { isExpanded = !isExpanded },
                     )
                 }
 
@@ -511,7 +515,11 @@ fun QuotesSheet(
                             Icon(
                                 imageVector = Icons.Outlined.Reorder,
                                 contentDescription = "Reorder quotes",
-                                tint = if (isReorderMode.value) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                tint = if (isReorderMode.value) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                             )
                         }
                         Icon(
@@ -536,7 +544,7 @@ fun QuotesSheet(
                         androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
                     } else {
                         androidx.compose.foundation.layout.PaddingValues(bottom = 0.dp)
-                    }
+                    },
                 ) {
                     itemsIndexed(reorderedQuotes) { index, quote ->
                         QuoteItem(
@@ -608,8 +616,16 @@ private fun QuoteItem(
             .shadow(
                 elevation = elevation,
                 shape = RoundedCornerShape(8.dp),
-                ambientColor = if (isBeingDragged) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Transparent,
-                spotColor = if (isBeingDragged) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f) else Color.Transparent,
+                ambientColor = if (isBeingDragged) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                } else {
+                    Color.Transparent
+                },
+                spotColor = if (isBeingDragged) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                } else {
+                    Color.Transparent
+                },
             )
             .clip(RoundedCornerShape(8.dp))
             .background(

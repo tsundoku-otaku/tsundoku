@@ -53,6 +53,7 @@ class TtsController(
         private set
 
     @Volatile var ttsCurrentChunkIndex = 0
+
     @Volatile var ttsResumeChunkIndex: Int = 0
     var ttsViewportParagraphIndex: Int = 0
     var hasViewportStartOverride: Boolean = false
@@ -143,8 +144,11 @@ class TtsController(
 
         val chunks = if (paragraphs.size > 1) {
             paragraphs.flatMapIndexed { paragraphIndex, para ->
-                val c = if (para.length <= maxLength) listOf(para)
-                        else TtsTextUtils.splitTextForTts(para, maxLength)
+                val c = if (para.length <= maxLength) {
+                    listOf(para)
+                } else {
+                    TtsTextUtils.splitTextForTts(para, maxLength)
+                }
                 repeat(c.size) { chunkParagraphIndexes.add(paragraphIndex) }
                 c
             }
@@ -164,8 +168,12 @@ class TtsController(
         var searchFrom = 0
         for (chunk in ttsChunks) {
             val idx = text.indexOf(chunk, searchFrom)
-            if (idx >= 0) { offsets.add(idx); searchFrom = idx + chunk.length }
-            else offsets.add(searchFrom)
+            if (idx >= 0) {
+                offsets.add(idx)
+                searchFrom = idx + chunk.length
+            } else {
+                offsets.add(searchFrom)
+            }
         }
         ttsChunkStartOffsets = offsets
 
@@ -225,10 +233,18 @@ class TtsController(
 
     fun stepParagraph(delta: Int, onEmpty: () -> Unit) {
         if (delta == 0) return
-        if (ttsChunks.isEmpty()) { onEmpty(); return }
+        if (ttsChunks.isEmpty()) {
+            onEmpty()
+            return
+        }
 
         val target = TtsTextUtils.computeTtsStepTargetChunk(
-            delta, ttsPaused, ttsResumeChunkIndex, ttsCurrentChunkIndex, ttsChunks, ttsChunkParagraphIndexes,
+            delta,
+            ttsPaused,
+            ttsResumeChunkIndex,
+            ttsCurrentChunkIndex,
+            ttsChunks,
+            ttsChunkParagraphIndexes,
         )
         ttsResumeChunkIndex = target
         ttsCurrentChunkIndex = target
@@ -238,7 +254,8 @@ class TtsController(
         if (preferences.novelTtsEnableHighlight.get()) {
             val chunk = ttsChunks.getOrNull(target) ?: return
             callbacks.onHighlightChunk(
-                target, chunk,
+                target,
+                chunk,
                 ttsChunkStartOffsets.getOrElse(target) { 0 },
                 ttsChunkParagraphIndexes.getOrElse(target) { 0 },
             )

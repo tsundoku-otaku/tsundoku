@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -16,6 +18,7 @@ class RegexReplacementsProcessorTest {
         }
     }
 
+    @Suppress("ktlint:standard:max-line-length")
     private fun rule(
         pattern: String,
         replacement: String,

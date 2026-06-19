@@ -43,10 +43,10 @@ class JsPluginsScreenModel(
         }
     }
 
-    private val _searchQuery = MutableStateFlow<String?>(null)
+    private val searchQueryFlow = MutableStateFlow<String?>(null)
 
     fun search(query: String?) {
-        _searchQuery.value = query
+        searchQueryFlow.value = query
         mutableState.update { it.copy(searchQuery = query) }
     }
 

@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.presentation.updates
 
 import androidx.compose.foundation.combinedClickable

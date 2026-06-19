@@ -255,4 +255,3 @@ class NovelDownloadPreferences(
         )
     }
 }
-

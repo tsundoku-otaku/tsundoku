@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences
@@ -48,7 +49,6 @@ import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.random.Random
-import eu.kanade.tachiyomi.source.CatalogueSource
 
 object SettingsNovelDownloadScreen : SearchableSettings {
 
@@ -374,7 +374,13 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     valueRange = 0..20,
                     title = stringResource(TDMR.strings.skip_source_on_consecutive_errors),
                     subtitle = stringResource(TDMR.strings.skip_source_on_consecutive_errors_description),
-                    valueString = if (prefs.skipSourceIfFailedXTimes().collectAsState().value == 0) "Disabled" else "After ${prefs.skipSourceIfFailedXTimes().collectAsState().value} errors",
+                    valueString = if (prefs.skipSourceIfFailedXTimes().collectAsState().value ==
+                        0
+                    ) {
+                        "Disabled"
+                    } else {
+                        "After ${prefs.skipSourceIfFailedXTimes().collectAsState().value} errors"
+                    },
                     onValueChanged = { prefs.skipSourceIfFailedXTimes().set(it) },
                 ),
             ),

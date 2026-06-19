@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.browse.source.custom
 
 import android.content.Intent
@@ -21,12 +23,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
@@ -1262,7 +1264,12 @@ class CustomSourceEditorScreen(
                         features = features.copy(hasPopular = it)
                     }
                     if (features.hasPopular) {
-                        SectionToggle(TDMR.strings.selector_feature_popular_pagination, features.popularPagination, true) {
+                        @Suppress("ktlint:standard:max-line-length")
+                        SectionToggle(
+                            TDMR.strings.selector_feature_popular_pagination,
+                            features.popularPagination,
+                            true,
+                        ) {
                             features = features.copy(popularPagination = it)
                         }
                     }
@@ -1270,7 +1277,12 @@ class CustomSourceEditorScreen(
                         features = features.copy(hasLatest = it)
                     }
                     if (features.hasLatest) {
-                        SectionToggle(TDMR.strings.selector_feature_latest_pagination, features.latestPagination, true) {
+                        @Suppress("ktlint:standard:max-line-length")
+                        SectionToggle(
+                            TDMR.strings.selector_feature_latest_pagination,
+                            features.latestPagination,
+                            true,
+                        ) {
                             features = features.copy(latestPagination = it)
                         }
                     }
@@ -1278,7 +1290,12 @@ class CustomSourceEditorScreen(
                         features = features.copy(hasSearch = it)
                     }
                     if (features.hasSearch) {
-                        SectionToggle(TDMR.strings.selector_feature_search_pagination, features.searchPagination, true) {
+                        @Suppress("ktlint:standard:max-line-length")
+                        SectionToggle(
+                            TDMR.strings.selector_feature_search_pagination,
+                            features.searchPagination,
+                            true,
+                        ) {
                             features = features.copy(searchPagination = it)
                         }
                     }
@@ -1286,10 +1303,18 @@ class CustomSourceEditorScreen(
                         features = features.copy(chapterGenerateFromPattern = it)
                     }
                     if (!features.chapterGenerateFromPattern) {
-                        SectionToggle(TDMR.strings.selector_feature_chapter_separate_page, features.chapterListSeparatePage) {
+                        @Suppress("ktlint:standard:max-line-length")
+                        SectionToggle(
+                            TDMR.strings.selector_feature_chapter_separate_page,
+                            features.chapterListSeparatePage,
+                        ) {
                             features = features.copy(chapterListSeparatePage = it)
                         }
-                        SectionToggle(TDMR.strings.selector_feature_chapter_pagination, features.chapterListPagination) {
+                        @Suppress("ktlint:standard:max-line-length")
+                        SectionToggle(
+                            TDMR.strings.selector_feature_chapter_pagination,
+                            features.chapterListPagination,
+                        ) {
                             features = features.copy(chapterListPagination = it)
                         }
                     }
@@ -1359,23 +1384,50 @@ class CustomSourceEditorScreen(
                         value = popularListSelector,
                         onValueChange = { popularListSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_list_item_selector)) },
-                        trailingIcon = pickTrailing(firstPageUrl(popularUrl), stringResource(TDMR.strings.custom_source_list_item_selector)) { popularListSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            firstPageUrl(popularUrl),
+                            stringResource(TDMR.strings.custom_source_list_item_selector),
+                        ) {
+                            popularListSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                         placeholder = { Text(stringResource(TDMR.strings.custom_source_list_item_hint)) },
                     )
                     OutlinedTextField(
                         value = popularTitleSelector,
                         onValueChange = { popularTitleSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_title_selector)) },
-                        trailingIcon = pickTrailing(firstPageUrl(popularUrl), stringResource(TDMR.strings.custom_source_title_selector)) { popularTitleSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            firstPageUrl(popularUrl),
+                            stringResource(TDMR.strings.custom_source_title_selector),
+                        ) {
+                            popularTitleSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = popularCoverSelector,
                         onValueChange = { popularCoverSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_cover_selector)) },
-                        trailingIcon = pickTrailing(firstPageUrl(popularUrl), stringResource(TDMR.strings.custom_source_cover_selector)) { popularCoverSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            firstPageUrl(popularUrl),
+                            stringResource(TDMR.strings.custom_source_cover_selector),
+                        ) {
+                            popularCoverSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                     )
                     // Pagination is per-section (popular / latest / search can differ).
                     if (features.hasPopular && features.popularPagination) {
@@ -1383,8 +1435,17 @@ class CustomSourceEditorScreen(
                             value = popularNextPageSelector,
                             onValueChange = { popularNextPageSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_pagination_popular)) },
-                            trailingIcon = pickTrailing(firstPageUrl(popularUrl), stringResource(TDMR.strings.custom_source_pagination_popular)) { popularNextPageSelector = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = pickTrailing(
+                                firstPageUrl(popularUrl),
+                                stringResource(TDMR.strings.custom_source_pagination_popular),
+                            ) {
+                                popularNextPageSelector =
+                                    it
+                            },
+                            @Suppress("ktlint:standard:max-line-length")
+                            modifier
+                                =
+                                Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
                         )
                     }
@@ -1393,8 +1454,17 @@ class CustomSourceEditorScreen(
                             value = latestNextPageSelector,
                             onValueChange = { latestNextPageSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_pagination_latest)) },
-                            trailingIcon = pickTrailing(firstPageUrl(latestUrl), stringResource(TDMR.strings.custom_source_pagination_latest)) { latestNextPageSelector = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = pickTrailing(
+                                firstPageUrl(latestUrl),
+                                stringResource(TDMR.strings.custom_source_pagination_latest),
+                            ) {
+                                latestNextPageSelector =
+                                    it
+                            },
+                            @Suppress("ktlint:standard:max-line-length")
+                            modifier
+                                =
+                                Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
                         )
                     }
@@ -1403,8 +1473,17 @@ class CustomSourceEditorScreen(
                             value = searchNextPageSelector,
                             onValueChange = { searchNextPageSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_pagination_search)) },
-                            trailingIcon = pickTrailing(firstPageUrl(searchUrl), stringResource(TDMR.strings.custom_source_pagination_search)) { searchNextPageSelector = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = pickTrailing(
+                                firstPageUrl(searchUrl),
+                                stringResource(TDMR.strings.custom_source_pagination_search),
+                            ) {
+                                searchNextPageSelector =
+                                    it
+                            },
+                            @Suppress("ktlint:standard:max-line-length")
+                            modifier
+                                =
+                                Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
                         )
                     }
@@ -1417,36 +1496,81 @@ class CustomSourceEditorScreen(
                         value = detailsTitleSelector,
                         onValueChange = { detailsTitleSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_title_selector_required)) },
-                        trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_title_selector_required)) { detailsTitleSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_title_selector_required),
+                        ) {
+                            detailsTitleSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsDescriptionSelector,
                         onValueChange = { detailsDescriptionSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_description_selector)) },
-                        trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_description_selector)) { detailsDescriptionSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_description_selector),
+                        ) {
+                            detailsDescriptionSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsCoverSelector,
                         onValueChange = { detailsCoverSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_details_cover_selector)) },
-                        trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_details_cover_selector)) { detailsCoverSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_details_cover_selector),
+                        ) {
+                            detailsCoverSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsAuthorSelector,
                         onValueChange = { detailsAuthorSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_author_selector)) },
-                        trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_author_selector)) { detailsAuthorSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_author_selector),
+                        ) {
+                            detailsAuthorSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsGenreSelector,
                         onValueChange = { detailsGenreSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_genre_selector)) },
-                        trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_genre_selector)) { detailsGenreSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_genre_selector),
+                        ) {
+                            detailsGenreSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsStatusSelector,
@@ -1482,8 +1606,17 @@ class CustomSourceEditorScreen(
                             value = chapterCountSelector,
                             onValueChange = { chapterCountSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_count_selector)) },
-                            trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_chapter_count_selector)) { chapterCountSelector = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = pickTrailing(
+                                baseUrl,
+                                stringResource(TDMR.strings.custom_source_chapter_count_selector),
+                            ) {
+                                chapterCountSelector =
+                                    it
+                            },
+                            @Suppress("ktlint:standard:max-line-length")
+                            modifier
+                                =
+                                Modifier.fillMaxWidth(),
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
@@ -1506,37 +1639,87 @@ class CustomSourceEditorScreen(
                             value = chaptersListSelector,
                             onValueChange = { chaptersListSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_list_selector)) },
-                            trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_chapter_list_selector)) { chaptersListSelector = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = pickTrailing(
+                                baseUrl,
+                                stringResource(TDMR.strings.custom_source_chapter_list_selector),
+                            ) {
+                                chaptersListSelector =
+                                    it
+                            },
+                            @Suppress("ktlint:standard:max-line-length")
+                            modifier
+                                =
+                                Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
                             value = chapterLinkSelector,
                             onValueChange = { chapterLinkSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_link_selector)) },
-                            trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_chapter_link_selector)) { chapterLinkSelector = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = pickTrailing(
+                                baseUrl,
+                                stringResource(TDMR.strings.custom_source_chapter_link_selector),
+                            ) {
+                                chapterLinkSelector =
+                                    it
+                            },
+                            @Suppress("ktlint:standard:max-line-length")
+                            modifier
+                                =
+                                Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
                             value = chapterNameSelector,
                             onValueChange = { chapterNameSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_name_selector)) },
-                            trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_chapter_name_selector)) { chapterNameSelector = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = pickTrailing(
+                                baseUrl,
+                                stringResource(TDMR.strings.custom_source_chapter_name_selector),
+                            ) {
+                                chapterNameSelector =
+                                    it
+                            },
+                            @Suppress("ktlint:standard:max-line-length")
+                            modifier
+                                =
+                                Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
                             value = chapterDateSelector,
                             onValueChange = { chapterDateSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_date_selector)) },
-                            trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_chapter_date_selector)) { chapterDateSelector = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = pickTrailing(
+                                baseUrl,
+                                stringResource(TDMR.strings.custom_source_chapter_date_selector),
+                            ) {
+                                chapterDateSelector =
+                                    it
+                            },
+                            @Suppress("ktlint:standard:max-line-length")
+                            modifier
+                                =
+                                Modifier.fillMaxWidth(),
                         )
                         if (features.chapterListPagination) {
                             OutlinedTextField(
                                 value = chapterNextPageSelector,
                                 onValueChange = { chapterNextPageSelector = it },
-                                label = { Text(stringResource(TDMR.strings.custom_source_chapter_pagination_selector)) },
-                                trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_chapter_pagination_selector)) { chapterNextPageSelector = it },
-                                modifier = Modifier.fillMaxWidth(),
+                                label = {
+                                    Text(stringResource(TDMR.strings.custom_source_chapter_pagination_selector))
+                                },
+                                @Suppress("ktlint:standard:max-line-length")
+                                trailingIcon
+                                    =
+                                    pickTrailing(
+                                        baseUrl,
+                                        stringResource(TDMR.strings.custom_source_chapter_pagination_selector),
+                                    ) {
+                                        chapterNextPageSelector =
+                                            it
+                                    },
+                                @Suppress("ktlint:standard:max-line-length")
+                                modifier
+                                    =
+                                    Modifier.fillMaxWidth(),
                             )
                         }
                         if (features.chapterListSeparatePage) {
@@ -1544,8 +1727,17 @@ class CustomSourceEditorScreen(
                                 value = chapterIndexLinkSelector,
                                 onValueChange = { chapterIndexLinkSelector = it },
                                 label = { Text(stringResource(TDMR.strings.custom_source_chapter_index_selector)) },
-                                trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_chapter_index_selector)) { chapterIndexLinkSelector = it },
-                                modifier = Modifier.fillMaxWidth(),
+                                trailingIcon = pickTrailing(
+                                    baseUrl,
+                                    stringResource(TDMR.strings.custom_source_chapter_index_selector),
+                                ) {
+                                    chapterIndexLinkSelector =
+                                        it
+                                },
+                                @Suppress("ktlint:standard:max-line-length")
+                                modifier
+                                    =
+                                    Modifier.fillMaxWidth(),
                             )
                         }
                     }
@@ -1558,16 +1750,34 @@ class CustomSourceEditorScreen(
                         value = contentPrimarySelector,
                         onValueChange = { contentPrimarySelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_content_selector)) },
-                        trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_content_selector)) { contentPrimarySelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_content_selector),
+                        ) {
+                            contentPrimarySelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                         placeholder = { Text(stringResource(TDMR.strings.custom_source_content_selector_hint)) },
                     )
                     OutlinedTextField(
                         value = contentFallbacksSelector,
                         onValueChange = { contentFallbacksSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_content_fallbacks)) },
-                        trailingIcon = pickTrailing(baseUrl, stringResource(TDMR.strings.custom_source_content_fallbacks)) { contentFallbacksSelector = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_content_fallbacks),
+                        ) {
+                            contentFallbacksSelector =
+                                it
+                        },
+                        @Suppress("ktlint:standard:max-line-length")
+                        modifier
+                            =
+                            Modifier.fillMaxWidth(),
                     )
                 } // end if (selectedBasedOnSourceId == null)
 
@@ -1583,6 +1793,7 @@ class CustomSourceEditorScreen(
 
                 // Save button
                 Spacer(modifier = Modifier.height(24.dp))
+                @Suppress("ktlint:standard:max-line-length")
                 Button(
                     onClick = {
                         scope.launch {
@@ -1623,7 +1834,10 @@ class CustomSourceEditorScreen(
                         (
                             selectedBasedOnSourceId != null || (
                                 isNovel &&
-                                (!features.hasPopular || (popularUrl.isNotBlank() && popularListSelector.isNotBlank())) &&
+                                    (
+                                        !features.hasPopular ||
+                                            (popularUrl.isNotBlank() && popularListSelector.isNotBlank())
+                                        ) &&
                                     (!features.hasSearch || searchUrl.isNotBlank()) &&
                                     (features.hasPopular || features.hasLatest) &&
                                     detailsTitleSelector.isNotBlank() && contentPrimarySelector.isNotBlank() &&

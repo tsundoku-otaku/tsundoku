@@ -1,11 +1,11 @@
 package eu.kanade.domain.manga.interactor
 
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.source.normalizeSourcePath
-import eu.kanade.domain.source.service.SourcePreferences
 import kotlinx.coroutines.Dispatchers
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat

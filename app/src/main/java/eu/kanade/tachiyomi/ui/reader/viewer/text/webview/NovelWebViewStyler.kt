@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
 import android.view.View
 import android.webkit.WebView
+import androidx.core.net.toUri
 import eu.kanade.presentation.reader.settings.CodeSnippet
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -14,7 +15,6 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.logcat
-import androidx.core.net.toUri
 
 internal class NovelWebViewStyler(
     private val activity: ReaderActivity,
@@ -75,7 +75,6 @@ internal class NovelWebViewStyler(
         }
 
         val (fontFaceDeclaration, effectiveFontFamily) = resolveFontFace(fontFamily, useOriginalFonts)
-
 
         val sourceCssPriority = preferences.novelSourceCssPriority.get()
         val styleImportance = if (sourceCssPriority) "" else " !important"

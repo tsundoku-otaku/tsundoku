@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.data.epub
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import androidx.core.net.toUri
@@ -10,24 +12,22 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
+import eu.kanade.presentation.reader.settings.CodeSnippet
 import eu.kanade.tachiyomi.data.download.ChapterContentReader
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.network.NetworkHelper
-import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.epub.EpubExportNaming
 import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
-import eu.kanade.presentation.reader.settings.CodeSnippet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -47,12 +47,12 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.translation.model.TranslationMode
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.source.local.LocalNovelSource
 import tachiyomi.source.local.groupChaptersByVolume
 import tachiyomi.source.local.io.LocalNovelSourceFileSystem
 import tachiyomi.source.local.isLocal
 import tachiyomi.source.local.isLocalNovel
-import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
@@ -303,7 +303,9 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                             var translatedContent: String? = null
                             if (translationMode != TranslationMode.ORIGINAL && hasTranslation) {
                                 try {
-                                    val translations = translatedChapterRepository.getAllTranslationsForChapter(chapter.id)
+                                    val translations = translatedChapterRepository.getAllTranslationsForChapter(
+                                        chapter.id,
+                                    )
                                     translatedContent = translations.firstOrNull()?.translatedContent
                                 } catch (e: Exception) {
                                     logcat(LogPriority.WARN, e) {
@@ -317,7 +319,9 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
                             val hasUsableContent = when (translationMode) {
                                 TranslationMode.ORIGINAL ->
                                     (originalContent != null && originalContent.isNotBlank()) || keepLocalOriginalSlot
-                                TranslationMode.TRANSLATED -> translatedContent != null && translatedContent.isNotBlank()
+                                TranslationMode.TRANSLATED ->
+                                    translatedContent != null &&
+                                        translatedContent.isNotBlank()
                                 TranslationMode.BOTH ->
                                     (originalContent != null && originalContent.isNotBlank()) ||
                                         keepLocalOriginalSlot ||
@@ -1166,7 +1170,6 @@ class EpubExportJob(private val context: Context, workerParams: WorkerParameters
 
         return sections.joinToString("\n\n").takeIf { it.isNotBlank() }
     }
-
 
     private fun readCoverImage(thumbnailUrl: String?): ByteArray? {
         val url = thumbnailUrl

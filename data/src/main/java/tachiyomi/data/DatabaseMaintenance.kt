@@ -153,8 +153,14 @@ class DatabaseMaintenance(
 
             val tableCounts = mutableMapOf<String, Long>()
             listOf(
-                "chapters", "mangas", "history", "library_cache", "categories",
-                "mangas_categories", "manga_sync", "excluded_scanlators",
+                "chapters",
+                "mangas",
+                "history",
+                "library_cache",
+                "categories",
+                "mangas_categories",
+                "manga_sync",
+                "excluded_scanlators",
             ).forEach { table ->
                 try {
                     driver.executeQuery(null, "SELECT count(*) FROM $table", { cursor ->

@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.presentation.more.settings.screen
 
 import android.annotation.SuppressLint
@@ -14,8 +16,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -35,10 +37,10 @@ import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -537,7 +539,9 @@ object SettingsAdvancedScreen : SearchableSettings {
                     title = { Text(text = "Remove duplicate URL entries") },
                     text = {
                         Column {
-                            Text(text = "This will unfavorite manga entries that would have duplicate URLs after normalization.")
+                            Text(
+                                text = "This will unfavorite manga entries that would have duplicate URLs after normalization.",
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(text = "For each group of duplicates, only the first entry will be kept.")
                             Spacer(modifier = Modifier.height(8.dp))
@@ -727,7 +731,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 onClick = { moveToCategoryMode = true },
                                 enabled = !isRemoving,
                             ) {
-                                Icon(Icons.Filled.DriveFileMove, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(
+                                    Icons.Filled.DriveFileMove,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Move to Category")
                             }
@@ -832,7 +840,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 },
                                 enabled = !isRemoving && urlText.isNotBlank(),
                             ) {
-                                Icon(Icons.Outlined.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(
+                                    Icons.Outlined.ContentPaste,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Add to Queue")
                             }
@@ -842,7 +854,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 onClick = { filePickerLauncher.launch(arrayOf("text/*", "*/*")) },
                                 enabled = !isRemoving,
                             ) {
-                                Icon(Icons.Outlined.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(
+                                    Icons.Outlined.FileOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("Load Files")
                             }
@@ -927,7 +943,8 @@ object SettingsAdvancedScreen : SearchableSettings {
                                                 try {
                                                     // Extract path from URL
                                                     val uri = java.net.URI(url)
-                                                    val path = uri.path?.removePrefix("/")?.removeSuffix("/") ?: continue
+                                                    val path =
+                                                        uri.path?.removePrefix("/")?.removeSuffix("/") ?: continue
 
                                                     // Find all favorite manga matching this URL pattern
                                                     val matchingIds = favorites.filter { (_, mangaUrl) ->
@@ -939,7 +956,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                                                         }
 
                                                         // Match if paths are similar (contains or equals)
-                                                        mangaPath != null && (mangaPath == path || mangaPath.contains(path) || path.contains(mangaPath))
+                                                        mangaPath != null &&
+                                                            (
+                                                                mangaPath == path || mangaPath.contains(path) ||
+                                                                    path.contains(mangaPath)
+                                                                )
                                                     }.map { it.first }
 
                                                     toUnfavorite.addAll(matchingIds)
@@ -1025,7 +1046,8 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 }
                             }
                         },
-                        enabled = !isRemoving && pendingUrlCount > 0 && (!moveToCategoryMode || selectedCategoryId != null),
+                        enabled =
+                        !isRemoving && pendingUrlCount > 0 && (!moveToCategoryMode || selectedCategoryId != null),
                     ) {
                         if (isRemoving) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp))
@@ -1117,7 +1139,9 @@ object SettingsAdvancedScreen : SearchableSettings {
                                         appendLine("--- Index Sizes ---")
                                         val totalIndexSize = indexSizes.values.sum()
                                         appendLine("Total indexes: ${formatSize(totalIndexSize)}")
-                                        indexSizes.entries.sortedByDescending { it.value }.take(10).forEach { (idx, size) ->
+                                        indexSizes.entries.sortedByDescending {
+                                            it.value
+                                        }.take(10).forEach { (idx, size) ->
                                             appendLine("$idx: ${formatSize(size)}")
                                         }
                                     }
@@ -1199,7 +1223,8 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 // Clear network cache
                                 val networkCacheDir = File(context.cacheDir, "network_cache")
                                 if (networkCacheDir.exists()) {
-                                    clearedSize += networkCacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                                    clearedSize +=
+                                        networkCacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
                                     networkCacheDir.deleteRecursively()
                                 }
 
@@ -1216,7 +1241,10 @@ object SettingsAdvancedScreen : SearchableSettings {
                                 }
 
                                 // Clear font temp files
-                                context.cacheDir.listFiles()?.filter { it.name.startsWith("font_") && it.extension == "ttf" }?.forEach {
+                                context.cacheDir.listFiles()?.filter {
+                                    it.name.startsWith("font_") &&
+                                        it.extension == "ttf"
+                                }?.forEach {
                                     clearedSize += it.length()
                                     it.delete()
                                 }
@@ -1239,7 +1267,9 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     else -> "$clearedSize bytes"
                                 }
                                 withUIContext {
-                                    context.toast(context.contextStringResource(MR.strings.pref_temp_files_cleared, sizeString))
+                                    context.toast(
+                                        context.contextStringResource(MR.strings.pref_temp_files_cleared, sizeString),
+                                    )
                                 }
                             } catch (e: Exception) {
                                 logcat(LogPriority.ERROR, e)

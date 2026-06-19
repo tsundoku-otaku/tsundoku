@@ -8,6 +8,8 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import tachiyomi.data.Database
+import tachiyomi.data.subscribeToDebouncedList
 import tachiyomi.domain.source.model.SourceWithCount
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.repository.SourcePagingSource
@@ -15,8 +17,6 @@ import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.SourceManager
 import kotlin.time.Duration.Companion.seconds
 import tachiyomi.domain.source.model.Source as DomainSource
-import tachiyomi.data.Database
-import tachiyomi.data.subscribeToDebouncedList
 
 class SourceRepositoryImpl(
     private val sourceManager: SourceManager,

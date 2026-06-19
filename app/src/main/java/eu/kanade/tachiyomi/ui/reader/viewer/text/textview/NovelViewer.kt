@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.reader.viewer.text.textview
 
 import android.graphics.Canvas
@@ -28,6 +30,19 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelConfig
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ChapterQueue
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentConfig
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ProcessedContent
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -38,29 +53,16 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
 import kotlin.math.roundToInt
-import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelConfig
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentConfig
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ProcessedContent
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ChapterQueue
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
 
 class NovelViewer(val activity: ReaderActivity) : Viewer {
 
@@ -78,7 +80,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private val contentPipeline = ContentPipeline(preferences)
     private var isAutoScrolling = false
     private var autoScrollJob: Job? = null
-
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val config = NovelConfig(scope)
@@ -110,11 +111,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private val loadedChapters: List<LoadedChapter> get() = chapterQueue.all
     private var isLoadingNext: Boolean
         get() = chapterQueue.isLoadingNext
-        set(value) { chapterQueue.isLoadingNext = value }
+        set(value) {
+            chapterQueue.isLoadingNext = value
+        }
     private var isRestoringScroll = false
     private var currentChapterIndex: Int
         get() = chapterQueue.currentIndex
-        set(value) { chapterQueue.currentIndex = value }
+        set(value) {
+            chapterQueue.currentIndex = value
+        }
     private var disableScrollbarForSession = false
 
     private var lastSavedProgress = 0f
@@ -152,7 +157,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 velocityY: Float,
             ): Boolean {
                 if (!preferences.novelSwipeNavigation.get()) return false
-                return handleNovelFlingGesture(e1, e2, velocityX, velocityY,
+                return handleNovelFlingGesture(
+                    e1,
+                    e2,
+                    velocityX,
+                    velocityY,
                     onPrevious = { activity.loadPreviousChapter() },
                     onNext = { activity.loadNextChapter() },
                 )
@@ -188,11 +197,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                         activity.toggleMenu()
                     }
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.NEXT,
-                    eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.RIGHT -> {
+                    eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.RIGHT,
+                    -> {
                         scrollView.smoothScrollBy(0, (container.height * 0.8).toInt())
                     }
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.PREV,
-                    eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.LEFT -> {
+                    eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.LEFT,
+                    -> {
                         scrollView.smoothScrollBy(0, -(container.height * 0.8).toInt())
                     }
                 }
@@ -302,12 +313,17 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 // chunks and during pause/resume, causing the scroll listener to start a
                 // visible chapter fetch while TTS still owns the chapter transition.
                 val ttsIsDrivingChapterHandoff = ttsController.isTtsAutoPlay
-                if (!isRestoringScroll && !ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold && !isLoadingNext && onLastLoaded) {
+                if (!isRestoringScroll && !ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
+                    !isLoadingNext &&
+                    onLastLoaded
+                ) {
                     logcat(LogPriority.DEBUG) {
                         "NovelViewer: scroll threshold hit (progress=$chapterProgress >= $effectiveThreshold, currentIdx=$currentChapterIndex, loadedCount=${loadedChapters.size})"
                     }
                     loadNextChapterIfAvailable()
-                } else if (!isRestoringScroll && ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold && onLastLoaded) {
+                } else if (!isRestoringScroll && ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
+                    onLastLoaded
+                ) {
                     preFetchNextChapterForTts()
                 }
             }
@@ -466,10 +482,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun loadNextChapterIfAvailable() {
         val anchor = loadedChapters.getOrNull(currentChapterIndex)?.chapter
             ?: currentChapters?.currChapter ?: run {
-                logcat(LogPriority.ERROR) { "NovelViewer: loadNext failed, no anchor (loadedCount=${loadedChapters.size})" }
-                inlineFeedback.showInlineError("No anchor chapter for infinite scroll", isPrepend = false)
-                return
+            logcat(LogPriority.ERROR) {
+                "NovelViewer: loadNext failed, no anchor (loadedCount=${loadedChapters.size})"
             }
+            inlineFeedback.showInlineError("No anchor chapter for infinite scroll", isPrepend = false)
+            return
+        }
 
         if (isLoadingNext) {
             logcat(LogPriority.DEBUG) { "NovelViewer: loadNext ignored, already loading" }
@@ -603,7 +621,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             if (preferences.novelTextSelectable.get()) {
                 customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
                     override fun onCreateActionMode(mode: android.view.ActionMode, menu: Menu): Boolean {
-                        val rememberItem = menu.add(Menu.NONE, 1, Menu.NONE, activity.stringResource(TDMR.strings.action_remember))
+                        val rememberItem = menu.add(
+                            Menu.NONE,
+                            1,
+                            Menu.NONE,
+                            activity.stringResource(TDMR.strings.action_remember),
+                        )
                         rememberItem.setIcon(android.R.drawable.ic_menu_save)
                         rememberItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
                         return true
@@ -726,9 +749,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
             clearTtsSpansInLoadedChapters()
 
-            val targetLoaded = (ttsController.ttsPlaybackChapterId?.let { id ->
-                loadedChapters.firstOrNull { it.chapter.chapter.id == id }
-            } ?: loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex)) ?: return@runOnUiThread
+            val targetLoaded = (
+                ttsController.ttsPlaybackChapterId?.let { id ->
+                    loadedChapters.firstOrNull { it.chapter.chapter.id == id }
+                } ?: loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex)
+                ) ?: return@runOnUiThread
             if (!targetLoaded.isLoaded || !targetLoaded.isTextSet) return@runOnUiThread
             val block = targetLoaded.block
             val text = block.fullText ?: return@runOnUiThread
@@ -753,14 +778,39 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     firstChunkLocalStart = localStart
                 }
                 when (highlightStyle) {
-                    "underline" -> spanned.setSpan(UnderlineSpan(), localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    "underline" -> spanned.setSpan(
+                        UnderlineSpan(),
+                        localStart,
+                        localEnd,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
                     "outline" -> {
-                        spanned.setSpan(RoundedOutlineSpan(highlightColor), localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        spanned.setSpan(ForegroundColorSpan(highlightTextColor), localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        spanned.setSpan(
+                            RoundedOutlineSpan(highlightColor),
+                            localStart,
+                            localEnd,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
+                        spanned.setSpan(
+                            ForegroundColorSpan(highlightTextColor),
+                            localStart,
+                            localEnd,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
                     }
                     else -> {
-                        spanned.setSpan(BackgroundColorSpan(highlightColor), localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        spanned.setSpan(ForegroundColorSpan(highlightTextColor), localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        spanned.setSpan(
+                            BackgroundColorSpan(highlightColor),
+                            localStart,
+                            localEnd,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
+                        spanned.setSpan(
+                            ForegroundColorSpan(highlightTextColor),
+                            localStart,
+                            localEnd,
+                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                        )
                     }
                 }
             }
@@ -772,7 +822,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     val layout = scrollTarget.layout ?: return
                     val line = layout.getLineForOffset(localStart.coerceAtMost(layout.text.length - 1).coerceAtLeast(0))
                     val targetInChunk = layout.getLineTop(line)
-                    val targetInScroll = block.container.top + scrollTarget.top + targetInChunk - (scrollView.height / 3)
+                    val targetInScroll =
+                        block.container.top + scrollTarget.top + targetInChunk - (scrollView.height / 3)
                     scrollView.smoothScrollTo(0, targetInScroll.coerceAtLeast(0))
                 }
                 if (scrollTarget.layout != null) doScroll() else scrollTarget.post { doScroll() }
@@ -781,7 +832,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun loadNextChapterForTts(anchorChapterIndex: Int = currentChapterIndex) {
-        logcat(LogPriority.DEBUG) { "TTS: Auto-loading next chapter ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}" }
+        logcat(LogPriority.DEBUG) {
+            "TTS: Auto-loading next chapter ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
+        }
 
         if (preferences.novelInfiniteScroll.get()) {
             if (moveToLoadedNextChapterForTts(anchorChapterIndex)) {
@@ -910,7 +963,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun moveToLoadedNextChapterForTts(anchorChapterIndex: Int = currentChapterIndex): Boolean {
-        logcat(LogPriority.DEBUG) { "TTS: moveToLoadedNextChapterForTts anchor=$anchorChapterIndex ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}" }
+        logcat(LogPriority.DEBUG) {
+            "TTS: moveToLoadedNextChapterForTts anchor=$anchorChapterIndex ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
+        }
         val nextIndex = anchorChapterIndex + 1
         val nextLoaded = loadedChapters.getOrNull(nextIndex)
 
@@ -944,7 +999,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 activity.onPageSelected(page)
                 activity.onNovelProgressChanged(0f)
             }
-            logcat(LogPriority.DEBUG) { "TTS: used pre-fetched chapter ${cached.chapter.chapter.name} ts=${System.currentTimeMillis()}" }
+            logcat(LogPriority.DEBUG) {
+                "TTS: used pre-fetched chapter ${cached.chapter.chapter.name} ts=${System.currentTimeMillis()}"
+            }
 
             // View is now attached — render the stored content. setChapterContent's coroutine
             // will set pendingTtsAutoStart → startTts() once the chunks are ready.
@@ -970,7 +1027,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         return true
     }
 
-
     fun startTts() {
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
@@ -986,7 +1042,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         if (text.isNullOrEmpty()) {
             // Chapter text hasn't rendered yet; defer so onChapterTextSet starts playback
             // once it's ready instead of failing the start silently.
-            logcat(LogPriority.WARN) { "TTS: text not ready, deferring start. loadedChapters=${loadedChapters.size}, currentIndex=$currentChapterIndex" }
+            logcat(LogPriority.WARN) {
+                "TTS: text not ready, deferring start. loadedChapters=${loadedChapters.size}, currentIndex=$currentChapterIndex"
+            }
             pendingTtsAutoStart = true
             return
         }
@@ -999,7 +1057,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun stopTts() {
-        logcat(LogPriority.DEBUG) { "TTS: stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}" }
+        logcat(LogPriority.DEBUG) {
+            "TTS: stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
+        }
         pendingTtsAutoStart = false
         handoffState = TtsHandoffState.Idle
         ttsController.stop()
@@ -1018,7 +1078,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun pauseTts() {
-        logcat(LogPriority.DEBUG) { "TTS: pauseTts called ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}" }
+        logcat(LogPriority.DEBUG) {
+            "TTS: pauseTts called ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}"
+        }
         ttsController.pause()
     }
 
@@ -1036,6 +1098,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     fun isTtsPaused(): Boolean = ttsController.isPaused()
     fun isTtsSpeaking(): Boolean = ttsController.isSpeaking()
+
     /**
      * High-level "TTS session active" flag for the background-notification
      * sync. Stays `true` across the brief stop/restart gap inside
@@ -1463,7 +1526,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                         scrollView.postDelayed({
                             isRestoringScroll = true
                             setScrollProgress(progress.coerceIn(0f, 1f))
-                            logcat(LogPriority.DEBUG) { "NovelViewer: Scroll restored (delayed) to ${(progress * 100).toInt()}%" }
+                            logcat(LogPriority.DEBUG) {
+                                "NovelViewer: Scroll restored (delayed) to ${(progress * 100).toInt()}%"
+                            }
                             isRestoringScroll = false
                         }, 200)
                         return
@@ -1596,7 +1661,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             startTts()
         }
     }
-
 
     private var initialLoadingView: TextView? = null
 
@@ -1758,14 +1822,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         for ((index, loadedChapter) in loadedChapters.withIndex()) {
             val separatorHeight = loadedChapter.separatorView?.height ?: 0
             if (index == currentChapterIndex) {
-                val chapterHeight = loadedChapter.headerView.height + loadedChapter.block.container.height + separatorHeight
+                val chapterHeight =
+                    loadedChapter.headerView.height + loadedChapter.block.container.height + separatorHeight
                 val visibleHeight = scrollView.height
                 val effectiveChapterHeight = (chapterHeight - visibleHeight).coerceAtLeast(1)
                 val chapterScrollY = accumulatedHeight + (effectiveChapterHeight * progress).toInt()
                 scrollView.scrollTo(0, chapterScrollY)
                 return
             }
-            accumulatedHeight += loadedChapter.headerView.height + loadedChapter.block.container.height + separatorHeight
+            accumulatedHeight +=
+                loadedChapter.headerView.height + loadedChapter.block.container.height + separatorHeight
         }
     }
 

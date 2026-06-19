@@ -61,19 +61,19 @@ class BackupCreator(
      * Batch size for processing manga during backup.
      * Slightly larger batches improve throughput without large memory spikes.
      */
-    private val MANGA_BATCH_SIZE = 20
+    private val mangaBatchSize = 20
 
     /**
      * How many lightweight favorite rows to pull from the DB per keyset page. Kept well above
-     * MANGA_BATCH_SIZE but small enough that a 200k library is never fully resident at once.
+     * mangaBatchSize but small enough that a 200k library is never fully resident at once.
      */
-    private val MANGA_PAGE_SIZE = 500L
+    private val mangaPageSize = 500L
 
     /**
      * Maximum number of manga to hold in memory at once before flushing.
      * For very large libraries, we process in memory-bounded segments.
      */
-    private val MAX_MANGA_IN_MEMORY = 200
+    private val maxMangaInMemory = 200
 
     suspend fun backup(uri: Uri, options: BackupOptions, onProgress: ((Int, Int) -> Unit)? = null): String {
         var file: UniFile? = null
@@ -150,15 +150,15 @@ class BackupCreator(
                 if (options.libraryEntries) {
                     var afterId = 0L
                     while (true) {
-                        val page = mangaRepository.getFavoritesEntryPaged(afterId, MANGA_PAGE_SIZE)
+                        val page = mangaRepository.getFavoritesEntryPaged(afterId, mangaPageSize)
                         if (page.isEmpty()) break
                         afterId = page.last().id
-                        page.chunked(MANGA_BATCH_SIZE).forEach { processBatch(it) }
+                        page.chunked(mangaBatchSize).forEach { processBatch(it) }
                     }
                 }
                 if (options.readEntries) {
                     mangaRepository.getReadMangaNotInLibrary()
-                        .chunked(MANGA_BATCH_SIZE)
+                        .chunked(mangaBatchSize)
                         .forEach { processBatch(it) }
                 }
 

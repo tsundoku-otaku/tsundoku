@@ -223,6 +223,9 @@ class JsSourceEntityTest {
     @Test
     fun `pickContentField handles HTML content in chapterText field`() {
         val text = "<p>Chapter one</p><p>Chapter two</p>"
-        assertEquals(text, JsSource.pickContentField(obj("""{"chapterText":"<p>Chapter one<\/p><p>Chapter two<\/p>"}""")))
+        assertEquals(
+            text,
+            JsSource.pickContentField(obj("""{"chapterText":"<p>Chapter one<\/p><p>Chapter two<\/p>"}""")),
+        )
     }
 }

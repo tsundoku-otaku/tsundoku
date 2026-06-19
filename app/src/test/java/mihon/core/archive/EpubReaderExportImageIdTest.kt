@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
-
 class EpubReaderExportImageIdTest {
 
     private fun id(path: String): String = EpubReader.computeExportImageId(path)

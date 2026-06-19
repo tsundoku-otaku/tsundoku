@@ -1,8 +1,8 @@
 package mihon.feature.migration.list.search
 
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.SManga
 import mihon.domain.manga.model.toDomainManga
 import tachiyomi.domain.manga.model.Manga

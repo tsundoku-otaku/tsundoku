@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -34,7 +36,13 @@ internal object NovelWebViewDocumentBuilder {
         val chapterPath = chapterModel?.url.orEmpty()
 
         val chapterDivider = buildChapterDivider(chapterId, chapterName, chapterNumber, chapterPath, input)
-        val (chapterWrapperStart, chapterWrapperEnd) = buildChapterWrapper(chapterId, chapterName, chapterNumber, chapterPath, input)
+        val (chapterWrapperStart, chapterWrapperEnd) = buildChapterWrapper(
+            chapterId,
+            chapterName,
+            chapterNumber,
+            chapterPath,
+            input,
+        )
 
         val mediaBlockCss = if (input.blockMedia) {
             "img, video, audio, source, svg, image { display: none !important; }"
@@ -126,6 +134,7 @@ internal object NovelWebViewDocumentBuilder {
         """.trimIndent()
     }
 
+    @Suppress("ktlint:standard:max-line-length")
     private fun buildChapterDivider(
         chapterId: Long,
         chapterName: String,
@@ -155,6 +164,8 @@ internal object NovelWebViewDocumentBuilder {
             .htmlAttributeEscape()
         val name = chapterName.htmlAttributeEscape()
         val path = chapterPath.htmlAttributeEscape()
+
+        @Suppress("ktlint:standard:max-line-length")
         val start = """<$CHAPTER_TAG_NAME $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$name" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$path" $CHAPTER_URL_ATTR="$absoluteUrl" $TSUNDOKU_CHAPTER_ATTR="1">"""
         val end = "</$CHAPTER_TAG_NAME>"
         return start to end

@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.webview
 
 import android.app.Activity
@@ -22,15 +24,15 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,8 +46,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import eu.kanade.presentation.theme.TachiyomiTheme
 import eu.kanade.tachiyomi.R
-import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.data.track.TrackerManager
+import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
 import eu.kanade.tachiyomi.util.system.WebViewUtil
 import eu.kanade.tachiyomi.util.system.toast
@@ -279,13 +281,15 @@ private fun TrackerWebViewLoginScreen(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                 ),
             ) {
-                val instructions = when (trackerId) {
-                    10L -> "Login to NovelUpdates, then tap the ✓ button to complete login."
-                    11L -> "Login to NovelList, then tap the ✓ button to complete login. Use the edit icon to paste token/cookie manually."
-                    12L -> "Login to RanobeDB, then tap the ✓ button to complete login. Use the edit icon to paste the auth_session cookie manually."
-                    13L -> "Login to MangaBaka, navigate to your API keys page, then paste the PAT (mb-...) via the edit icon. The ✓ button also tries to extract a session cookie."
-                    else -> "Login, then tap the ✓ button to complete."
-                }
+                val instructions =
+                    @Suppress("ktlint:standard:max-line-length")
+                    when (trackerId) {
+                        10L -> "Login to NovelUpdates, then tap the ✓ button to complete login."
+                        11L -> "Login to NovelList, then tap the ✓ button to complete login. Use the edit icon to paste token/cookie manually."
+                        12L -> "Login to RanobeDB, then tap the ✓ button to complete login. Use the edit icon to paste the auth_session cookie manually."
+                        13L -> "Login to MangaBaka, navigate to your API keys page, then paste the PAT (mb-...) via the edit icon. The ✓ button also tries to extract a session cookie."
+                        else -> "Login, then tap the ✓ button to complete."
+                    }
                 Text(
                     text = instructions,
                     modifier = Modifier.padding(16.dp),
@@ -459,8 +463,15 @@ private suspend fun extractTokenFromCookies(trackerId: Long, currentUrl: String)
                 val cookies = cookieManager.getCookie("https://mangabaka.org")
                 logcat(LogPriority.DEBUG) { "MangaBaka cookies: $cookies" }
                 if (cookies != null) {
-                    val sessionData = Regex("__Secure-better-auth\\.session_data=([^;]+)").find(cookies)?.groupValues?.get(1)
-                    val sessionToken = Regex("__Secure-better-auth\\.session_token=([^;]+)").find(cookies)?.groupValues?.get(1)
+                    @Suppress("ktlint:standard:max-line-length")
+                    val sessionData = Regex(
+                        "__Secure-better-auth\\.session_data=([^;]+)",
+                    ).find(cookies)?.groupValues?.get(1)
+
+                    @Suppress("ktlint:standard:max-line-length")
+                    val sessionToken = Regex(
+                        "__Secure-better-auth\\.session_token=([^;]+)",
+                    ).find(cookies)?.groupValues?.get(1)
                     when {
                         sessionData != null || sessionToken != null -> buildString {
                             if (sessionData != null) append("__Secure-better-auth.session_data=$sessionData")

@@ -118,5 +118,4 @@ class TrackPreferences(
         "mangabaka_sync_reading_list",
         true,
     )
-
 }

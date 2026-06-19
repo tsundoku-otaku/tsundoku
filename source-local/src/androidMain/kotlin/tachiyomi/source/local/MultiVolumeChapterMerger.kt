@@ -2,7 +2,6 @@ package tachiyomi.source.local
 
 import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 
-
 fun <T> groupChaptersByVolume(
     chapters: List<T>,
     volumeKeyOf: (T) -> String?,

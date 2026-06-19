@@ -36,6 +36,8 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.tachiyomi.source.CatalogueSource
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -48,8 +50,6 @@ import tachiyomi.presentation.core.util.plus
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import eu.kanade.tachiyomi.source.CatalogueSource
-import kotlinx.coroutines.flow.map
 
 object SourcePriorityScreen : Screen {
 

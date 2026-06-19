@@ -34,12 +34,14 @@ class LibraryPreferences(
 
     val titleMaxLines: Preference<Int> = preferenceStore.getInt("pref_library_title_max_lines", 2)
 
-
     val lastUpdatedTimestamp: Preference<Long> = preferenceStore.getLong(
         Preference.appStateKey("library_update_last_timestamp"),
         0L,
     )
-    val lastUpdatesClearedTimestamp: Preference<Long> = preferenceStore.getLong(Preference.appStateKey("updates_cleared_timestamp"), 0L)
+    val lastUpdatesClearedTimestamp: Preference<Long> = preferenceStore.getLong(
+        Preference.appStateKey("updates_cleared_timestamp"),
+        0L,
+    )
     val autoUpdateInterval: Preference<Int> = preferenceStore.getInt("pref_library_update_interval_key", 0)
 
     val autoUpdateDeviceRestrictions: Preference<Set<String>> = preferenceStore.getStringSet(
@@ -123,17 +125,32 @@ class LibraryPreferences(
         TriState.DISABLED,
     )
 
-    val filterExtensions: Preference<Set<String>> = preferenceStore.getStringSet("pref_filter_library_extensions", emptySet())
+    val filterExtensions: Preference<Set<String>> = preferenceStore.getStringSet(
+        "pref_filter_library_extensions",
+        emptySet(),
+    )
 
     // Stores extension IDs that are excluded (unchecked) from the library filter
-    val excludedExtensions: Preference<Set<String>> = preferenceStore.getStringSet("pref_excluded_library_extensions", emptySet())
+    val excludedExtensions: Preference<Set<String>> = preferenceStore.getStringSet(
+        "pref_excluded_library_extensions",
+        emptySet(),
+    )
 
     // Stores source IDs that should have their chapter list reversed
-    val reversedChapterSources: Preference<Set<String>> = preferenceStore.getStringSet("pref_reversed_chapter_sources", emptySet())
+    val reversedChapterSources: Preference<Set<String>> = preferenceStore.getStringSet(
+        "pref_reversed_chapter_sources",
+        emptySet(),
+    )
 
     // Tag filtering - included tags (TriState: DISABLED = show all, ENABLED_IS = include, ENABLED_NOT = exclude)
-    val includedTags: Preference<Set<String>> = preferenceStore.getStringSet("pref_filter_library_included_tags", emptySet())
-    val excludedTags: Preference<Set<String>> = preferenceStore.getStringSet("pref_filter_library_excluded_tags", emptySet())
+    val includedTags: Preference<Set<String>> = preferenceStore.getStringSet(
+        "pref_filter_library_included_tags",
+        emptySet(),
+    )
+    val excludedTags: Preference<Set<String>> = preferenceStore.getStringSet(
+        "pref_filter_library_excluded_tags",
+        emptySet(),
+    )
     fun filterNoTags() = preferenceStore.getEnum("pref_filter_library_no_tags", TriState.DISABLED)
 
     // Tag filter logic modes (true = AND, false = OR)
@@ -147,7 +164,8 @@ class LibraryPreferences(
     ) // Default OR
 
     // Tag sort preferences
-    val tagSortByName: Preference<Boolean> = preferenceStore.getBoolean("pref_tag_sort_by_name", false) // Default sort by count
+    // Default sort by count
+    val tagSortByName: Preference<Boolean> = preferenceStore.getBoolean("pref_tag_sort_by_name", false)
     val tagSortAscending: Preference<Boolean> = preferenceStore.getBoolean(
         "pref_tag_sort_ascending",
         false,
@@ -311,7 +329,10 @@ class LibraryPreferences(
 
     val updateMangaTitles: Preference<Boolean> = preferenceStore.getBoolean("pref_update_library_manga_titles", false)
 
-    val updateMangaMetadata: Preference<Boolean> = preferenceStore.getBoolean("pref_update_library_manga_metadata", true)
+    val updateMangaMetadata: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_update_library_manga_metadata",
+        true,
+    )
 
     val disallowNonAsciiFilenames: Preference<Boolean> = preferenceStore.getBoolean(
         "disallow_non_ascii_filenames",

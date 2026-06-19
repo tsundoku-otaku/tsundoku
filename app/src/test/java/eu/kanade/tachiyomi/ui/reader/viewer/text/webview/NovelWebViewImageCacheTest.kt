@@ -32,7 +32,6 @@ class NovelWebViewImageCacheTest {
         }
     }
 
-
     @Test
     fun `intercept returns null for https URL`(@TempDir tempDir: Path) {
         val cache = makeCache(tempDir.toFile())
@@ -44,7 +43,6 @@ class NovelWebViewImageCacheTest {
         val cache = makeCache(tempDir.toFile())
         assertNull(cache.intercept("data:image/png;base64,abc", null, null))
     }
-
 
     @Test
     fun `intercept loads JPEG synchronously when not in cache`(@TempDir tempDir: Path) {
@@ -82,7 +80,6 @@ class NovelWebViewImageCacheTest {
         assertArrayEquals(imageBytes, cachedFiles!!.first().readBytes())
     }
 
-
     @Test
     fun `intercept serves from cache on second request without calling loader again`(@TempDir tempDir: Path) {
         val imageBytes = byteArrayOf(0x47.toByte(), 0x49.toByte(), 0x46.toByte())
@@ -103,7 +100,6 @@ class NovelWebViewImageCacheTest {
         assert(loadCount == 1) { "Loader should only be called once; second hit should come from cache" }
     }
 
-
     @Test
     fun `intercept returns null when no loader is available`(@TempDir tempDir: Path) {
         val cache = makeCache(tempDir.toFile())
@@ -116,7 +112,6 @@ class NovelWebViewImageCacheTest {
         val cache = makeCache(tempDir.toFile())
         assertNull(cache.intercept("tsundoku-novel-image://missing.jpg", 1L, loader))
     }
-
 
     @Test
     fun `intercept resolves chapterId-prefixed URL and uses matching chapter loader`(@TempDir tempDir: Path) {
@@ -156,7 +151,6 @@ class NovelWebViewImageCacheTest {
         assertArrayEquals(ch3Bytes, allBytes[0])
         assertArrayEquals(ch4Bytes, allBytes[1])
     }
-
 
     @Test
     fun `schedulePrefetch populates cache so intercept is a hit`(@TempDir tempDir: Path) = runBlocking {

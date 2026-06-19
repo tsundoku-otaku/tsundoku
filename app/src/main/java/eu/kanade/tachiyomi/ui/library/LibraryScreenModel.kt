@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.library
 
 import androidx.compose.material3.SnackbarDuration
@@ -32,9 +34,9 @@ import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -270,7 +272,6 @@ class LibraryScreenModel(
                 val filteredFavorites = favorites
                     .applyFilters(tracksMap, trackingFilters, itemPreferences)
 
-
                 LibraryData(
                     isInitialized = !isLoading,
                     showSystemCategory = showSystemCategory,
@@ -392,8 +393,27 @@ class LibraryScreenModel(
 
         val isNotLoggedInAnyTrack = trackingFilter.isEmpty()
 
-        val excludedTracks = trackingFilter.mapNotNullTo(HashSet()) { if (it.value == TriState.ENABLED_NOT) it.key else null }
-        val includedTracks = trackingFilter.mapNotNullTo(HashSet()) { if (it.value == TriState.ENABLED_IS) it.key else null }
+        @Suppress("ktlint:standard:max-line-length")
+        val excludedTracks = trackingFilter.mapNotNullTo(HashSet()) {
+            if (it.value ==
+                TriState.ENABLED_NOT
+            ) {
+                it.key
+            } else {
+                null
+            }
+        }
+
+        @Suppress("ktlint:standard:max-line-length")
+        val includedTracks = trackingFilter.mapNotNullTo(HashSet()) {
+            if (it.value ==
+                TriState.ENABLED_IS
+            ) {
+                it.key
+            } else {
+                null
+            }
+        }
         val trackFiltersIsIgnored = includedTracks.isEmpty() && excludedTracks.isEmpty()
         val tagIncluded = preferences.includedTags
         val tagExcluded = preferences.excludedTags
@@ -450,8 +470,14 @@ class LibraryScreenModel(
                 true
             } else {
                 val mangaTracks = trackMap[it.id].orEmpty()
-                val isExcluded = excludedTracks.isNotEmpty() && mangaTracks.fastAny { track -> track.trackerId in excludedTracks }
-                val isIncluded = includedTracks.isEmpty() || mangaTracks.fastAny { track -> track.trackerId in includedTracks }
+
+                @Suppress("ktlint:standard:max-line-length")
+                val isExcluded =
+                    excludedTracks.isNotEmpty() && mangaTracks.fastAny { track -> track.trackerId in excludedTracks }
+
+                @Suppress("ktlint:standard:max-line-length")
+                val isIncluded =
+                    includedTracks.isEmpty() || mangaTracks.fastAny { track -> track.trackerId in includedTracks }
                 !isExcluded && isIncluded
             }
             if (!trackingPasses) return@fastFilter false
@@ -1038,7 +1064,13 @@ class LibraryScreenModel(
             }
 
             // Refresh library UI after modifications
-            if (!deleteFromLibrary && (deleteChapters || clearChaptersFromDb || deleteTranslations || clearCovers || clearDescriptions || clearTags)) {
+            @Suppress("ktlint:standard:max-line-length")
+            if (!deleteFromLibrary &&
+                (
+                    deleteChapters || clearChaptersFromDb || deleteTranslations || clearCovers || clearDescriptions ||
+                        clearTags
+                    )
+            ) {
                 getLibraryManga.notifyChanged()
             }
         }
@@ -1096,12 +1128,22 @@ class LibraryScreenModel(
     /** Categories visible in this tab, filtered by the tab's content type. */
     private fun categoriesForType(): kotlinx.coroutines.flow.Flow<List<Category>> = when (type) {
         LibraryType.All -> getCategories.subscribe()
-        LibraryType.Manga -> getCategories.subscribe().map { categories ->
-            categories.filter { it.contentType == Category.CONTENT_TYPE_ALL || it.contentType == Category.CONTENT_TYPE_MANGA }
-        }
-        LibraryType.Novel -> getCategories.subscribe().map { categories ->
-            categories.filter { it.contentType == Category.CONTENT_TYPE_ALL || it.contentType == Category.CONTENT_TYPE_NOVEL }
-        }
+        LibraryType.Manga ->
+            @Suppress("ktlint:standard:max-line-length")
+            getCategories.subscribe().map { categories ->
+                categories.filter {
+                    it.contentType == Category.CONTENT_TYPE_ALL ||
+                        it.contentType == Category.CONTENT_TYPE_MANGA
+                }
+            }
+        LibraryType.Novel ->
+            @Suppress("ktlint:standard:max-line-length")
+            getCategories.subscribe().map { categories ->
+                categories.filter {
+                    it.contentType == Category.CONTENT_TYPE_ALL ||
+                        it.contentType == Category.CONTENT_TYPE_NOVEL
+                }
+            }
     }
 
     private fun TriState.toSpecInt(): Int = when (this) {
@@ -1470,6 +1512,7 @@ class LibraryScreenModel(
         mutableState.update { it.copy(dialog = Dialog.ExportEpub(selectedNovels)) }
     }
 
+    @Suppress("ktlint:standard:max-line-length")
     fun exportNovelsAsEpub(
         mangaList: List<Manga>,
         uri: android.net.Uri,
@@ -1505,7 +1548,7 @@ class LibraryScreenModel(
     }
 
     // Legacy method kept for reference - now using EpubExportJob instead
-    @Suppress("unused")
+    @Suppress("ktlint:standard:max-line-length", "unused")
     private fun exportNovelsAsEpubLegacy(
         mangaList: List<Manga>,
         uri: android.net.Uri,
@@ -1558,11 +1601,15 @@ class LibraryScreenModel(
                         var lastChapterNum = Double.MIN_VALUE
 
                         // Get translated chapter IDs for this manga if translation mode needs them
-                        val translatedChapterIds = if (options.translationMode != tachiyomi.domain.translation.model.TranslationMode.ORIGINAL) {
-                            translatedChapterRepository.getTranslatedChapterIds(chapters.map { it.id })
-                        } else {
-                            emptySet()
-                        }
+                        val translatedChapterIds =
+                            @Suppress("ktlint:standard:max-line-length")
+                            if (options.translationMode !=
+                                tachiyomi.domain.translation.model.TranslationMode.ORIGINAL
+                            ) {
+                                translatedChapterRepository.getTranslatedChapterIds(chapters.map { it.id })
+                            } else {
+                                emptySet()
+                            }
 
                         for ((chapterIndex, chapter) in chapters.withIndex()) {
                             // Check if chapter is downloaded first
@@ -1586,18 +1633,28 @@ class LibraryScreenModel(
 
                             // Try to get translated content first if translation mode needs it
                             var content: String? = null
-                            if (options.translationMode != tachiyomi.domain.translation.model.TranslationMode.ORIGINAL && hasTranslation) {
+                            @Suppress("ktlint:standard:max-line-length")
+                            if (options.translationMode != tachiyomi.domain.translation.model.TranslationMode.ORIGINAL &&
+                                hasTranslation
+                            ) {
+                                @Suppress("ktlint:standard:max-line-length")
                                 try {
-                                    val translations = translatedChapterRepository.getAllTranslationsForChapter(chapter.id)
+                                    @Suppress("ktlint:standard:max-line-length")
+                                    val translations = translatedChapterRepository.getAllTranslationsForChapter(
+                                        chapter.id,
+                                    )
                                     content = translations.firstOrNull()?.translatedContent
                                 } catch (e: Exception) {
-                                    logcat(LogPriority.WARN, e) { "Failed to get translation for chapter: ${chapter.name}" }
+                                    logcat(LogPriority.WARN, e) {
+                                        "Failed to get translation for chapter: ${chapter.name}"
+                                    }
                                 }
                             }
 
                             // Fall back to original content if no translation or not preferred
                             if (content == null && isDownloaded) {
                                 // Get from disk
+                                @Suppress("ktlint:standard:max-line-length")
                                 try {
                                     val chapterDir = downloadProvider.findChapterDir(
                                         chapter.name,
@@ -1615,9 +1672,11 @@ class LibraryScreenModel(
                                         if (htmlFiles.isNotEmpty()) {
                                             val sb = StringBuilder()
                                             htmlFiles.forEachIndexed { i, file ->
-                                                val fileContent = context.contentResolver.openInputStream(file.uri)?.use {
-                                                    it.bufferedReader().readText()
-                                                } ?: ""
+                                                @Suppress("ktlint:standard:max-line-length")
+                                                val fileContent =
+                                                    context.contentResolver.openInputStream(file.uri)?.use {
+                                                        it.bufferedReader().readText()
+                                                    } ?: ""
                                                 sb.append(fileContent)
                                                 if (i < htmlFiles.size - 1) {
                                                     sb.append("\n\n")
@@ -1627,12 +1686,15 @@ class LibraryScreenModel(
                                         }
                                     }
                                 } catch (e: Exception) {
-                                    logcat(LogPriority.ERROR, e) { "Failed to read downloaded chapter: ${chapter.name}" }
+                                    logcat(LogPriority.ERROR, e) {
+                                        "Failed to read downloaded chapter: ${chapter.name}"
+                                    }
                                 }
                             }
 
                             // Fetch from source if still no content
                             if (content == null && !options.downloadedOnly) {
+                                @Suppress("ktlint:standard:max-line-length")
                                 try {
                                     if (source is HttpSource) {
                                         val pages = source.getPageList(chapter.toSChapter())
@@ -1652,7 +1714,9 @@ class LibraryScreenModel(
                                         }
                                     }
                                 } catch (e: Exception) {
-                                    logcat(LogPriority.WARN, e) { "Failed to fetch chapter from source: ${chapter.name}" }
+                                    logcat(LogPriority.WARN, e) {
+                                        "Failed to fetch chapter from source: ${chapter.name}"
+                                    }
                                 }
                             }
 
@@ -1895,7 +1959,6 @@ class LibraryScreenModel(
         }
         return dp[s1.length][s2.length]
     }
-
 
     data class DuplicateGroup(val items: List<LibraryItem>)
 

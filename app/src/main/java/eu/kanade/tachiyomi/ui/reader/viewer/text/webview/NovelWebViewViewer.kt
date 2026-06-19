@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
 import android.annotation.SuppressLint
@@ -26,6 +28,31 @@ import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.ReaderProgressIndicator
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelConfig
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ChapterQueue
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentConfig
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ProcessedContent
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_DIVIDER_CLASS
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_ID_ATTR
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_NUMBER_ATTR
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_PATH_ATTR
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_TAG_NAME
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_TITLE_ATTR
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_URL_ATTR
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_CHAPTERS_CONTAINER_ID
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_CHAPTER_ATTR
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -47,31 +74,6 @@ import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
-import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelConfig
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentConfig
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ProcessedContent
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ChapterQueue
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_DIVIDER_CLASS
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_ID_ATTR
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_NUMBER_ATTR
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_PATH_ATTR
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_TAG_NAME
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_TITLE_ATTR
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_URL_ATTR
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_CHAPTERS_CONTAINER_ID
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_CHAPTER_ATTR
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME
-import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 
 class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
@@ -107,10 +109,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private val loadedChapterIds: Set<Long> get() = chapterQueue.loadedIds
     private var currentChapterIndex: Int
         get() = chapterQueue.currentIndex
-        set(value) { chapterQueue.currentIndex = value }
+        set(value) {
+            chapterQueue.currentIndex = value
+        }
     private var isLoadingNext: Boolean
         get() = chapterQueue.isLoadingNext
-        set(value) { chapterQueue.isLoadingNext = value }
+        set(value) {
+            chapterQueue.isLoadingNext = value
+        }
     private var isDestroyed = false
     private var isEditingMode = false
 
@@ -126,9 +132,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     // Survives ttsController.stop() — set when TTS triggers a non-inf-scroll chapter load.
     private var pendingTtsAutoStartOnLoad = false
+
     // True only while loadHtmlContent() has called loadDataWithBaseURL for real chapter content
     // (not the loading-indicator page). Lets onPageFinished distinguish real vs loading loads.
     private var isLoadingRealChapter = false
+
     // False while the loading indicator is up or real content is still loading; true once real
     // chapter content has finished rendering. Guards TTS from reading the loading placeholder.
     private var webChapterContentReady = false
@@ -165,7 +173,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             ): Boolean {
                 if (isEditingMode) return false
                 if (!preferences.novelSwipeNavigation.get()) return false
-                return handleNovelFlingGesture(e1, e2, velocityX, velocityY,
+                return handleNovelFlingGesture(
+                    e1,
+                    e2,
+                    velocityX,
+                    velocityY,
                     onPrevious = { activity.loadPreviousChapter() },
                     onNext = { activity.loadNextChapter() },
                 )
@@ -185,11 +197,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         activity.toggleMenu()
                     }
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.NEXT,
-                    eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.RIGHT -> {
+                    eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.RIGHT,
+                    -> {
                         webView.evaluateJavascript("window.scrollBy(0, ${(container.height * 0.8).toInt()});", null)
                     }
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.PREV,
-                    eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.LEFT -> {
+                    eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.LEFT,
+                    -> {
                         webView.evaluateJavascript("window.scrollBy(0, -${(container.height * 0.8).toInt()});", null)
                     }
                 }
@@ -342,7 +356,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun loadNextChapterForTts(_anchorChapterIndex: Int = ttsController.ttsPlaybackChapterIndex) {
-        logcat(LogPriority.DEBUG) { "TTS (WebView): Auto-loading next chapter ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}" }
+        logcat(LogPriority.DEBUG) {
+            "TTS (WebView): Auto-loading next chapter ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
+        }
 
         scope.launch {
             if (preferences.novelInfiniteScroll.get()) {
@@ -559,7 +575,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     request: android.webkit.WebResourceRequest?,
                 ): android.webkit.WebResourceResponse? {
                     val url = request?.url?.toString() ?: return null
-                    val fallbackChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
+                    val fallbackChapterId =
+                        currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
                     val fallbackLoader = activity.viewModel.state.value.viewerChapters?.currChapter?.pageLoader
                     imageCache.intercept(url, fallbackChapterId, fallbackLoader)?.let { return it }
                     return super.shouldInterceptRequest(view, request)
@@ -658,7 +675,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ).observe()
     }
 
-
     private fun restoreScrollPosition() {
         currentPage?.let { page ->
             val savedProgress = page.chapter.chapter.last_page_read
@@ -756,7 +772,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         val percent = (((chunkIndex + 1) * 100f) / total).toInt().coerceIn(0, 100)
         activity.saveNovelProgress(page, percent)
     }
-
 
     private fun shouldAutoMarkShortChapter(page: ReaderPage?): Boolean {
         if (!preferences.novelMarkShortChapterAsRead.get()) return false
@@ -897,7 +912,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
-
     private fun displayContent(
         chapter: ReaderChapter,
         page: ReaderPage,
@@ -939,7 +953,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             // URL with the chapter ID so that shouldInterceptRequest can resolve the
             // correct loader even when multiple chapters share identical image filenames
             // (e.g. image_0.jpg in both chapter 3 and chapter 4).
-            val finalProcessed = if (isAppendOrPrepend && processed.text.contains(NovelWebViewImageCache.URL_SCHEME_NOVEL_IMAGE)) {
+            val finalProcessed = if (isAppendOrPrepend &&
+                processed.text.contains(NovelWebViewImageCache.URL_SCHEME_NOVEL_IMAGE)
+            ) {
                 processed.copy(
                     text = processed.text.replace(
                         NovelWebViewImageCache.URL_SCHEME_NOVEL_IMAGE,
@@ -961,9 +977,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         }
                     }
                     if (isPrepend) {
-                        prependHtmlContent(finalProcessed, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
+                        prependHtmlContent(
+                            finalProcessed,
+                            chapterId,
+                            chapter.chapter.name,
+                            chapter.chapter.chapter_number,
+                            chapter.chapter.url,
+                        )
                     } else {
-                        appendHtmlContent(finalProcessed, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
+                        appendHtmlContent(
+                            finalProcessed,
+                            chapterId,
+                            chapter.chapter.name,
+                            chapter.chapter.chapter_number,
+                            chapter.chapter.url,
+                        )
                     }
                 } else {
                     loadHtmlContent(finalProcessed, chapter)
@@ -980,7 +1008,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * Prepend [processed] (already through [ContentPipeline]) to the WebView DOM.
      * No preprocessing is performed here; the content is injected as-is.
      */
-    private fun prependHtmlContent(processed: ProcessedContent, chapterId: Long, chapterName: String, chapterNumber: Float, chapterUrl: String?) {
+    private fun prependHtmlContent(
+        processed: ProcessedContent,
+        chapterId: Long,
+        chapterName: String,
+        chapterNumber: Float,
+        chapterUrl: String?,
+    ) {
         val plainTextMode = processed.isPlainText
         val escapedContent = quoteForJson(processed.text)
 
@@ -1126,8 +1160,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         webChapterContentReady = false
         webView.loadDataWithBaseURL(resolveWebViewBaseUrl(chapterPath), html, "text/html", "UTF-8", null)
     }
-
-
 
     private fun resolveWebViewBaseUrl(chapterUrl: String?): String? =
         NovelWebViewChapterMeta.resolveWebViewBaseUrl(chapterUrl, activity.viewModel.manga?.url)
@@ -1527,7 +1559,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     // Instead, pre-fetch and cache the next chapter so it's ready instantly
                     // when TTS finishes the current chapter and calls appendNextChapterIfAvailable.
                     if (handoffState.isIdle) {
-                        logcat(LogPriority.DEBUG) { "NovelWebViewViewer: loadNextChapter — TTS active, pre-fetching next chapter" }
+                        logcat(LogPriority.DEBUG) {
+                            "NovelWebViewViewer: loadNextChapter — TTS active, pre-fetching next chapter"
+                        }
                         scope.launch { preFetchNextChapterForTts() }
                     }
                 } else if (!isLoadingNext) {
@@ -1637,7 +1671,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     }
                     chapterQueue.append(chapter)
                 }
-                appendHtmlContent(processed, chapterId, chapter.chapter.name, chapter.chapter.chapter_number, chapter.chapter.url)
+                appendHtmlContent(
+                    processed,
+                    chapterId,
+                    chapter.chapter.name,
+                    chapter.chapter.chapter_number,
+                    chapter.chapter.url,
+                )
             } else {
                 loadHtmlContent(processed, chapter)
                 chapterQueue.reset(chapter)
@@ -1669,7 +1709,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     if (handoffState.isPreFetching) {
                         handoffState = TtsHandoffState.Cached(Pair(preparedChapter, page))
                         prefetchCompletedSignal.tryEmit(Unit)
-                        logcat(LogPriority.DEBUG) { "TTS (WebView): Cached next chapter ${preparedChapter.chapter.name}" }
+                        logcat(LogPriority.DEBUG) {
+                            "TTS (WebView): Cached next chapter ${preparedChapter.chapter.name}"
+                        }
                     }
                 }
             }
@@ -1697,10 +1739,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             val (preparedChapter, page) = cached
             val nextId = preparedChapter.chapter.id ?: return
             if (!loadedChapterIds.contains(nextId)) {
-                logcat(LogPriority.DEBUG) { "NovelWebViewViewer: using pre-fetched chapter $nextId (${preparedChapter.chapter.name})" }
+                logcat(LogPriority.DEBUG) {
+                    "NovelWebViewViewer: using pre-fetched chapter $nextId (${preparedChapter.chapter.name})"
+                }
                 try {
                     displayContentImmediate(preparedChapter, page, isAppendOrPrepend = true, isPrepend = false)
-                    logcat(LogPriority.INFO) { "NovelWebViewViewer: Successfully appended pre-fetched chapter ${preparedChapter.chapter.name}" }
+                    logcat(LogPriority.INFO) {
+                        "NovelWebViewViewer: Successfully appended pre-fetched chapter ${preparedChapter.chapter.name}"
+                    }
                 } finally {
                     if (!silent) inlineFeedback.hideInlineLoading(isPrepend = false)
                     setJsLoadingNext()
@@ -1781,7 +1827,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
             if (!loaded) return
 
-            logcat(LogPriority.DEBUG) { "NovelWebViewViewer: appending content for chapter $nextId ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}" }
+            logcat(LogPriority.DEBUG) {
+                "NovelWebViewViewer: appending content for chapter $nextId ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
+            }
             displayContentImmediate(preparedChapter, page, isAppendOrPrepend = true, isPrepend = false)
             logcat(LogPriority.INFO) {
                 "NovelWebViewViewer: Successfully appended next chapter ${preparedChapter.chapter.name}"
@@ -1791,7 +1839,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             setJsLoadingNext()
         }
     }
-
 
     /**
      * Scroll to the top of the content

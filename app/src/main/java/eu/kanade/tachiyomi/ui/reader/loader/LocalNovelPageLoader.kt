@@ -76,7 +76,9 @@ class LocalNovelPageLoader(
                 throw IllegalStateException("Source is not a NovelSource")
             }
         } catch (e: Throwable) {
-            logcat(LogPriority.ERROR) { "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}" }
+            logcat(LogPriority.ERROR) {
+                "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}"
+            }
             page.status = Page.State.Error(e)
         }
     }

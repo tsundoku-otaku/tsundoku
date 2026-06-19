@@ -11,10 +11,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -33,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.NavigateBefore
@@ -40,6 +40,8 @@ import androidx.compose.material.icons.automirrored.outlined.NavigateNext
 import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.FastRewind
 import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -48,8 +50,6 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Translate
-import androidx.compose.material.icons.outlined.FastForward
-import androidx.compose.material.icons.outlined.FastRewind
 import androidx.compose.material.icons.outlined.VerticalAlignTop
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VolumeUp
@@ -194,7 +194,10 @@ fun NovelReaderAppBars(
                     .fillMaxWidth(),
             ) {
                 if (visible && showProgressSlider &&
-                    (progressSliderMode == PROGRESS_SLIDER_MODE_VERTICAL_LEFT || progressSliderMode == PROGRESS_SLIDER_MODE_VERTICAL_RIGHT)
+                    (
+                        progressSliderMode == PROGRESS_SLIDER_MODE_VERTICAL_LEFT ||
+                            progressSliderMode == PROGRESS_SLIDER_MODE_VERTICAL_RIGHT
+                        )
                 ) {
                     val alignment = if (progressSliderMode == PROGRESS_SLIDER_MODE_VERTICAL_LEFT) {
                         Alignment.CenterStart
@@ -286,7 +289,6 @@ fun NovelReaderAppBars(
                 }
             }
         }
-
     }
 }
 
@@ -316,72 +318,72 @@ private fun NovelReaderTopBar(
             AppBarActions(
                 actions = buildList {
                     add(
-                            AppBar.Action(
-                                title = stringResource(
-                                    if (bookmarked) {
-                                        MR.strings.action_remove_bookmark
-                                    } else {
-                                        MR.strings.action_bookmark
-                                    },
-                                ),
-                                icon = if (bookmarked) {
-                                    Icons.Outlined.Bookmark
+                        AppBar.Action(
+                            title = stringResource(
+                                if (bookmarked) {
+                                    MR.strings.action_remove_bookmark
                                 } else {
-                                    Icons.Outlined.BookmarkBorder
+                                    MR.strings.action_bookmark
                                 },
-                                onClick = onToggleBookmarked,
                             ),
-                        )
+                            icon = if (bookmarked) {
+                                Icons.Outlined.Bookmark
+                            } else {
+                                Icons.Outlined.BookmarkBorder
+                            },
+                            onClick = onToggleBookmarked,
+                        ),
+                    )
+                    add(
+                        AppBar.OverflowAction(
+                            title = stringResource(TDMR.strings.action_reload_local),
+                            onClick = onReloadLocal,
+                        ),
+                    )
+                    add(
+                        AppBar.OverflowAction(
+                            title = stringResource(TDMR.strings.action_reload_source),
+                            onClick = onReloadSource,
+                        ),
+                    )
+                    add(
+                        AppBar.OverflowAction(
+                            title = stringResource(TDMR.strings.action_edit_appbar),
+                            onClick = onEditBottomBar,
+                        ),
+                    )
+                    onOpenInWebView?.let {
                         add(
                             AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_reload_local),
-                                onClick = onReloadLocal,
+                                title = stringResource(MR.strings.action_open_in_web_view),
+                                onClick = it,
                             ),
                         )
+                    }
+                    onOpenInBrowser?.let {
                         add(
                             AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_reload_source),
-                                onClick = onReloadSource,
+                                title = stringResource(MR.strings.action_open_in_browser),
+                                onClick = it,
                             ),
                         )
+                    }
+                    onShare?.let {
                         add(
                             AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_edit_appbar),
-                                onClick = onEditBottomBar,
+                                title = stringResource(MR.strings.action_share),
+                                onClick = it,
                             ),
                         )
-                        onOpenInWebView?.let {
-                            add(
-                                AppBar.OverflowAction(
-                                    title = stringResource(MR.strings.action_open_in_web_view),
-                                    onClick = it,
-                                ),
-                            )
-                        }
-                        onOpenInBrowser?.let {
-                            add(
-                                AppBar.OverflowAction(
-                                    title = stringResource(MR.strings.action_open_in_browser),
-                                    onClick = it,
-                                ),
-                            )
-                        }
-                        onShare?.let {
-                            add(
-                                AppBar.OverflowAction(
-                                    title = stringResource(MR.strings.action_share),
-                                    onClick = it,
-                                ),
-                            )
-                        }
-                        onRetranslate?.let {
-                            add(
-                                AppBar.OverflowAction(
-                                    title = stringResource(TDMR.strings.action_retranslate),
-                                    onClick = it,
-                                ),
-                            )
-                        }
+                    }
+                    onRetranslate?.let {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(TDMR.strings.action_retranslate),
+                                onClick = it,
+                            ),
+                        )
+                    }
                 },
             )
         },
@@ -487,7 +489,11 @@ private fun NovelReaderBottomBar(
                             Icon(
                                 imageVector = Icons.Outlined.Translate,
                                 contentDescription = stringResource(TDMR.strings.action_translate),
-                                tint = if (isTranslating) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                                tint = if (isTranslating) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                                 modifier = Modifier.size(iconSize),
                             )
                         }
@@ -517,7 +523,11 @@ private fun NovelReaderBottomBar(
                             .size(buttonSize)
                             .padding(paddingSize),
                         shape = MaterialTheme.shapes.small,
-                        color = if (ttsControlsVisible) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        color = if (ttsControlsVisible) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            Color.Transparent
+                        },
                     ) {
                         Box(
                             modifier = Modifier.combinedClickable(
@@ -527,7 +537,11 @@ private fun NovelReaderBottomBar(
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                imageVector = if (ttsControlsVisible) Icons.Outlined.VolumeUp else Icons.Outlined.RecordVoiceOver,
+                                imageVector = if (ttsControlsVisible) {
+                                    Icons.Outlined.VolumeUp
+                                } else {
+                                    Icons.Outlined.RecordVoiceOver
+                                },
                                 contentDescription = stringResource(TDMR.strings.pref_novel_tts),
                                 tint = if (ttsControlsVisible) {
                                     MaterialTheme.colorScheme.onPrimaryContainer
@@ -542,7 +556,8 @@ private fun NovelReaderBottomBar(
                     // Legacy items kept in enum for serialization compat — no longer rendered
                     BottomBarItem.TTS_PREV_PARAGRAPH,
                     BottomBarItem.TTS_NEXT_PARAGRAPH,
-                    BottomBarItem.TTS_VIEWPORT -> Unit
+                    BottomBarItem.TTS_VIEWPORT,
+                    -> Unit
 
                     // Orientation
                     BottomBarItem.ORIENTATION -> IconButton(
@@ -593,7 +608,11 @@ private fun NovelReaderBottomBar(
                             Icon(
                                 Icons.Outlined.Edit,
                                 contentDescription = "Edit",
-                                tint = if (isEditing) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                                tint = if (isEditing) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                                 modifier = Modifier.size(iconSize),
                             )
                         }
@@ -662,8 +681,12 @@ internal fun bottomBarItemInfo(
     isTtsActive: Boolean,
     isTtsPaused: Boolean,
 ): Pair<ImageVector, String> = when (item) {
-    BottomBarItem.PREV_CHAPTER -> Icons.AutoMirrored.Outlined.NavigateBefore to stringResource(MR.strings.action_previous_chapter)
-    BottomBarItem.NEXT_CHAPTER -> Icons.AutoMirrored.Outlined.NavigateNext to stringResource(MR.strings.action_next_chapter)
+    BottomBarItem.PREV_CHAPTER ->
+        Icons.AutoMirrored.Outlined.NavigateBefore to
+            stringResource(MR.strings.action_previous_chapter)
+    BottomBarItem.NEXT_CHAPTER ->
+        Icons.AutoMirrored.Outlined.NavigateNext to
+            stringResource(MR.strings.action_next_chapter)
     BottomBarItem.SCROLL_TO_TOP -> Icons.Outlined.VerticalAlignTop to stringResource(TDMR.strings.action_scroll_to_top)
     BottomBarItem.TRANSLATE -> Icons.Outlined.Translate to stringResource(TDMR.strings.action_translate)
     BottomBarItem.AUTO_SCROLL -> Icons.Outlined.PlayArrow to stringResource(TDMR.strings.action_start_auto_scroll)

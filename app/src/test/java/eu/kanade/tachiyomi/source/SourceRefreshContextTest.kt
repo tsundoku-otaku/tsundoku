@@ -14,9 +14,15 @@ import org.junit.jupiter.api.Test
 
 class SourceRefreshContextTest {
 
-    private val manga = SManga.create().apply { url = "/novel"; title = "Novel" }
+    private val manga = SManga.create().apply {
+        url = "/novel"
+        title = "Novel"
+    }
 
-    private fun chapter(url: String) = SChapter.create().apply { this.url = url; name = url }
+    private fun chapter(url: String) = SChapter.create().apply {
+        this.url = url
+        name = url
+    }
 
     private fun refreshContext(existing: List<SChapter> = emptyList(), force: Boolean = false) =
         RefreshContext(mangaId = 1L, existingChapters = existing, lastFetchTime = 0L, forceRefresh = force)
@@ -28,8 +34,17 @@ class SourceRefreshContextTest {
         var legacyCallCount = 0
         override suspend fun getPopularManga(page: Int): MangasPage = throw UnsupportedOperationException()
         override suspend fun getLatestUpdates(page: Int): MangasPage = throw UnsupportedOperationException()
-        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = throw UnsupportedOperationException()
-        override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): SMangaUpdate = throw UnsupportedOperationException()
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: FilterList,
+        ): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getMangaUpdate(
+            manga: SManga,
+            chapters: List<SChapter>,
+            fetchDetails: Boolean,
+            fetchChapters: Boolean,
+        ): SMangaUpdate = throw UnsupportedOperationException()
         override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
         override suspend fun getChapterList(manga: SManga): List<SChapter> {
             legacyCallCount++
@@ -44,8 +59,17 @@ class SourceRefreshContextTest {
         var receivedContext: RefreshContext? = null
         override suspend fun getPopularManga(page: Int): MangasPage = throw UnsupportedOperationException()
         override suspend fun getLatestUpdates(page: Int): MangasPage = throw UnsupportedOperationException()
-        override suspend fun getSearchManga(page: Int, query: String, filters: FilterList): MangasPage = throw UnsupportedOperationException()
-        override suspend fun getMangaUpdate(manga: SManga, chapters: List<SChapter>, fetchDetails: Boolean, fetchChapters: Boolean): SMangaUpdate = throw UnsupportedOperationException()
+        override suspend fun getSearchManga(
+            page: Int,
+            query: String,
+            filters: FilterList,
+        ): MangasPage = throw UnsupportedOperationException()
+        override suspend fun getMangaUpdate(
+            manga: SManga,
+            chapters: List<SChapter>,
+            fetchDetails: Boolean,
+            fetchChapters: Boolean,
+        ): SMangaUpdate = throw UnsupportedOperationException()
         override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
         override suspend fun getChapterList(manga: SManga): List<SChapter> =
             error("legacy path must not be used when override is present")

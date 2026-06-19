@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.customsource
 
 import android.graphics.Bitmap
@@ -88,8 +90,8 @@ import eu.kanade.tachiyomi.source.custom.SourceTestSection
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
-import tachiyomi.presentation.core.components.material.Scaffold as TachiyomiScaffold
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.components.material.Scaffold as TachiyomiScaffold
 
 /**
  * Which sections a custom source exposes. Chosen up front (URL dialog) so the wizard only walks the
@@ -434,7 +436,8 @@ fun ElementSelectorScreen(
         val arg = org.json.JSONObject.quote(org.json.JSONArray(selectors).toString())
         val wv = webView
         if (wv == null) {
-            callback(deriveListSelector(fallback)); return
+            callback(deriveListSelector(fallback))
+            return
         }
         wv.evaluateJavascript("window.detectItemSelector($arg);") { result ->
             val detected = result?.trim('"').orEmpty().replace("\\\"", "\"").replace("\\\\", "\\")
@@ -744,8 +747,11 @@ fun ElementSelectorScreen(
                         SelectorWizardStep.CHAPTER_LIST -> {
                             {
                                 autoDetectChapters { selector ->
+                                    @Suppress("ktlint:standard:max-line-length")
                                     if (selector.isNotBlank()) {
-                                        selectedElements.add(SelectedElement(selector, "", "(auto-detected)", emptyMap()))
+                                        selectedElements.add(
+                                            SelectedElement(selector, "", "(auto-detected)", emptyMap()),
+                                        )
                                         highlightSelector(selector)
                                     }
                                 }
@@ -754,8 +760,11 @@ fun ElementSelectorScreen(
                         SelectorWizardStep.CHAPTER_CONTENT -> {
                             {
                                 autoDetectContent { selector ->
+                                    @Suppress("ktlint:standard:max-line-length")
                                     if (selector.isNotBlank()) {
-                                        selectedElements.add(SelectedElement(selector, "", "(auto-detected)", emptyMap()))
+                                        selectedElements.add(
+                                            SelectedElement(selector, "", "(auto-detected)", emptyMap()),
+                                        )
                                         highlightSelector(selector)
                                     }
                                 }
@@ -862,9 +871,18 @@ fun ElementSelectorScreen(
                             }
                         }
                         // Listing pagination: the page-2 URL the user navigated to (diffed later).
-                        SelectorWizardStep.POPULAR_PAGINATION -> { config.popularPage2Url = currentUrl; advance() }
-                        SelectorWizardStep.LATEST_PAGINATION -> { config.latestPage2Url = currentUrl; advance() }
-                        SelectorWizardStep.SEARCH_PAGINATION -> { config.searchPage2Url = currentUrl; advance() }
+                        SelectorWizardStep.POPULAR_PAGINATION -> {
+                            config.popularPage2Url = currentUrl
+                            advance()
+                        }
+                        SelectorWizardStep.LATEST_PAGINATION -> {
+                            config.latestPage2Url = currentUrl
+                            advance()
+                        }
+                        SelectorWizardStep.SEARCH_PAGINATION -> {
+                            config.searchPage2Url = currentUrl
+                            advance()
+                        }
                         SelectorWizardStep.NOVEL_DETAILS -> {
                             // Remember the novel page so the reading test can open it without a listing.
                             config.sampleNovelUrl = currentUrl
@@ -1074,8 +1092,13 @@ private fun StepInstructionCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                @Suppress("ktlint:standard:max-line-length")
                 if (onReusePagination != null) {
-                    CompactAction(Icons.Outlined.Refresh, TDMR.strings.selector_reuse_popular_pagination, onReusePagination)
+                    CompactAction(
+                        Icons.Outlined.Refresh,
+                        TDMR.strings.selector_reuse_popular_pagination,
+                        onReusePagination,
+                    )
                 }
                 if (onSetupSearch != null) {
                     CompactAction(Icons.Outlined.Search, TDMR.strings.selector_setup_search, onSetupSearch)
@@ -1093,9 +1116,13 @@ private fun StepInstructionCard(
                 }
                 Spacer(modifier = Modifier.weight(1f))
                 if (selectedCount > 0) {
+                    @Suppress("ktlint:standard:max-line-length")
                     FilledTonalButton(
                         onClick = onViewSelected,
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 12.dp,
+                            vertical = 4.dp,
+                        ),
                     ) {
                         Icon(Icons.Filled.PlaylistAddCheck, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -1158,13 +1185,20 @@ private fun LiveTestDialog(
                             tint = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         )
                         Spacer(Modifier.width(8.dp))
-                        val summary = when {
-                            obj.has("count") -> "${obj.optInt("count")} found, ${obj.optInt("withUrl")} with URL" +
-                                (obj.opt("next")?.takeIf { it != org.json.JSONObject.NULL }?.let { ", next page: $it" } ?: "")
-                            obj.has("length") -> "Content length: ${obj.optInt("length")} chars"
-                            obj.has("title") -> "Title: ${obj.optString("title").ifBlank { "(none)" }}"
-                            else -> obj.optString("message", "")
-                        }
+                        val summary =
+                            @Suppress("ktlint:standard:max-line-length")
+                            when {
+                                obj.has("count") -> "${obj.optInt("count")} found, ${obj.optInt("withUrl")} with URL" +
+                                    (
+                                        obj.opt(
+                                            "next",
+                                        )?.takeIf { it != org.json.JSONObject.NULL }?.let { ", next page: $it" }
+                                            ?: ""
+                                        )
+                                obj.has("length") -> "Content length: ${obj.optInt("length")} chars"
+                                obj.has("title") -> "Title: ${obj.optString("title").ifBlank { "(none)" }}"
+                                else -> obj.optString("message", "")
+                            }
                         Text(summary, style = MaterialTheme.typography.bodyMedium)
                     }
 
@@ -1188,8 +1222,13 @@ private fun LiveTestDialog(
                                 if (sub.isNotBlank()) {
                                     Text(
                                         sub,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                        ),
+                                        @Suppress("ktlint:standard:max-line-length")
+                                        color
+                                            =
+                                            MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -1220,9 +1259,15 @@ private fun LiveTestDialog(
                     }
 
                     // Content preview.
+                    @Suppress("ktlint:standard:max-line-length")
                     obj.optString("preview").ifBlank { null }?.let {
                         Spacer(Modifier.height(8.dp))
-                        Text(it, style = MaterialTheme.typography.bodySmall, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 6,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
 
                     if (showReverse) {
@@ -1331,8 +1376,13 @@ private fun SelectedElementsPanel(
                     )
                 }
                 Row {
+                    @Suppress("ktlint:standard:max-line-length")
                     IconButton(onClick = { onHighlight(element) }) {
-                        Icon(Icons.Filled.TouchApp, stringResource(TDMR.strings.selector_select_element), Modifier.height(20.dp))
+                        Icon(
+                            Icons.Filled.TouchApp,
+                            stringResource(TDMR.strings.selector_select_element),
+                            Modifier.height(20.dp),
+                        )
                     }
                     IconButton(onClick = { onRemove(element) }) {
                         Icon(Icons.Filled.Delete, stringResource(MR.strings.action_delete), Modifier.height(20.dp))
@@ -1419,8 +1469,11 @@ private fun ReviewContent(
         ReviewRow("Chapter URL pattern", config.chapterUrlPattern, none)
         ReviewRow(
             "Chapter range",
+            @Suppress("ktlint:standard:max-line-length")
             if (config.chapterUrlPattern.isNotBlank()) {
-                "${config.chapterFirstNumber ?: 1}..${config.chapterLastNumber?.toString() ?: config.chapterCountSelector.ifBlank { "?" }}"
+                "${config.chapterFirstNumber ?: 1}..${config.chapterLastNumber?.toString() ?: config.chapterCountSelector.ifBlank {
+                    "?"
+                }}"
             } else {
                 ""
             },
@@ -1517,14 +1570,21 @@ internal fun SelectorConfirmDialog(
 
                 // Up/down DOM navigation — pick the right element when the tap wasn't precise.
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    @Suppress("ktlint:standard:max-line-length")
                     OutlinedButton(
                         onClick = { if (parentSelector.isNotBlank()) editedSelector = parentSelector },
                         enabled = parentSelector.isNotBlank(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 12.dp,
+                            vertical = 4.dp,
+                        ),
                     ) {
                         Icon(Icons.Filled.ArrowUpward, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(stringResource(TDMR.strings.selector_select_parent), style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            stringResource(TDMR.strings.selector_select_parent),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
                 }
                 if (children.isNotEmpty()) {
@@ -1535,10 +1595,14 @@ internal fun SelectorConfirmDialog(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     children.take(12).forEach { (sel, label) ->
+                        @Suppress("ktlint:standard:max-line-length")
                         OutlinedButton(
                             onClick = { editedSelector = sel },
                             modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                                horizontal = 10.dp,
+                                vertical = 4.dp,
+                            ),
                         ) {
                             Icon(Icons.Filled.ArrowDownward, contentDescription = null, modifier = Modifier.size(14.dp))
                             Spacer(modifier = Modifier.width(6.dp))

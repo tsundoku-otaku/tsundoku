@@ -1,22 +1,21 @@
 package eu.kanade.tachiyomi.ui.reader.service
 
 import android.app.ForegroundServiceStartNotAllowedException
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.app.PendingIntent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import logcat.LogPriority
-import tachiyomi.core.common.util.system.logcat
-
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.util.system.notificationBuilder
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
 
 class TtsPlaybackService : Service() {
 
@@ -85,7 +84,6 @@ class TtsPlaybackService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun startForegroundWithNotification() {
-
         val toggleIntent = PendingIntent.getService(
             this,
             1001,
@@ -179,7 +177,7 @@ class TtsPlaybackService : Service() {
                 startForeground(
                     Notifications.ID_TTS_PLAYBACK,
                     notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
                 )
             } else {
                 startForeground(Notifications.ID_TTS_PLAYBACK, notification)

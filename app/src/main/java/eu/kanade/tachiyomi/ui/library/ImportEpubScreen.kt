@@ -1,12 +1,14 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.ui.library
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
-import android.app.Activity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -375,8 +377,13 @@ class ImportEpubScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(paddingValues),
-                        canDeleteImportedFiles = successfullyImportedUris.isNotEmpty() && successfullyImportedUris.none { it.scheme == "content" },
-                        onDeleteImportedFiles = { showDeleteImportedConfirm = true },
+                        canDeleteImportedFiles =
+                        successfullyImportedUris.isNotEmpty() &&
+                            successfullyImportedUris.none { it.scheme == "content" },
+                        @Suppress("ktlint:standard:max-line-length")
+                        onDeleteImportedFiles
+                            =
+                            { showDeleteImportedConfirm = true },
                         onDone = { exitImportScreen() },
                     )
 
@@ -385,6 +392,7 @@ class ImportEpubScreen(
                             onDismissRequest = { showDeleteImportedConfirm = false },
                             title = { Text("Delete imported EPUB files?") },
                             text = {
+                                @Suppress("ktlint:standard:max-line-length")
                                 Text(
                                     "This will permanently delete successfully imported source files from storage (if permitted).",
                                 )
@@ -405,12 +413,17 @@ class ImportEpubScreen(
 
                                             successfullyImportedUris = successfullyImportedUris - deletedUris.toSet()
 
+                                            @Suppress("ktlint:standard:max-line-length")
                                             when {
                                                 deletedCount == 0 -> {
-                                                    snackbarHostState.showSnackbar("No imported EPUB files were deleted")
+                                                    snackbarHostState.showSnackbar(
+                                                        "No imported EPUB files were deleted",
+                                                    )
                                                 }
                                                 failedCount == 0 -> {
-                                                    snackbarHostState.showSnackbar("Deleted $deletedCount imported EPUB file(s)")
+                                                    snackbarHostState.showSnackbar(
+                                                        "Deleted $deletedCount imported EPUB file(s)",
+                                                    )
                                                 }
                                                 else -> {
                                                     snackbarHostState.showSnackbar(
@@ -539,7 +552,9 @@ class ImportEpubScreen(
                                                 }
 
                                                 importProgress = ImportProgress(
-                                                    current = (completedUnits + normalizedCurrent).coerceAtMost(totalUnits),
+                                                    current = (completedUnits + normalizedCurrent).coerceAtMost(
+                                                        totalUnits,
+                                                    ),
                                                     total = totalUnits,
                                                     currentFileName = fileName.ifBlank { groupTitle },
                                                     isRunning = true,
@@ -922,6 +937,7 @@ private fun VolumeGroupCard(
                                 }
 
                                 IconButton(onClick = { onToggleVolumeExpanded(volume.id) }) {
+                                    @Suppress("ktlint:standard:max-line-length")
                                     Icon(
                                         imageVector = if (isExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                                         contentDescription = if (isExpanded) "Collapse table of contents" else "Expand table of contents",

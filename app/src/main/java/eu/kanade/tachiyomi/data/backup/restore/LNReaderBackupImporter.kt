@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:max-line-length")
+
 package eu.kanade.tachiyomi.data.backup.restore
 
 import android.content.Context
@@ -18,6 +20,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromStream
@@ -25,8 +30,8 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
-import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.source.repository.StubSourceRepository
+import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
@@ -37,9 +42,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.zip.ZipInputStream
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 
 /**
  * Imports LNReader backup files (.zip) into Tsundoku.
@@ -227,98 +229,100 @@ class LNReaderBackupImporter(
                 }
 
                 // Build category name -> novel IDs mapping for assignment
-            // Build category name -> novel IDs mapping for assignment
-            val novelIdToCategoryNames = mutableMapOf<Int, MutableList<String>>()
-            categories.forEach { cat ->
-                cat.novelIds.forEach { novelId ->
-                    novelIdToCategoryNames.getOrPut(novelId) { mutableListOf() }.add(cat.name)
-                }
-            }
-
-            // Pre-fetch existing manga mappings to avoid 2N DB lookups
-            val mangaCache = mutableMapOf<Pair<String, Long>, tachiyomi.domain.manga.model.Manga>()
-            novels.forEach { novel ->
-                val sourceId = if (novel.isLocal != 0) 1L else pluginIdToSourceId[novel.pluginId]
-                if (sourceId != null) {
-                    val dbManga = getMangaByUrlAndSourceId.await(novel.path, sourceId)
-                    if (dbManga != null) {
-                        mangaCache[novel.path to sourceId] = dbManga
+                // Build category name -> novel IDs mapping for assignment
+                val novelIdToCategoryNames = mutableMapOf<Int, MutableList<String>>()
+                categories.forEach { cat ->
+                    cat.novelIds.forEach { novelId ->
+                        novelIdToCategoryNames.getOrPut(novelId) { mutableListOf() }.add(cat.name)
                     }
                 }
-            }
 
-            // Convert and restore novels
-            if (options.restoreNovels) {
-                coroutineScope {
-                    novels.forEachIndexed { index, novel ->
-                        ensureActive()
-                        try {
-                            // Local novels get LocalNovelSource regardless of pluginId
-                            val sourceId = if (novel.isLocal != 0) {
-                                1L // LocalNovelSource.ID
-                            } else {
-                                pluginIdToSourceId[novel.pluginId]
-                            }
-                            if (sourceId == null) {
-                                skippedCount++
-                                errors.add(
-                                    Date() to
-                                        "${novel.name}: Unknown plugin '${novel.pluginId}' - skipping (enable 'Restore with missing plugins' to import as stub)",
-                                )
-                                return@forEachIndexed
-                            }
-
-                            notifier?.showRestoreProgress(
-                                novel.name,
-                                index + 1,
-                                novels.size,
-                            )
-
-                            val backupManga = convertNovel(
-                                novel,
-                                sourceId,
-                                novelIdToCategoryNames,
-                                backupCategories,
-                                includeChapters = options.restoreChapters,
-                                includeHistory = options.restoreHistory,
-                                includeCategories = options.restoreCategories,
-                            )
-
-                            // Check if this novel already exists in the database
-                            val existingManga = mangaCache[novel.path to sourceId] ?: getMangaByUrlAndSourceId.await(novel.path, sourceId)
-                            if (existingManga != null && novel.isLocal == 0) {
-                                // Existing JS novel — skip metadata overwrite, only update chapters/history
-                                logcat(LogPriority.INFO) {
-                                    "LNReaderImport: Novel '${novel.name}' already exists (id=${existingManga.id}), updating chapters only"
-                                }
-                                mangaRestorer.restoreExistingChapters(existingManga, backupManga, backupCategories)
-                                skippedCount++
-                            } else {
-                                mangaRestorer.restore(backupManga, backupCategories)
-                            }
-                            novelCount++
-                            logcat(LogPriority.DEBUG) {
-                                "LNReaderImport: Restored novel '${novel.name}' (${index + 1}/${novels.size})"
-                            }
-                        } catch (e: Exception) {
-                            errors.add(Date() to "${novel.name} [${novel.pluginId}]: ${e.message}")
+                // Pre-fetch existing manga mappings to avoid 2N DB lookups
+                val mangaCache = mutableMapOf<Pair<String, Long>, tachiyomi.domain.manga.model.Manga>()
+                novels.forEach { novel ->
+                    val sourceId = if (novel.isLocal != 0) 1L else pluginIdToSourceId[novel.pluginId]
+                    if (sourceId != null) {
+                        val dbManga = getMangaByUrlAndSourceId.await(novel.path, sourceId)
+                        if (dbManga != null) {
+                            mangaCache[novel.path to sourceId] = dbManga
                         }
                     }
                 }
-            }
-            // Step 5: Restore downloaded chapter HTML and cached covers from LNReader download.zip
-            if ((options.restoreDownloadedChapters || options.restoreCovers) && pluginZipFile != null) {
-                val restored = restoreDownloadedAssetsFromDownloadZip(
-                    pluginZipFile,
-                    novels,
-                    pluginIdToSourceId,
-                    options.restoreDownloadedChapters,
-                    options.restoreCovers,
-                    mangaCache
-                )
-                restoredDownloadCount = restored.first
-                restoredCoverCount = restored.second
-            }
+
+                // Convert and restore novels
+                if (options.restoreNovels) {
+                    coroutineScope {
+                        novels.forEachIndexed { index, novel ->
+                            ensureActive()
+                            try {
+                                // Local novels get LocalNovelSource regardless of pluginId
+                                val sourceId = if (novel.isLocal != 0) {
+                                    1L // LocalNovelSource.ID
+                                } else {
+                                    pluginIdToSourceId[novel.pluginId]
+                                }
+                                if (sourceId == null) {
+                                    skippedCount++
+                                    errors.add(
+                                        Date() to
+                                            "${novel.name}: Unknown plugin '${novel.pluginId}' - skipping (enable 'Restore with missing plugins' to import as stub)",
+                                    )
+                                    return@forEachIndexed
+                                }
+
+                                notifier?.showRestoreProgress(
+                                    novel.name,
+                                    index + 1,
+                                    novels.size,
+                                )
+
+                                val backupManga = convertNovel(
+                                    novel,
+                                    sourceId,
+                                    novelIdToCategoryNames,
+                                    backupCategories,
+                                    includeChapters = options.restoreChapters,
+                                    includeHistory = options.restoreHistory,
+                                    includeCategories = options.restoreCategories,
+                                )
+
+                                // Check if this novel already exists in the database
+                                val existingManga =
+                                    mangaCache[novel.path to sourceId]
+                                        ?: getMangaByUrlAndSourceId.await(novel.path, sourceId)
+                                if (existingManga != null && novel.isLocal == 0) {
+                                    // Existing JS novel — skip metadata overwrite, only update chapters/history
+                                    logcat(LogPriority.INFO) {
+                                        "LNReaderImport: Novel '${novel.name}' already exists (id=${existingManga.id}), updating chapters only"
+                                    }
+                                    mangaRestorer.restoreExistingChapters(existingManga, backupManga, backupCategories)
+                                    skippedCount++
+                                } else {
+                                    mangaRestorer.restore(backupManga, backupCategories)
+                                }
+                                novelCount++
+                                logcat(LogPriority.DEBUG) {
+                                    "LNReaderImport: Restored novel '${novel.name}' (${index + 1}/${novels.size})"
+                                }
+                            } catch (e: Exception) {
+                                errors.add(Date() to "${novel.name} [${novel.pluginId}]: ${e.message}")
+                            }
+                        }
+                    }
+                }
+                // Step 5: Restore downloaded chapter HTML and cached covers from LNReader download.zip
+                if ((options.restoreDownloadedChapters || options.restoreCovers) && pluginZipFile != null) {
+                    val restored = restoreDownloadedAssetsFromDownloadZip(
+                        pluginZipFile,
+                        novels,
+                        pluginIdToSourceId,
+                        options.restoreDownloadedChapters,
+                        options.restoreCovers,
+                        mangaCache,
+                    )
+                    restoredDownloadCount = restored.first
+                    restoredCoverCount = restored.second
+                }
             } finally {
                 pluginZipFile?.delete()
             }
@@ -389,23 +393,23 @@ class LNReaderBackupImporter(
                                 }
                             }
                             name.startsWith("NovelAndChapters/") && name.endsWith(".json") -> {
-                            try {
-                                val novel = json.decodeFromStream<LNNovel>(zip)
-                                if (novel.name.isNotBlank()) {
-                                    novels.add(novel)
+                                try {
+                                    val novel = json.decodeFromStream<LNNovel>(zip)
+                                    if (novel.name.isNotBlank()) {
+                                        novels.add(novel)
+                                    }
+                                } catch (e: Exception) {
+                                    logcat(LogPriority.WARN, e) { "LNReaderImport: Failed to parse $name" }
+                                    errors.add(Date() to "Parse error for $name: ${e.message}")
                                 }
-                            } catch (e: Exception) {
-                                logcat(LogPriority.WARN, e) { "LNReaderImport: Failed to parse $name" }
-                                errors.add(Date() to "Parse error for $name: ${e.message}")
                             }
-                        }
-                        name == "download.zip" -> {
-                            val tempFile = context.createFileInCacheDir("lnreader_download.zip")
-                            tempFile.outputStream().use { fos ->
-                                zip.copyTo(fos)
+                            name == "download.zip" -> {
+                                val tempFile = context.createFileInCacheDir("lnreader_download.zip")
+                                tempFile.outputStream().use { fos ->
+                                    zip.copyTo(fos)
+                                }
+                                downloadZipFile = tempFile
                             }
-                            downloadZipFile = tempFile
-                        }
                         }
                         zip.closeEntry()
                         entry = zip.nextEntry
@@ -531,71 +535,92 @@ class LNReaderBackupImporter(
                                 concurrencyLimit.withPermit {
                                     if (novelEntries.isEmpty()) return@withPermit
 
-                                val firstEntry = novelEntries.first()
-                                val pluginId = firstEntry.second
-                                val normalizedPluginId = normalizePluginId(pluginId)
-                                val novel = novelByPluginAndId[normalizedPluginId to novelId] ?: return@withPermit
-                                val sourceId = resolveSourceId(pluginIdToSourceId, novel.pluginId) ?: return@withPermit
+                                    val firstEntry = novelEntries.first()
+                                    val pluginId = firstEntry.second
+                                    val normalizedPluginId = normalizePluginId(pluginId)
+                                    val novel = novelByPluginAndId[normalizedPluginId to novelId] ?: return@withPermit
+                                    val sourceId =
+                                        resolveSourceId(pluginIdToSourceId, novel.pluginId) ?: return@withPermit
 
-                                var mangaDirFetched = false
-                                var mangaDir: UniFile? = null
-                                var dbMangaFetched = false
-                                var dbManga: tachiyomi.domain.manga.model.Manga? = null
+                                    var mangaDirFetched = false
+                                    var mangaDir: UniFile? = null
+                                    var dbMangaFetched = false
+                                    var dbManga: tachiyomi.domain.manga.model.Manga? = null
 
-                                for ((_, _, entry) in novelEntries) {
-                                    val name = entry.name
-                                    val parts = name.split('/')
+                                    for ((_, _, entry) in novelEntries) {
+                                        val name = entry.name
+                                        val parts = name.split('/')
 
-                                    val isChapter = parts.size == 5 && parts[4].startsWith("index.", ignoreCase = true)
-                                    val isCover = parts.size == 4 && parts[3].startsWith("cover.", ignoreCase = true)
+                                        val isChapter =
+                                            parts.size == 5 && parts[4].startsWith("index.", ignoreCase = true)
+                                        val isCover =
+                                            parts.size == 4 && parts[3].startsWith("cover.", ignoreCase = true)
 
-                                    if (isChapter && restoreDownloadedChapters) {
-                                        val chapterId = parts[3].toIntOrNull()
-                                        if (chapterId != null) {
-                                            val chapter = downloadedChapterByKey[Triple(normalizedPluginId, novelId, chapterId)]
+                                        if (isChapter && restoreDownloadedChapters) {
+                                            val chapterId = parts[3].toIntOrNull()
+                                            if (chapterId != null) {
+                                                val chapter = downloadedChapterByKey[
+                                                    Triple(
+                                                        normalizedPluginId,
+                                                        novelId,
+                                                        chapterId,
+                                                    ),
+                                                ]
 
-                                            if (chapter != null) {
-                                                if (!mangaDirFetched) {
-                                                    val source = sourceManager.getOrStub(sourceId)
-                                                    dirCreationMutex.withLock {
-                                                        mangaDir = downloadProvider.getMangaDir(novel.name, source).getOrNull()
+                                                if (chapter != null) {
+                                                    if (!mangaDirFetched) {
+                                                        val source = sourceManager.getOrStub(sourceId)
+                                                        dirCreationMutex.withLock {
+                                                            mangaDir =
+                                                                downloadProvider.getMangaDir(
+                                                                    novel.name,
+                                                                    source,
+                                                                ).getOrNull()
+                                                        }
+                                                        mangaDirFetched = true
                                                     }
-                                                    mangaDirFetched = true
-                                                }
 
-                                                if (mangaDir != null) {
-                                                    zip.getInputStream(entry).use { inputStream ->
-                                                        if (writeDownloadedChapterHtml(novel, chapter, mangaDir, inputStream)) {
-                                                            restoredChapterFiles.incrementAndGet()
+                                                    if (mangaDir != null) {
+                                                        zip.getInputStream(entry).use { inputStream ->
+                                                            if (writeDownloadedChapterHtml(
+                                                                    novel,
+                                                                    chapter,
+                                                                    mangaDir,
+                                                                    inputStream,
+                                                                )
+                                                            ) {
+                                                                restoredChapterFiles.incrementAndGet()
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
-                                        }
-                                    } else if (isCover && restoreCovers) {
-                                        if (!dbMangaFetched) {
-                                            dbManga = mangaCache[novel.path to sourceId] ?: getMangaByUrlAndSourceId.await(novel.path, sourceId)
-                                            dbMangaFetched = true
-                                        }
+                                        } else if (isCover && restoreCovers) {
+                                            if (!dbMangaFetched) {
+                                                dbManga =
+                                                    mangaCache[novel.path to sourceId]
+                                                        ?: getMangaByUrlAndSourceId.await(novel.path, sourceId)
+                                                dbMangaFetched = true
+                                            }
 
-                                        if (dbManga != null) {
-                                            zip.getInputStream(entry).use { inputStream ->
-                                                if (restoreCoverToCache(novel, dbManga, inputStream)) {
-                                                    restoredCovers.incrementAndGet()
+                                            if (dbManga != null) {
+                                                zip.getInputStream(entry).use { inputStream ->
+                                                    if (restoreCoverToCache(novel, dbManga, inputStream)) {
+                                                        restoredCovers.incrementAndGet()
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
 
-                                    val current = processedCount.incrementAndGet()
-                                    val currentTime = System.currentTimeMillis()
-                                    val lastTime = lastNotifyTime.get()
-                                    if (currentTime - lastTime > 500) {
-                                        if (lastNotifyTime.compareAndSet(lastTime, currentTime)) {
-                                            notifier?.showRestoreProgress("Restoring assets", current, totalEntries)
+                                        val current = processedCount.incrementAndGet()
+                                        val currentTime = System.currentTimeMillis()
+                                        val lastTime = lastNotifyTime.get()
+                                        if (currentTime - lastTime > 500) {
+                                            if (lastNotifyTime.compareAndSet(lastTime, currentTime)) {
+                                                notifier?.showRestoreProgress("Restoring assets", current, totalEntries)
+                                            }
                                         }
                                     }
-                                }
                                 }
                             }
                         }

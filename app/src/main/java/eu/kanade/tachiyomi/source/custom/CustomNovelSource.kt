@@ -16,12 +16,12 @@ import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import tachiyomi.domain.source.service.SourceManager
@@ -97,7 +97,12 @@ internal fun rebaseCustomSourcePage(
     customBaseUrl: String,
     sourceBaseUrl: String? = null,
 ): Page {
-    return Page(page.index, rebaseCustomSourceUrl(page.url, customBaseUrl, sourceBaseUrl).orEmpty(), page.imageUrl, page.uri).also {
+    return Page(
+        page.index,
+        rebaseCustomSourceUrl(page.url, customBaseUrl, sourceBaseUrl).orEmpty(),
+        page.imageUrl,
+        page.uri,
+    ).also {
         it.text = page.text
     }
 }
@@ -128,7 +133,10 @@ private fun safeCopyManga(manga: SManga): SManga {
     copy.genre = runCatching { manga.genre }.getOrNull()
     copy.status = runCatching { manga.status }.getOrElse { 0 }
     copy.thumbnail_url = runCatching { manga.thumbnail_url }.getOrNull()
-    copy.update_strategy = runCatching { manga.update_strategy }.getOrElse { eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE }
+    copy.update_strategy =
+        runCatching {
+            manga.update_strategy
+        }.getOrElse { eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE }
     copy.initialized = runCatching { manga.initialized }.getOrElse { false }
     copy.altTitles = runCatching { manga.altTitles }.getOrElse { emptyList() }
     return copy
@@ -158,10 +166,10 @@ private fun toHttpSourceRequestPath(url: String?, sourceBaseUrl: String?): Strin
 
     if (sourceBase != null && value.startsWith(sourceBase)) {
         val path = value.removePrefix(sourceBase)
-        return if (path.startsWith('/')) path else "/${path.removePrefix("/")}" 
+        return if (path.startsWith('/')) path else "/${path.removePrefix("/")}"
     }
 
-    return if (value.startsWith('/')) value else "/${value.removePrefix("/")}" 
+    return if (value.startsWith('/')) value else "/${value.removePrefix("/")}"
 }
 
 private fun normalizeCustomUrl(url: String?): String? {
@@ -189,8 +197,6 @@ private fun normalizeCustomUrl(url: String?): String? {
         else -> value
     }
 }
-
-
 
 private fun trySetFieldRecursively(target: Any, fieldName: String, value: Any): Boolean {
     var current: Class<*>? = target.javaClass
@@ -280,7 +286,7 @@ private fun patchHttpSourceForCustomBaseUrl(source: HttpSource, customBaseUrl: S
     trySetFieldRecursively(source, "client", rewrittenClient)
     // DO NOT change source.baseUrl - keep it as original so the interceptor can match requests
     // The interceptor is configured to rewrite sourceBaseUrl -> targetBaseUrl
-    // If we change baseUrl here, HttpSource will build requests with the new URL, and the 
+    // If we change baseUrl here, HttpSource will build requests with the new URL, and the
     // interceptor won't match because it's looking for the old sourceBaseUrl
     return source
 }
@@ -461,7 +467,7 @@ class CustomNovelSource(
                     else -> null
                 }
                 baseSourceOriginalUrl = originalBaseUrl
-                
+
                 when {
                     source is JsSource && baseUrl.isNotBlank() -> source.withSiteOverride(baseUrl)
                     source is HttpSource && baseUrl.isNotBlank() -> patchHttpSourceForCustomBaseUrl(source, baseUrl)
@@ -812,12 +818,14 @@ class CustomNovelSource(
             val absoluteUrl = buildAbsoluteUrl(page.url)
             // mapCustomUrlToSourceUrl() converts custom base to source base if mirror
             val sourceUrl = mapCustomUrlToSourceUrl(absoluteUrl, baseUrl, effectiveRebaseUrl) ?: absoluteUrl
-            
+
             // Sanity check: ensure URL is absolute before passing to delegate
             if (!sourceUrl.startsWith("http://") && !sourceUrl.startsWith("https://")) {
-                throw IllegalArgumentException("Invalid URL format for content fetching: $sourceUrl (original: ${page.url})")
+                throw IllegalArgumentException(
+                    "Invalid URL format for content fetching: $sourceUrl (original: ${page.url})",
+                )
             }
-            
+
             val pageToFetch = Page(page.index, sourceUrl, page.imageUrl, page.uri).also { it.text = page.text }
             return bs.fetchPageText(pageToFetch)
         }
@@ -1166,7 +1174,7 @@ class CustomNovelSource(
     private fun buildAbsoluteUrl(url: String?): String {
         val trimmedUrl = normalizeCustomUrl(url)?.trim().orEmpty()
         if (trimmedUrl.isBlank()) return baseUrl
-        
+
         // If URL already has a scheme, it's absolute (e.g., after a redirect to a different domain)
         if (trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://")) {
             return trimmedUrl
@@ -1343,4 +1351,3 @@ data class ContentSelectors(
 
 // Templates removed — use extension repos for pre-built novel source themes
 // (Madara, LightNovelWP, ReadNovelFull, ReadWN, WordPress Novel)
-

@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
 import android.webkit.WebResourceResponse
-import java.net.URLDecoder
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -13,6 +12,7 @@ import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import logcat.logcat
 import java.io.File
+import java.net.URLDecoder
 import java.util.concurrent.ConcurrentHashMap
 
 internal class NovelWebViewImageCache(

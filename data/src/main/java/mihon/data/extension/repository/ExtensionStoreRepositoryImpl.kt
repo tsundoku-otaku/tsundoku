@@ -80,14 +80,14 @@ class ExtensionStoreRepositoryImpl(
                 database.extension_storeQueries.getAll(::extensionStoreMapper).awaitAsList()
                     .filterNot { it.indexUrl in disabledIndexUrls }
                     .map { store ->
-                    async {
-                        service.getExtensions(store).onFailure {
-                            this@ExtensionStoreRepositoryImpl.logcat(LogPriority.ERROR, it) {
-                                "Failed to fetch extensions for store '${store.name} (${store.indexUrl})'"
+                        async {
+                            service.getExtensions(store).onFailure {
+                                this@ExtensionStoreRepositoryImpl.logcat(LogPriority.ERROR, it) {
+                                    "Failed to fetch extensions for store '${store.name} (${store.indexUrl})'"
+                                }
                             }
                         }
                     }
-                }
                     .awaitAll()
                     .flatMap { it.getOrDefault(emptyList()) }
             }

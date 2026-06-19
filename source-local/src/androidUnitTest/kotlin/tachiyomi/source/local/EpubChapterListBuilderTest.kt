@@ -142,7 +142,11 @@ class EpubChapterListBuilderTest {
             EpubReader.EpubChapter(title = "CAPITOLO 2", href = "p012_capitolo-02.xhtml", order = 2),
             EpubReader.EpubChapter(title = "CAPITOLO 3", href = "p013_capitolo-03.xhtml", order = 3),
             EpubReader.EpubChapter(title = "LA CORONA DI MEZZANOTTE", href = "p068_half-title-02.xhtml", order = 4),
-            EpubReader.EpubChapter(title = "PARTE PRIMA. La Campionessa del Re", href = "p070_parte-01.xhtml", order = 5),
+            EpubReader.EpubChapter(
+                title = "PARTE PRIMA. La Campionessa del Re",
+                href = "p070_parte-01.xhtml",
+                order = 5,
+            ),
             EpubReader.EpubChapter(title = "CAPITOLO 1", href = "p071_capitolo-56.xhtml", order = 6),
             EpubReader.EpubChapter(title = "CAPITOLO 2", href = "p072_capitolo-57.xhtml", order = 7),
             EpubReader.EpubChapter(title = "CAPITOLO 3", href = "p073_capitolo-58.xhtml", order = 8),

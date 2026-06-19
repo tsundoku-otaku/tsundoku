@@ -1,14 +1,14 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import android.content.Context
+import tachiyomi.core.common.i18n.stringResource
+import tachiyomi.i18n.novel.TDMR
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
-import tachiyomi.core.common.i18n.stringResource
-import tachiyomi.i18n.novel.TDMR
 
 object ErrorFormatter {
 
