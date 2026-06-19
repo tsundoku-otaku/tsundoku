@@ -13,6 +13,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ## [Unreleased]
 ### Added
 - Add advanced preference to prevent entries metadata from being overwritten [@mrissaoussama](https://github.com/mrissaoussama) [#271](https://github.com/tsundoku-otaku/tsundoku/pull/271)
+- Library pagination (experimental) [@mrissaoussama](https://github.com/mrissaoussama) [#283](https://github.com/tsundoku-otaku/tsundoku/pull/283)
 
 ### Improved
 - Custom Source Overhaul [@mrissaoussama](https://github.com/mrissaoussama) [#273](https://github.com/tsundoku-otaku/tsundoku/pull/273)
@@ -74,6 +75,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Change default setting type to text in JsSource [@mrissaoussama](https://github.com/mrissaoussama) [#267](https://github.com/tsundoku-otaku/tsundoku/pull/267)
 - Library settings now has per-type extension cache [@mrissaoussama](https://github.com/mrissaoussama) [#259](https://github.com/tsundoku-otaku/tsundoku/pull/259)
 - Encoding issues when parsing jssource chapters [@mrissaoussama](https://github.com/mrissaoussama) [#224](https://github.com/tsundoku-otaku/tsundoku/pull/224)
+- Fix accuracy of mass import notification [@mrissaoussama](https://github.com/mrissaoussama) [#254](https://github.com/tsundoku-otaku/tsundoku/pull/254)
 - Fix accuracy of mass import notification [@mrissaoussama](https://github.com/mrissaoussama) [#254](https://github.com/tsundoku-otaku/tsundoku/pull/254)
 - Properly remove TTS notification when stopped, more TTS states [@mrissaoussama](https://github.com/mrissaoussama) [#217](https://github.com/tsundoku-otaku/tsundoku/pull/217)
 - Manga mass import URL with JS plugins [@mrissaoussama](https://github.com/mrissaoussama) [#197](https://github.com/tsundoku-otaku/tsundoku/pull/197)
