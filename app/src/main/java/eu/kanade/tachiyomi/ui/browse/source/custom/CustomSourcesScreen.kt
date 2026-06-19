@@ -1391,10 +1391,7 @@ class CustomSourceEditorScreen(
                             popularListSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text(stringResource(TDMR.strings.custom_source_list_item_hint)) },
                     )
                     OutlinedTextField(
@@ -1408,10 +1405,7 @@ class CustomSourceEditorScreen(
                             popularTitleSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = popularCoverSelector,
@@ -1424,10 +1418,7 @@ class CustomSourceEditorScreen(
                             popularCoverSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     // Pagination is per-section (popular / latest / search can differ).
                     if (features.hasPopular && features.popularPagination) {
@@ -1442,10 +1433,7 @@ class CustomSourceEditorScreen(
                                 popularNextPageSelector =
                                     it
                             },
-                            @Suppress("ktlint:standard:max-line-length")
-                            modifier
-                                =
-                                Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
                         )
                     }
@@ -1461,10 +1449,7 @@ class CustomSourceEditorScreen(
                                 latestNextPageSelector =
                                     it
                             },
-                            @Suppress("ktlint:standard:max-line-length")
-                            modifier
-                                =
-                                Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
                         )
                     }
@@ -1480,10 +1465,7 @@ class CustomSourceEditorScreen(
                                 searchNextPageSelector =
                                     it
                             },
-                            @Suppress("ktlint:standard:max-line-length")
-                            modifier
-                                =
-                                Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
                         )
                     }
@@ -1503,10 +1485,7 @@ class CustomSourceEditorScreen(
                             detailsTitleSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsDescriptionSelector,
@@ -1519,10 +1498,7 @@ class CustomSourceEditorScreen(
                             detailsDescriptionSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsCoverSelector,
@@ -1535,10 +1511,7 @@ class CustomSourceEditorScreen(
                             detailsCoverSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsAuthorSelector,
@@ -1551,10 +1524,7 @@ class CustomSourceEditorScreen(
                             detailsAuthorSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsGenreSelector,
@@ -1567,10 +1537,7 @@ class CustomSourceEditorScreen(
                             detailsGenreSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsStatusSelector,
@@ -1613,10 +1580,7 @@ class CustomSourceEditorScreen(
                                 chapterCountSelector =
                                     it
                             },
-                            @Suppress("ktlint:standard:max-line-length")
-                            modifier
-                                =
-                                Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
@@ -1646,10 +1610,7 @@ class CustomSourceEditorScreen(
                                 chaptersListSelector =
                                     it
                             },
-                            @Suppress("ktlint:standard:max-line-length")
-                            modifier
-                                =
-                                Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
                             value = chapterLinkSelector,
@@ -1662,10 +1623,7 @@ class CustomSourceEditorScreen(
                                 chapterLinkSelector =
                                     it
                             },
-                            @Suppress("ktlint:standard:max-line-length")
-                            modifier
-                                =
-                                Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
                             value = chapterNameSelector,
@@ -1678,10 +1636,7 @@ class CustomSourceEditorScreen(
                                 chapterNameSelector =
                                     it
                             },
-                            @Suppress("ktlint:standard:max-line-length")
-                            modifier
-                                =
-                                Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
                             value = chapterDateSelector,
@@ -1694,10 +1649,7 @@ class CustomSourceEditorScreen(
                                 chapterDateSelector =
                                     it
                             },
-                            @Suppress("ktlint:standard:max-line-length")
-                            modifier
-                                =
-                                Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         if (features.chapterListPagination) {
                             OutlinedTextField(
@@ -1706,20 +1658,13 @@ class CustomSourceEditorScreen(
                                 label = {
                                     Text(stringResource(TDMR.strings.custom_source_chapter_pagination_selector))
                                 },
-                                @Suppress("ktlint:standard:max-line-length")
-                                trailingIcon
-                                    =
-                                    pickTrailing(
-                                        baseUrl,
-                                        stringResource(TDMR.strings.custom_source_chapter_pagination_selector),
-                                    ) {
-                                        chapterNextPageSelector =
-                                            it
-                                    },
-                                @Suppress("ktlint:standard:max-line-length")
-                                modifier
-                                    =
-                                    Modifier.fillMaxWidth(),
+                                trailingIcon = pickTrailing(
+                                    baseUrl,
+                                    stringResource(TDMR.strings.custom_source_chapter_pagination_selector),
+                                ) {
+                                    chapterNextPageSelector = it
+                                },
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                         if (features.chapterListSeparatePage) {
@@ -1734,10 +1679,7 @@ class CustomSourceEditorScreen(
                                     chapterIndexLinkSelector =
                                         it
                                 },
-                                @Suppress("ktlint:standard:max-line-length")
-                                modifier
-                                    =
-                                    Modifier.fillMaxWidth(),
+                                modifier = Modifier.fillMaxWidth(),
                             )
                         }
                     }
@@ -1757,10 +1699,7 @@ class CustomSourceEditorScreen(
                             contentPrimarySelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text(stringResource(TDMR.strings.custom_source_content_selector_hint)) },
                     )
                     OutlinedTextField(
@@ -1774,10 +1713,7 @@ class CustomSourceEditorScreen(
                             contentFallbacksSelector =
                                 it
                         },
-                        @Suppress("ktlint:standard:max-line-length")
-                        modifier
-                            =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 } // end if (selectedBasedOnSourceId == null)
 
