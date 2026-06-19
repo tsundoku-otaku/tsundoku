@@ -436,7 +436,13 @@ fun MassImportDialog(
                                     // Full set lives in the on-disk error log; the in-memory
                                     // batch list is only a preview.
                                     dialogScope.launch(Dispatchers.IO) {
-                                        val errors = MassImportJob.getErroredUrls(context, batch.id)
+                                        // Cap the load so the dedup set can't OOM on a huge error
+                                        // log; one past the limit is enough to trip the size guard.
+                                        val errors = MassImportJob.getErroredUrls(
+                                            context,
+                                            batch.id,
+                                            limit = CLIPBOARD_COPY_LIMIT + 1,
+                                        )
                                         withContext(Dispatchers.Main) {
                                             when {
                                                 errors.isEmpty() -> {}

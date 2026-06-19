@@ -315,6 +315,26 @@ object MassImportStore {
         }.getOrDefault(emptyList())
     }
 
+    /**
+     * Stream (url, message) error entries in file order. No dedup, O(1) memory, for callers that
+     * pipe straight to disk (result file, export, retry) where the on-disk log can be huge and a
+     * full [loadErrors] materialization would OOM.
+     */
+    fun forEachError(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, action: (String, String) -> Unit) {
+        if (batchId.isEmpty()) return
+        val dir = dir() ?: return
+        runCatching {
+            val file = dir.findFile(errorsName(batchId)) ?: dir.findFile(legacyErrorsName(batchId)) ?: return
+            file.openInputStream().bufferedReader().use { reader ->
+                reader.lineSequence().forEach { line ->
+                    if (line.isBlank()) return@forEach
+                    val (url, msg) = parseLogLine(line)
+                    if (url.isNotEmpty()) action(url, msg)
+                }
+            }
+        }
+    }
+
     fun delete(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) {
         if (batchId.isEmpty()) return
         val dir = dir() ?: return
