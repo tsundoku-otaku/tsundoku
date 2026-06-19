@@ -454,8 +454,6 @@ class Downloader(
         }
         logcat { "queueChapters: Source is ${source.name}, isNovelSource=${source.isNovelSource()}" }
 
-        val wasEmpty = queueState.value.isEmpty()
-
         // Use a background thread for the heavy lifting of checking file existence
         scope.launchIO {
             val (_, downloadedDirs) = provider.findChapterDirs(chapters, manga, source)
@@ -490,7 +488,7 @@ class Downloader(
                 addAllToQueue(chaptersToQueue)
 
                 // Start downloader if needed
-                if (autoStart && wasEmpty) {
+                if (autoStart && !isRunning) {
                     val queuedDownloads = queueState.value.count { it.source !is UnmeteredSource }
                     val maxDownloadsFromSource = queueState.value
                         .filter { it.source !is UnmeteredSource }
