@@ -52,13 +52,15 @@ fun EditMangaDialog(
     manga: Manga,
     onDismissRequest: () -> Unit,
     onSaveTitle: (String) -> Unit,
-    onSaveDescription: (String) -> Unit,
     onSaveUrl: (String) -> Unit,
-    onSaveTags: (List<String>) -> Unit,
     onSaveAltTitles: (List<String>) -> Unit,
-    onSaveAuthor: (String) -> Unit,
-    onSaveArtist: (String) -> Unit,
-    onSaveStatus: (Long) -> Unit,
+    onSaveInfo: (
+        description: String,
+        tags: List<String>,
+        author: String,
+        artist: String,
+        status: Long,
+    ) -> Unit,
     onSwapMainTitle: ((newMainTitle: String, updatedAltTitles: List<String>) -> Unit)? = null,
 ) {
     var title by remember { mutableStateOf(manga.title) }
@@ -78,13 +80,9 @@ fun EditMangaDialog(
     TabbedDialog(
         onDismissRequest = {
             onSaveTitle(title)
-            onSaveDescription(description)
             onSaveUrl(url)
-            onSaveTags(tags)
             onSaveAltTitles(altTitles)
-            onSaveAuthor(author)
-            onSaveArtist(artist)
-            onSaveStatus(status)
+            onSaveInfo(description, tags, author, artist, status)
             onDismissRequest()
         },
         tabTitles = tabTitles,

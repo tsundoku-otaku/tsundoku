@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -356,36 +359,34 @@ class MangaScreen(
                     manga = dialog.manga,
                     onDismissRequest = onDismissRequest,
                     onSaveTitle = { screenModel.updateTitle(it) },
-                    onSaveDescription = { screenModel.updateDescription(it) },
                     onSaveUrl = { screenModel.updateUrl(it) },
-                    onSaveTags = { screenModel.updateTags(it) },
                     onSaveAltTitles = { screenModel.updateAlternativeTitles(it) },
-                    onSaveAuthor = { screenModel.updateAuthor(it) },
-                    onSaveArtist = { screenModel.updateArtist(it) },
-                    onSaveStatus = { screenModel.updateStatus(it) },
+                    onSaveInfo = { description, tags, author, artist, status ->
+                        screenModel.updateMangaInfo(description, tags, author, artist, status)
+                    },
                     onSwapMainTitle = { newMain, updatedAlts ->
                         screenModel.swapMainTitle(newMain, updatedAlts)
                     },
                 )
             }
             MangaScreenModel.Dialog.ClearCustomInfo -> {
-                androidx.compose.material3.AlertDialog(
+                AlertDialog(
                     onDismissRequest = onDismissRequest,
-                    title = { androidx.compose.material3.Text(stringResource(TDMR.strings.action_clear_custom_metadata)) },
-                    text = { androidx.compose.material3.Text(stringResource(TDMR.strings.clear_custom_metadata_confirm)) },
+                    title = { Text(stringResource(TDMR.strings.action_clear_custom_metadata)) },
+                    text = { Text(stringResource(TDMR.strings.clear_custom_metadata_confirm)) },
                     confirmButton = {
-                        androidx.compose.material3.TextButton(
+                        TextButton(
                             onClick = {
                                 screenModel.clearCustomInfo()
                                 onDismissRequest()
                             },
                         ) {
-                            androidx.compose.material3.Text(stringResource(MR.strings.action_ok))
+                            Text(stringResource(MR.strings.action_ok))
                         }
                     },
                     dismissButton = {
-                        androidx.compose.material3.TextButton(onClick = onDismissRequest) {
-                            androidx.compose.material3.Text(stringResource(MR.strings.action_cancel))
+                        TextButton(onClick = onDismissRequest) {
+                            Text(stringResource(MR.strings.action_cancel))
                         }
                     },
                 )

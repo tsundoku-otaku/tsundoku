@@ -634,18 +634,48 @@ class MangaScreenModel(
     }
 
     /**
-     * Update the tags (genre) of the manga.
+     * Apply all editable manga info fields from the edit dialog in one pass. Only changed fields
+     * touch their column and the custom-override memo, and the memo is read-modified-written once
+     * here (not once per field) so concurrent per-field coroutines can't clobber each other's
+     * override. A changed field records an override (blank/empty reverts to source on next refresh);
+     * an untouched field is left as-is so the source value still flows through.
      */
-    fun updateTags(tags: List<String>) {
+    fun updateMangaInfo(
+        description: String,
+        tags: List<String>,
+        author: String,
+        artist: String,
+        status: Long,
+    ) {
         screenModelScope.launchIO {
-            if (tags == successState?.manga?.genre.orEmpty()) return@launchIO
-            val update = tachiyomi.domain.manga.model.MangaUpdate(
-                id = mangaId,
-                genre = tags,
-            )
-            updateManga.await(update)
-            setCustomMangaInfo.await(mangaId) { it.copy(genre = tags.ifEmpty { null }) }
-            getLibraryManga.applyMangaDetailUpdate(mangaId) { it.copy(genre = tags) }
+            val manga = successState?.manga
+            val authorChanged = author != manga?.author.orEmpty()
+            val artistChanged = artist != manga?.artist.orEmpty()
+            val descriptionChanged = description != manga?.description.orEmpty()
+            val statusChanged = status != manga?.status
+            val tagsChanged = tags != manga?.genre.orEmpty()
+
+            if (authorChanged) updateManga.awaitUpdateAuthor(mangaId, author)
+            if (artistChanged) updateManga.awaitUpdateArtist(mangaId, artist)
+            if (descriptionChanged) updateManga.awaitUpdateDescription(mangaId, description)
+            if (statusChanged) updateManga.awaitUpdateStatus(mangaId, status)
+            if (tagsChanged) {
+                updateManga.await(tachiyomi.domain.manga.model.MangaUpdate(id = mangaId, genre = tags))
+            }
+
+            if (authorChanged || artistChanged || descriptionChanged || statusChanged || tagsChanged) {
+                setCustomMangaInfo.await(mangaId) { current ->
+                    var info = current
+                    if (authorChanged) info = info.copy(author = author.trim().ifBlank { null })
+                    if (artistChanged) info = info.copy(artist = artist.trim().ifBlank { null })
+                    if (descriptionChanged) info = info.copy(description = description.trim().ifBlank { null })
+                    if (statusChanged) info = info.copy(status = status)
+                    if (tagsChanged) info = info.copy(genre = tags.ifEmpty { null })
+                    info
+                }
+            }
+
+            if (tagsChanged) getLibraryManga.applyMangaDetailUpdate(mangaId) { it.copy(genre = tags) }
         }
     }
 
@@ -1435,48 +1465,6 @@ class MangaScreenModel(
     fun updateTitle(title: String) {
         screenModelScope.launchIO {
             updateManga.awaitUpdateTitle(mangaId, title)
-        }
-    }
-
-    /**
-     * Update the Author of the manga. Records the value as a custom override (blank reverts to
-     * source on next refresh) so a source refresh no longer wipes the manual edit.
-     */
-    fun updateAuthor(author: String) {
-        screenModelScope.launchIO {
-            if (author == successState?.manga?.author.orEmpty()) return@launchIO
-            updateManga.awaitUpdateAuthor(mangaId, author)
-            setCustomMangaInfo.await(mangaId) { it.copy(author = author.trim().ifBlank { null }) }
-        }
-    }
-
-    fun updateArtist(artist: String) {
-        screenModelScope.launchIO {
-            if (artist == successState?.manga?.artist.orEmpty()) return@launchIO
-            updateManga.awaitUpdateArtist(mangaId, artist)
-            setCustomMangaInfo.await(mangaId) { it.copy(artist = artist.trim().ifBlank { null }) }
-        }
-    }
-
-    /**
-     * Update the Status of the manga. Recorded as a custom override.
-     */
-    fun updateStatus(status: Long) {
-        screenModelScope.launchIO {
-            if (status == successState?.manga?.status) return@launchIO
-            updateManga.awaitUpdateStatus(mangaId, status)
-            setCustomMangaInfo.await(mangaId) { it.copy(status = status) }
-        }
-    }
-
-    /**
-     * Update the description of the manga. Recorded as a custom override (blank reverts to source).
-     */
-    fun updateDescription(description: String) {
-        screenModelScope.launchIO {
-            if (description == successState?.manga?.description.orEmpty()) return@launchIO
-            updateManga.awaitUpdateDescription(mangaId, description)
-            setCustomMangaInfo.await(mangaId) { it.copy(description = description.trim().ifBlank { null }) }
         }
     }
 
