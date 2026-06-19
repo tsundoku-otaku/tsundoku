@@ -24,6 +24,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Correct import stats when app is restarted [@mrissaoussama](https://github.com/mrissaoussama) [#272](https://github.com/tsundoku-otaku/tsundoku/pull/272)
 - Prevent issue where novel UI appeared in manga reader [@mrissaoussama](https://github.com/mrissaoussama) [#276](https://github.com/tsundoku-otaku/tsundoku/pull/276)
 - Fix per-tab extension update badge [@mrissaoussama](https://github.com/mrissaoussama) [#277](https://github.com/tsundoku-otaku/tsundoku/pull/277)
+- Fix a rare translation queue exception [@mrissaoussama](https://github.com/mrissaoussama) [#286](https://github.com/tsundoku-otaku/tsundoku/pull/286)
 
 ### Other
 - Merged df37d81 from Mihon [@mrissaoussama](https://github.com/mrissaoussama) [#281](https://github.com/tsundoku-otaku/tsundoku/pull/281)
