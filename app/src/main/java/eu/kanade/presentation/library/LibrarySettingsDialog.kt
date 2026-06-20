@@ -667,7 +667,7 @@ private fun ColumnScope.TagsPage(
     )
 
     // Sort and filter tags. Active (included/excluded) tags missing from the library's loaded tags
-    // are surfaced as count-0 entries so cross-type or stale filters stay visible and clearable —
+    // are surfaced as count-0 entries so cross-type or stale filters stay visible and clearable;
     // these prefs are shared across the manga/novel/all libraries, so a tag included on one type
     // would otherwise silently filter another to empty while nothing appears selected. They land in
     // the active partition below, pinned to the top.
@@ -694,7 +694,6 @@ private fun ColumnScope.TagsPage(
             }
         }
 
-        // Sort with active tags prioritized
         val (activeTags, inactiveTags) = filtered.partition { (tag, _) ->
             tag in includedTags || tag in excludedTags
         }
