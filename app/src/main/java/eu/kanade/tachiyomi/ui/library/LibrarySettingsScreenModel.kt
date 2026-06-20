@@ -71,9 +71,14 @@ class LibrarySettingsScreenModel(
     private val _noTagsCountFlow = MutableStateFlow(0)
     val noTagsCountFlow = _noTagsCountFlow.asStateFlow()
 
-    // Loading state
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading = _isLoading.asStateFlow()
+    // Loading state. Extensions and tags load independently, so they need separate flags:
+    // a shared flag let one loader's in-flight state disable/short-circuit the other page's
+    // refresh (and the init-time extensions load could swallow the first tags load).
+    private val _extensionsLoading = MutableStateFlow(false)
+    val extensionsLoading = _extensionsLoading.asStateFlow()
+
+    private val _tagsLoading = MutableStateFlow(false)
+    val tagsLoading = _tagsLoading.asStateFlow()
 
     // Tag search query state
     private val _tagSearchQuery = MutableStateFlow("")
@@ -209,9 +214,9 @@ class LibrarySettingsScreenModel(
      * This is the ONLY way to load extension data - no auto-subscription.
      */
     fun refreshExtensions(forceRefresh: Boolean = false) {
-        if (_isLoading.value) return
+        if (_extensionsLoading.value) return
         screenModelScope.launchIO {
-            _isLoading.value = true
+            _extensionsLoading.value = true
             try {
                 // Try loading from disk cache first if not forced and not loaded yet
                 if (!forceRefresh && !_extensionsLoaded.get()) {
@@ -219,7 +224,7 @@ class LibrarySettingsScreenModel(
                     if (cached != null && cached.isNotEmpty()) {
                         _extensionsFlow.value = cached
                         _extensionsLoaded.set(true)
-                        _isLoading.value = false
+                        _extensionsLoading.value = false
                         return@launchIO
                     }
                 }
@@ -258,7 +263,7 @@ class LibrarySettingsScreenModel(
             } catch (e: Exception) {
                 // Ignore error, keep empty list
             } finally {
-                _isLoading.value = false
+                _extensionsLoading.value = false
             }
         }
     }
@@ -269,9 +274,9 @@ class LibrarySettingsScreenModel(
      * Tags are filtered by content type (manga/novel) based on the library type.
      */
     fun refreshTags(forceRefresh: Boolean = false) {
-        if (_isLoading.value) return
+        if (_tagsLoading.value) return
         screenModelScope.launchIO {
-            _isLoading.value = true
+            _tagsLoading.value = true
             try {
                 logcat(LogPriority.INFO) { "LibrarySettingsScreenModel: refreshTags(forceRefresh=$forceRefresh, type=$type)" }
 
@@ -284,7 +289,7 @@ class LibrarySettingsScreenModel(
                         _tagsFlow.value = cached.first
                         _noTagsCountFlow.value = cached.second
                         _tagsLoaded.set(true)
-                        _isLoading.value = false
+                        _tagsLoading.value = false
                         return@launchIO
                     }
                 }
@@ -334,7 +339,7 @@ class LibrarySettingsScreenModel(
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "LibrarySettingsScreenModel: Error refreshing tags" }
             } finally {
-                _isLoading.value = false
+                _tagsLoading.value = false
             }
         }
     }

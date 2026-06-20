@@ -434,7 +434,7 @@ private fun ColumnScope.TagsPage(
     val excludedTags by screenModel.libraryPreferences.excludedTags.collectAsState()
     val filterNoTags by screenModel.libraryPreferences.filterNoTags().collectAsState()
     val noTagsCount by screenModel.noTagsCountFlow.collectAsState()
-    val isLoading by screenModel.isLoading.collectAsState()
+    val isLoading by screenModel.tagsLoading.collectAsState()
 
     // Tag options
     val tagIncludeModeAnd by screenModel.libraryPreferences.tagIncludeMode.collectAsState()
@@ -666,13 +666,63 @@ private fun ColumnScope.TagsPage(
         ),
     )
 
-    if (tags.isEmpty() && !isLoading) {
+    // Sort and filter tags. Active (included/excluded) tags missing from the library's loaded tags
+    // are surfaced as count-0 entries so cross-type or stale filters stay visible and clearable —
+    // these prefs are shared across the manga/novel/all libraries, so a tag included on one type
+    // would otherwise silently filter another to empty while nothing appears selected. They land in
+    // the active partition below, pinned to the top.
+    val sortedTags = remember(tags, tagSortByName, tagSortAscending, committedTagQuery, includedTags, excludedTags, tagCaseSensitive) {
+        val loadedKeys = if (tagCaseSensitive) {
+            tags.mapTo(HashSet()) { it.first }
+        } else {
+            tags.mapTo(HashSet()) { it.first.lowercase() }
+        }
+        fun isLoaded(tag: String) =
+            if (tagCaseSensitive) tag in loadedKeys else tag.lowercase() in loadedKeys
+        val phantomActive = (includedTags + excludedTags)
+            .filterNot { isLoaded(it) }
+            .map { it to 0 }
+        val allTags = phantomActive + tags
+
+        val filtered = if (committedTagQuery.isBlank()) {
+            allTags
+        } else {
+            val query = if (tagCaseSensitive) committedTagQuery else committedTagQuery.lowercase()
+            allTags.filter { (tag, _) ->
+                val tagToMatch = if (tagCaseSensitive) tag else tag.lowercase()
+                tagToMatch.contains(query)
+            }
+        }
+
+        // Sort with active tags prioritized
+        val (activeTags, inactiveTags) = filtered.partition { (tag, _) ->
+            tag in includedTags || tag in excludedTags
+        }
+
+        val sortComparator: Comparator<Pair<String, Int>> = if (tagSortByName) {
+            if (tagSortAscending) {
+                compareBy { it.first.lowercase() }
+            } else {
+                compareByDescending { it.first.lowercase() }
+            }
+        } else {
+            if (tagSortAscending) {
+                compareBy { it.second }
+            } else {
+                compareByDescending { it.second }
+            }
+        }
+
+        activeTags.sortedWith(sortComparator) + inactiveTags.sortedWith(sortComparator)
+    }
+
+    if (sortedTags.isEmpty() && !isLoading) {
         Text(
             text = "No tags found in library",
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
         )
-    } else if (isLoading && tags.isEmpty()) {
+    } else if (isLoading && sortedTags.isEmpty()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             horizontalArrangement = Arrangement.Center,
@@ -688,40 +738,6 @@ private fun ColumnScope.TagsPage(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 4.dp),
         )
-
-        // Sort and filter tags
-        val sortedTags = remember(tags, tagSortByName, tagSortAscending, committedTagQuery, includedTags, excludedTags, tagCaseSensitive) {
-            val filtered = if (committedTagQuery.isBlank()) {
-                tags
-            } else {
-                val query = if (tagCaseSensitive) committedTagQuery else committedTagQuery.lowercase()
-                tags.filter { (tag, _) ->
-                    val tagToMatch = if (tagCaseSensitive) tag else tag.lowercase()
-                    tagToMatch.contains(query)
-                }
-            }
-
-            // Sort with active tags prioritized
-            val (activeTags, inactiveTags) = filtered.partition { (tag, _) ->
-                tag in includedTags || tag in excludedTags
-            }
-
-            val sortComparator: Comparator<Pair<String, Int>> = if (tagSortByName) {
-                if (tagSortAscending) {
-                    compareBy { it.first.lowercase() }
-                } else {
-                    compareByDescending { it.first.lowercase() }
-                }
-            } else {
-                if (tagSortAscending) {
-                    compareBy { it.second }
-                } else {
-                    compareByDescending { it.second }
-                }
-            }
-
-            activeTags.sortedWith(sortComparator) + inactiveTags.sortedWith(sortComparator)
-        }
 
         Text(
             text = "${sortedTags.size} tags",
@@ -787,7 +803,7 @@ private fun ColumnScope.ExtensionsPage(
 ) {
     val excludedExtensions by screenModel.libraryPreferences.excludedExtensions.collectAsState()
     val availableExtensions by screenModel.extensionsFlow.collectAsState()
-    val isLoading by screenModel.isLoading.collectAsState()
+    val isLoading by screenModel.extensionsLoading.collectAsState()
     var showRefreshCompleted by remember { mutableStateOf(false) }
     var wasLoading by remember { mutableStateOf(false) }
 
