@@ -81,6 +81,27 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
         const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
         const val ID_EDIT_MODE_STYLE = "edit-mode-style"
+
+        const val TTS_TEXT_EXTRACTION_JS = """
+            (function() {
+                var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
+                var els = Array.from(document.querySelectorAll(selectors)).filter(function(el) {
+                    return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                });
+                if (!els.length) {
+                    els = Array.from(document.body.children).filter(function(el) {
+                        return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                    });
+                }
+                if (!els.length) {
+                    var body = document.body;
+                    return body ? body.innerText || body.textContent : '';
+                }
+                return els.map(function(el) {
+                    return el.innerText.trim().replace(/\s*\n\s*/g, ' ');
+                }).join('\n');
+            })();
+        """
     }
 
     private val container = FrameLayout(activity)
@@ -1723,7 +1744,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     setJsLoadingNext()
                 }
             }
-            // Already loaded counts as success — the caller still advances TTS onto it.
+            // Already loaded counts as success; the caller still advances TTS onto it.
             return true
         }
 
@@ -1913,14 +1934,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             return
         }
         val (chapterIdx, chapterId) = getTtsChapterContext()
-        evaluateJavascriptSafe(
-            """
-            (function() {
-                var body = document.body;
-                return body ? body.innerText || body.textContent : '';
-            })();
-            """.trimIndent(),
-        ) { result ->
+        evaluateJavascriptSafe(TTS_TEXT_EXTRACTION_JS) { result ->
             val text = result.let {
                 if (it.startsWith("\"") && it.endsWith("\"")) {
                     // Unescape in reverse-dependency order: \\ must be replaced before
@@ -2055,14 +2069,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             """.trimIndent(),
         ) { rawIndex ->
             val firstVisibleParagraphIndex = rawIndex.trim('"').toIntOrNull() ?: 0
-            evaluateJavascriptSafe(
-                """
-                (function() {
-                    var body = document.body;
-                    return body ? body.innerText || body.textContent : '';
-                })();
-                """.trimIndent(),
-            ) { result ->
+            evaluateJavascriptSafe(TTS_TEXT_EXTRACTION_JS) { result ->
                 val text = result.let {
                     if (it.startsWith("\"") && it.endsWith("\"")) {
                         it.substring(1, it.length - 1)

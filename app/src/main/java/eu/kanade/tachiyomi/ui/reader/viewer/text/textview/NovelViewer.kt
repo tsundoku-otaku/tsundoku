@@ -1060,7 +1060,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             contentContainer.removeView(lc.block.container)
         }
         chapterQueue.removeFirstN(removeCount)
-        // Shift the absolute indices down by the number of chapters removed from the front.
         currentChapterIndex = (currentChapterIndex - removeCount).coerceAtLeast(0)
         ttsController.shiftPlaybackChapterIndex(removeCount)
         // Removed views were above the viewport; compensate so the read chapter stays put.
@@ -1102,7 +1101,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         // Inf-scroll TTS reads in place, so the scroll listener that normally kicks the
         // prefetch may never reach the load threshold (keep-in-view off, or a chapter shorter
         // than the viewport). Start the prefetch when playback begins on the last loaded
-        // chapter so the next chapter is cached before onLastChunkDone hands off — otherwise
+        // chapter so the next chapter is cached before onLastChunkDone hands off; otherwise
         // the handoff stalls on a cold fetch and playback fails to advance. Idempotent: the
         // prefetch no-ops unless handoffState is Idle.
         if (preferences.novelInfiniteScroll.get() &&
