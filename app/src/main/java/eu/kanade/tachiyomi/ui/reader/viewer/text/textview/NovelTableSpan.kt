@@ -162,19 +162,16 @@ class NovelTableSpan(
         val tableTop = top.toFloat()
         val b = border
 
-        // Header row background.
         if (hasHeader && rows.isNotEmpty()) {
             canvas.drawRect(left, tableTop, left + tableWidth, tableTop + rowHeights[0] + b, headerBgPaint)
         }
 
-        // Horizontal lines.
         var lineY = tableTop
         canvas.drawLine(left, lineY, left + tableWidth, lineY, borderPaint)
         for (r in rows.indices) {
             lineY += b + rowHeights[r]
             canvas.drawLine(left, lineY, left + tableWidth, lineY, borderPaint)
         }
-        // Vertical lines.
         var lineX = left
         canvas.drawLine(lineX, tableTop, lineX, tableTop + (tableHeight - rowGap), borderPaint)
         for (c in 0 until colCount) {
