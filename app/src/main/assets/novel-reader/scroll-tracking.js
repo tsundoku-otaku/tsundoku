@@ -54,7 +54,7 @@
         // Use the real content height and the VISUAL viewport (window.innerHeight).
         // documentElement.clientHeight is the layout viewport, which diverges from the
         // visual viewport under useWideViewPort/loadWithOverviewMode (and any scaling),
-        // making scrollHeight - clientHeight larger than the reachable scroll range — so
+        // making scrollHeight - clientHeight larger than the reachable scroll range, so
         // the true bottom computed to ~0.92 and never hit 100%.
         var docHeight = Math.max(
             document.documentElement.scrollHeight,
