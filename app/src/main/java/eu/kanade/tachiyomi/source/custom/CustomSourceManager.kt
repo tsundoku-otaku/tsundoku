@@ -260,6 +260,14 @@ class CustomSourceManager(
         if (_customSources.value.any { it.name == config.name && it.id != config.id }) {
             errors.add("A source with this name already exists")
         }
+        val normalizedBase = config.baseUrl.trim().trimEnd('/').lowercase()
+        if (normalizedBase.isNotBlank() &&
+            _customSources.value.any {
+                it.id != config.id && it.config.baseUrl.trim().trimEnd('/').lowercase() == normalizedBase
+            }
+        ) {
+            errors.add("A source with this base URL already exists")
+        }
 
         if (errors.isNotEmpty()) {
             throw IllegalArgumentException(errors.joinToString("; "))
