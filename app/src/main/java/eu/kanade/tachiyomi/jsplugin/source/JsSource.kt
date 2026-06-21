@@ -671,7 +671,7 @@ class JsSource(
             chapters
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Error in getChapterList for ${plugin.name}" }
-            emptyList()
+            throw e
         }
     }
 
