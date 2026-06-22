@@ -1,0 +1,6 @@
+-- Clean up orphaned mangas_categories rows where the referenced category or manga no longer exists.
+-- These pre-existing orphans cause a startup crash when the AndroidX SQLite driver's
+-- ensureSchemaIsReady runs PRAGMA foreign_key_check with isForeignKeyConstraintsEnabled = true.
+DELETE FROM mangas_categories
+WHERE category_id NOT IN (SELECT _id FROM categories)
+   OR manga_id NOT IN (SELECT _id FROM mangas);
