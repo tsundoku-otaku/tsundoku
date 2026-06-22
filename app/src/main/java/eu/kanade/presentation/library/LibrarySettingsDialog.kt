@@ -726,59 +726,83 @@ private fun ColumnScope.TagsPage(
             activeTags.sortedWith(sortComparator) + inactiveTags.sortedWith(sortComparator)
         }
 
-    Text(
-        text = "${sortedTags.size} tags",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 2.dp),
-    )
+    if (sortedTags.isEmpty() && !isLoading) {
+        Text(
+            text = "No tags found in library",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
+        )
+    } else if (isLoading && sortedTags.isEmpty()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(8.dp))
+            Text("Loading tags...")
+        }
+    } else {
+        Text(
+            text = "Tap to include, tap again to exclude, tap again to clear",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 4.dp),
+        )
 
-    LazyVerticalStaggeredGrid(
-        columns = StaggeredGridCells.Adaptive(minSize = 100.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .weight(1f)
-            .padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalItemSpacing = 8.dp,
-    ) {
-        items(sortedTags.size, key = { sortedTags[it].first }) { index ->
-            val (tag, count) = sortedTags[index]
-            val isIncluded = tag in includedTags
-            val isExcluded = tag in excludedTags
+        Text(
+            text = "${sortedTags.size} tags",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 2.dp),
+        )
 
-            FilterChip(
-                selected = isIncluded || isExcluded,
-                onClick = { screenModel.toggleTagIncluded(tag) },
-                label = { Text("$tag ($count)") },
-                leadingIcon = {
-                    when {
-                        isIncluded -> Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
+        LazyVerticalStaggeredGrid(
+            columns = StaggeredGridCells.Adaptive(minSize = 100.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalItemSpacing = 8.dp,
+        ) {
+            items(sortedTags.size, key = { sortedTags[it].first }) { index ->
+                val (tag, count) = sortedTags[index]
+                val isIncluded = tag in includedTags
+                val isExcluded = tag in excludedTags
 
-                        isExcluded -> Icon(
-                            imageVector = Icons.Filled.Clear,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize),
-                        )
-                    }
-                },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = if (isExcluded) {
-                        MaterialTheme.colorScheme.errorContainer
-                    } else {
-                        MaterialTheme.colorScheme.primaryContainer
+                FilterChip(
+                    selected = isIncluded || isExcluded,
+                    onClick = { screenModel.toggleTagIncluded(tag) },
+                    label = { Text("$tag ($count)") },
+                    leadingIcon = {
+                        when {
+                            isIncluded -> Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize),
+                            )
+
+                            isExcluded -> Icon(
+                                imageVector = Icons.Filled.Clear,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize),
+                            )
+                        }
                     },
-                    selectedLabelColor = if (isExcluded) {
-                        MaterialTheme.colorScheme.onErrorContainer
-                    } else {
-                        MaterialTheme.colorScheme.onPrimaryContainer
-                    },
-                ),
-            )
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = if (isExcluded) {
+                            MaterialTheme.colorScheme.errorContainer
+                        } else {
+                            MaterialTheme.colorScheme.primaryContainer
+                        },
+                        selectedLabelColor = if (isExcluded) {
+                            MaterialTheme.colorScheme.onErrorContainer
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        },
+                    ),
+                )
+            }
         }
     }
 }
