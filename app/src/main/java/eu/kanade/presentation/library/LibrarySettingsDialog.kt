@@ -683,29 +683,29 @@ private fun ColumnScope.TagsPage(
             excludedTags,
             tagCaseSensitive,
         ) {
-        val loadedKeys = if (tagCaseSensitive) {
-            tags.mapTo(HashSet()) { it.first }
-        } else {
-            tags.mapTo(HashSet()) { it.first.lowercase() }
-        }
-        fun isLoaded(tag: String) =
-            if (tagCaseSensitive) tag in loadedKeys else tag.lowercase() in loadedKeys
-        val phantomActive = (includedTags + excludedTags)
-            .filterNot { isLoaded(it) }
-            .map { it to 0 }
-        val allTags = phantomActive + tags
-
-        val filtered = if (committedTagQuery.isBlank()) {
-            allTags
-        } else {
-            val query = if (tagCaseSensitive) committedTagQuery else committedTagQuery.lowercase()
-            allTags.filter { (tag, _) ->
-                val tagToMatch = if (tagCaseSensitive) tag else tag.lowercase()
-                tagToMatch.contains(query)
+            val loadedKeys = if (tagCaseSensitive) {
+                tags.mapTo(HashSet()) { it.first }
+            } else {
+                tags.mapTo(HashSet()) { it.first.lowercase() }
             }
-        }
+            fun isLoaded(tag: String) =
+                if (tagCaseSensitive) tag in loadedKeys else tag.lowercase() in loadedKeys
+            val phantomActive = (includedTags + excludedTags)
+                .filterNot { isLoaded(it) }
+                .map { it to 0 }
+            val allTags = phantomActive + tags
 
-                val (activeTags, inactiveTags) = filtered.partition { (tag, _) ->
+            val filtered = if (committedTagQuery.isBlank()) {
+                allTags
+            } else {
+                val query = if (tagCaseSensitive) committedTagQuery else committedTagQuery.lowercase()
+                allTags.filter { (tag, _) ->
+                    val tagToMatch = if (tagCaseSensitive) tag else tag.lowercase()
+                    tagToMatch.contains(query)
+                }
+            }
+
+            val (activeTags, inactiveTags) = filtered.partition { (tag, _) ->
                 tag in includedTags || tag in excludedTags
             }
 
@@ -726,60 +726,59 @@ private fun ColumnScope.TagsPage(
             activeTags.sortedWith(sortComparator) + inactiveTags.sortedWith(sortComparator)
         }
 
-        Text(
-            text = "${sortedTags.size} tags",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 2.dp),
-        )
+    Text(
+        text = "${sortedTags.size} tags",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 2.dp),
+    )
 
-        LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Adaptive(minSize = 100.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalItemSpacing = 8.dp,
-        ) {
-            items(sortedTags.size, key = { sortedTags[it].first }) { index ->
-                val (tag, count) = sortedTags[index]
-                val isIncluded = tag in includedTags
-                val isExcluded = tag in excludedTags
+    LazyVerticalStaggeredGrid(
+        columns = StaggeredGridCells.Adaptive(minSize = 100.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .weight(1f)
+            .padding(horizontal = TabbedDialogPaddings.Horizontal, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalItemSpacing = 8.dp,
+    ) {
+        items(sortedTags.size, key = { sortedTags[it].first }) { index ->
+            val (tag, count) = sortedTags[index]
+            val isIncluded = tag in includedTags
+            val isExcluded = tag in excludedTags
 
-                FilterChip(
-                    selected = isIncluded || isExcluded,
-                    onClick = { screenModel.toggleTagIncluded(tag) },
-                    label = { Text("$tag ($count)") },
-                    leadingIcon = {
-                        when {
-                            isIncluded -> Icon(
-                                imageVector = Icons.Filled.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(FilterChipDefaults.IconSize),
-                            )
+            FilterChip(
+                selected = isIncluded || isExcluded,
+                onClick = { screenModel.toggleTagIncluded(tag) },
+                label = { Text("$tag ($count)") },
+                leadingIcon = {
+                    when {
+                        isIncluded -> Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
 
-                            isExcluded -> Icon(
-                                imageVector = Icons.Filled.Clear,
-                                contentDescription = null,
-                                modifier = Modifier.size(FilterChipDefaults.IconSize),
-                            )
-                        }
+                        isExcluded -> Icon(
+                            imageVector = Icons.Filled.Clear,
+                            contentDescription = null,
+                            modifier = Modifier.size(FilterChipDefaults.IconSize),
+                        )
+                    }
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = if (isExcluded) {
+                        MaterialTheme.colorScheme.errorContainer
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer
                     },
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = if (isExcluded) {
-                            MaterialTheme.colorScheme.errorContainer
-                        } else {
-                            MaterialTheme.colorScheme.primaryContainer
-                        },
-                        selectedLabelColor = if (isExcluded) {
-                            MaterialTheme.colorScheme.onErrorContainer
-                        } else {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        },
-                    ),
-                )
-            }
+                    selectedLabelColor = if (isExcluded) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    },
+                ),
+            )
         }
     }
 }

@@ -380,10 +380,7 @@ class ImportEpubScreen(
                         canDeleteImportedFiles =
                         successfullyImportedUris.isNotEmpty() &&
                             successfullyImportedUris.none { it.scheme == "content" },
-                        @Suppress("ktlint:standard:max-line-length")
-                        onDeleteImportedFiles
-                            =
-                            { showDeleteImportedConfirm = true },
+                        onDeleteImportedFiles = { showDeleteImportedConfirm = true },
                         onDone = { exitImportScreen() },
                     )
 

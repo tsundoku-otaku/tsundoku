@@ -1225,10 +1225,7 @@ private fun LiveTestDialog(
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontFamily = FontFamily.Monospace,
                                         ),
-                                        @Suppress("ktlint:standard:max-line-length")
-                                        color
-                                            =
-                                            MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                     )
