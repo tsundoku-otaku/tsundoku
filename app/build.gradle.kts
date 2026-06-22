@@ -43,8 +43,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    if (System.getenv("GITHUB_ACTIONS").toBoolean() && System.getenv("GITHUB_REPOSITORY_OWNER") == "mihonapp") {
-        val tempStoreFile = file(System.getenv("RUNNER_TEMP")).resolve("antsy.keystore")
+    if (System.getenv("TSUNDOKU_GITHUB_RELEASE").toBoolean() && System.getenv("GITHUB_REPOSITORY_OWNER") == "tsundoku-otaku") {
+        val tempStoreFile = file(System.getenv("RUNNER_TEMP")).resolve("tsundoku.keystore")
 
         val storeFileBytes = System.getenv("storeFileBase64").let(Base64::decode)
         tempStoreFile.outputStream().use { it.write(storeFileBytes) }
