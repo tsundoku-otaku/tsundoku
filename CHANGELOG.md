@@ -23,6 +23,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Edit manga now has an artist field [@mrissaoussama](https://github.com/mrissaoussama) [#278](https://github.com/tsundoku-otaku/tsundoku/pull/278)
 - URL path resolution in JsSource [@mrissaoussama](https://github.com/mrissaoussama) [#274](https://github.com/tsundoku-otaku/tsundoku/pull/274)
 - Mass import improvements and resume counting [@mrissaoussama](https://github.com/mrissaoussama) [#288](https://github.com/tsundoku-otaku/tsundoku/pull/288)
+- Prevent duplicate custom sources [@mrissaoussama](https://github.com/mrissaoussama) [#294](https://github.com/tsundoku-otaku/tsundoku/pull/294)
 
 ### Fixed
 - Paginated library export to prevent potential OOM, added cancel to notif [@mrissaoussama](https://github.com/mrissaoussama) [#270](https://github.com/tsundoku-otaku/tsundoku/pull/270)
