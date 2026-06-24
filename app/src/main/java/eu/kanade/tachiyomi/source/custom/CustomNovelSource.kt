@@ -602,23 +602,22 @@ class CustomNovelSource(
         return getChapterList(manga)
     }
 
-    // Mode B: build the chapter list from a numeric URL pattern instead of scraping it. The range
-    // is [firstNumber..lastNumber]; lastNumber falls back to the total parsed from countSelector on
-    // the details page. One fetch at most (only when a count must be read).
+    // Mode B: build the chapter list from a numeric URL pattern instead of scraping it. start is the
+    // numbering base (constant for the site). The END is read PER NOVEL from countSelector on the
+    // details page so each novel loads its own length; lastNumber is only a fallback for the rare
+    // single-novel source with no count element. One fetch at most (only when a count must be read).
     private suspend fun generateChapterList(manga: SManga): List<SChapter> {
         val sel = config.selectors.chapters
         val pattern = sel.urlPattern ?: return emptyList()
         val start = sel.firstNumber ?: 1
-        val end = sel.lastNumber ?: run {
-            val countSel = sel.countSelector
-            if (countSel.isNullOrBlank()) {
-                start
-            } else {
-                val doc = client.newCall(GET(buildAbsoluteUrl(manga.url), headers)).awaitSuccess().asJsoup()
-                doc.selectFirst(countSel)?.text()
-                    ?.let { Regex("""\d+""").find(it.replace(",", ""))?.value?.toIntOrNull() }
-                    ?: start
-            }
+        val countSel = sel.countSelector
+        val end = if (!countSel.isNullOrBlank()) {
+            val doc = client.newCall(GET(buildAbsoluteUrl(manga.url), headers)).awaitSuccess().asJsoup()
+            doc.selectFirst(countSel)?.text()
+                ?.let { Regex("""\d+""").find(it.replace(",", ""))?.value?.toIntOrNull() }
+                ?: sel.lastNumber ?: start
+        } else {
+            sel.lastNumber ?: start
         }
         val resolvedPattern = applyNovelUrlToPattern(pattern, manga.url)
         val chapters = generatedChapterEntries(resolvedPattern, start, end, sel.nameTemplate).map { entry ->

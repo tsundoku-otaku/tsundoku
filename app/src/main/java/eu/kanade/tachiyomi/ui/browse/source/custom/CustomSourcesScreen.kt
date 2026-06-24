@@ -1590,6 +1590,9 @@ class CustomSourceEditorScreen(
                                     it
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            supportingText = {
+                                Text(stringResource(TDMR.strings.custom_source_chapter_count_selector_desc))
+                            },
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
@@ -1598,6 +1601,9 @@ class CustomSourceEditorScreen(
                                 label = { Text(stringResource(TDMR.strings.custom_source_chapter_first_number)) },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true,
+                                supportingText = {
+                                    Text(stringResource(TDMR.strings.custom_source_chapter_first_number_desc))
+                                },
                             )
                             OutlinedTextField(
                                 value = chapterLastNumber,
@@ -1605,6 +1611,9 @@ class CustomSourceEditorScreen(
                                 label = { Text(stringResource(TDMR.strings.custom_source_chapter_last_number)) },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true,
+                                supportingText = {
+                                    Text(stringResource(TDMR.strings.custom_source_chapter_last_number_desc))
+                                },
                             )
                         }
                         OutlinedTextField(

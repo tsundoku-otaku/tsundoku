@@ -571,6 +571,10 @@ fun ElementSelectorScreen(
                             config.searchKeyword = searchProbeQuery
                             config.searchSampleUrl = newUrl // raw page-1 search URL for pagination diff
                             searchStatus = "ok:$derived"
+                        } else {
+                            // The probe word isn't in this URL yet. Notify instead of staying silent so
+                            // the user knows to run the search (and that case must match).
+                            searchStatus = "fail"
                         }
                     }
                 }

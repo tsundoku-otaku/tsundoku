@@ -648,8 +648,11 @@
     <string name="custom_source_chapter_index_selector">Chapter list link selector (separate page)</string>
     <string name="custom_source_chapter_url_pattern">Chapter URL pattern (use {n})</string>
     <string name="custom_source_chapter_count_selector">Chapter count selector (total)</string>
+    <string name="custom_source_chapter_count_selector_desc">Read on each novel\'s page to set its length. Preferred, so the source works for every novel.</string>
     <string name="custom_source_chapter_first_number">First chapter number</string>
+    <string name="custom_source_chapter_first_number_desc">Numbering start, usually 1 (sometimes 0).</string>
     <string name="custom_source_chapter_last_number">Last chapter number</string>
+    <string name="custom_source_chapter_last_number_desc">Fallback only. A fixed value applies to every novel, so it fits single-novel sources.</string>
     <string name="custom_source_content_fallbacks">Content fallback selectors (comma-separated)</string>
     <string name="custom_source_novel_details">Novel Details</string>
     <string name="custom_source_title_selector_required">Title Selector *</string>
@@ -742,8 +745,8 @@
     <string name="selector_step_chapter_pagination_desc">Tap the \'next page\' link of the chapter list, or continue to skip.</string>
     <string name="selector_step_chapter_pagination_detail">For chapter lists that span multiple pages.</string>
     <string name="selector_step_chapter_range_title">Chapter range</string>
-    <string name="selector_step_chapter_range_desc">Tap the FIRST chapter, then the LAST chapter. Optionally tap an element showing the total chapter count.</string>
-    <string name="selector_step_chapter_range_detail">Chapter URLs are read as a numbered pattern (e.g. /chapter-12) and the whole list is generated from the range. Tap the true first and last chapters even if they sit on different pages of the list (navigate there first); order and gaps between them don\'t matter, only the two numbers.</string>
+    <string name="selector_step_chapter_range_desc">Tap the FIRST chapter, then any other chapter (this learns the URL pattern). Then tap the element showing the total chapter count so each novel loads its own length.</string>
+    <string name="selector_step_chapter_range_detail">The two chapter taps only locate the number in the URL (e.g. /chapter-12); the start is the lower of the two and they can be on different pages of a paged or newest-first list. The END comes from the count element, read fresh on every novel\'s page, so each novel loads the right number of chapters. Without a count element the list is capped at the highest number you tapped, which only fits the novel you sampled.</string>
     <string name="selector_step_chapter_date_title">Chapter date (optional)</string>
     <string name="selector_step_chapter_date_desc">Tap a chapter\'s upload date, or continue to skip.</string>
     <string name="selector_step_chapter_date_detail">Captures the per-chapter date selector. Skip if the list shows no dates.</string>
