@@ -31,6 +31,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Download ahead download states should no longer get stale values [@mrissaoussama](https://github.com/mrissaoussama) [#289](https://github.com/tsundoku-otaku/tsundoku/pull/289)
 - Fix per-tab extension update badge [@mrissaoussama](https://github.com/mrissaoussama) [#277](https://github.com/tsundoku-otaku/tsundoku/pull/277)
 - Fix library setting loading and tags [@mrissaoussama](https://github.com/mrissaoussama) [#291](https://github.com/tsundoku-otaku/tsundoku/pull/291)
+- Fetch json parse failrues (jsplugin) [@mrissaoussama](https://github.com/mrissaoussama) [#295](https://github.com/tsundoku-otaku/tsundoku/pull/295)
 - Fix a rare translation queue exception [@mrissaoussama](https://github.com/mrissaoussama) [#286](https://github.com/tsundoku-otaku/tsundoku/pull/286)
 
 ### Other
