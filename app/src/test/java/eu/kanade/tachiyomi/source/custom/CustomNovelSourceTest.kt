@@ -329,6 +329,70 @@ class CustomNovelSourceTest {
         )
     }
 
+    @Test
+    fun `derive generic chapter pattern uses last digit run and generalizes novel url`() {
+        // Two chapter URLs of the same novel; novel id "abc" must become the {novelUrl} placeholder
+        // so the pattern is portable to other novels.
+        val result = deriveGenericChapterPattern(
+            "https://example.com/novel/abc/chapter-1",
+            "https://example.com/novel/abc/chapter-450",
+            "https://example.com",
+            "https://example.com/novel/abc",
+        )
+        assertEquals(Triple("{novelUrl}/chapter-{n}", 1, 450), result)
+    }
+
+    @Test
+    fun `derive generic chapter pattern without novel url stays relative`() {
+        val result = deriveGenericChapterPattern(
+            "https://example.com/novel/abc/chapter-1",
+            "https://example.com/novel/abc/chapter-2",
+            "https://example.com",
+            null,
+        )
+        assertEquals(Triple("/novel/abc/chapter-{n}", 1, 2), result)
+    }
+
+    @Test
+    fun `derive generic chapter pattern returns null when no numeric difference`() {
+        assertEquals(
+            null,
+            deriveGenericChapterPattern(
+                "https://example.com/novel/abc/intro",
+                "https://example.com/novel/abc/intro",
+                "https://example.com",
+                "https://example.com/novel/abc",
+            ),
+        )
+    }
+
+    @Test
+    fun `apply novel url to pattern substitutes current novel path`() {
+        assertEquals(
+            "/series/xyz/chapter-{n}",
+            applyNovelUrlToPattern("{novelUrl}/chapter-{n}", "/series/xyz"),
+        )
+        // No placeholder = unchanged (legacy patterns).
+        assertEquals(
+            "/novel/abc/chapter-{n}",
+            applyNovelUrlToPattern("/novel/abc/chapter-{n}", "/series/xyz"),
+        )
+    }
+
+    @Test
+    fun `generated chapter entries build numbered urls and names`() {
+        val entries = generatedChapterEntries("/series/xyz/chapter-{n}", 1, 3, null)
+        assertEquals(3, entries.size)
+        assertEquals("/series/xyz/chapter-1", entries.first().url)
+        assertEquals("Chapter 1", entries.first().name)
+        assertEquals("Chapter 3", entries.last().name)
+
+        val custom = generatedChapterEntries("/c/{n}", 5, 5, "Ep {n}")
+        assertEquals(1, custom.size)
+        assertEquals("Ep 5", custom.first().name)
+        assertEquals(5f, custom.first().number)
+    }
+
     // Helper function that mirrors buildAbsoluteUrl logic for testing
     private fun buildAbsoluteUrlForTest(url: String?, baseUrl: String): String {
         val trimmedUrl = url?.trim().orEmpty()

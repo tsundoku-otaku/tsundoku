@@ -1820,25 +1820,6 @@ private fun relativize(full: String, listSel: String): String {
 }
 
 /**
- * From the first and last chapter URLs, derive a numeric pattern ({n} at the chapter number) plus
- * both numbers. Uses the LAST digit run as the chapter number (robust to a novel id earlier in the
- * path). Returns (relativePattern, firstNumber, lastNumber) or null.
- */
-private fun deriveNumericPattern(url1: String, url2: String, baseUrl: String): Triple<String, Int, Int>? {
-    if (url1.isBlank() || url2.isBlank()) return null
-    val rx = Regex("""\d+""")
-    val m1 = rx.findAll(url1).lastOrNull() ?: return null
-    val m2 = rx.findAll(url2).lastOrNull() ?: return null
-    val n1 = m1.value.toIntOrNull() ?: return null
-    val n2 = m2.value.toIntOrNull() ?: return null
-    if (n1 == n2) return null
-    val patternAbs = url1.substring(0, m1.range.first) + "{n}" + url1.substring(m1.range.last + 1)
-    val base = baseUrl.trimEnd('/')
-    val pattern = if (patternAbs.startsWith(base)) patternAbs.removePrefix(base) else patternAbs
-    return Triple(pattern, n1, n2)
-}
-
-/**
  * Diffs a page-1 and page-2 URL that differ only by page number, returning the page-2 URL with the
  * differing digits replaced by {page}. Mirrors ElementSelectorScreenModel.derivePagedFromPair so the
  * wizard can preview the same template that gets saved. Null if they don't differ by a number.
@@ -1929,7 +1910,11 @@ private fun saveSelectionsForStep(
             }
         }
         SelectorWizardStep.CHAPTER_LIST_PAGINATION -> {
-            selectedElements.firstOrNull()?.let { config.chapterListPaginationSelector = it.selector }
+            // Strip positional bits (:nth-of-type) so the "next page" selector keeps matching on
+            // page 2+ where the element's index differs from page 1.
+            selectedElements.firstOrNull()?.let {
+                config.chapterListPaginationSelector = stripPositional(it.selector)
+            }
         }
         SelectorWizardStep.CHAPTER_INDEX_LINK -> {
             // On the details page; stored as a document selector (resolved against the details doc).
@@ -1967,7 +1952,12 @@ private fun saveSelectionsForStep(
             // element holding the total chapter count (overrides the last number).
             val first = selectedElements.getOrNull(0)?.href.orEmpty()
             val last = selectedElements.getOrNull(1)?.href.orEmpty()
-            deriveNumericPattern(first, last, config.baseUrl)?.let { (pattern, n1, n2) ->
+            eu.kanade.tachiyomi.source.custom.deriveGenericChapterPattern(
+                first,
+                last,
+                config.baseUrl,
+                config.sampleNovelUrl.ifBlank { null },
+            )?.let { (pattern, n1, n2) ->
                 config.chapterUrlPattern = pattern
                 config.chapterFirstNumber = minOf(n1, n2)
                 config.chapterLastNumber = maxOf(n1, n2)

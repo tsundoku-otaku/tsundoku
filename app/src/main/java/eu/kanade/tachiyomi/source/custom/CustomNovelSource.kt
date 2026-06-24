@@ -404,6 +404,45 @@ internal fun htmlToFormattedText(html: String): String {
 internal data class GeneratedChapterEntry(val url: String, val name: String, val number: Float)
 
 /**
+ * Substitutes the `{novelUrl}` placeholder in a generated-chapter URL pattern with the current
+ * novel's path, so one pattern works for every novel instead of being pinned to the novel it was
+ * captured from. A pattern with no placeholder is returned unchanged (legacy behaviour).
+ */
+internal fun applyNovelUrlToPattern(pattern: String, novelUrl: String): String =
+    pattern.replace("{novelUrl}", novelUrl.trim().trimEnd('/'))
+
+/**
+ * From two chapter URLs of the SAME novel, derive a portable numeric pattern plus the two chapter
+ * numbers. The last digit run is treated as the chapter number (robust to a novel id earlier in the
+ * path). When [novelUrl] is supplied and prefixes the pattern, that prefix is replaced with the
+ * `{novelUrl}` placeholder so the pattern generalizes to other novels. Returns
+ * (pattern, firstNumber, lastNumber) or null when no numeric difference is found.
+ */
+internal fun deriveGenericChapterPattern(
+    chapterUrl1: String,
+    chapterUrl2: String,
+    baseUrl: String,
+    novelUrl: String?,
+): Triple<String, Int, Int>? {
+    if (chapterUrl1.isBlank() || chapterUrl2.isBlank()) return null
+    val rx = Regex("""\d+""")
+    val m1 = rx.findAll(chapterUrl1).lastOrNull() ?: return null
+    val m2 = rx.findAll(chapterUrl2).lastOrNull() ?: return null
+    val n1 = m1.value.toIntOrNull() ?: return null
+    val n2 = m2.value.toIntOrNull() ?: return null
+    if (n1 == n2) return null
+    val patternAbs = chapterUrl1.substring(0, m1.range.first) + "{n}" + chapterUrl1.substring(m1.range.last + 1)
+    val base = baseUrl.trim().trimEnd('/')
+    var pattern = if (patternAbs.startsWith(base)) patternAbs.removePrefix(base) else patternAbs
+    val novelRel = novelUrl?.trim()?.let { if (it.startsWith(base)) it.removePrefix(base) else it }
+        ?.trimEnd('/')
+    if (!novelRel.isNullOrBlank() && pattern.startsWith(novelRel)) {
+        pattern = "{novelUrl}" + pattern.removePrefix(novelRel)
+    }
+    return Triple(pattern, n1, n2)
+}
+
+/**
  * Builds the [start]..[end] generated chapter entries from a numeric URL [pattern]. URLs are kept
  * as the raw substituted template; callers normalize them against the base URL.
  */
@@ -449,7 +488,7 @@ class CustomNovelSource(
     override val supportsLatest: Boolean
         get() = config.latestUrl != null || baseSource?.supportsLatest == true
 
-    override val client = if (config.useCloudflare) network.cloudflareClient else network.client
+    override val client = network.cloudflareClient
 
     /**
      * When basedOnSourceId is set, we delegate all fetching/parsing to the base
@@ -581,7 +620,8 @@ class CustomNovelSource(
                     ?: start
             }
         }
-        val chapters = generatedChapterEntries(pattern, start, end, sel.nameTemplate).map { entry ->
+        val resolvedPattern = applyNovelUrlToPattern(pattern, manga.url)
+        val chapters = generatedChapterEntries(resolvedPattern, start, end, sel.nameTemplate).map { entry ->
             SChapter.create().apply {
                 // Normalize to a path relative to baseUrl (getPageList rebuilds the absolute URL).
                 url = buildAbsoluteUrl(entry.url).removePrefix(baseUrl.trimEnd('/')).ifBlank { entry.url }
@@ -734,20 +774,7 @@ class CustomNovelSource(
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val document = response.asJsoup()
-        val selectors = config.selectors.chapters
-
-        // Check if we need to make an AJAX request for chapters
-        if (config.chapterAjax != null) {
-            val novelId = extractNovelId(document, response.request.url.toString())
-            if (novelId != null) {
-                val ajaxResponse = client.newCall(
-                    GET(config.chapterAjax!!.buildAjaxUrl(baseUrl, novelId), headers),
-                ).execute()
-                return ajaxResponse.use { parseChapterList(it.asJsoup(), selectors) }
-            }
-        }
-
-        return parseChapterList(document, selectors)
+        return parseChapterList(document, config.selectors.chapters)
     }
 
     fun chapterPageParse(response: Response): SChapter {
@@ -1036,35 +1063,11 @@ class CustomNovelSource(
         return 0L
     }
 
-    private fun extractNovelId(document: Document, url: String): String? {
-        // Try config-defined ID extraction
-        config.novelIdSelector?.let { selector ->
-            document.selectFirst(selector)?.let { element ->
-                config.novelIdAttr?.let { attr ->
-                    return element.attr(attr).ifBlank { null }
-                }
-                return element.text().trim().ifBlank { null }
-            }
-        }
-
-        // Fallback: extract from URL
-        config.novelIdPattern?.let { pattern ->
-            Regex(pattern).find(url)?.groupValues?.getOrNull(1)?.let { return it }
-        }
-
-        return null
-    }
-
     private fun String.buildUrl(baseUrl: String, page: Int): String =
         buildPagedUrlTemplate(this, baseUrl, page)
 
     private fun String.buildSearchUrl(baseUrl: String, query: String, page: Int): String =
         buildPagedSearchUrlTemplate(this, baseUrl, query, page)
-
-    private fun String.buildAjaxUrl(baseUrl: String, novelId: String): String {
-        return this.replace("{baseUrl}", baseUrl)
-            .replace("{novelId}", novelId)
-    }
 
     internal fun rebaseMangasPage(
         mangasPage: MangasPage,
@@ -1234,25 +1237,12 @@ class CustomNovelSource(
 
 // ======================== Configuration Data Classes ========================
 
-/**
- * Source type enum for different multisrc configurations
- */
-@Serializable
-enum class CustomSourceType {
-    GENERIC, // Generic CSS selector based
-    MADARA, // Madara WordPress theme (uses AJAX for chapters)
-    READNOVELFULL, // ReadNovelFull style sites
-    LIGHTNOVELWP, // LightNovelWP theme
-    READWN, // ReadWN style sites
-}
-
 @Serializable
 data class CustomSourceConfig(
     val name: String,
     val baseUrl: String,
     val language: String = "en",
     val id: Long? = null,
-    val sourceType: CustomSourceType = CustomSourceType.GENERIC,
     val popularUrl: String,
     val latestUrl: String? = null,
     val searchUrl: String,
@@ -1263,12 +1253,7 @@ data class CustomSourceConfig(
     val searchPagedUrl: String? = null,
     val headers: Map<String, String> = emptyMap(),
     val selectors: SourceSelectors,
-    val chapterAjax: String? = null,
-    val novelIdSelector: String? = null,
-    val novelIdAttr: String? = null,
-    val novelIdPattern: String? = null,
     val reverseChapters: Boolean = false,
-    val useCloudflare: Boolean = true,
     val postSearch: Boolean = false,
     val basedOnSourceId: Long? = null,
     val isNovel: Boolean = true,

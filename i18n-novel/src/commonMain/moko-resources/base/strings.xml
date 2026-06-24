@@ -610,8 +610,6 @@
     <string name="custom_source_source_name_required">Source Name *</string>
     <string name="custom_source_base_url_required">Base URL *</string>
     <string name="custom_source_options">Source Options</string>
-    <string name="custom_source_use_cloudflare">Use Cloudflare Bypass</string>
-    <string name="custom_source_use_cloudflare_desc">Enable for sites protected by Cloudflare</string>
     <string name="custom_source_reverse_chapters">Reverse Chapter Order</string>
     <string name="custom_source_reverse_chapters_desc">Enable if chapters are listed newest first</string>
     <string name="custom_source_post_search">Use POST for Search</string>

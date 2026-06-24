@@ -857,8 +857,6 @@ class CustomSourceEditorScreen(
         var latestUrl by remember { mutableStateOf(initialConfig?.latestUrl ?: "") }
         var searchUrl by remember { mutableStateOf(initialConfig?.searchUrl ?: "") }
 
-        // New fields for source type and cloudflare
-        var useCloudflare by remember { mutableStateOf(initialConfig?.useCloudflare ?: true) }
         var reverseChapters by remember { mutableStateOf(initialConfig?.reverseChapters ?: false) }
         var postSearch by remember { mutableStateOf(initialConfig?.postSearch ?: false) }
         var isNovel by remember { mutableStateOf(initialConfig?.isNovel ?: true) }
@@ -916,6 +914,9 @@ class CustomSourceEditorScreen(
         var detailsGenreSelector by remember {
             mutableStateOf(initialConfig?.selectors?.details?.genre ?: "")
         }
+        var detailsArtistSelector by remember {
+            mutableStateOf(initialConfig?.selectors?.details?.artist ?: "")
+        }
         var detailsStatusSelector by remember {
             mutableStateOf(initialConfig?.selectors?.details?.status ?: "")
         }
@@ -963,6 +964,23 @@ class CustomSourceEditorScreen(
         var contentFallbacksSelector by remember {
             mutableStateOf(initialConfig?.selectors?.content?.fallbacks?.joinToString(", ") ?: "")
         }
+        var contentRemoveSelectors by remember {
+            mutableStateOf(initialConfig?.selectors?.content?.removeSelectors?.joinToString(", ") ?: "")
+        }
+        var chapterNameTemplate by remember {
+            mutableStateOf(initialConfig?.selectors?.chapters?.nameTemplate ?: "")
+        }
+        // Advanced fields, previously only reachable via JSON import.
+        var dateFormat by remember { mutableStateOf(initialConfig?.dateFormat ?: "") }
+        var headersText by remember {
+            mutableStateOf(
+                initialConfig?.headers
+                    ?.entries?.joinToString("\n") { "${it.key}: ${it.value}" }
+                    ?: "",
+            )
+        }
+        var testSearchQuery by remember { mutableStateOf(initialConfig?.testSearchQuery ?: "") }
+        var sampleNovelUrl by remember { mutableStateOf(initialConfig?.sampleNovelUrl ?: "") }
 
         var isSaving by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -1140,31 +1158,6 @@ class CustomSourceEditorScreen(
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-
-                // Cloudflare option
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    androidx.compose.material3.Checkbox(
-                        checked = useCloudflare,
-                        onCheckedChange = { useCloudflare = it },
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            stringResource(TDMR.strings.custom_source_use_cloudflare),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            stringResource(TDMR.strings.custom_source_use_cloudflare_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
 
                 // Reverse chapters option
                 Row(
@@ -1540,6 +1533,13 @@ class CustomSourceEditorScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
+                        value = detailsArtistSelector,
+                        onValueChange = { detailsArtistSelector = it },
+                        label = { Text("Artist selector") },
+                        trailingIcon = pickTrailing(baseUrl, "Artist selector") { detailsArtistSelector = it },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
                         value = detailsStatusSelector,
                         onValueChange = { detailsStatusSelector = it },
                         label = { Text("Status selector") },
@@ -1598,6 +1598,19 @@ class CustomSourceEditorScreen(
                                 singleLine = true,
                             )
                         }
+                        OutlinedTextField(
+                            value = chapterNameTemplate,
+                            onValueChange = { chapterNameTemplate = it },
+                            label = { Text("Chapter name template") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("Chapter {n}") },
+                            supportingText = {
+                                Text(
+                                    "Use {n} for the chapter number. Use {novelUrl} in the URL pattern for portability.",
+                                )
+                            },
+                        )
                     } else {
                         OutlinedTextField(
                             value = chaptersListSelector,
@@ -1715,6 +1728,55 @@ class CustomSourceEditorScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    OutlinedTextField(
+                        value = contentRemoveSelectors,
+                        onValueChange = { contentRemoveSelectors = it },
+                        label = { Text("Remove selectors") },
+                        trailingIcon = pickTrailing(baseUrl, "Remove selectors") { contentRemoveSelectors = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = {
+                            Text("Comma-separated selectors stripped from the content before display.")
+                        },
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Advanced",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    OutlinedTextField(
+                        value = dateFormat,
+                        onValueChange = { dateFormat = it },
+                        label = { Text("Chapter date format") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("yyyy-MM-dd") },
+                        supportingText = { Text("Optional. Needed for worded dates; uses the site's locale pattern.") },
+                    )
+                    OutlinedTextField(
+                        value = headersText,
+                        onValueChange = { headersText = it },
+                        label = { Text("Custom headers") },
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text("One per line, e.g. Referer: https://example.com") },
+                    )
+                    OutlinedTextField(
+                        value = testSearchQuery,
+                        onValueChange = { testSearchQuery = it },
+                        label = { Text("Test search query") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = { Text("Optional. Query used when testing this source.") },
+                    )
+                    OutlinedTextField(
+                        value = sampleNovelUrl,
+                        onValueChange = { sampleNovelUrl = it },
+                        label = { Text("Sample novel URL") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = { Text("Optional. Lets the reading test open a known novel directly.") },
+                    )
                 } // end if (selectedBasedOnSourceId == null)
 
                 // Error message
@@ -1737,18 +1799,47 @@ class CustomSourceEditorScreen(
                             errorMessage = null
 
                             val config = buildConfig(
-                                name, baseUrl, popularUrl, latestUrl, searchUrl,
-                                popularListSelector, popularTitleSelector, popularCoverSelector,
-                                popularNextPageSelector, latestNextPageSelector, searchNextPageSelector,
-                                detailsTitleSelector, detailsDescriptionSelector,
-                                detailsCoverSelector, detailsAuthorSelector, detailsGenreSelector,
-                                detailsStatusSelector, statusMappingText,
-                                chaptersListSelector, chapterLinkSelector, chapterNameSelector,
-                                chapterDateSelector, chapterNextPageSelector, chapterIndexLinkSelector,
-                                chapterUrlPattern, chapterCountSelector, chapterFirstNumber, chapterLastNumber,
-                                contentPrimarySelector, contentFallbacksSelector,
-                                sourceId, useCloudflare, reverseChapters, postSearch,
-                                selectedBasedOnSourceId, isNovel, language,
+                                existing = initialConfig,
+                                name = name, baseUrl = baseUrl, popularUrl = popularUrl,
+                                latestUrl = latestUrl, searchUrl = searchUrl,
+                                popularListSelector = popularListSelector,
+                                popularTitleSelector = popularTitleSelector,
+                                popularCoverSelector = popularCoverSelector,
+                                popularNextPageSelector = popularNextPageSelector,
+                                latestNextPageSelector = latestNextPageSelector,
+                                searchNextPageSelector = searchNextPageSelector,
+                                detailsTitleSelector = detailsTitleSelector,
+                                detailsDescriptionSelector = detailsDescriptionSelector,
+                                detailsCoverSelector = detailsCoverSelector,
+                                detailsAuthorSelector = detailsAuthorSelector,
+                                detailsArtistSelector = detailsArtistSelector,
+                                detailsGenreSelector = detailsGenreSelector,
+                                detailsStatusSelector = detailsStatusSelector,
+                                statusMappingText = statusMappingText,
+                                chaptersListSelector = chaptersListSelector,
+                                chapterLinkSelector = chapterLinkSelector,
+                                chapterNameSelector = chapterNameSelector,
+                                chapterDateSelector = chapterDateSelector,
+                                chapterNextPageSelector = chapterNextPageSelector,
+                                chapterIndexLinkSelector = chapterIndexLinkSelector,
+                                chapterUrlPattern = chapterUrlPattern,
+                                chapterCountSelector = chapterCountSelector,
+                                chapterFirstNumber = chapterFirstNumber,
+                                chapterLastNumber = chapterLastNumber,
+                                chapterNameTemplate = chapterNameTemplate,
+                                contentPrimarySelector = contentPrimarySelector,
+                                contentFallbacksSelector = contentFallbacksSelector,
+                                contentRemoveSelectors = contentRemoveSelectors,
+                                dateFormat = dateFormat,
+                                headersText = headersText,
+                                testSearchQuery = testSearchQuery,
+                                sampleNovelUrl = sampleNovelUrl,
+                                existingId = sourceId,
+                                reverseChapters = reverseChapters,
+                                postSearch = postSearch,
+                                basedOnSourceId = selectedBasedOnSourceId,
+                                isNovel = isNovel,
+                                language = language,
                             )
 
                             val result = if (sourceId != null) {
@@ -1831,7 +1922,24 @@ class CustomSourceEditorScreen(
         return map.ifEmpty { null }
     }
 
+    private fun parseHeaders(text: String): Map<String, String> {
+        return text.lines().mapNotNull { line ->
+            val trimmed = line.trim()
+            if (trimmed.isBlank()) return@mapNotNull null
+            val sep = trimmed.indexOfFirst { it == ':' || it == '=' }
+            if (sep <= 0) return@mapNotNull null
+            val key = trimmed.substring(0, sep).trim()
+            val value = trimmed.substring(sep + 1).trim()
+            if (key.isBlank() || value.isBlank()) null else key to value
+        }.toMap()
+    }
+
+    private fun splitSelectorList(text: String): List<String>? =
+        text.split(",").map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { null }
+
+    @Suppress("LongParameterList")
     private fun buildConfig(
+        existing: CustomSourceConfig?,
         name: String,
         baseUrl: String,
         popularUrl: String,
@@ -1847,6 +1955,7 @@ class CustomSourceEditorScreen(
         detailsDescriptionSelector: String,
         detailsCoverSelector: String,
         detailsAuthorSelector: String,
+        detailsArtistSelector: String,
         detailsGenreSelector: String,
         detailsStatusSelector: String,
         statusMappingText: String,
@@ -1860,17 +1969,83 @@ class CustomSourceEditorScreen(
         chapterCountSelector: String,
         chapterFirstNumber: String,
         chapterLastNumber: String,
+        chapterNameTemplate: String,
         contentPrimarySelector: String,
         contentFallbacksSelector: String,
+        contentRemoveSelectors: String,
+        dateFormat: String,
+        headersText: String,
+        testSearchQuery: String,
+        sampleNovelUrl: String,
         existingId: Long?,
-        useCloudflare: Boolean,
         reverseChapters: Boolean,
         postSearch: Boolean,
         basedOnSourceId: Long? = null,
         isNovel: Boolean = true,
         language: String = "en",
     ): CustomSourceConfig {
-        return CustomSourceConfig(
+        val selectors = eu.kanade.tachiyomi.source.custom.SourceSelectors(
+            popular = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
+                list = popularListSelector,
+                title = popularTitleSelector.ifBlank { null },
+                cover = popularCoverSelector.ifBlank { null },
+                nextPage = popularNextPageSelector.ifBlank { null },
+            ),
+            // Separate latest pagination only; latest reuses the popular card layout + URL.
+            latest = latestNextPageSelector.ifBlank { null }?.let {
+                eu.kanade.tachiyomi.source.custom.MangaListSelectors(
+                    list = popularListSelector,
+                    title = popularTitleSelector.ifBlank { null },
+                    cover = popularCoverSelector.ifBlank { null },
+                    nextPage = it,
+                )
+            },
+            // Search reuses the popular list layout; pagination can differ.
+            search = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
+                list = popularListSelector,
+                title = popularTitleSelector.ifBlank { null },
+                cover = popularCoverSelector.ifBlank { null },
+                nextPage = searchNextPageSelector.ifBlank { null },
+            ),
+            details = eu.kanade.tachiyomi.source.custom.DetailSelectors(
+                title = detailsTitleSelector,
+                description = detailsDescriptionSelector.ifBlank { null },
+                cover = detailsCoverSelector.ifBlank { null },
+                author = detailsAuthorSelector.ifBlank { null },
+                artist = detailsArtistSelector.ifBlank { null },
+                genre = detailsGenreSelector.ifBlank { null },
+                status = detailsStatusSelector.ifBlank { null },
+            ),
+            chapters = eu.kanade.tachiyomi.source.custom.ChapterSelectors(
+                list = chaptersListSelector,
+                link = chapterLinkSelector.ifBlank { null },
+                name = chapterNameSelector.ifBlank { null },
+                date = chapterDateSelector.ifBlank { null },
+                nextPage = chapterNextPageSelector.ifBlank { null },
+                indexLinkSelector = chapterIndexLinkSelector.ifBlank { null },
+                urlPattern = chapterUrlPattern.ifBlank { null },
+                countSelector = chapterCountSelector.ifBlank { null },
+                firstNumber = chapterFirstNumber.toIntOrNull(),
+                lastNumber = chapterLastNumber.toIntOrNull(),
+                nameTemplate = chapterNameTemplate.ifBlank { null },
+            ),
+            content = eu.kanade.tachiyomi.source.custom.ContentSelectors(
+                primary = contentPrimarySelector,
+                fallbacks = splitSelectorList(contentFallbacksSelector),
+                removeSelectors = splitSelectorList(contentRemoveSelectors),
+            ),
+        )
+
+        // Start from the existing config so fields without a dedicated input (the per-section paged
+        // URLs derived by the wizard) survive a round-trip edit instead of being silently dropped.
+        val base = existing ?: CustomSourceConfig(
+            name = name,
+            baseUrl = baseUrl.trimEnd('/'),
+            popularUrl = popularUrl,
+            searchUrl = searchUrl,
+            selectors = selectors,
+        )
+        return base.copy(
             name = name,
             baseUrl = baseUrl.trimEnd('/'),
             language = language,
@@ -1879,56 +2054,11 @@ class CustomSourceEditorScreen(
             latestUrl = latestUrl.ifBlank { null },
             searchUrl = searchUrl,
             statusMapping = parseStatusMapping(statusMappingText),
-            selectors = eu.kanade.tachiyomi.source.custom.SourceSelectors(
-                popular = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                    list = popularListSelector,
-                    title = popularTitleSelector.ifBlank { null },
-                    cover = popularCoverSelector.ifBlank { null },
-                    nextPage = popularNextPageSelector.ifBlank { null },
-                ),
-                // Separate latest pagination only; latest reuses the popular card layout + URL.
-                latest = latestNextPageSelector.ifBlank { null }?.let {
-                    eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                        list = popularListSelector,
-                        title = popularTitleSelector.ifBlank { null },
-                        cover = popularCoverSelector.ifBlank { null },
-                        nextPage = it,
-                    )
-                },
-                // Search reuses the popular list layout; pagination can differ.
-                search = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                    list = popularListSelector,
-                    title = popularTitleSelector.ifBlank { null },
-                    cover = popularCoverSelector.ifBlank { null },
-                    nextPage = searchNextPageSelector.ifBlank { null },
-                ),
-                details = eu.kanade.tachiyomi.source.custom.DetailSelectors(
-                    title = detailsTitleSelector,
-                    description = detailsDescriptionSelector.ifBlank { null },
-                    cover = detailsCoverSelector.ifBlank { null },
-                    author = detailsAuthorSelector.ifBlank { null },
-                    genre = detailsGenreSelector.ifBlank { null },
-                    status = detailsStatusSelector.ifBlank { null },
-                ),
-                chapters = eu.kanade.tachiyomi.source.custom.ChapterSelectors(
-                    list = chaptersListSelector,
-                    link = chapterLinkSelector.ifBlank { null },
-                    name = chapterNameSelector.ifBlank { null },
-                    date = chapterDateSelector.ifBlank { null },
-                    nextPage = chapterNextPageSelector.ifBlank { null },
-                    indexLinkSelector = chapterIndexLinkSelector.ifBlank { null },
-                    urlPattern = chapterUrlPattern.ifBlank { null },
-                    countSelector = chapterCountSelector.ifBlank { null },
-                    firstNumber = chapterFirstNumber.toIntOrNull(),
-                    lastNumber = chapterLastNumber.toIntOrNull(),
-                ),
-                content = eu.kanade.tachiyomi.source.custom.ContentSelectors(
-                    primary = contentPrimarySelector,
-                    fallbacks = contentFallbacksSelector.split(",")
-                        .map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { null },
-                ),
-            ),
-            useCloudflare = useCloudflare,
+            dateFormat = dateFormat.ifBlank { null },
+            headers = parseHeaders(headersText),
+            testSearchQuery = testSearchQuery.ifBlank { null },
+            sampleNovelUrl = sampleNovelUrl.ifBlank { null },
+            selectors = selectors,
             reverseChapters = reverseChapters,
             postSearch = postSearch,
             basedOnSourceId = basedOnSourceId,

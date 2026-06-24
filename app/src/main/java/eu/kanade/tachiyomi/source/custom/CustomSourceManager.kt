@@ -155,44 +155,7 @@ class CustomSourceManager(
     /**
      * A documented, hand-editable skeleton config. Placeholder selectors show the expected shape.
      */
-    fun blankTemplateJson(): String {
-        val template = CustomSourceConfig(
-            name = "My Source",
-            baseUrl = "https://example.com",
-            language = "en",
-            popularUrl = "https://example.com/page/{page}",
-            latestUrl = "https://example.com/latest/page/{page}",
-            searchUrl = "https://example.com/?s={query}",
-            selectors = SourceSelectors(
-                popular = MangaListSelectors(
-                    list = ".novel-item",
-                    link = "a",
-                    title = ".novel-title",
-                    cover = "img",
-                    nextPage = ".pagination .next",
-                ),
-                details = DetailSelectors(
-                    title = "h1.title",
-                    author = ".author a",
-                    description = ".description",
-                    genre = ".genre a",
-                    status = ".status",
-                    cover = ".cover img",
-                ),
-                chapters = ChapterSelectors(
-                    list = ".chapter-list li",
-                    link = "a",
-                    name = "a",
-                    date = ".date",
-                ),
-                content = ContentSelectors(
-                    primary = ".chapter-content",
-                ),
-            ),
-            reverseChapters = false,
-        )
-        return json.encodeToString(template)
-    }
+    fun blankTemplateJson(): String = json.encodeToString(customSourceBlankTemplate())
 
     /**
      * Create a blank config with the given name and base URL.
@@ -214,65 +177,15 @@ class CustomSourceManager(
     }
 
     /**
-     * Validate a source configuration
+     * Validate a source configuration. Throws [IllegalArgumentException] with joined, field-level
+     * messages when invalid. Delegates the field rules to [customSourceValidationErrors] so they can
+     * be unit-tested without a [Context].
      */
     fun validateConfig(config: CustomSourceConfig): List<String> {
-        val errors = mutableListOf<String>()
-
-        if (config.name.isBlank()) {
-            errors.add("Name is required")
-        }
-
-        if (config.baseUrl.isBlank()) {
-            errors.add("Base URL is required")
-        } else if (!config.baseUrl.startsWith("http://") && !config.baseUrl.startsWith("https://")) {
-            errors.add("Base URL must start with http:// or https://")
-        }
-
-        // Skip URL and selector validation when based on an extension
-        if (config.basedOnSourceId == null) {
-            if (config.popularUrl.isBlank()) {
-                errors.add("Popular URL is required")
-            }
-
-            if (config.searchUrl.isBlank()) {
-                errors.add("Search URL is required")
-            }
-
-            if (config.selectors.popular.list.isBlank()) {
-                errors.add("Popular list selector is required")
-            }
-
-            if (config.selectors.details.title.isBlank()) {
-                errors.add("Details title selector is required")
-            }
-
-            if (config.selectors.chapters.list.isBlank()) {
-                errors.add("Chapters list selector is required")
-            }
-
-            if (config.selectors.content.primary.isBlank()) {
-                errors.add("Content primary selector is required")
-            }
-        }
-
-        // Check for duplicate name
-        if (_customSources.value.any { it.name == config.name && it.id != config.id }) {
-            errors.add("A source with this name already exists")
-        }
-        val normalizedBase = config.baseUrl.trim().trimEnd('/').lowercase()
-        if (normalizedBase.isNotBlank() &&
-            _customSources.value.any {
-                it.id != config.id && it.config.baseUrl.trim().trimEnd('/').lowercase() == normalizedBase
-            }
-        ) {
-            errors.add("A source with this base URL already exists")
-        }
-
+        val errors = customSourceValidationErrors(config, _customSources.value.map { it.config })
         if (errors.isNotEmpty()) {
             throw IllegalArgumentException(errors.joinToString("; "))
         }
-
         return errors
     }
 
@@ -602,6 +515,119 @@ class CustomSourceManager(
         }
     }
 }
+
+/**
+ * Pure, feature-aware validation of a custom source config. Returns the list of human-readable
+ * errors (empty when valid). Unlike the old rules, this only requires what the config actually uses:
+ *  - At least one listing URL (popular / latest / search) must be present.
+ *  - A listing's list selector is only required when that listing's URL is set.
+ *  - Chapters need either a list selector OR a generated URL pattern.
+ * [existing] is the set of already-saved configs, used for duplicate name / base URL detection.
+ */
+internal fun customSourceValidationErrors(
+    config: CustomSourceConfig,
+    existing: List<CustomSourceConfig> = emptyList(),
+): List<String> {
+    val errors = mutableListOf<String>()
+
+    if (config.name.isBlank()) {
+        errors.add("Name is required")
+    }
+
+    if (config.baseUrl.isBlank()) {
+        errors.add("Base URL is required")
+    } else if (!config.baseUrl.startsWith("http://") && !config.baseUrl.startsWith("https://")) {
+        errors.add("Base URL must start with http:// or https://")
+    }
+
+    // Skip URL and selector validation when delegating to an installed extension.
+    if (config.basedOnSourceId == null) {
+        val hasPopular = config.popularUrl.isNotBlank()
+        val hasLatest = !config.latestUrl.isNullOrBlank()
+        val hasSearch = config.searchUrl.isNotBlank()
+        if (!hasPopular && !hasLatest && !hasSearch) {
+            errors.add("At least one listing URL (popular, latest or search) is required")
+        }
+
+        // A listing's list selector is only needed if that listing is enabled. Latest and search
+        // fall back to the popular list selector, so the popular list selector covers them.
+        if (hasPopular && config.selectors.popular.list.isBlank()) {
+            errors.add("Popular list selector is required")
+        }
+        if (!hasPopular && (hasLatest || hasSearch) &&
+            config.selectors.popular.list.isBlank() &&
+            config.selectors.latest?.list.isNullOrBlank() &&
+            config.selectors.search?.list.isNullOrBlank()
+        ) {
+            errors.add("A list selector is required for the latest/search listing")
+        }
+
+        if (config.selectors.details.title.isBlank()) {
+            errors.add("Details title selector is required")
+        }
+
+        val hasChapterList = config.selectors.chapters.list.isNotBlank()
+        val hasChapterPattern = !config.selectors.chapters.urlPattern.isNullOrBlank()
+        if (!hasChapterList && !hasChapterPattern) {
+            errors.add("A chapter list selector or chapter URL pattern is required")
+        }
+
+        if (config.selectors.content.primary.isBlank()) {
+            errors.add("Content primary selector is required")
+        }
+    }
+
+    if (existing.any { it.name == config.name && it.id != config.id }) {
+        errors.add("A source with this name already exists")
+    }
+    val normalizedBase = config.baseUrl.trim().trimEnd('/').lowercase()
+    if (normalizedBase.isNotBlank() &&
+        existing.any {
+            it.id != config.id && it.baseUrl.trim().trimEnd('/').lowercase() == normalizedBase
+        }
+    ) {
+        errors.add("A source with this base URL already exists")
+    }
+
+    return errors
+}
+
+/** Documented skeleton config used by the import dialog's "paste template" action. */
+internal fun customSourceBlankTemplate(): CustomSourceConfig = CustomSourceConfig(
+    name = "My Source",
+    baseUrl = "https://example.com",
+    language = "en",
+    popularUrl = "https://example.com/page/{page}",
+    latestUrl = "https://example.com/latest/page/{page}",
+    searchUrl = "https://example.com/?s={query}",
+    selectors = SourceSelectors(
+        popular = MangaListSelectors(
+            list = ".novel-item",
+            link = "a",
+            title = ".novel-title",
+            cover = "img",
+            nextPage = ".pagination .next",
+        ),
+        details = DetailSelectors(
+            title = "h1.title",
+            author = ".author a",
+            description = ".description",
+            genre = ".genre a",
+            status = ".status",
+            cover = ".cover img",
+        ),
+        chapters = ChapterSelectors(
+            list = ".chapter-list li",
+            link = "a",
+            name = "a",
+            date = ".date",
+        ),
+        content = ContentSelectors(
+            primary = ".chapter-content",
+        ),
+    ),
+    reverseChapters = false,
+)
 
 /** Scopes [CustomSourceManager.testSource] so each wizard step can validate just its own section. */
 enum class SourceTestSection { POPULAR, LATEST, SEARCH, READING, ALL }
