@@ -26,7 +26,6 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -873,7 +872,8 @@ class CustomSourceEditorScreen(
                     popularPagination = c?.selectors?.popular?.nextPage != null || c?.popularPagedUrl != null,
                     latestPagination = c?.selectors?.latest?.nextPage != null || c?.latestPagedUrl != null,
                     searchPagination = c?.selectors?.search?.nextPage != null || c?.searchPagedUrl != null,
-                    chapterListPagination = c?.selectors?.chapters?.nextPage != null,
+                    chapterListPagination = c?.selectors?.chapters?.nextPage != null ||
+                        c?.selectors?.chapters?.pagedUrlPattern != null,
                     chapterListSeparatePage = c?.selectors?.chapters?.indexLinkSelector != null,
                     chapterGenerateFromPattern = c?.selectors?.chapters?.urlPattern != null,
                 ),
@@ -1066,46 +1066,10 @@ class CustomSourceEditorScreen(
                 OutlinedTextField(
                     value = language,
                     onValueChange = { language = it },
-                    label = { Text("Language code (e.g. en, ja, zh)") },
+                    label = { Text(stringResource(TDMR.strings.custom_source_language_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
-
-                // Show info card when based on extension
-                if (selectedBasedOnSourceId != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Outlined.Extension,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = stringResource(TDMR.strings.custom_source_base_on_extension),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                )
-                                Text(
-                                    text = stringResource(TDMR.strings.custom_source_base_on_extension_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                                )
-                            }
-                        }
-                    }
-                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -1126,7 +1090,7 @@ class CustomSourceEditorScreen(
                                 Injekt.get<SourceManager>().get(id)?.let { source ->
                                     "${source.name} (${source.lang})"
                                 }
-                            } ?: "Not based on another source",
+                            } ?: stringResource(TDMR.strings.custom_source_not_based),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1363,11 +1327,6 @@ class CustomSourceEditorScreen(
                         text = stringResource(TDMR.strings.custom_source_css_selectors),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = stringResource(TDMR.strings.custom_source_css_selectors_help),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -1859,6 +1818,7 @@ class CustomSourceEditorScreen(
                                 basedOnSourceId = selectedBasedOnSourceId,
                                 isNovel = isNovel,
                                 language = language,
+                                features = features,
                             )
 
                             val result = if (sourceId != null) {
@@ -2002,30 +1962,45 @@ class CustomSourceEditorScreen(
         basedOnSourceId: Long? = null,
         isNovel: Boolean = true,
         language: String = "en",
+        features: eu.kanade.tachiyomi.ui.customsource.SourceFeatures,
     ): CustomSourceConfig {
+        // Gate every field by its section/mode toggle so unchecking a box actually clears the saved
+        // data (otherwise a disabled section's stale URL/selector lingers and the box re-appears
+        // ticked on the next edit). The shared list/title/cover inputs feed whichever listing is on.
+        val cardTitle = popularTitleSelector.ifBlank { null }
+        val cardCover = popularCoverSelector.ifBlank { null }
+        val generate = features.chapterGenerateFromPattern
         val selectors = eu.kanade.tachiyomi.source.custom.SourceSelectors(
             popular = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                list = popularListSelector,
-                title = popularTitleSelector.ifBlank { null },
-                cover = popularCoverSelector.ifBlank { null },
-                nextPage = popularNextPageSelector.ifBlank { null },
+                list = if (features.hasPopular) popularListSelector else "",
+                title = if (features.hasPopular) cardTitle else null,
+                cover = if (features.hasPopular) cardCover else null,
+                nextPage = if (features.hasPopular && features.popularPagination) {
+                    popularNextPageSelector.ifBlank { null }
+                } else {
+                    null
+                },
             ),
-            // Separate latest pagination only; latest reuses the popular card layout + URL.
-            latest = latestNextPageSelector.ifBlank { null }?.let {
+            latest = if (features.hasLatest) {
                 eu.kanade.tachiyomi.source.custom.MangaListSelectors(
                     list = popularListSelector,
-                    title = popularTitleSelector.ifBlank { null },
-                    cover = popularCoverSelector.ifBlank { null },
-                    nextPage = it,
+                    title = cardTitle,
+                    cover = cardCover,
+                    nextPage = if (features.latestPagination) latestNextPageSelector.ifBlank { null } else null,
                 )
+            } else {
+                null
             },
-            // Search reuses the popular list layout; pagination can differ.
-            search = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                list = popularListSelector,
-                title = popularTitleSelector.ifBlank { null },
-                cover = popularCoverSelector.ifBlank { null },
-                nextPage = searchNextPageSelector.ifBlank { null },
-            ),
+            search = if (features.hasSearch) {
+                eu.kanade.tachiyomi.source.custom.MangaListSelectors(
+                    list = popularListSelector,
+                    title = cardTitle,
+                    cover = cardCover,
+                    nextPage = if (features.searchPagination) searchNextPageSelector.ifBlank { null } else null,
+                )
+            } else {
+                null
+            },
             details = eu.kanade.tachiyomi.source.custom.DetailSelectors(
                 title = detailsTitleSelector,
                 description = detailsDescriptionSelector.ifBlank { null },
@@ -2037,26 +2012,43 @@ class CustomSourceEditorScreen(
             ),
             chapters = eu.kanade.tachiyomi.source.custom.ChapterSelectors(
                 list = chaptersListSelector,
-                link = chapterLinkSelector.ifBlank { null },
-                name = chapterNameSelector.ifBlank { null },
-                date = chapterDateSelector.ifBlank { null },
-                nextPage = chapterNextPageSelector.ifBlank { null },
-                indexLinkSelector = chapterIndexLinkSelector.ifBlank { null },
-                urlPattern = chapterUrlPattern.ifBlank { null },
-                countSelector = chapterCountSelector.ifBlank { null },
-                firstNumber = chapterFirstNumber.toIntOrNull(),
-                lastNumber = chapterLastNumber.toIntOrNull(),
-                nameTemplate = chapterNameTemplate.ifBlank { null },
+                link = if (generate) null else chapterLinkSelector.ifBlank { null },
+                name = if (generate) null else chapterNameSelector.ifBlank { null },
+                date = if (generate) null else chapterDateSelector.ifBlank { null },
+                nextPage = if (!generate && features.chapterListPagination) {
+                    chapterNextPageSelector.ifBlank { null }
+                } else {
+                    null
+                },
+                // No dedicated input; preserve the wizard-derived numbered-pagination template only
+                // while chapter-list pagination stays enabled.
+                pagedUrlPattern = if (!generate && features.chapterListPagination) {
+                    existing?.selectors?.chapters?.pagedUrlPattern
+                } else {
+                    null
+                },
+                indexLinkSelector = if (!generate && features.chapterListSeparatePage) {
+                    chapterIndexLinkSelector.ifBlank { null }
+                } else {
+                    null
+                },
+                urlPattern = if (generate) chapterUrlPattern.ifBlank { null } else null,
+                countSelector = if (generate) chapterCountSelector.ifBlank { null } else null,
+                firstNumber = if (generate) chapterFirstNumber.toIntOrNull() else null,
+                lastNumber = if (generate) chapterLastNumber.toIntOrNull() else null,
+                nameTemplate = if (generate) chapterNameTemplate.ifBlank { null } else null,
             ),
             content = eu.kanade.tachiyomi.source.custom.ContentSelectors(
                 primary = contentPrimarySelector,
                 fallbacks = splitSelectorList(contentFallbacksSelector),
                 removeSelectors = splitSelectorList(contentRemoveSelectors),
+                // No UI toggle for this; preserve whatever an imported config set instead of
+                // resetting to the default on every edit.
+                removeBoilerplate = existing?.selectors?.content?.removeBoilerplate ?: true,
             ),
         )
 
-        // Start from the existing config so fields without a dedicated input (the per-section paged
-        // URLs derived by the wizard) survive a round-trip edit instead of being silently dropped.
+        // Start from the existing config so fields without a dedicated input survive a round-trip.
         val base = existing ?: CustomSourceConfig(
             name = name,
             baseUrl = baseUrl.trimEnd('/'),
@@ -2069,9 +2061,14 @@ class CustomSourceEditorScreen(
             baseUrl = baseUrl.trimEnd('/'),
             language = language,
             id = existingId,
-            popularUrl = popularUrl,
-            latestUrl = latestUrl.ifBlank { null },
-            searchUrl = searchUrl,
+            popularUrl = if (features.hasPopular) popularUrl else "",
+            latestUrl = if (features.hasLatest) latestUrl.ifBlank { null } else null,
+            searchUrl = if (features.hasSearch) searchUrl else "",
+            // Per-section paged URLs are wizard-derived (no field here); keep them only while the
+            // matching section + pagination toggle are both on.
+            popularPagedUrl = if (features.hasPopular && features.popularPagination) base.popularPagedUrl else null,
+            latestPagedUrl = if (features.hasLatest && features.latestPagination) base.latestPagedUrl else null,
+            searchPagedUrl = if (features.hasSearch && features.searchPagination) base.searchPagedUrl else null,
             statusMapping = parseStatusMapping(statusMappingText),
             dateFormat = dateFormat.ifBlank { null },
             headers = parseHeaders(headersText),

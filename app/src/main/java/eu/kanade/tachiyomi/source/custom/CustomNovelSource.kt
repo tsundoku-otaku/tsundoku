@@ -581,7 +581,11 @@ class CustomNovelSource(
         if (isNovelSource && !chSel.urlPattern.isNullOrBlank()) {
             return generateChapterList(manga)
         }
-        if (isNovelSource && (!chSel.nextPage.isNullOrBlank() || !chSel.indexLinkSelector.isNullOrBlank())) {
+        if (isNovelSource && (
+                !chSel.nextPage.isNullOrBlank() || !chSel.indexLinkSelector.isNullOrBlank() ||
+                    !chSel.pagedUrlPattern.isNullOrBlank()
+                )
+        ) {
             return fetchResolvedChapterList(manga, null)
         }
         return super.getChapterList(manga)
@@ -596,7 +600,11 @@ class CustomNovelSource(
         if (isNovelSource && !chSel.urlPattern.isNullOrBlank()) {
             return generateChapterList(manga)
         }
-        if (isNovelSource && (!chSel.nextPage.isNullOrBlank() || !chSel.indexLinkSelector.isNullOrBlank())) {
+        if (isNovelSource && (
+                !chSel.nextPage.isNullOrBlank() || !chSel.indexLinkSelector.isNullOrBlank() ||
+                    !chSel.pagedUrlPattern.isNullOrBlank()
+                )
+        ) {
             return fetchResolvedChapterList(manga, context)
         }
         return getChapterList(manga)
@@ -633,15 +641,58 @@ class CustomNovelSource(
         return if (config.reverseChapters) chapters else chapters.reversed()
     }
 
-    // Resolves the chapter list across two optional dimensions:
+    // Resolves the chapter list across these optional dimensions:
     //  - indexLinkSelector: the chapter list lives on a separate page linked from the details page.
-    //  - nextPage: the chapter list spans multiple pages.
-    // Reversal is applied once at the end so multi-page lists keep a single consistent order.
+    //  - pagedUrlPattern: numbered pages reached by URL (e.g. "{novelUrl}?page={page}"). Preferred
+    //    over the next-button because it can't be fooled by an ambiguous prev/next selector.
+    //  - nextPage: fallback — follow the "next page" link.
+    // Chapters are de-duplicated by URL across pages (sites often repeat a "Newest" block on every
+    // page), and reversal is applied once at the end so multi-page lists keep one consistent order.
     private suspend fun fetchResolvedChapterList(
         manga: SManga,
         context: eu.kanade.tachiyomi.source.model.RefreshContext?,
     ): List<SChapter> {
         val selectors = config.selectors.chapters
+
+        // Skip walking the whole back-catalog when nothing is new: if the first page introduces no
+        // chapter the library doesn't already have (and this isn't a forced refresh), return the
+        // existing list as-is. The result replaces the stored list, so we must return the full set
+        // — hence we only short-circuit on the "no new chapters" case.
+        val knownUrls = context?.takeIf { !it.forceRefresh }
+            ?.existingChapters?.mapNotNull { it.url.ifBlank { null } }?.toSet().orEmpty()
+
+        val seen = mutableSetOf<String>()
+        val all = mutableListOf<SChapter>()
+        fun addNew(chapters: List<SChapter>): List<SChapter> {
+            val fresh = chapters.filter { seen.add(it.url) }
+            all += fresh
+            return fresh
+        }
+
+        // URL-pattern pagination: build page URLs directly instead of chasing a next link.
+        val pagePattern = selectors.pagedUrlPattern
+        if (!pagePattern.isNullOrBlank()) {
+            val resolved = applyNovelUrlToPattern(pagePattern, manga.url)
+            val visited = mutableSetOf<String>()
+            var page = 1
+            while (page <= MAX_CHAPTER_PAGES) {
+                val pageUrl = buildAbsoluteUrl(resolved.replace("{page}", page.toString()))
+                if (!visited.add(pageUrl)) break
+                val doc = client.newCall(GET(pageUrl, headers)).awaitSuccess().asJsoup()
+                val fresh = addNew(parseChapterElements(doc, selectors))
+                // First page with nothing new => no updates; keep the existing list.
+                if (page == 1 && knownUrls.isNotEmpty() && all.isNotEmpty() &&
+                    all.none { it.url !in knownUrls }
+                ) {
+                    return context!!.existingChapters
+                }
+                // A page that added no new chapters means we've run past the end.
+                if (fresh.isEmpty()) break
+                page++
+            }
+            return if (config.reverseChapters) all.reversed() else all
+        }
+
         val detailsUrl = buildAbsoluteUrl(manga.url)
         val detailsDoc = client.newCall(GET(detailsUrl, headers)).awaitSuccess().asJsoup()
 
@@ -652,17 +703,9 @@ class CustomNovelSource(
             detailsUrl
         }
 
-        // Skip walking the whole back-catalog when nothing is new: if the first page introduces no
-        // chapter the library doesn't already have (and this isn't a forced refresh), return the
-        // existing list as-is. The result replaces the stored list, so we must return the full set
-        // — hence we only short-circuit on the "no new chapters" case.
-        val knownUrls = context?.takeIf { !it.forceRefresh }
-            ?.existingChapters?.mapNotNull { it.url.ifBlank { null } }?.toSet().orEmpty()
-
-        val all = mutableListOf<SChapter>()
         if (url == null) {
             // Index link configured but missing on the page: fall back to the details doc.
-            all += parseChapterElements(detailsDoc, selectors)
+            addNew(parseChapterElements(detailsDoc, selectors))
         } else {
             val visited = mutableSetOf<String>()
             var guard = 0
@@ -670,12 +713,12 @@ class CustomNovelSource(
             while (url != null && guard++ < MAX_CHAPTER_PAGES && visited.add(url)) {
                 val doc = firstDoc ?: client.newCall(GET(url, headers)).awaitSuccess().asJsoup()
                 firstDoc = null
-                val pageChapters = parseChapterElements(doc, selectors)
-                all += pageChapters
+                val firstPage = guard == 1
+                addNew(parseChapterElements(doc, selectors))
 
                 // First page, all already known => no updates; stop and keep the existing list.
-                if (knownUrls.isNotEmpty() && all.size == pageChapters.size &&
-                    pageChapters.isNotEmpty() && pageChapters.none { it.url !in knownUrls }
+                if (firstPage && knownUrls.isNotEmpty() && all.isNotEmpty() &&
+                    all.none { it.url !in knownUrls }
                 ) {
                     return context!!.existingChapters
                 }
@@ -683,7 +726,7 @@ class CustomNovelSource(
                 val next = if (selectors.nextPage.isNullOrBlank()) {
                     null
                 } else {
-                    doc.selectFirst(selectors.nextPage)?.absUrl("href")?.ifBlank { null }
+                    resolveNextPageUrl(doc, selectors.nextPage, url, visited)
                 }
                 url = if (next == null || next == url) null else next
             }
@@ -795,6 +838,33 @@ class CustomNovelSource(
     private fun parseChapterList(document: Document, selectors: ChapterSelectors): List<SChapter> {
         val chapters = parseChapterElements(document, selectors)
         return if (config.reverseChapters) chapters.reversed() else chapters
+    }
+
+    // Picks the real "next page" link when [selector] is ambiguous (e.g. a shared ".btn-page" class
+    // on both « Prev and Next »). selectFirst would grab Prev and bounce back to an already-visited
+    // page, capping the walk at 2 pages. Skip prev links and pages we've seen; prefer explicit
+    // next markers (rel=next, "next"/»/›/→ in text or class).
+    private fun resolveNextPageUrl(
+        document: Document,
+        selector: String,
+        currentUrl: String?,
+        visited: Set<String>,
+    ): String? {
+        var fallback: String? = null
+        for (el in document.select(selector)) {
+            val href = el.absUrl("href").ifBlank { null } ?: continue
+            if (href == currentUrl || href in visited) continue
+            val text = el.text().trim().lowercase()
+            val rel = el.attr("rel").lowercase()
+            val cls = el.className().lowercase()
+            val isPrev = rel == "prev" || rel == "previous" || "prev" in text || "previous" in text ||
+                "prev" in cls || "«" in text || "‹" in text
+            val isNext = rel == "next" || "next" in text || "next" in cls ||
+                "»" in text || "›" in text || "→" in text
+            if (isNext && !isPrev) return href
+            if (!isPrev && fallback == null) fallback = href
+        }
+        return fallback
     }
 
     // Parses a single chapter-list page without applying reversal (callers reverse once).
@@ -1068,57 +1138,25 @@ class CustomNovelSource(
     private fun String.buildSearchUrl(baseUrl: String, query: String, page: Int): String =
         buildPagedSearchUrlTemplate(this, baseUrl, query, page)
 
+    // These delegate to the top-level rebaseCustomSource* helpers (same logic, unit-tested there),
+    // resolving customBase = this source's baseUrl and sourceBase = the delegated source URL.
     internal fun rebaseMangasPage(
         mangasPage: MangasPage,
         sourceBaseUrlOverride: String? = null,
-    ): MangasPage {
-        val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
-        return MangasPage(mangasPage.mangas.map { rebaseManga(it, override) }, mangasPage.hasNextPage)
-    }
+    ): MangasPage =
+        rebaseCustomSourceMangasPage(mangasPage, baseUrl, sourceBaseUrlOverride ?: effectiveRebaseUrl)
 
-    internal fun rebaseManga(manga: SManga, sourceBaseUrlOverride: String? = null): SManga {
-        val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
-        return safeCopyManga(manga).apply {
-            val originalUrl = runCatching { manga.url }.getOrNull()
-            url = rebaseUrl(originalUrl, override) ?: (originalUrl ?: "")
-            val originalThumb = runCatching { manga.thumbnail_url }.getOrNull()
-            thumbnail_url = rebaseUrl(originalThumb, override) ?: originalThumb
-        }
-    }
+    internal fun rebaseManga(manga: SManga, sourceBaseUrlOverride: String? = null): SManga =
+        rebaseCustomSourceManga(manga, baseUrl, sourceBaseUrlOverride ?: effectiveRebaseUrl)
 
-    internal fun rebaseChapter(chapter: SChapter, sourceBaseUrlOverride: String? = null): SChapter {
-        val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
-        return SChapter.create().also { rebased ->
-            rebased.copyFrom(chapter)
-            rebased.url = rebaseUrl(chapter.url, override) ?: chapter.url
-        }
-    }
+    internal fun rebaseChapter(chapter: SChapter, sourceBaseUrlOverride: String? = null): SChapter =
+        rebaseCustomSourceChapter(chapter, baseUrl, sourceBaseUrlOverride ?: effectiveRebaseUrl)
 
-    internal fun rebasePage(page: Page, sourceBaseUrlOverride: String? = null): Page {
-        val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
-        return Page(page.index, rebaseUrl(page.url, override).orEmpty(), page.imageUrl, page.uri).also {
-            it.text = page.text
-        }
-    }
+    internal fun rebasePage(page: Page, sourceBaseUrlOverride: String? = null): Page =
+        rebaseCustomSourcePage(page, baseUrl, sourceBaseUrlOverride ?: effectiveRebaseUrl)
 
-    internal fun rebaseUrl(url: String?, sourceBaseUrlOverride: String? = null): String? {
-        val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
-        val value = normalizeCustomUrl(url).orEmpty()
-        if (value.isBlank()) return url
-
-        val customBase = baseUrl.trimEnd('/')
-        val sourceBase = override
-
-        if (sourceBase != null && value.startsWith(sourceBase)) {
-            return customBase + value.removePrefix(sourceBase)
-        }
-
-        if (value.startsWith("http://") || value.startsWith("https://")) {
-            return value
-        }
-
-        return customBase + "/" + value.removePrefix("/")
-    }
+    internal fun rebaseUrl(url: String?, sourceBaseUrlOverride: String? = null): String? =
+        rebaseCustomSourceUrl(url, baseUrl, sourceBaseUrlOverride ?: effectiveRebaseUrl)
 
     internal fun toBaseSourceUrl(url: String?, sourceBaseUrlOverride: String? = null): String? {
         val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
@@ -1159,13 +1197,6 @@ class CustomNovelSource(
         return SChapter.create().also { sourceChapter ->
             sourceChapter.copyFrom(chapter)
             sourceChapter.url = toBaseSourceUrl(chapter.url, override) ?: chapter.url
-        }
-    }
-
-    private fun toBaseSourcePage(page: Page, sourceBaseUrlOverride: String? = null): Page {
-        val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
-        return Page(page.index, toBaseSourceUrl(page.url, override).orEmpty(), page.imageUrl, page.uri).also {
-            it.text = page.text
         }
     }
 
@@ -1310,6 +1341,10 @@ data class ChapterSelectors(
     // Optional selector, on the DETAILS page, pointing to a separate chapter-list/index page.
     // When set, chapters are read from the linked page instead of the details page.
     val indexLinkSelector: String? = null,
+    // Optional numbered-pagination URL template for the chapter list, e.g. "{novelUrl}?page={page}".
+    // {novelUrl} is replaced with the current novel path. Preferred over nextPage (it can't be
+    // fooled by a shared prev/next selector); pages are walked until one adds no new chapters.
+    val pagedUrlPattern: String? = null,
     // ---- Generated chapter list (mode B): build chapter URLs from a numeric pattern instead of
     // scraping the list. Used for sites with sequential URLs like /novel/chapter-{n}. ----
     // Chapter URL template with {n} for the chapter number, e.g. "/novel/abc/chapter-{n}".

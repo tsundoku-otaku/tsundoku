@@ -393,6 +393,26 @@ class CustomNovelSourceTest {
         assertEquals(5f, custom.first().number)
     }
 
+    @Test
+    fun `parse status uses custom mapping before english fallback`() {
+        // Non-English label resolved via the user mapping.
+        assertEquals(
+            SManga.COMPLETED,
+            parseCustomSourceStatus("完结", mapOf("完结" to "completed")),
+        )
+        // Mapping is case-insensitive and substring-based.
+        assertEquals(
+            SManga.ONGOING,
+            parseCustomSourceStatus("En cours de publication", mapOf("en cours" to "ongoing")),
+        )
+        // Built-in English keywords still work without a mapping.
+        assertEquals(SManga.ONGOING, parseCustomSourceStatus("Ongoing"))
+        assertEquals(SManga.COMPLETED, parseCustomSourceStatus("Completed"))
+        // Unknown text and blank are UNKNOWN.
+        assertEquals(SManga.UNKNOWN, parseCustomSourceStatus("???", mapOf("done" to "completed")))
+        assertEquals(SManga.UNKNOWN, parseCustomSourceStatus(null))
+    }
+
     // Helper function that mirrors buildAbsoluteUrl logic for testing
     private fun buildAbsoluteUrlForTest(url: String?, baseUrl: String): String {
         val trimmedUrl = url?.trim().orEmpty()

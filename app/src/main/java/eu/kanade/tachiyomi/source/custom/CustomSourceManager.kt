@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.source.custom
 
 import android.content.Context
-import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,13 +14,8 @@ import tachiyomi.core.common.util.system.logcat
 import java.io.File
 
 /**
- * Manager for custom user-defined novel sources
- *
- * Handles:
- * - Loading/saving custom source configurations
- * - Creating CustomNovelSource instances from configs
- * - Validating source configurations
- * - Providing templates for common site structures
+ * Manager for custom user-defined novel sources: loads/saves configs, creates [CustomNovelSource]
+ * instances, validates and tests configurations.
  */
 class CustomSourceManager(
     private val context: Context,
@@ -61,11 +55,6 @@ class CustomSourceManager(
 
         _customSources.value = sources
     }
-
-    /**
-     * Get all custom sources as CatalogueSource list
-     */
-    fun getSources(): List<CatalogueSource> = _customSources.value
 
     /**
      * Create a new custom source from configuration
@@ -206,45 +195,17 @@ class CustomSourceManager(
 
         val all = section == SourceTestSection.ALL
 
-        // Verifies listing pagination by fetching page 2 when the listing reports a next page.
-        // Returns null when there's no page 2 to test; otherwise (ok, human-readable note).
-        suspend fun verifyPage2(
-            hasNextPage: Boolean,
-            fetch: suspend () -> eu.kanade.tachiyomi.source.model.MangasPage,
-        ): Pair<Boolean, String>? {
-            if (!hasNextPage) return null
-            return try {
-                val p2 = fetch()
-                if (p2.mangas.isNotEmpty()) {
-                    true to "Page 2: ${p2.mangas.size} found"
-                } else {
-                    false to "Page 2 returned nothing"
-                }
-            } catch (e: Exception) {
-                false to "Page 2 error: ${e.message}"
-            }
-        }
-
         // Popular
         if (all || section == SourceTestSection.POPULAR) {
             try {
                 val popular = source.getPopularManga(1)
                 val success = popular.mangas.isNotEmpty()
-                val page2 = if (success) verifyPage2(popular.hasNextPage) { source.getPopularManga(2) } else null
                 results["popular"] = TestStepResult(
-                    success = success && (page2?.first ?: true),
-                    message = buildString {
-                        append(
-                            if (success) {
-                                "Found ${popular.mangas.size} novels"
-                            } else {
-                                "No novels found (URL may need adjustment - some sites have novels on homepage without page param)"
-                            },
-                        )
-                        page2?.let {
-                            append(" · ")
-                            append(it.second)
-                        }
+                    success = success,
+                    message = if (success) {
+                        "Found ${popular.mangas.size} novels"
+                    } else {
+                        "No novels found (URL may need adjustment - some sites have novels on homepage without page param)"
                     },
                     data = buildMap {
                         popular.mangas.firstOrNull()?.let {
@@ -252,7 +213,6 @@ class CustomSourceManager(
                             put("First URL", it.url)
                             put("First Cover", it.thumbnail_url ?: "None")
                         }
-                        page2?.let { put("Page 2", it.second) }
                     }.ifEmpty { null },
                 )
                 if (success && testManga == null) {
@@ -269,22 +229,14 @@ class CustomSourceManager(
             try {
                 val latest = source.getLatestUpdates(1)
                 val success = latest.mangas.isNotEmpty()
-                val page2 = if (success) verifyPage2(latest.hasNextPage) { source.getLatestUpdates(2) } else null
                 results["latest"] = TestStepResult(
-                    success = success && (page2?.first ?: true),
-                    message = buildString {
-                        append(if (success) "Found ${latest.mangas.size} novels" else "No novels found")
-                        page2?.let {
-                            append(" · ")
-                            append(it.second)
-                        }
-                    },
+                    success = success,
+                    message = if (success) "Found ${latest.mangas.size} novels" else "No novels found",
                     data = buildMap {
                         latest.mangas.firstOrNull()?.let {
                             put("First Title", it.title)
                             put("First URL", it.url)
                         }
-                        page2?.let { put("Page 2", it.second) }
                     }.ifEmpty { null },
                 )
                 if (success && testManga == null) {
@@ -302,33 +254,17 @@ class CustomSourceManager(
                 val searchQuery = config.testSearchQuery?.ifBlank { null } ?: DEFAULT_TEST_QUERY
                 val search = source.getSearchManga(1, searchQuery, eu.kanade.tachiyomi.source.model.FilterList())
                 val success = search.mangas.isNotEmpty()
-                val page2 = if (success) {
-                    verifyPage2(search.hasNextPage) {
-                        source.getSearchManga(2, searchQuery, eu.kanade.tachiyomi.source.model.FilterList())
-                    }
-                } else {
-                    null
-                }
                 results["search"] = TestStepResult(
-                    success = success && (page2?.first ?: true),
-                    message = buildString {
-                        append(
-                            if (success) {
-                                "Found ${search.mangas.size} results for '$searchQuery'"
-                            } else {
-                                "No results found for '$searchQuery'"
-                            },
-                        )
-                        page2?.let {
-                            append(" · ")
-                            append(it.second)
-                        }
+                    success = success,
+                    message = if (success) {
+                        "Found ${search.mangas.size} results for '$searchQuery'"
+                    } else {
+                        "No results found for '$searchQuery'"
                     },
                     data = buildMap {
                         search.mangas.take(3).forEachIndexed { index, manga ->
                             put("Result ${index + 1}", manga.title)
                         }
-                        page2?.let { put("Page 2", it.second) }
                     }.ifEmpty { null },
                 )
                 if (success && testManga == null) {
@@ -472,26 +408,6 @@ class CustomSourceManager(
                     }
                 } catch (e: Exception) {
                     results["content"] = TestStepResult(success = false, message = "Error: ${e.message}")
-                }
-
-                // "Page 2" of reading: confirm a second chapter's content also resolves.
-                if (chapters.size > 1) {
-                    try {
-                        val secondChapter = chapters[chapters.size - 2]
-                        val pages2 = source.getPageList(secondChapter)
-                        val content2 = pages2.firstOrNull()?.let { source.fetchPageText(it) }.orEmpty()
-                        results["content_page2"] = TestStepResult(
-                            success = content2.isNotBlank(),
-                            message = if (content2.isNotBlank()) {
-                                "Second chapter content: ${content2.length} chars"
-                            } else {
-                                "Second chapter returned empty content"
-                            },
-                            data = mapOf("Chapter" to secondChapter.name),
-                        )
-                    } catch (e: Exception) {
-                        results["content_page2"] = TestStepResult(success = false, message = "Error: ${e.message}")
-                    }
                 }
             }
         } catch (e: Exception) {

@@ -282,8 +282,6 @@
     <string name="selector_selection_on">Selection ON</string>
     <string name="selector_select_element">Select Element</string>
     <string name="selector_tap_to_select">Tap an element to select it</string>
-    <string name="selector_elements_selected">%d element(s) selected</string>
-    <string name="selector_clear_selections">Clear selections</string>
     <string name="selector_selected_elements">Selected Elements</string>
     <string name="selector_selected_text">Selected Text:</string>
     <string name="selector_select_parent">Select Parent Element:</string>
@@ -296,6 +294,7 @@
     <string name="selector_setup_search">Set up search</string>
     <string name="selector_auto_detect">Auto-detect</string>
     <string name="selector_step_help">Step help</string>
+    <string name="selector_no_result">No result</string>
     <string name="selector_search_captured">Search captured: %s</string>
     <string name="selector_pagination_detected">Detected page pattern: %s</string>
     <string name="selector_reuse_popular_pagination">Same as popular</string>
@@ -317,7 +316,6 @@
     <string name="selector_feature_popular">Popular / trending list</string>
     <string name="selector_feature_latest">Latest updates list</string>
     <string name="selector_feature_search">Search</string>
-    <string name="selector_feature_pagination">Pagination (more pages)</string>
     <string name="selector_feature_popular_pagination">Popular has multiple pages</string>
     <string name="selector_feature_latest_pagination">Latest has multiple pages</string>
     <string name="selector_feature_search_pagination">Search has multiple pages</string>
@@ -610,6 +608,8 @@
     <string name="custom_source_basic_info">Basic Information</string>
     <string name="custom_source_source_name_required">Source Name *</string>
     <string name="custom_source_base_url_required">Base URL *</string>
+    <string name="custom_source_language_label">Language code (e.g. en, ja, zh)</string>
+    <string name="custom_source_not_based">Not based on another source</string>
     <string name="custom_source_options">Source Options</string>
     <string name="custom_source_reverse_chapters">Reverse Chapter Order</string>
     <string name="custom_source_reverse_chapters_desc">Enable if chapters are listed newest first</string>
@@ -620,7 +620,6 @@
     <string name="custom_source_manga_requires_base">Manga sources must be based on an installed extension. Pick a base source.</string>
     <string name="custom_source_base_on_extension">Base on Extension</string>
     <string name="custom_source_base_on_extension_desc">Create a custom source that delegates to an installed extension with a different name/URL</string>
-    <string name="custom_source_pick_extension">Pick Extension Source</string>
     <string name="custom_source_pick_extension_hint">Select an installed novel extension to base your custom source on. You can override the name and base URL.</string>
     <string name="custom_source_no_extensions">No novel extensions installed. Install extensions from the Extensions tab first.</string>
     <string name="custom_source_url_patterns">URL Patterns</string>
@@ -631,7 +630,6 @@
     <string name="custom_source_search_url">Search URL *</string>
     <string name="custom_source_search_url_hint">{baseUrl}/search?q={query}&amp;page={page}</string>
     <string name="custom_source_css_selectors">CSS Selectors</string>
-    <string name="custom_source_css_selectors_help">Use browser DevTools to find CSS selectors</string>
     <string name="custom_source_novel_list">Novel List (Popular/Latest)</string>
     <string name="custom_source_list_item_selector">List Item Selector *</string>
     <string name="custom_source_list_item_hint">.novel-item, .book-card</string>
@@ -705,39 +703,24 @@
     <string name="custom_source_export_subject">Custom Source: %s</string>
 
     <!-- Custom Source - WebView Element Selector Wizard -->
-    <string name="selector_step_trending_title">Trending Section</string>
-    <string name="selector_step_trending_desc">Navigate to the trending/popular novels section</string>
-    <string name="selector_step_trending_detail">Find the section showing popular or trending novels on the homepage</string>
     <string name="selector_step_novel_card_title">Popular list</string>
     <string name="selector_step_novel_card_desc">On the popular/trending page, tap a novel\'s TITLE link. To also grab thumbnails, tap the COVER first, then the title.</string>
     <string name="selector_step_novel_card_detail">If the title tap only catches the inner text, switch to its parent &lt;a&gt; in the next dialog so links resolve. The cover is optional: skip it and the lists just show no thumbnails.</string>
-    <string name="selector_step_trending_novels_title">Trending Novels</string>
-    <string name="selector_step_trending_novels_desc">Select 3 novel items: Click on TITLE element of each novel</string>
-    <string name="selector_step_trending_novels_detail">Click on the title text of 3 different trending novels.</string>
-    <string name="selector_step_new_section_title">New Novels Section</string>
-    <string name="selector_step_new_section_desc">Navigate to the new/latest novels section</string>
-    <string name="selector_step_new_section_detail">Find the section showing recently updated novels</string>
     <string name="selector_step_new_novels_title">Latest list</string>
     <string name="selector_step_new_novels_desc">Navigate to the latest/updates page, then continue. Only tap cover+title if its layout differs from popular.</string>
     <string name="selector_step_new_novels_detail">Latest reuses the popular card selectors by default — you just need to land on the latest page so its URL is captured.</string>
     <string name="selector_step_search_title">Search (optional)</string>
-    <string name="selector_step_search_desc">Tap \"Set up search\", type a word, then run it on the site. The address is captured automatically. Many sites match case-sensitively, so type the word exactly.</string>
+    <string name="selector_step_search_desc">Tap \"Set up search\", type a word, then run it on the site.</string>
     <string name="selector_step_search_detail">Your word is swapped for {query} in the captured address to build the search template. Pick a word that returns results, and mind capitalization since some sites treat \"Sword\" and \"sword\" differently.</string>
-    <string name="selector_step_search_url_title">Search URL Pattern</string>
-    <string name="selector_step_search_url_desc">Identify where the search keyword appears in the URL</string>
-    <string name="selector_step_search_url_detail">Look for your search term in the URL. Common patterns: ?s=keyword, ?q=keyword, /search/keyword</string>
     <string name="selector_step_pagination_title">Go to page 2</string>
     <string name="selector_step_pagination_desc">Open page 2 of this list (via the site\'s pagination), then continue.</string>
     <string name="selector_step_pagination_detail">The page-2 address is compared with page 1 to learn the page pattern — works for ?page= and /page/ styles alike. Continue without going to page 2 to leave it single-page.</string>
-    <string name="selector_step_novel_page_title">Novel Details Page</string>
-    <string name="selector_step_novel_page_desc">Click on a novel to open its details page</string>
-    <string name="selector_step_novel_page_detail">Navigate to any novel\'s main page</string>
     <string name="selector_step_novel_details_title">Novel Details</string>
     <string name="selector_step_novel_details_desc">Select in order: 1) Title, 2) Description/Summary, 3) Cover image, then 4+) any number of Tag/Genre elements (optional, merged together)</string>
-    <string name="selector_step_novel_details_detail">Select each element that shows novel information on the details page</string>
+    <string name="selector_step_novel_details_detail">Tags are merged into one genre string; pick as many as you want.</string>
     <string name="selector_step_chapter_list_title">Chapter List</string>
     <string name="selector_step_chapter_list_desc">Select chapter items: Click on the TITLE/LINK of chapters</string>
-    <string name="selector_step_chapter_list_detail">Select at least one chapter item (more improves accuracy)</string>
+    <string name="selector_step_chapter_list_detail">One chapter is enough; more improves selector accuracy.</string>
     <string name="selector_step_chapter_index_title">Chapter list link</string>
     <string name="selector_step_chapter_index_desc">On the novel page, tap the link that opens the full chapter list / table of contents.</string>
     <string name="selector_step_chapter_index_detail">Use this when chapters live on a separate page. The source follows this link to read them.</string>
@@ -745,50 +728,24 @@
     <string name="selector_step_chapter_pagination_desc">Tap the \'next page\' link of the chapter list, or continue to skip.</string>
     <string name="selector_step_chapter_pagination_detail">For chapter lists that span multiple pages.</string>
     <string name="selector_step_chapter_range_title">Chapter range</string>
-    <string name="selector_step_chapter_range_desc">Tap the FIRST chapter, then any other chapter (this learns the URL pattern). Then tap the element showing the total chapter count so each novel loads its own length.</string>
-    <string name="selector_step_chapter_range_detail">The two chapter taps only locate the number in the URL (e.g. /chapter-12); the start is the lower of the two and they can be on different pages of a paged or newest-first list. The END comes from the count element, read fresh on every novel\'s page, so each novel loads the right number of chapters. Without a count element the list is capped at the highest number you tapped, which only fits the novel you sampled.</string>
+    <string name="selector_step_chapter_range_desc">Tap two chapters (any two), then the element showing the total chapter count.</string>
+    <string name="selector_step_chapter_range_detail">The two taps learn the numbered URL; the count element sets each novel\'s length.</string>
     <string name="selector_step_chapter_date_title">Chapter date (optional)</string>
     <string name="selector_step_chapter_date_desc">Tap a chapter\'s upload date, or continue to skip.</string>
     <string name="selector_step_chapter_date_detail">Captures the per-chapter date selector. Skip if the list shows no dates.</string>
-    <string name="selector_step_chapter_page_title">Chapter Page</string>
-    <string name="selector_step_chapter_page_desc">Open a chapter to identify the content element</string>
-    <string name="selector_step_chapter_page_detail">Click on any chapter to open its reading page</string>
     <string name="selector_step_chapter_content_title">Chapter Content</string>
     <string name="selector_step_chapter_content_desc">Select the main text container element</string>
-    <string name="selector_step_chapter_content_detail">Click on the element containing the actual chapter text/content</string>
-    <string name="selector_step_complete_title">Complete</string>
-    <string name="selector_step_complete_desc">Review and save your custom source configuration</string>
+    <string name="selector_step_chapter_content_detail">Pick the text container; boilerplate (ads, nav) is stripped automatically.</string>
     <string name="selector_step_complete_detail">Verify your selections and save</string>
 
     <!-- Custom Source UI -->
     <string name="custom_source_create_title">Create Custom Source</string>
-    <string name="custom_source_create_subtitle">Build your own novel source by selecting elements from a website</string>
-    <string name="custom_source_method_guided_title">Guided WebView Selector</string>
-    <string name="custom_source_method_guided_desc">Navigate to a novel website and select elements step-by-step</string>
-    <string name="custom_source_method_template_title">Start From an Installed Source</string>
-    <string name="custom_source_method_template_desc">Pick an installed KT/JS source to prefill the URL and name, then build with the selector</string>
-    <string name="custom_source_method_repos_title">Manage Saved Repositories</string>
-    <string name="custom_source_method_repos_desc">Open Kotlin/JS repo management before building a source</string>
-    <string name="custom_source_steps_intro">The guided selector will walk you through:</string>
-    <string name="custom_source_step_1">1. Selecting trending/popular novels section</string>
-    <string name="custom_source_step_2">2. Selecting new/latest novels section</string>
-    <string name="custom_source_step_3">3. Setting up search functionality</string>
-    <string name="custom_source_step_4">4. Identifying pagination patterns</string>
-    <string name="custom_source_step_5">5. Selecting novel card elements (cover, title)</string>
-    <string name="custom_source_step_6">6. Selecting novel details (description, tags)</string>
-    <string name="custom_source_step_7">7. Selecting chapter list elements</string>
-    <string name="custom_source_step_8">8. Selecting chapter content area</string>
     <string name="custom_source_url_dialog_title">Enter Website URL</string>
-    <string name="custom_source_url_dialog_message">Enter the URL of the novel website you want to create a source for:</string>
     <string name="custom_source_url_label">Website URL</string>
     <string name="custom_source_start_wizard">Start Setup</string>
-    <string name="custom_source_choose_installed">Choose Installed Source</string>
-    <string name="custom_source_choose_installed_desc">Select an installed source, then optionally override name and URL.</string>
-    <string name="custom_source_choose_installed_empty">No installed KT/JS catalogue sources with HTTP base URLs were found.</string>
     <string name="custom_source_source_name">Source name</string>
     <string name="custom_source_base_url">Base URL</string>
     <string name="custom_source_pick_from_site">Pick from website</string>
-    <string name="custom_source_use_template">Continue</string>
     <string name="custom_source_import_dialog_title">Import source</string>
     <string name="custom_source_import_paste_label">Paste source JSON</string>
     <string name="custom_source_import_from_file">From file</string>
@@ -808,7 +765,6 @@
     <string name="custom_sources_use_webview_selector">Use WebView Element Selector</string>
     <string name="custom_sources_use_webview_selector_summary">Guided setup to select elements visually</string>
     <string name="custom_sources_open_webview_wizard">Open WebView Setup</string>
-    <string name="custom_selector_skip">Skip</string>
     <string name="custom_selector_previous">Previous</string>
     <string name="custom_selector_next_step">Next Step</string>
     <string name="custom_selector_save_source">Save Source</string>
@@ -816,7 +772,6 @@
     <string name="custom_selector_css_selector">CSS Selector</string>
     <string name="custom_selector_save_custom_source">Save Custom Source</string>
     <string name="custom_selector_source_name_required">Source Name *</string>
-    <string name="custom_selector_select_parent_format">Select Parent &lt;%1$s&gt;</string>
     <!-- Translation UI strings -->
     <string name="action_retranslate">Retranslate</string>
     <string name="action_delete_translation">Delete translation</string>

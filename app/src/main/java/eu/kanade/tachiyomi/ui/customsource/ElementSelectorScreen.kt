@@ -177,6 +177,7 @@ enum class SelectorWizardStep(
         TDMR.strings.selector_step_chapter_range_title,
         TDMR.strings.selector_step_chapter_range_desc,
         TDMR.strings.selector_step_chapter_range_detail,
+        detailed = false,
     ),
     CHAPTER_LIST(
         TDMR.strings.selector_step_chapter_list_title,
@@ -234,7 +235,6 @@ enum class SelectorWizardStep(
                 if (features.chapterListSeparatePage) add(CHAPTER_INDEX_LINK)
                 add(CHAPTER_LIST)
                 if (features.chapterListPagination) add(CHAPTER_LIST_PAGINATION)
-                add(CHAPTER_DATE)
             }
             add(CHAPTER_CONTENT)
             add(REVIEW)
@@ -248,9 +248,7 @@ data class SelectorConfig(
     var popularUrl: String = "",
     var latestUrl: String = "",
     var trendingSelector: String = "",
-    var trendingNovels: MutableList<String> = mutableListOf(),
     var newNovelsSelector: String = "",
-    var newNovels: MutableList<String> = mutableListOf(),
     var searchUrl: String = "",
     var searchKeyword: String = "",
     // Raw page-1 search URL (with the probe word) — paired with searchPage2Url to derive {page}.
@@ -260,8 +258,12 @@ data class SelectorConfig(
     var popularPage2Url: String = "",
     var latestPage2Url: String = "",
     var searchPage2Url: String = "",
-    // Followed-link pagination selector (the source follows these links itself).
+    // Followed-link pagination selector (fallback when the URL pattern can't be derived).
     var chapterListPaginationSelector: String = "",
+    // Chapter-list page 1/2 URLs. Diffed (and the novel path generalized to {novelUrl}) into a
+    // numbered-pagination template, the robust alternative to chasing a next-page button.
+    var chapterListPage1Url: String = "",
+    var chapterListPage2Url: String = "",
     // Details-page selector linking to a separate chapter-list page.
     var chapterIndexLinkSelector: String = "",
     var novelCoverSelector: String = "",
@@ -686,6 +688,8 @@ fun ElementSelectorScreen(
                         config.latestUrl.ifBlank { config.popularUrl } to currentUrl
                     SelectorWizardStep.SEARCH_PAGINATION ->
                         config.searchSampleUrl.ifBlank { config.searchUrl } to currentUrl
+                    SelectorWizardStep.CHAPTER_LIST_PAGINATION ->
+                        config.chapterListPage1Url.ifBlank { config.sampleNovelUrl } to currentUrl
                     else -> null
                 }
                 val paginationStatus = paginationPair
@@ -824,6 +828,10 @@ fun ElementSelectorScreen(
                             if (step == SelectorWizardStep.POPULAR_LIST && config.popularUrl.isBlank()) {
                                 config.popularUrl = currentUrl
                             }
+                            // Remember the chapter-list page-1 URL to diff against page 2 later.
+                            if (step == SelectorWizardStep.CHAPTER_LIST && config.chapterListPage1Url.isBlank()) {
+                                config.chapterListPage1Url = currentUrl
+                            }
                             if (selectedElements.isNotEmpty()) {
                                 val list = selectedElements.toList()
                                 detectItemSelector(list.map { it.selector }, list) { detected ->
@@ -861,6 +869,23 @@ fun ElementSelectorScreen(
                         }
                         SelectorWizardStep.SEARCH_PAGINATION -> {
                             config.searchPage2Url = currentUrl
+                            advance()
+                        }
+                        // Record the results page so search pagination can be diffed even when the
+                        // user searched manually instead of via the probe.
+                        SelectorWizardStep.SEARCH -> {
+                            if (config.searchSampleUrl.isBlank() &&
+                                currentUrl.trimEnd('/') != config.baseUrl.trimEnd('/')
+                            ) {
+                                config.searchSampleUrl = currentUrl
+                            }
+                            saveSelectionsForStep(step, selectedElements, config)
+                            advance()
+                        }
+                        // Page-2 URL of the chapter list (diffed into a {page} template).
+                        SelectorWizardStep.CHAPTER_LIST_PAGINATION -> {
+                            config.chapterListPage2Url = currentUrl
+                            saveSelectionsForStep(step, selectedElements, config)
                             advance()
                         }
                         SelectorWizardStep.NOVEL_DETAILS -> {
@@ -1157,7 +1182,7 @@ private fun LiveTestDialog(
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 if (obj == null) {
-                    Text("No result", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(TDMR.strings.selector_no_result), style = MaterialTheme.typography.bodySmall)
                 } else {
                     val ok = obj.optBoolean("ok", false)
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1850,7 +1875,7 @@ private fun relativize(full: String, listSel: String): String {
  * differing digits replaced by {page}. Mirrors ElementSelectorScreenModel.derivePagedFromPair so the
  * wizard can preview the same template that gets saved. Null if they don't differ by a number.
  */
-private fun derivePageTemplate(p1: String, p2: String): String? {
+internal fun derivePageTemplate(p1: String, p2: String): String? {
     if (p1.isBlank() || p2.isBlank() || p1 == p2) return null
     val maxLen = minOf(p1.length, p2.length)
     var pre = 0
@@ -1867,7 +1892,7 @@ private fun derivePageTemplate(p1: String, p2: String): String? {
  * page-1 URL), so the user can skip navigating latest to page 2 when the site paginates identically.
  * Handles the two dominant forms: a query param (`page=2`) and a path segment (`/page/2`).
  */
-private fun applyPagePattern(popularP1: String, popularP2: String, target: String): String? {
+internal fun applyPagePattern(popularP1: String, popularP2: String, target: String): String? {
     if (popularP1.isBlank() || popularP2.isBlank() || popularP1 == popularP2 || target.isBlank()) return null
     val maxLen = minOf(popularP1.length, popularP2.length)
     var pre = 0
@@ -1915,8 +1940,6 @@ private fun saveSelectionsForStep(
             // One tap = title/link only (cover skipped). Two taps = cover first, then title. List =
             // repeating item selector (DOM-detected when available); cover/title stored RELATIVE to
             // it so the source resolves them per item.
-            config.trendingNovels.clear()
-            config.trendingNovels.addAll(selectedElements.map { it.selector })
             if (selectedElements.isNotEmpty()) {
                 val listSel = detectedListSelector?.ifBlank { null } ?: deriveListSelector(selectedElements)
                 config.trendingSelector = listSel
@@ -1930,8 +1953,6 @@ private fun saveSelectionsForStep(
             }
         }
         SelectorWizardStep.LATEST_LIST -> {
-            config.newNovels.clear()
-            config.newNovels.addAll(selectedElements.map { it.selector })
             if (selectedElements.isNotEmpty()) {
                 config.newNovelsSelector = detectedListSelector?.ifBlank { null }
                     ?: deriveListSelector(selectedElements)
@@ -2294,22 +2315,6 @@ internal val ELEMENT_SELECTOR_JS = """
         highlightedElements = [];
     };
 
-    // Test a selector and return count of matching elements
-    window.testSelector = function(selector) {
-        try {
-            const elements = document.querySelectorAll(selector);
-            // Also highlight found elements
-            elements.forEach(el => {
-                el.classList.add('element-selector-highlight');
-                highlightedElements.push(el);
-            });
-            return elements.length;
-        } catch (e) {
-            console.error('Invalid selector:', selector);
-            return 0;
-        }
-    };
-
     // Auto-detect the main chapter text block: pick the element with the highest
     // text density (most characters that are not inside links/nav).
     window.autoDetectContent = function() {
@@ -2564,7 +2569,7 @@ internal val ELEMENT_SELECTOR_JS = """
  * Handles both raw and percent-encoded occurrences (including '+' for spaces), regardless of which
  * query parameter or path segment the site uses. Returns the template, or null if not found.
  */
-private fun deriveSearchUrl(url: String, baseUrl: String, userQuery: String): String? {
+internal fun deriveSearchUrl(url: String, baseUrl: String, userQuery: String): String? {
     if (userQuery.isBlank()) return null
 
     val baseHost = runCatching { java.net.URI(baseUrl.trimEnd('/')).host }.getOrNull()
