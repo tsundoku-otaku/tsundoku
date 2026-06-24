@@ -282,13 +282,22 @@ private fun patchHttpSourceForCustomBaseUrl(source: HttpSource, customBaseUrl: S
     val targetBaseUrl = customBaseUrl.trimEnd('/')
     if (targetBaseUrl.isBlank() || sourceBaseUrl == targetBaseUrl) return source
 
-    val rewrittenClient = createBaseUrlRewriteClient(source.client, sourceBaseUrl, targetBaseUrl)
-    trySetFieldRecursively(source, "client", rewrittenClient)
-    // DO NOT change source.baseUrl - keep it as original so the interceptor can match requests
-    // The interceptor is configured to rewrite sourceBaseUrl -> targetBaseUrl
-    // If we change baseUrl here, HttpSource will build requests with the new URL, and the
-    // interceptor won't match because it's looking for the old sourceBaseUrl
-    return source
+    // Patch a fresh instance, not the shared SourceManager singleton: mutating its client
+    // leaks the rewrite interceptor onto the original source's own requests.
+    val target = source.freshCopyOrNull() ?: source
+    val rewrittenClient = createBaseUrlRewriteClient(target.client, sourceBaseUrl, targetBaseUrl)
+    trySetFieldRecursively(target, "client", rewrittenClient)
+    // Keep baseUrl original so the interceptor still matches outgoing requests.
+    return target
+}
+
+// Null for SourceFactory-built sources with no no-arg constructor; caller falls back to shared.
+private fun HttpSource.freshCopyOrNull(): HttpSource? = try {
+    javaClass.getDeclaredConstructor()
+        .apply { isAccessible = true }
+        .newInstance() as? HttpSource
+} catch (_: Throwable) {
+    null
 }
 
 internal fun customSourceStorageFileCandidates(
