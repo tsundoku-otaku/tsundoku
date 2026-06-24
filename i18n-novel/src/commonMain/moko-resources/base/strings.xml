@@ -295,6 +295,7 @@
     <string name="selector_base_url_format">Base URL: %s</string>
     <string name="selector_setup_search">Set up search</string>
     <string name="selector_auto_detect">Auto-detect</string>
+    <string name="selector_step_help">Step help</string>
     <string name="selector_search_captured">Search captured: %s</string>
     <string name="selector_pagination_detected">Detected page pattern: %s</string>
     <string name="selector_reuse_popular_pagination">Same as popular</string>
@@ -661,6 +662,24 @@
     <string name="custom_source_chapter_content">Chapter Content</string>
     <string name="custom_source_content_selector">Content Selector *</string>
     <string name="custom_source_content_selector_hint">.chapter-content, #content</string>
+    <string name="custom_source_artist_selector">Artist Selector</string>
+    <string name="custom_source_status_selector">Status Selector</string>
+    <string name="custom_source_status_mapping">Status Mapping (word=ongoing, word=completed)</string>
+    <string name="custom_source_status_mapping_desc">Optional. Map this site\'s status words to ongoing/completed/hiatus/cancelled.</string>
+    <string name="custom_source_chapter_name_template">Chapter Name Template</string>
+    <string name="custom_source_chapter_name_template_desc">Use {n} for the chapter number.</string>
+    <string name="custom_source_chapter_url_pattern_desc">Use {n} for the chapter number, and {novelUrl} for the novel path so the pattern works across novels.</string>
+    <string name="custom_source_remove_selectors">Elements to Remove</string>
+    <string name="custom_source_remove_selectors_desc">Comma-separated selectors stripped from the content before display.</string>
+    <string name="custom_source_advanced">Advanced</string>
+    <string name="custom_source_date_format">Chapter Date Format</string>
+    <string name="custom_source_date_format_desc">Optional. Java SimpleDateFormat pattern, e.g. MMM d, yyyy. Needed for worded dates.</string>
+    <string name="custom_source_headers">Custom Headers</string>
+    <string name="custom_source_headers_desc">One per line, e.g. Referer: https://example.com</string>
+    <string name="custom_source_test_search_query">Test Search Query</string>
+    <string name="custom_source_test_search_query_desc">Optional. Query used when testing this source.</string>
+    <string name="custom_source_sample_novel_url">Sample Novel URL</string>
+    <string name="custom_source_sample_novel_url_desc">Optional. A novel details-page URL. Lets the reading test open a known novel without using a listing.</string>
     <string name="custom_source_save">Save Source</string>
 
     <!-- Custom Source - Import/Export -->

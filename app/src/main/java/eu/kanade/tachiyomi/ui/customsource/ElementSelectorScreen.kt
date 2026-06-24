@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
@@ -1050,11 +1051,39 @@ private fun StepInstructionCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 8.dp)) {
-            if (!compact) {
-                Text(
-                    text = stringResource(step.descriptionRes),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
+            var showHelp by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (!compact) {
+                    Text(
+                        text = stringResource(step.descriptionRes),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                IconButton(onClick = { showHelp = true }, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = stringResource(TDMR.strings.selector_step_help),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+            if (showHelp) {
+                AlertDialog(
+                    onDismissRequest = { showHelp = false },
+                    title = { Text(stringResource(step.titleRes)) },
+                    text = { Text(stringResource(step.detailedHelpRes)) },
+                    confirmButton = {
+                        TextButton(onClick = { showHelp = false }) {
+                            Text(stringResource(MR.strings.action_ok))
+                        }
+                    },
                 )
             }
 

@@ -1535,23 +1535,29 @@ class CustomSourceEditorScreen(
                     OutlinedTextField(
                         value = detailsArtistSelector,
                         onValueChange = { detailsArtistSelector = it },
-                        label = { Text("Artist selector") },
-                        trailingIcon = pickTrailing(baseUrl, "Artist selector") { detailsArtistSelector = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_artist_selector)) },
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_artist_selector),
+                        ) { detailsArtistSelector = it },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = detailsStatusSelector,
                         onValueChange = { detailsStatusSelector = it },
-                        label = { Text("Status selector") },
-                        trailingIcon = pickTrailing(baseUrl, "Status selector") { detailsStatusSelector = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_status_selector)) },
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_status_selector),
+                        ) { detailsStatusSelector = it },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = statusMappingText,
                         onValueChange = { statusMappingText = it },
-                        label = { Text("Status mapping (word=ongoing, word=completed)") },
+                        label = { Text(stringResource(TDMR.strings.custom_source_status_mapping)) },
                         supportingText = {
-                            Text("Optional. Map this site's status words to ongoing/completed/hiatus/cancelled.")
+                            Text(stringResource(TDMR.strings.custom_source_status_mapping_desc))
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -1567,7 +1573,10 @@ class CustomSourceEditorScreen(
                             onValueChange = { chapterUrlPattern = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_url_pattern)) },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("/novel/abc/chapter-{n}") },
+                            placeholder = { Text("{novelUrl}/chapter-{n}") },
+                            supportingText = {
+                                Text(stringResource(TDMR.strings.custom_source_chapter_url_pattern_desc))
+                            },
                         )
                         OutlinedTextField(
                             value = chapterCountSelector,
@@ -1601,14 +1610,12 @@ class CustomSourceEditorScreen(
                         OutlinedTextField(
                             value = chapterNameTemplate,
                             onValueChange = { chapterNameTemplate = it },
-                            label = { Text("Chapter name template") },
+                            label = { Text(stringResource(TDMR.strings.custom_source_chapter_name_template)) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             placeholder = { Text("Chapter {n}") },
                             supportingText = {
-                                Text(
-                                    "Use {n} for the chapter number. Use {novelUrl} in the URL pattern for portability.",
-                                )
+                                Text(stringResource(TDMR.strings.custom_source_chapter_name_template_desc))
                             },
                         )
                     } else {
@@ -1731,51 +1738,54 @@ class CustomSourceEditorScreen(
                     OutlinedTextField(
                         value = contentRemoveSelectors,
                         onValueChange = { contentRemoveSelectors = it },
-                        label = { Text("Remove selectors") },
-                        trailingIcon = pickTrailing(baseUrl, "Remove selectors") { contentRemoveSelectors = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_remove_selectors)) },
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_remove_selectors),
+                        ) { contentRemoveSelectors = it },
                         modifier = Modifier.fillMaxWidth(),
                         supportingText = {
-                            Text("Comma-separated selectors stripped from the content before display.")
+                            Text(stringResource(TDMR.strings.custom_source_remove_selectors_desc))
                         },
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Advanced",
+                        text = stringResource(TDMR.strings.custom_source_advanced),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     OutlinedTextField(
                         value = dateFormat,
                         onValueChange = { dateFormat = it },
-                        label = { Text("Chapter date format") },
+                        label = { Text(stringResource(TDMR.strings.custom_source_date_format)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         placeholder = { Text("yyyy-MM-dd") },
-                        supportingText = { Text("Optional. Needed for worded dates; uses the site's locale pattern.") },
+                        supportingText = { Text(stringResource(TDMR.strings.custom_source_date_format_desc)) },
                     )
                     OutlinedTextField(
                         value = headersText,
                         onValueChange = { headersText = it },
-                        label = { Text("Custom headers") },
+                        label = { Text(stringResource(TDMR.strings.custom_source_headers)) },
                         modifier = Modifier.fillMaxWidth(),
-                        supportingText = { Text("One per line, e.g. Referer: https://example.com") },
+                        supportingText = { Text(stringResource(TDMR.strings.custom_source_headers_desc)) },
                     )
                     OutlinedTextField(
                         value = testSearchQuery,
                         onValueChange = { testSearchQuery = it },
-                        label = { Text("Test search query") },
+                        label = { Text(stringResource(TDMR.strings.custom_source_test_search_query)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        supportingText = { Text("Optional. Query used when testing this source.") },
+                        supportingText = { Text(stringResource(TDMR.strings.custom_source_test_search_query_desc)) },
                     )
                     OutlinedTextField(
                         value = sampleNovelUrl,
                         onValueChange = { sampleNovelUrl = it },
-                        label = { Text("Sample novel URL") },
+                        label = { Text(stringResource(TDMR.strings.custom_source_sample_novel_url)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        supportingText = { Text("Optional. Lets the reading test open a known novel directly.") },
+                        supportingText = { Text(stringResource(TDMR.strings.custom_source_sample_novel_url_desc)) },
                     )
                 } // end if (selectedBasedOnSourceId == null)
 
