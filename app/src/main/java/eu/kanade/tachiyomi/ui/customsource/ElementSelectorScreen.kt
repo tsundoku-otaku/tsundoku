@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.PlaylistAddCheck
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
@@ -48,7 +49,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,7 +71,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -93,38 +92,34 @@ import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.components.material.Scaffold as TachiyomiScaffold
 
-/**
- * Which sections a custom source exposes. Chosen up front (URL dialog) so the wizard only walks the
- * user through the steps they actually need.
- */
+/** Which sections a source exposes; chosen up front so the wizard only shows the needed steps. */
 data class SourceFeatures(
     val hasPopular: Boolean = true,
     val hasLatest: Boolean = true,
     val hasSearch: Boolean = true,
-    // Per-section pagination — each adds its own capture step only when enabled.
+    // Per-section pagination; each adds a capture step.
     val popularPagination: Boolean = false,
     val latestPagination: Boolean = false,
     val searchPagination: Boolean = false,
-    // The chapter list spans multiple pages (adds a chapter-list pagination step).
+    // Chapter list spans multiple pages.
     val chapterListPagination: Boolean = false,
-    // The chapter list lives on a separate page linked from the details page (adds a step to tap
-    // that "all chapters / table of contents" link).
+    // Chapter list lives on a separate linked page (adds a step to tap that link).
     val chapterListSeparatePage: Boolean = false,
-    // Chapters have sequential numeric URLs (e.g. /chapter-12); generate the list from a pattern
-    // instead of scraping it (adds a "first/last chapter + total count" step).
+    // Chapters have sequential numeric URLs; generate from a pattern instead of scraping.
     val chapterGenerateFromPattern: Boolean = false,
 ) : java.io.Serializable
 
 /**
- * Element Selector Wizard Steps. The active list is derived from [SourceFeatures]; reading steps
- * (details/chapters/content) are always included. Each step optionally maps to a [SourceTestSection]
- * so its parsing can be validated in place instead of only at the end.
+ * Wizard steps; the active list is derived from [SourceFeatures] (reading steps always included).
+ * Each step optionally maps to a [SourceTestSection] for in-place validation.
  */
 enum class SelectorWizardStep(
     val titleRes: StringResource,
     val descriptionRes: StringResource,
     val detailedHelpRes: StringResource,
     val testSection: SourceTestSection? = null,
+    // Shows the (i) help button. Only steps with non-obvious guidance.
+    val detailed: Boolean = true,
 ) {
     POPULAR_LIST(
         TDMR.strings.selector_step_novel_card_title,
@@ -142,6 +137,7 @@ enum class SelectorWizardStep(
         TDMR.strings.selector_step_new_novels_desc,
         TDMR.strings.selector_step_new_novels_detail,
         SourceTestSection.LATEST,
+        detailed = false,
     ),
     LATEST_PAGINATION(
         TDMR.strings.selector_step_pagination_title,
@@ -163,42 +159,50 @@ enum class SelectorWizardStep(
         TDMR.strings.selector_step_novel_details_title,
         TDMR.strings.selector_step_novel_details_desc,
         TDMR.strings.selector_step_novel_details_detail,
+        detailed = false,
     ),
     CHAPTER_INDEX_LINK(
         TDMR.strings.selector_step_chapter_index_title,
         TDMR.strings.selector_step_chapter_index_desc,
         TDMR.strings.selector_step_chapter_index_detail,
+        detailed = false,
     ),
     CHAPTER_RANGE(
         TDMR.strings.selector_step_chapter_range_title,
         TDMR.strings.selector_step_chapter_range_desc,
         TDMR.strings.selector_step_chapter_range_detail,
+        detailed = false,
     ),
     CHAPTER_LIST(
         TDMR.strings.selector_step_chapter_list_title,
         TDMR.strings.selector_step_chapter_list_desc,
         TDMR.strings.selector_step_chapter_list_detail,
+        detailed = false,
     ),
     CHAPTER_LIST_PAGINATION(
         TDMR.strings.selector_step_chapter_pagination_title,
         TDMR.strings.selector_step_chapter_pagination_desc,
         TDMR.strings.selector_step_chapter_pagination_detail,
+        detailed = false,
     ),
     CHAPTER_DATE(
         TDMR.strings.selector_step_chapter_date_title,
         TDMR.strings.selector_step_chapter_date_desc,
         TDMR.strings.selector_step_chapter_date_detail,
+        detailed = false,
     ),
     CHAPTER_CONTENT(
         TDMR.strings.selector_step_chapter_content_title,
         TDMR.strings.selector_step_chapter_content_desc,
         TDMR.strings.selector_step_chapter_content_detail,
         SourceTestSection.READING,
+        detailed = false,
     ),
     REVIEW(
         TDMR.strings.selector_review_title,
         TDMR.strings.selector_review_desc,
         TDMR.strings.selector_step_complete_detail,
+        detailed = false,
     ),
     ;
 
@@ -225,7 +229,6 @@ enum class SelectorWizardStep(
                 if (features.chapterListSeparatePage) add(CHAPTER_INDEX_LINK)
                 add(CHAPTER_LIST)
                 if (features.chapterListPagination) add(CHAPTER_LIST_PAGINATION)
-                add(CHAPTER_DATE)
             }
             add(CHAPTER_CONTENT)
             add(REVIEW)
@@ -239,20 +242,20 @@ data class SelectorConfig(
     var popularUrl: String = "",
     var latestUrl: String = "",
     var trendingSelector: String = "",
-    var trendingNovels: MutableList<String> = mutableListOf(),
     var newNovelsSelector: String = "",
-    var newNovels: MutableList<String> = mutableListOf(),
     var searchUrl: String = "",
     var searchKeyword: String = "",
-    // Raw page-1 search URL (with the probe word) — paired with searchPage2Url to derive {page}.
+    // Raw page-1 search URL; paired with searchPage2Url to derive {page}.
     var searchSampleUrl: String = "",
-    // Listing pagination: the page-2 URL the user navigated to. Diffed against the page-1 URL to
-    // build a correct {page} template (handles ?page= vs /page/ vs trailing-number forms).
+    // Listing page-2 URLs, diffed against page 1 to build the {page} template.
     var popularPage2Url: String = "",
     var latestPage2Url: String = "",
     var searchPage2Url: String = "",
-    // Followed-link pagination selector (the source follows these links itself).
+    // Followed-link pagination selector (fallback when no URL pattern).
     var chapterListPaginationSelector: String = "",
+    // Chapter-list page 1/2 URLs, diffed into a {novelUrl}-generalized {page} template.
+    var chapterListPage1Url: String = "",
+    var chapterListPage2Url: String = "",
     // Details-page selector linking to a separate chapter-list page.
     var chapterIndexLinkSelector: String = "",
     var novelCoverSelector: String = "",
@@ -562,6 +565,10 @@ fun ElementSelectorScreen(
                             config.searchKeyword = searchProbeQuery
                             config.searchSampleUrl = newUrl // raw page-1 search URL for pagination diff
                             searchStatus = "ok:$derived"
+                        } else {
+                            // The probe word isn't in this URL yet. Notify instead of staying silent so
+                            // the user knows to run the search (and that case must match).
+                            searchStatus = "fail"
                         }
                     }
                 }
@@ -634,39 +641,6 @@ fun ElementSelectorScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-
-                StepIndicatorBar(
-                    steps = steps,
-                    currentStep = currentStep,
-                    onStepClick = { screenModel.currentStepState.value = it },
-                )
-            }
-        },
-        floatingActionButton = {
-            if (!isReview) {
-                ExtendedFloatingActionButton(
-                    onClick = { if (selectionModeEnabled) disableSelectionMode() else enableSelectionMode() },
-                    containerColor = if (selectionModeEnabled) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    },
-                    icon = {
-                        Icon(
-                            if (selectionModeEnabled) Icons.Filled.TouchApp else Icons.Filled.Edit,
-                            contentDescription = stringResource(TDMR.strings.selector_select_element),
-                        )
-                    },
-                    text = {
-                        Text(
-                            if (selectionModeEnabled) {
-                                stringResource(TDMR.strings.selector_selection_on)
-                            } else {
-                                stringResource(TDMR.strings.selector_select_element)
-                            },
-                        )
-                    },
-                )
             }
         },
     ) { padding ->
@@ -706,6 +680,8 @@ fun ElementSelectorScreen(
                         config.latestUrl.ifBlank { config.popularUrl } to currentUrl
                     SelectorWizardStep.SEARCH_PAGINATION ->
                         config.searchSampleUrl.ifBlank { config.searchUrl } to currentUrl
+                    SelectorWizardStep.CHAPTER_LIST_PAGINATION ->
+                        config.chapterListPage1Url.ifBlank { config.sampleNovelUrl } to currentUrl
                     else -> null
                 }
                 val paginationStatus = paginationPair
@@ -844,6 +820,10 @@ fun ElementSelectorScreen(
                             if (step == SelectorWizardStep.POPULAR_LIST && config.popularUrl.isBlank()) {
                                 config.popularUrl = currentUrl
                             }
+                            // Remember the chapter-list page-1 URL to diff against page 2 later.
+                            if (step == SelectorWizardStep.CHAPTER_LIST && config.chapterListPage1Url.isBlank()) {
+                                config.chapterListPage1Url = currentUrl
+                            }
                             if (selectedElements.isNotEmpty()) {
                                 val list = selectedElements.toList()
                                 detectItemSelector(list.map { it.selector }, list) { detected ->
@@ -883,6 +863,23 @@ fun ElementSelectorScreen(
                             config.searchPage2Url = currentUrl
                             advance()
                         }
+                        // Record the results page so search pagination can be diffed even when the
+                        // user searched manually instead of via the probe.
+                        SelectorWizardStep.SEARCH -> {
+                            if (config.searchSampleUrl.isBlank() &&
+                                currentUrl.trimEnd('/') != config.baseUrl.trimEnd('/')
+                            ) {
+                                config.searchSampleUrl = currentUrl
+                            }
+                            saveSelectionsForStep(step, selectedElements, config)
+                            advance()
+                        }
+                        // Page-2 URL of the chapter list (diffed into a {page} template).
+                        SelectorWizardStep.CHAPTER_LIST_PAGINATION -> {
+                            config.chapterListPage2Url = currentUrl
+                            saveSelectionsForStep(step, selectedElements, config)
+                            advance()
+                        }
                         SelectorWizardStep.NOVEL_DETAILS -> {
                             // Remember the novel page so the reading test can open it without a listing.
                             config.sampleNovelUrl = currentUrl
@@ -898,6 +895,10 @@ fun ElementSelectorScreen(
                 onComplete = {
                     commitAllSelections()
                     showSourceNameDialog = true
+                },
+                selectionModeEnabled = selectionModeEnabled,
+                onToggleSelection = {
+                    if (selectionModeEnabled) disableSelectionMode() else enableSelectionMode()
                 },
             )
         }
@@ -996,39 +997,6 @@ fun ElementSelectorScreen(
 }
 
 @Composable
-private fun StepIndicatorBar(
-    steps: List<SelectorWizardStep>,
-    currentStep: SelectorWizardStep,
-    onStepClick: (SelectorWizardStep) -> Unit,
-) {
-    val currentIndex = steps.indexOf(currentStep)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        steps.forEachIndexed { index, step ->
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(
-                        when {
-                            index < currentIndex -> MaterialTheme.colorScheme.primary
-                            step == currentStep -> MaterialTheme.colorScheme.tertiary
-                            else -> MaterialTheme.colorScheme.outlineVariant
-                        },
-                    )
-                    .clickable { onStepClick(step) },
-            )
-        }
-    }
-}
-
-@Composable
 private fun StepInstructionCard(
     step: SelectorWizardStep,
     selectedCount: Int,
@@ -1050,11 +1018,43 @@ private fun StepInstructionCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 8.dp)) {
-            if (!compact) {
-                Text(
-                    text = stringResource(step.descriptionRes),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
+            var showHelp by remember { mutableStateOf(false) }
+            if (!compact || step.detailed) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (!compact) {
+                        Text(
+                            text = stringResource(step.descriptionRes),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    if (step.detailed) {
+                        IconButton(onClick = { showHelp = true }, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = stringResource(TDMR.strings.selector_step_help),
+                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                            )
+                        }
+                    }
+                }
+            }
+            if (showHelp) {
+                AlertDialog(
+                    onDismissRequest = { showHelp = false },
+                    title = { Text(stringResource(step.titleRes)) },
+                    text = { Text(stringResource(step.detailedHelpRes)) },
+                    confirmButton = {
+                        TextButton(onClick = { showHelp = false }) {
+                            Text(stringResource(MR.strings.action_ok))
+                        }
+                    },
                 )
             }
 
@@ -1174,7 +1174,7 @@ private fun LiveTestDialog(
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 if (obj == null) {
-                    Text("No result", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(TDMR.strings.selector_no_result), style = MaterialTheme.typography.bodySmall)
                 } else {
                     val ok = obj.optBoolean("ok", false)
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1399,16 +1399,58 @@ private fun StepNavigationBar(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onComplete: () -> Unit,
+    selectionModeEnabled: Boolean = false,
+    onToggleSelection: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        OutlinedButton(onClick = onPrevious, enabled = !isFirstStep) {
-            Text(stringResource(TDMR.strings.custom_selector_previous))
+        IconButton(onClick = onPrevious, enabled = !isFirstStep, modifier = Modifier.size(40.dp)) {
+            Icon(
+                Icons.AutoMirrored.Outlined.ArrowBack,
+                stringResource(TDMR.strings.custom_selector_previous),
+            )
+        }
+
+        // Select-element toggle lives between prev/next so it is reachable without the FAB. Hidden on
+        // the final review step where there is nothing to pick.
+        if (!isLastStep && onToggleSelection != null) {
+            FilledTonalButton(
+                onClick = onToggleSelection,
+                modifier = Modifier.weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                colors = if (selectionModeEnabled) {
+                    ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    )
+                } else {
+                    ButtonDefaults.filledTonalButtonColors()
+                },
+            ) {
+                Icon(
+                    if (selectionModeEnabled) Icons.Filled.TouchApp else Icons.Filled.Edit,
+                    null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    if (selectionModeEnabled) {
+                        stringResource(TDMR.strings.selector_selection_on)
+                    } else {
+                        stringResource(TDMR.strings.selector_select_element)
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        } else {
+            Spacer(Modifier.weight(1f))
         }
 
         if (isLastStep) {
@@ -1774,7 +1816,8 @@ private fun canProceedToNextStep(
     config: SelectorConfig,
 ): Boolean {
     return when (step) {
-        SelectorWizardStep.POPULAR_LIST -> selectedElements.size >= 2 // Cover + Title
+        // One tap (title) is enough; a second optional tap captures the cover for thumbnails.
+        SelectorWizardStep.POPULAR_LIST -> selectedElements.isNotEmpty()
         // Optional: by default latest reuses the popular card layout, so no taps are required —
         // only the latest page URL (captured on Next) is needed.
         SelectorWizardStep.LATEST_LIST -> true
@@ -1799,9 +1842,8 @@ private fun canProceedToNextStep(
 }
 
 /**
- * The wizard captures document-unique selectors (e.g. `div.list > div.card > a.title`), but the
- * source parses title/cover/link relative to each list item. Strip the list-container prefix so the
- * selector resolves inside a card; fall back to the trailing segment when there's no shared prefix.
+ * Strips the list-container prefix off a document-unique selector so it resolves inside a card
+ * (the source parses title/cover/link relative to each item). Falls back to the trailing segment.
  */
 private fun relativize(full: String, listSel: String): String {
     if (full.isBlank()) return ""
@@ -1820,30 +1862,10 @@ private fun relativize(full: String, listSel: String): String {
 }
 
 /**
- * From the first and last chapter URLs, derive a numeric pattern ({n} at the chapter number) plus
- * both numbers. Uses the LAST digit run as the chapter number (robust to a novel id earlier in the
- * path). Returns (relativePattern, firstNumber, lastNumber) or null.
+ * Diffs page-1/page-2 URLs into the page-2 URL with the differing digits replaced by {page}. Mirrors
+ * ElementSelectorScreenModel.derivePagedFromPair (preview = saved template). Null if no numeric diff.
  */
-private fun deriveNumericPattern(url1: String, url2: String, baseUrl: String): Triple<String, Int, Int>? {
-    if (url1.isBlank() || url2.isBlank()) return null
-    val rx = Regex("""\d+""")
-    val m1 = rx.findAll(url1).lastOrNull() ?: return null
-    val m2 = rx.findAll(url2).lastOrNull() ?: return null
-    val n1 = m1.value.toIntOrNull() ?: return null
-    val n2 = m2.value.toIntOrNull() ?: return null
-    if (n1 == n2) return null
-    val patternAbs = url1.substring(0, m1.range.first) + "{n}" + url1.substring(m1.range.last + 1)
-    val base = baseUrl.trimEnd('/')
-    val pattern = if (patternAbs.startsWith(base)) patternAbs.removePrefix(base) else patternAbs
-    return Triple(pattern, n1, n2)
-}
-
-/**
- * Diffs a page-1 and page-2 URL that differ only by page number, returning the page-2 URL with the
- * differing digits replaced by {page}. Mirrors ElementSelectorScreenModel.derivePagedFromPair so the
- * wizard can preview the same template that gets saved. Null if they don't differ by a number.
- */
-private fun derivePageTemplate(p1: String, p2: String): String? {
+internal fun derivePageTemplate(p1: String, p2: String): String? {
     if (p1.isBlank() || p2.isBlank() || p1 == p2) return null
     val maxLen = minOf(p1.length, p2.length)
     var pre = 0
@@ -1856,11 +1878,10 @@ private fun derivePageTemplate(p1: String, p2: String): String? {
 }
 
 /**
- * Reuses the page-token discovered between popular page1/page2 and applies it to [target] (the latest
- * page-1 URL), so the user can skip navigating latest to page 2 when the site paginates identically.
- * Handles the two dominant forms: a query param (`page=2`) and a path segment (`/page/2`).
+ * Applies the popular page1/page2 page-token to [target] (latest page-1 URL), so latest needn't be
+ * navigated to page 2. Handles query-param (`page=2`) and path-segment (`/page/2`) forms.
  */
-private fun applyPagePattern(popularP1: String, popularP2: String, target: String): String? {
+internal fun applyPagePattern(popularP1: String, popularP2: String, target: String): String? {
     if (popularP1.isBlank() || popularP2.isBlank() || popularP1 == popularP2 || target.isBlank()) return null
     val maxLen = minOf(popularP1.length, popularP2.length)
     var pre = 0
@@ -1883,9 +1904,8 @@ private fun stripPositional(selector: String): String =
     selector.replace(Regex(""":nth-of-type\(\d+\)"""), "").replace(Regex(""":nth-child\(\d+\)"""), "")
 
 /**
- * Derive the repeating list-item (card) selector from the tapped elements. Prefers the common path
- * prefix; if the unique selectors share none, falls back to a common closest container (li/div/a)
- * reported by the JS, generalized so it matches every card rather than one.
+ * Derives the repeating card selector from tapped elements: common path prefix, else a shared
+ * closest container (li/div/a) reported by the JS.
  */
 private fun deriveListSelector(elements: List<SelectedElement>): String {
     val prefix = findCommonSelector(elements)
@@ -1905,21 +1925,21 @@ private fun saveSelectionsForStep(
 ) {
     when (step) {
         SelectorWizardStep.POPULAR_LIST -> {
-            // First tap = cover image, second = title/link. List = repeating item selector (DOM-
-            // detected when available); cover/title stored RELATIVE to it so the source resolves
-            // them per item.
-            config.trendingNovels.clear()
-            config.trendingNovels.addAll(selectedElements.map { it.selector })
+            // One tap = title only; two taps = cover then title. Cover/title stored relative to the
+            // repeating item selector so the source resolves them per item.
             if (selectedElements.isNotEmpty()) {
                 val listSel = detectedListSelector?.ifBlank { null } ?: deriveListSelector(selectedElements)
                 config.trendingSelector = listSel
-                selectedElements.getOrNull(0)?.let { config.novelCoverSelector = relativize(it.selector, listSel) }
-                selectedElements.getOrNull(1)?.let { config.novelTitleSelector = relativize(it.selector, listSel) }
+                if (selectedElements.size == 1) {
+                    config.novelCoverSelector = ""
+                    config.novelTitleSelector = relativize(selectedElements[0].selector, listSel)
+                } else {
+                    config.novelCoverSelector = relativize(selectedElements[0].selector, listSel)
+                    config.novelTitleSelector = relativize(selectedElements[1].selector, listSel)
+                }
             }
         }
         SelectorWizardStep.LATEST_LIST -> {
-            config.newNovels.clear()
-            config.newNovels.addAll(selectedElements.map { it.selector })
             if (selectedElements.isNotEmpty()) {
                 config.newNovelsSelector = detectedListSelector?.ifBlank { null }
                     ?: deriveListSelector(selectedElements)
@@ -1929,16 +1949,19 @@ private fun saveSelectionsForStep(
             }
         }
         SelectorWizardStep.CHAPTER_LIST_PAGINATION -> {
-            selectedElements.firstOrNull()?.let { config.chapterListPaginationSelector = it.selector }
+            // Strip positional bits (:nth-of-type) so the "next page" selector keeps matching on
+            // page 2+ where the element's index differs from page 1.
+            selectedElements.firstOrNull()?.let {
+                config.chapterListPaginationSelector = stripPositional(it.selector)
+            }
         }
         SelectorWizardStep.CHAPTER_INDEX_LINK -> {
             // On the details page; stored as a document selector (resolved against the details doc).
             selectedElements.firstOrNull()?.let { config.chapterIndexLinkSelector = it.selector }
         }
         SelectorWizardStep.NOVEL_DETAILS -> {
-            // Fixed order: title, description, cover, then ANY number of tag/genre elements. The
-            // tag picks are merged into one comma-separated selector group; the source joins their
-            // texts so several individual tag links become a single genre string.
+            // Fixed order: title, description, cover, then any number of tags merged into one
+            // comma-separated selector group (the source joins their texts into one genre string).
             selectedElements.getOrNull(0)?.let { config.novelPageTitleSelector = it.selector }
             selectedElements.getOrNull(1)?.let { config.novelDescriptionSelector = it.selector }
             selectedElements.getOrNull(2)?.let { config.novelCoverPageSelector = it.selector }
@@ -1967,7 +1990,12 @@ private fun saveSelectionsForStep(
             // element holding the total chapter count (overrides the last number).
             val first = selectedElements.getOrNull(0)?.href.orEmpty()
             val last = selectedElements.getOrNull(1)?.href.orEmpty()
-            deriveNumericPattern(first, last, config.baseUrl)?.let { (pattern, n1, n2) ->
+            eu.kanade.tachiyomi.source.custom.deriveGenericChapterPattern(
+                first,
+                last,
+                config.baseUrl,
+                config.sampleNovelUrl.ifBlank { null },
+            )?.let { (pattern, n1, n2) ->
                 config.chapterUrlPattern = pattern
                 config.chapterFirstNumber = minOf(n1, n2)
                 config.chapterLastNumber = maxOf(n1, n2)
@@ -2273,22 +2301,6 @@ internal val ELEMENT_SELECTOR_JS = """
         highlightedElements = [];
     };
 
-    // Test a selector and return count of matching elements
-    window.testSelector = function(selector) {
-        try {
-            const elements = document.querySelectorAll(selector);
-            // Also highlight found elements
-            elements.forEach(el => {
-                el.classList.add('element-selector-highlight');
-                highlightedElements.push(el);
-            });
-            return elements.length;
-        } catch (e) {
-            console.error('Invalid selector:', selector);
-            return 0;
-        }
-    };
-
     // Auto-detect the main chapter text block: pick the element with the highest
     // text density (most characters that are not inside links/nav).
     window.autoDetectContent = function() {
@@ -2539,11 +2551,10 @@ internal val ELEMENT_SELECTOR_JS = """
 """
 
 /**
- * Derive a {query} search URL template from a URL the user produced by searching for [userQuery].
- * Handles both raw and percent-encoded occurrences (including '+' for spaces), regardless of which
- * query parameter or path segment the site uses. Returns the template, or null if not found.
+ * Derives a {query} template from a URL produced by searching for [userQuery]. Handles raw and
+ * percent-encoded occurrences (incl. '+' for spaces), any param/path segment. Null if not found.
  */
-private fun deriveSearchUrl(url: String, baseUrl: String, userQuery: String): String? {
+internal fun deriveSearchUrl(url: String, baseUrl: String, userQuery: String): String? {
     if (userQuery.isBlank()) return null
 
     val baseHost = runCatching { java.net.URI(baseUrl.trimEnd('/')).host }.getOrNull()

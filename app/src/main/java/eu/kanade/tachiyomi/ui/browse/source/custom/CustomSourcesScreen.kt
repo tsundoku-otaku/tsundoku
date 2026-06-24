@@ -26,7 +26,6 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -143,7 +142,6 @@ class CustomSourcesScreen : Screen {
                         }
                     },
                     actions = {
-                        // Import button
                         IconButton(onClick = {
                             importJsonText = ""
                             importError = null
@@ -257,7 +255,6 @@ class CustomSourcesScreen : Screen {
             }
         }
 
-        // Create dialog
         if (showCreateDialog) {
             CreateSourceDialog(
                 onDismiss = { showCreateDialog = false },
@@ -290,7 +287,6 @@ class CustomSourcesScreen : Screen {
             )
         }
 
-        // Import dialog (paste / from file / copy template, with inline validation errors)
         if (showImportDialog) {
             ImportSourceDialog(
                 jsonText = importJsonText,
@@ -323,7 +319,6 @@ class CustomSourcesScreen : Screen {
             )
         }
 
-        // Delete confirmation
         sourceToDelete?.let { id ->
             AlertDialog(
                 onDismissRequest = { sourceToDelete = null },
@@ -568,7 +563,6 @@ private fun CreateSourceDialog(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // WebView selector option
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -593,7 +587,6 @@ private fun CreateSourceDialog(
                     }
                 }
 
-                // Base on Extension option
                 Spacer(modifier = Modifier.height(4.dp))
                 Button(
                     onClick = { showExtensionPicker = true },
@@ -608,7 +601,6 @@ private fun CreateSourceDialog(
                     modifier = Modifier.padding(top = 4.dp),
                 )
 
-                // Hint about extension repos for pre-built themes
                 if (!useWebView) {
                     Text(
                         text = stringResource(TDMR.strings.custom_source_use_repos_hint),
@@ -647,7 +639,6 @@ private fun CreateSourceDialog(
         },
     )
 
-    // Extension picker dialog
     if (showExtensionPicker) {
         BaseSourcePickerDialog(
             selectedSourceId = null,
@@ -857,8 +848,6 @@ class CustomSourceEditorScreen(
         var latestUrl by remember { mutableStateOf(initialConfig?.latestUrl ?: "") }
         var searchUrl by remember { mutableStateOf(initialConfig?.searchUrl ?: "") }
 
-        // New fields for source type and cloudflare
-        var useCloudflare by remember { mutableStateOf(initialConfig?.useCloudflare ?: true) }
         var reverseChapters by remember { mutableStateOf(initialConfig?.reverseChapters ?: false) }
         var postSearch by remember { mutableStateOf(initialConfig?.postSearch ?: false) }
         var isNovel by remember { mutableStateOf(initialConfig?.isNovel ?: true) }
@@ -875,7 +864,8 @@ class CustomSourceEditorScreen(
                     popularPagination = c?.selectors?.popular?.nextPage != null || c?.popularPagedUrl != null,
                     latestPagination = c?.selectors?.latest?.nextPage != null || c?.latestPagedUrl != null,
                     searchPagination = c?.selectors?.search?.nextPage != null || c?.searchPagedUrl != null,
-                    chapterListPagination = c?.selectors?.chapters?.nextPage != null,
+                    chapterListPagination = c?.selectors?.chapters?.nextPage != null ||
+                        c?.selectors?.chapters?.pagedUrlPattern != null,
                     chapterListSeparatePage = c?.selectors?.chapters?.indexLinkSelector != null,
                     chapterGenerateFromPattern = c?.selectors?.chapters?.urlPattern != null,
                 ),
@@ -915,6 +905,9 @@ class CustomSourceEditorScreen(
         }
         var detailsGenreSelector by remember {
             mutableStateOf(initialConfig?.selectors?.details?.genre ?: "")
+        }
+        var detailsArtistSelector by remember {
+            mutableStateOf(initialConfig?.selectors?.details?.artist ?: "")
         }
         var detailsStatusSelector by remember {
             mutableStateOf(initialConfig?.selectors?.details?.status ?: "")
@@ -963,6 +956,23 @@ class CustomSourceEditorScreen(
         var contentFallbacksSelector by remember {
             mutableStateOf(initialConfig?.selectors?.content?.fallbacks?.joinToString(", ") ?: "")
         }
+        var contentRemoveSelectors by remember {
+            mutableStateOf(initialConfig?.selectors?.content?.removeSelectors?.joinToString(", ") ?: "")
+        }
+        var chapterNameTemplate by remember {
+            mutableStateOf(initialConfig?.selectors?.chapters?.nameTemplate ?: "")
+        }
+        // Advanced fields, previously only reachable via JSON import.
+        var dateFormat by remember { mutableStateOf(initialConfig?.dateFormat ?: "") }
+        var headersText by remember {
+            mutableStateOf(
+                initialConfig?.headers
+                    ?.entries?.joinToString("\n") { "${it.key}: ${it.value}" }
+                    ?: "",
+            )
+        }
+        var testSearchQuery by remember { mutableStateOf(initialConfig?.testSearchQuery ?: "") }
+        var sampleNovelUrl by remember { mutableStateOf(initialConfig?.sampleNovelUrl ?: "") }
 
         var isSaving by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -1019,7 +1029,6 @@ class CustomSourceEditorScreen(
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState()),
             ) {
-                // Basic Info Section
                 Text(
                     text = stringResource(TDMR.strings.custom_source_basic_info),
                     style = MaterialTheme.typography.titleMedium,
@@ -1048,46 +1057,10 @@ class CustomSourceEditorScreen(
                 OutlinedTextField(
                     value = language,
                     onValueChange = { language = it },
-                    label = { Text("Language code (e.g. en, ja, zh)") },
+                    label = { Text(stringResource(TDMR.strings.custom_source_language_label)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
-
-                // Show info card when based on extension
-                if (selectedBasedOnSourceId != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Outlined.Extension,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = stringResource(TDMR.strings.custom_source_base_on_extension),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                )
-                                Text(
-                                    text = stringResource(TDMR.strings.custom_source_base_on_extension_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
-                                )
-                            }
-                        }
-                    }
-                }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -1108,7 +1081,7 @@ class CustomSourceEditorScreen(
                                 Injekt.get<SourceManager>().get(id)?.let { source ->
                                     "${source.name} (${source.lang})"
                                 }
-                            } ?: "Not based on another source",
+                            } ?: stringResource(TDMR.strings.custom_source_not_based),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1132,7 +1105,6 @@ class CustomSourceEditorScreen(
                     }
                 }
 
-                // Source Options Section
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = stringResource(TDMR.strings.custom_source_options),
@@ -1141,32 +1113,6 @@ class CustomSourceEditorScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Cloudflare option
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    androidx.compose.material3.Checkbox(
-                        checked = useCloudflare,
-                        onCheckedChange = { useCloudflare = it },
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            stringResource(TDMR.strings.custom_source_use_cloudflare),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            stringResource(TDMR.strings.custom_source_use_cloudflare_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-
-                // Reverse chapters option
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1191,7 +1137,6 @@ class CustomSourceEditorScreen(
                     }
                 }
 
-                // POST search option
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1216,7 +1161,6 @@ class CustomSourceEditorScreen(
                     }
                 }
 
-                // Novel source type option
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1320,7 +1264,6 @@ class CustomSourceEditorScreen(
                     }
                 }
 
-                // URLs Section (only for manual/selector-based sources)
                 if (selectedBasedOnSourceId == null && isNovel) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
@@ -1364,21 +1307,14 @@ class CustomSourceEditorScreen(
                         )
                     }
 
-                    // Selectors Section
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = stringResource(TDMR.strings.custom_source_css_selectors),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
-                    Text(
-                        text = stringResource(TDMR.strings.custom_source_css_selectors_help),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Popular/List selectors
                     Text(stringResource(TDMR.strings.custom_source_novel_list), fontWeight = FontWeight.Medium)
                     OutlinedTextField(
                         value = popularListSelector,
@@ -1472,7 +1408,6 @@ class CustomSourceEditorScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Details selectors
                     Text(stringResource(TDMR.strings.custom_source_novel_details), fontWeight = FontWeight.Medium)
                     OutlinedTextField(
                         value = detailsTitleSelector,
@@ -1540,25 +1475,37 @@ class CustomSourceEditorScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
+                        value = detailsArtistSelector,
+                        onValueChange = { detailsArtistSelector = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_artist_selector)) },
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_artist_selector),
+                        ) { detailsArtistSelector = it },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
                         value = detailsStatusSelector,
                         onValueChange = { detailsStatusSelector = it },
-                        label = { Text("Status selector") },
-                        trailingIcon = pickTrailing(baseUrl, "Status selector") { detailsStatusSelector = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_status_selector)) },
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_status_selector),
+                        ) { detailsStatusSelector = it },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
                         value = statusMappingText,
                         onValueChange = { statusMappingText = it },
-                        label = { Text("Status mapping (word=ongoing, word=completed)") },
+                        label = { Text(stringResource(TDMR.strings.custom_source_status_mapping)) },
                         supportingText = {
-                            Text("Optional. Map this site's status words to ongoing/completed/hiatus/cancelled.")
+                            Text(stringResource(TDMR.strings.custom_source_status_mapping_desc))
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Chapter selectors
                     Text(stringResource(TDMR.strings.custom_source_chapters), fontWeight = FontWeight.Medium)
                     if (features.chapterGenerateFromPattern) {
                         // Generated chapter list (mode B): numeric URL pattern + range/count.
@@ -1567,7 +1514,10 @@ class CustomSourceEditorScreen(
                             onValueChange = { chapterUrlPattern = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_url_pattern)) },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("/novel/abc/chapter-{n}") },
+                            placeholder = { Text("{novelUrl}/chapter-{n}") },
+                            supportingText = {
+                                Text(stringResource(TDMR.strings.custom_source_chapter_url_pattern_desc))
+                            },
                         )
                         OutlinedTextField(
                             value = chapterCountSelector,
@@ -1581,6 +1531,9 @@ class CustomSourceEditorScreen(
                                     it
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            supportingText = {
+                                Text(stringResource(TDMR.strings.custom_source_chapter_count_selector_desc))
+                            },
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(
@@ -1589,6 +1542,9 @@ class CustomSourceEditorScreen(
                                 label = { Text(stringResource(TDMR.strings.custom_source_chapter_first_number)) },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true,
+                                supportingText = {
+                                    Text(stringResource(TDMR.strings.custom_source_chapter_first_number_desc))
+                                },
                             )
                             OutlinedTextField(
                                 value = chapterLastNumber,
@@ -1596,8 +1552,22 @@ class CustomSourceEditorScreen(
                                 label = { Text(stringResource(TDMR.strings.custom_source_chapter_last_number)) },
                                 modifier = Modifier.weight(1f),
                                 singleLine = true,
+                                supportingText = {
+                                    Text(stringResource(TDMR.strings.custom_source_chapter_last_number_desc))
+                                },
                             )
                         }
+                        OutlinedTextField(
+                            value = chapterNameTemplate,
+                            onValueChange = { chapterNameTemplate = it },
+                            label = { Text(stringResource(TDMR.strings.custom_source_chapter_name_template)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text("Chapter {n}") },
+                            supportingText = {
+                                Text(stringResource(TDMR.strings.custom_source_chapter_name_template_desc))
+                            },
+                        )
                     } else {
                         OutlinedTextField(
                             value = chaptersListSelector,
@@ -1686,7 +1656,6 @@ class CustomSourceEditorScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Content selector
                     Text(stringResource(TDMR.strings.custom_source_chapter_content), fontWeight = FontWeight.Medium)
                     OutlinedTextField(
                         value = contentPrimarySelector,
@@ -1715,9 +1684,60 @@ class CustomSourceEditorScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    OutlinedTextField(
+                        value = contentRemoveSelectors,
+                        onValueChange = { contentRemoveSelectors = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_remove_selectors)) },
+                        trailingIcon = pickTrailing(
+                            baseUrl,
+                            stringResource(TDMR.strings.custom_source_remove_selectors),
+                        ) { contentRemoveSelectors = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = {
+                            Text(stringResource(TDMR.strings.custom_source_remove_selectors_desc))
+                        },
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = stringResource(TDMR.strings.custom_source_advanced),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    OutlinedTextField(
+                        value = dateFormat,
+                        onValueChange = { dateFormat = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_date_format)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text("yyyy-MM-dd") },
+                        supportingText = { Text(stringResource(TDMR.strings.custom_source_date_format_desc)) },
+                    )
+                    OutlinedTextField(
+                        value = headersText,
+                        onValueChange = { headersText = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_headers)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = { Text(stringResource(TDMR.strings.custom_source_headers_desc)) },
+                    )
+                    OutlinedTextField(
+                        value = testSearchQuery,
+                        onValueChange = { testSearchQuery = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_test_search_query)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = { Text(stringResource(TDMR.strings.custom_source_test_search_query_desc)) },
+                    )
+                    OutlinedTextField(
+                        value = sampleNovelUrl,
+                        onValueChange = { sampleNovelUrl = it },
+                        label = { Text(stringResource(TDMR.strings.custom_source_sample_novel_url)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        supportingText = { Text(stringResource(TDMR.strings.custom_source_sample_novel_url_desc)) },
+                    )
                 } // end if (selectedBasedOnSourceId == null)
 
-                // Error message
                 errorMessage?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
@@ -1727,7 +1747,6 @@ class CustomSourceEditorScreen(
                     )
                 }
 
-                // Save button
                 Spacer(modifier = Modifier.height(24.dp))
                 @Suppress("ktlint:standard:max-line-length")
                 Button(
@@ -1737,18 +1756,48 @@ class CustomSourceEditorScreen(
                             errorMessage = null
 
                             val config = buildConfig(
-                                name, baseUrl, popularUrl, latestUrl, searchUrl,
-                                popularListSelector, popularTitleSelector, popularCoverSelector,
-                                popularNextPageSelector, latestNextPageSelector, searchNextPageSelector,
-                                detailsTitleSelector, detailsDescriptionSelector,
-                                detailsCoverSelector, detailsAuthorSelector, detailsGenreSelector,
-                                detailsStatusSelector, statusMappingText,
-                                chaptersListSelector, chapterLinkSelector, chapterNameSelector,
-                                chapterDateSelector, chapterNextPageSelector, chapterIndexLinkSelector,
-                                chapterUrlPattern, chapterCountSelector, chapterFirstNumber, chapterLastNumber,
-                                contentPrimarySelector, contentFallbacksSelector,
-                                sourceId, useCloudflare, reverseChapters, postSearch,
-                                selectedBasedOnSourceId, isNovel, language,
+                                existing = initialConfig,
+                                name = name, baseUrl = baseUrl, popularUrl = popularUrl,
+                                latestUrl = latestUrl, searchUrl = searchUrl,
+                                popularListSelector = popularListSelector,
+                                popularTitleSelector = popularTitleSelector,
+                                popularCoverSelector = popularCoverSelector,
+                                popularNextPageSelector = popularNextPageSelector,
+                                latestNextPageSelector = latestNextPageSelector,
+                                searchNextPageSelector = searchNextPageSelector,
+                                detailsTitleSelector = detailsTitleSelector,
+                                detailsDescriptionSelector = detailsDescriptionSelector,
+                                detailsCoverSelector = detailsCoverSelector,
+                                detailsAuthorSelector = detailsAuthorSelector,
+                                detailsArtistSelector = detailsArtistSelector,
+                                detailsGenreSelector = detailsGenreSelector,
+                                detailsStatusSelector = detailsStatusSelector,
+                                statusMappingText = statusMappingText,
+                                chaptersListSelector = chaptersListSelector,
+                                chapterLinkSelector = chapterLinkSelector,
+                                chapterNameSelector = chapterNameSelector,
+                                chapterDateSelector = chapterDateSelector,
+                                chapterNextPageSelector = chapterNextPageSelector,
+                                chapterIndexLinkSelector = chapterIndexLinkSelector,
+                                chapterUrlPattern = chapterUrlPattern,
+                                chapterCountSelector = chapterCountSelector,
+                                chapterFirstNumber = chapterFirstNumber,
+                                chapterLastNumber = chapterLastNumber,
+                                chapterNameTemplate = chapterNameTemplate,
+                                contentPrimarySelector = contentPrimarySelector,
+                                contentFallbacksSelector = contentFallbacksSelector,
+                                contentRemoveSelectors = contentRemoveSelectors,
+                                dateFormat = dateFormat,
+                                headersText = headersText,
+                                testSearchQuery = testSearchQuery,
+                                sampleNovelUrl = sampleNovelUrl,
+                                existingId = sourceId,
+                                reverseChapters = reverseChapters,
+                                postSearch = postSearch,
+                                basedOnSourceId = selectedBasedOnSourceId,
+                                isNovel = isNovel,
+                                language = language,
+                                features = features,
                             )
 
                             val result = if (sourceId != null) {
@@ -1831,7 +1880,24 @@ class CustomSourceEditorScreen(
         return map.ifEmpty { null }
     }
 
+    private fun parseHeaders(text: String): Map<String, String> {
+        return text.lines().mapNotNull { line ->
+            val trimmed = line.trim()
+            if (trimmed.isBlank()) return@mapNotNull null
+            val sep = trimmed.indexOfFirst { it == ':' || it == '=' }
+            if (sep <= 0) return@mapNotNull null
+            val key = trimmed.substring(0, sep).trim()
+            val value = trimmed.substring(sep + 1).trim()
+            if (key.isBlank() || value.isBlank()) null else key to value
+        }.toMap()
+    }
+
+    private fun splitSelectorList(text: String): List<String>? =
+        text.split(",").map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { null }
+
+    @Suppress("LongParameterList")
     private fun buildConfig(
+        existing: CustomSourceConfig?,
         name: String,
         baseUrl: String,
         popularUrl: String,
@@ -1847,6 +1913,7 @@ class CustomSourceEditorScreen(
         detailsDescriptionSelector: String,
         detailsCoverSelector: String,
         detailsAuthorSelector: String,
+        detailsArtistSelector: String,
         detailsGenreSelector: String,
         detailsStatusSelector: String,
         statusMappingText: String,
@@ -1860,75 +1927,133 @@ class CustomSourceEditorScreen(
         chapterCountSelector: String,
         chapterFirstNumber: String,
         chapterLastNumber: String,
+        chapterNameTemplate: String,
         contentPrimarySelector: String,
         contentFallbacksSelector: String,
+        contentRemoveSelectors: String,
+        dateFormat: String,
+        headersText: String,
+        testSearchQuery: String,
+        sampleNovelUrl: String,
         existingId: Long?,
-        useCloudflare: Boolean,
         reverseChapters: Boolean,
         postSearch: Boolean,
         basedOnSourceId: Long? = null,
         isNovel: Boolean = true,
         language: String = "en",
+        features: eu.kanade.tachiyomi.ui.customsource.SourceFeatures,
     ): CustomSourceConfig {
-        return CustomSourceConfig(
+        // Gate every field by its section/mode toggle so unchecking a box actually clears the saved
+        // data (otherwise a disabled section's stale URL/selector lingers and the box re-appears
+        // ticked on the next edit). The shared list/title/cover inputs feed whichever listing is on.
+        val cardTitle = popularTitleSelector.ifBlank { null }
+        val cardCover = popularCoverSelector.ifBlank { null }
+        val generate = features.chapterGenerateFromPattern
+        val selectors = eu.kanade.tachiyomi.source.custom.SourceSelectors(
+            popular = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
+                list = if (features.hasPopular) popularListSelector else "",
+                title = if (features.hasPopular) cardTitle else null,
+                cover = if (features.hasPopular) cardCover else null,
+                nextPage = if (features.hasPopular && features.popularPagination) {
+                    popularNextPageSelector.ifBlank { null }
+                } else {
+                    null
+                },
+            ),
+            latest = if (features.hasLatest) {
+                eu.kanade.tachiyomi.source.custom.MangaListSelectors(
+                    list = popularListSelector,
+                    title = cardTitle,
+                    cover = cardCover,
+                    nextPage = if (features.latestPagination) latestNextPageSelector.ifBlank { null } else null,
+                )
+            } else {
+                null
+            },
+            search = if (features.hasSearch) {
+                eu.kanade.tachiyomi.source.custom.MangaListSelectors(
+                    list = popularListSelector,
+                    title = cardTitle,
+                    cover = cardCover,
+                    nextPage = if (features.searchPagination) searchNextPageSelector.ifBlank { null } else null,
+                )
+            } else {
+                null
+            },
+            details = eu.kanade.tachiyomi.source.custom.DetailSelectors(
+                title = detailsTitleSelector,
+                description = detailsDescriptionSelector.ifBlank { null },
+                cover = detailsCoverSelector.ifBlank { null },
+                author = detailsAuthorSelector.ifBlank { null },
+                artist = detailsArtistSelector.ifBlank { null },
+                genre = detailsGenreSelector.ifBlank { null },
+                status = detailsStatusSelector.ifBlank { null },
+            ),
+            chapters = eu.kanade.tachiyomi.source.custom.ChapterSelectors(
+                list = chaptersListSelector,
+                link = if (generate) null else chapterLinkSelector.ifBlank { null },
+                name = if (generate) null else chapterNameSelector.ifBlank { null },
+                date = if (generate) null else chapterDateSelector.ifBlank { null },
+                nextPage = if (!generate && features.chapterListPagination) {
+                    chapterNextPageSelector.ifBlank { null }
+                } else {
+                    null
+                },
+                // No dedicated input; preserve the wizard-derived numbered-pagination template only
+                // while chapter-list pagination stays enabled.
+                pagedUrlPattern = if (!generate && features.chapterListPagination) {
+                    existing?.selectors?.chapters?.pagedUrlPattern
+                } else {
+                    null
+                },
+                indexLinkSelector = if (!generate && features.chapterListSeparatePage) {
+                    chapterIndexLinkSelector.ifBlank { null }
+                } else {
+                    null
+                },
+                urlPattern = if (generate) chapterUrlPattern.ifBlank { null } else null,
+                countSelector = if (generate) chapterCountSelector.ifBlank { null } else null,
+                firstNumber = if (generate) chapterFirstNumber.toIntOrNull() else null,
+                lastNumber = if (generate) chapterLastNumber.toIntOrNull() else null,
+                nameTemplate = if (generate) chapterNameTemplate.ifBlank { null } else null,
+            ),
+            content = eu.kanade.tachiyomi.source.custom.ContentSelectors(
+                primary = contentPrimarySelector,
+                fallbacks = splitSelectorList(contentFallbacksSelector),
+                removeSelectors = splitSelectorList(contentRemoveSelectors),
+                // No UI toggle for this; preserve whatever an imported config set instead of
+                // resetting to the default on every edit.
+                removeBoilerplate = existing?.selectors?.content?.removeBoilerplate ?: true,
+            ),
+        )
+
+        // Start from the existing config so fields without a dedicated input survive a round-trip.
+        val base = existing ?: CustomSourceConfig(
+            name = name,
+            baseUrl = baseUrl.trimEnd('/'),
+            popularUrl = popularUrl,
+            searchUrl = searchUrl,
+            selectors = selectors,
+        )
+        return base.copy(
             name = name,
             baseUrl = baseUrl.trimEnd('/'),
             language = language,
             id = existingId,
-            popularUrl = popularUrl,
-            latestUrl = latestUrl.ifBlank { null },
-            searchUrl = searchUrl,
+            popularUrl = if (features.hasPopular) popularUrl else "",
+            latestUrl = if (features.hasLatest) latestUrl.ifBlank { null } else null,
+            searchUrl = if (features.hasSearch) searchUrl else "",
+            // Per-section paged URLs are wizard-derived (no field here); keep them only while the
+            // matching section + pagination toggle are both on.
+            popularPagedUrl = if (features.hasPopular && features.popularPagination) base.popularPagedUrl else null,
+            latestPagedUrl = if (features.hasLatest && features.latestPagination) base.latestPagedUrl else null,
+            searchPagedUrl = if (features.hasSearch && features.searchPagination) base.searchPagedUrl else null,
             statusMapping = parseStatusMapping(statusMappingText),
-            selectors = eu.kanade.tachiyomi.source.custom.SourceSelectors(
-                popular = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                    list = popularListSelector,
-                    title = popularTitleSelector.ifBlank { null },
-                    cover = popularCoverSelector.ifBlank { null },
-                    nextPage = popularNextPageSelector.ifBlank { null },
-                ),
-                // Separate latest pagination only; latest reuses the popular card layout + URL.
-                latest = latestNextPageSelector.ifBlank { null }?.let {
-                    eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                        list = popularListSelector,
-                        title = popularTitleSelector.ifBlank { null },
-                        cover = popularCoverSelector.ifBlank { null },
-                        nextPage = it,
-                    )
-                },
-                // Search reuses the popular list layout; pagination can differ.
-                search = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                    list = popularListSelector,
-                    title = popularTitleSelector.ifBlank { null },
-                    cover = popularCoverSelector.ifBlank { null },
-                    nextPage = searchNextPageSelector.ifBlank { null },
-                ),
-                details = eu.kanade.tachiyomi.source.custom.DetailSelectors(
-                    title = detailsTitleSelector,
-                    description = detailsDescriptionSelector.ifBlank { null },
-                    cover = detailsCoverSelector.ifBlank { null },
-                    author = detailsAuthorSelector.ifBlank { null },
-                    genre = detailsGenreSelector.ifBlank { null },
-                    status = detailsStatusSelector.ifBlank { null },
-                ),
-                chapters = eu.kanade.tachiyomi.source.custom.ChapterSelectors(
-                    list = chaptersListSelector,
-                    link = chapterLinkSelector.ifBlank { null },
-                    name = chapterNameSelector.ifBlank { null },
-                    date = chapterDateSelector.ifBlank { null },
-                    nextPage = chapterNextPageSelector.ifBlank { null },
-                    indexLinkSelector = chapterIndexLinkSelector.ifBlank { null },
-                    urlPattern = chapterUrlPattern.ifBlank { null },
-                    countSelector = chapterCountSelector.ifBlank { null },
-                    firstNumber = chapterFirstNumber.toIntOrNull(),
-                    lastNumber = chapterLastNumber.toIntOrNull(),
-                ),
-                content = eu.kanade.tachiyomi.source.custom.ContentSelectors(
-                    primary = contentPrimarySelector,
-                    fallbacks = contentFallbacksSelector.split(",")
-                        .map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { null },
-                ),
-            ),
-            useCloudflare = useCloudflare,
+            dateFormat = dateFormat.ifBlank { null },
+            headers = parseHeaders(headersText),
+            testSearchQuery = testSearchQuery.ifBlank { null },
+            sampleNovelUrl = sampleNovelUrl.ifBlank { null },
+            selectors = selectors,
             reverseChapters = reverseChapters,
             postSearch = postSearch,
             basedOnSourceId = basedOnSourceId,

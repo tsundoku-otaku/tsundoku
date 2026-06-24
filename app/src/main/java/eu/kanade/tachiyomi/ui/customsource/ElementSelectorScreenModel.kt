@@ -16,8 +16,6 @@ import eu.kanade.tachiyomi.source.custom.SourceTestResult
 import eu.kanade.tachiyomi.source.custom.SourceTestSection
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -30,8 +28,6 @@ class ElementSelectorScreenModel(
     private val initialSourceName: String = "",
     private val customSourceManager: CustomSourceManager = Injekt.get(),
 ) : StateScreenModel<ElementSelectorScreenModel.State>(State()) {
-
-    private val json = Json { prettyPrint = true }
 
     // ---- Wizard UI state, held here (not in the composable) so it survives Activity recreation
     // on rotation — the same reason the rest of the app keeps screen state in ScreenModels. The
@@ -47,107 +43,79 @@ class ElementSelectorScreenModel(
     val detectedListState = mutableStateMapOf<SelectorWizardStep, String>()
 
     data class State(
-        val isLoading: Boolean = false,
-        val sourceName: String = "",
-        val baseUrl: String = "",
-        val config: SelectorConfig = SelectorConfig(),
         val savedSuccessfully: Boolean = false,
         val error: String? = null,
-        // Preview data for confirmation UI
-        val previewData: StepPreviewData? = null,
     )
 
-    init {
-        mutableState.update {
-            it.copy(
-                sourceName = initialSourceName,
-                baseUrl = initialUrl,
-            )
-        }
-    }
-
-    fun updateSourceName(name: String) {
-        mutableState.update { it.copy(sourceName = name) }
-    }
-
-    fun updatePreviewData(preview: StepPreviewData) {
-        mutableState.update { it.copy(previewData = preview) }
-    }
-
-    fun clearPreview() {
-        mutableState.update { it.copy(previewData = null) }
-    }
-
-    fun saveConfig(config: SelectorConfig) {
+    fun saveConfig(config: SelectorConfig, features: SourceFeatures) {
         screenModelScope.launch {
-            mutableState.update { it.copy(isLoading = true) }
-
             try {
-                // Convert SelectorConfig to CustomSourceConfig
-                val sourceConfig = convertToCustomSourceConfig(config)
-
-                // Save via CustomSourceManager
-                val result = customSourceManager.createSource(sourceConfig)
-
-                result.fold(
-                    onSuccess = {
-                        mutableState.update {
-                            it.copy(
-                                isLoading = false,
-                                savedSuccessfully = true,
-                                config = config,
-                            )
-                        }
-                    },
-                    onFailure = { e ->
-                        mutableState.update {
-                            it.copy(
-                                isLoading = false,
-                                error = e.message,
-                            )
-                        }
-                    },
+                val sourceConfig = convertToCustomSourceConfig(config, features)
+                customSourceManager.createSource(sourceConfig).fold(
+                    onSuccess = { mutableState.update { it.copy(savedSuccessfully = true) } },
+                    onFailure = { e -> mutableState.update { it.copy(error = e.message) } },
                 )
             } catch (e: Exception) {
-                mutableState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message,
-                    )
-                }
+                mutableState.update { it.copy(error = e.message) }
             }
         }
     }
 
-    private fun convertToCustomSourceConfig(selectorConfig: SelectorConfig): CustomSourceConfig {
+    private fun convertToCustomSourceConfig(
+        selectorConfig: SelectorConfig,
+        features: SourceFeatures,
+    ): CustomSourceConfig {
         val baseUrl = selectorConfig.baseUrl.trimEnd('/')
 
-        // Popular and search reuse the popular card layout. When popular was toggled off (latest-only
-        // setup), fall back to the latest list selector so those sections still resolve items instead
-        // of throwing "List selector is empty".
-        val primaryListSelector = selectorConfig.trendingSelector.ifBlank { selectorConfig.newNovelsSelector }
+        // The shared card selectors feed whichever listing(s) the user enabled. Popular falls back to
+        // the latest list selector for a latest-only setup.
+        val cardList = selectorConfig.trendingSelector.ifBlank { selectorConfig.newNovelsSelector }
+        val cardTitle = selectorConfig.novelTitleSelector.ifBlank { null }
+        val cardCover = selectorConfig.novelCoverSelector.ifBlank { null }
+        val generate = features.chapterGenerateFromPattern
 
-        // Page 1 = the verbatim URL the user browsed. Page 2+ template = page1/page2 diff (handles
-        // ?page= vs /page/ alike). The source uses page1 for page 1 and the template afterwards, so
-        // the first page keeps or omits the page token exactly as the site does.
-        val popularUrl = selectorConfig.popularUrl.trim().ifBlank { baseUrl }.trimEnd('/')
-        val popularPagedUrl = derivePagedFromPair(popularUrl, selectorConfig.popularPage2Url.trim())
+        // Page 1 = verbatim browsed URL; page 2+ = page1/page2 diff. Each gated by its section +
+        // pagination toggle so the saved config matches the ticked boxes and round-trips.
+        val popularUrl = if (features.hasPopular) {
+            selectorConfig.popularUrl.trim().ifBlank { baseUrl }.trimEnd('/')
+        } else {
+            ""
+        }
+        val popularPagedUrl = if (features.hasPopular && features.popularPagination) {
+            derivePagedFromPair(popularUrl, selectorConfig.popularPage2Url.trim())
+        } else {
+            null
+        }
 
-        val hasLatest = selectorConfig.newNovelsSelector.isNotEmpty() ||
-            selectorConfig.latestPage2Url.isNotBlank()
-        val latestPage1 = selectorConfig.latestUrl.ifBlank { selectorConfig.popularUrl }.trim().trimEnd('/')
-        val latestUrl = if (hasLatest) latestPage1.ifBlank { popularUrl } else null
-        val latestPagedUrl = if (hasLatest) {
-            derivePagedFromPair(
-                latestPage1,
-                selectorConfig.latestPage2Url.trim(),
+        val latestUrl = if (features.hasLatest) {
+            selectorConfig.latestUrl.ifBlank { selectorConfig.popularUrl }.trim().trimEnd('/').ifBlank { baseUrl }
+        } else {
+            null
+        }
+        val latestPagedUrl = if (features.hasLatest && features.latestPagination) {
+            derivePagedFromPair(latestUrl.orEmpty(), selectorConfig.latestPage2Url.trim())
+        } else {
+            null
+        }
+
+        // Numbered chapter-list pagination template (preferred over the next-button selector).
+        val chapterPagedPattern = if (!generate && features.chapterListPagination) {
+            deriveChapterListPagePattern(
+                selectorConfig.chapterListPage1Url.ifBlank { selectorConfig.sampleNovelUrl },
+                selectorConfig.chapterListPage2Url,
+                baseUrl,
+                selectorConfig.sampleNovelUrl,
             )
         } else {
             null
         }
 
-        val searchUrl = selectorConfig.searchUrl.ifBlank { "$baseUrl/?s={query}" }
-        val searchPagedUrl = run {
+        val searchUrl = if (features.hasSearch) {
+            selectorConfig.searchUrl.ifBlank { "$baseUrl/?s={query}" }
+        } else {
+            ""
+        }
+        val searchPagedUrl = if (features.hasSearch && features.searchPagination) {
             val p1 = selectorConfig.searchSampleUrl.trim()
             val p2 = selectorConfig.searchPage2Url.trim()
             if (p1.isNotBlank() && p2.isNotBlank()) {
@@ -155,6 +123,8 @@ class ElementSelectorScreenModel(
             } else {
                 null
             }
+        } else {
+            null
         }
 
         return CustomSourceConfig(
@@ -171,30 +141,34 @@ class ElementSelectorScreenModel(
             latestPagedUrl = latestPagedUrl,
             searchPagedUrl = searchPagedUrl,
             sampleNovelUrl = selectorConfig.sampleNovelUrl.ifBlank { null },
-            testSearchQuery = selectorConfig.searchKeyword.ifBlank { null },
+            testSearchQuery = if (features.hasSearch) selectorConfig.searchKeyword.ifBlank { null } else null,
             selectors = SourceSelectors(
                 popular = MangaListSelectors(
-                    list = primaryListSelector,
-                    link = selectorConfig.novelTitleSelector.ifBlank { null },
-                    title = selectorConfig.novelTitleSelector.ifBlank { null },
-                    cover = selectorConfig.novelCoverSelector.ifBlank { null },
+                    list = if (features.hasPopular) cardList else "",
+                    link = if (features.hasPopular) cardTitle else null,
+                    title = if (features.hasPopular) cardTitle else null,
+                    cover = if (features.hasPopular) cardCover else null,
                 ),
-                // Separate latest selectors when the latest list layout was captured; otherwise
-                // latest falls back to popular at parse time.
-                latest = selectorConfig.newNovelsSelector.ifBlank { null }?.let {
+                latest = if (features.hasLatest) {
                     MangaListSelectors(
-                        list = it,
-                        link = selectorConfig.novelTitleSelector.ifBlank { null },
-                        title = selectorConfig.novelTitleSelector.ifBlank { null },
-                        cover = selectorConfig.novelCoverSelector.ifBlank { null },
+                        list = selectorConfig.newNovelsSelector.ifBlank { cardList },
+                        link = cardTitle,
+                        title = cardTitle,
+                        cover = cardCover,
                     )
+                } else {
+                    null
                 },
-                search = MangaListSelectors(
-                    list = primaryListSelector, // Usually same as popular
-                    link = selectorConfig.novelTitleSelector.ifBlank { null },
-                    title = selectorConfig.novelTitleSelector.ifBlank { null },
-                    cover = selectorConfig.novelCoverSelector.ifBlank { null },
-                ),
+                search = if (features.hasSearch) {
+                    MangaListSelectors(
+                        list = cardList,
+                        link = cardTitle,
+                        title = cardTitle,
+                        cover = cardCover,
+                    )
+                } else {
+                    null
+                },
                 details = DetailSelectors(
                     title = selectorConfig.novelPageTitleSelector,
                     description = selectorConfig.novelDescriptionSelector,
@@ -203,15 +177,24 @@ class ElementSelectorScreenModel(
                 ),
                 chapters = ChapterSelectors(
                     list = selectorConfig.chapterListSelector,
-                    link = selectorConfig.chapterLinkSelector.ifBlank { null },
-                    name = selectorConfig.chapterLinkSelector.ifBlank { null },
-                    date = selectorConfig.chapterDateSelector.ifBlank { null },
-                    nextPage = selectorConfig.chapterListPaginationSelector.ifBlank { null },
-                    indexLinkSelector = selectorConfig.chapterIndexLinkSelector.ifBlank { null },
-                    urlPattern = selectorConfig.chapterUrlPattern.ifBlank { null },
-                    countSelector = selectorConfig.chapterCountSelector.ifBlank { null },
-                    firstNumber = selectorConfig.chapterFirstNumber,
-                    lastNumber = selectorConfig.chapterLastNumber,
+                    link = if (generate) null else selectorConfig.chapterLinkSelector.ifBlank { null },
+                    name = if (generate) null else selectorConfig.chapterLinkSelector.ifBlank { null },
+                    date = if (generate) null else selectorConfig.chapterDateSelector.ifBlank { null },
+                    nextPage = if (!generate && features.chapterListPagination) {
+                        selectorConfig.chapterListPaginationSelector.ifBlank { null }
+                    } else {
+                        null
+                    },
+                    pagedUrlPattern = chapterPagedPattern,
+                    indexLinkSelector = if (!generate && features.chapterListSeparatePage) {
+                        selectorConfig.chapterIndexLinkSelector.ifBlank { null }
+                    } else {
+                        null
+                    },
+                    urlPattern = if (generate) selectorConfig.chapterUrlPattern.ifBlank { null } else null,
+                    countSelector = if (generate) selectorConfig.chapterCountSelector.ifBlank { null } else null,
+                    firstNumber = if (generate) selectorConfig.chapterFirstNumber else null,
+                    lastNumber = if (generate) selectorConfig.chapterLastNumber else null,
                 ),
                 content = ContentSelectors(
                     primary = selectorConfig.chapterContentSelector,
@@ -222,10 +205,7 @@ class ElementSelectorScreenModel(
         )
     }
 
-    /**
-     * Diffs two URLs that differ only by page number, returning the page-2 URL with the differing
-     * digits replaced by {page}. Works regardless of param vs path form. Null if they don't differ.
-     */
+    /** Diffs two URLs into the page-2 URL with the differing digits replaced by {page}. */
     private fun derivePagedFromPair(p1: String, p2: String): String? {
         if (p2.isBlank() || p1 == p2) return null
         val maxLen = minOf(p1.length, p2.length)
@@ -237,6 +217,31 @@ class ElementSelectorScreenModel(
         if (mid.isBlank() || !mid.any { it.isDigit() }) return null
         val templated = mid.replace(Regex("""\d+"""), "{page}")
         return p2.substring(0, pre) + templated + p2.substring(p2.length - suf)
+    }
+
+    /**
+     * Diffs the chapter-list page 1/2 URLs into a numbered template, generalizing the novel path to
+     * {novelUrl}. e.g. ("/series/abc/", "/series/abc/?page=2") -> "{novelUrl}/?page={page}".
+     */
+    private fun deriveChapterListPagePattern(
+        page1: String,
+        page2: String,
+        baseUrl: String,
+        novelUrl: String,
+    ): String? {
+        val p1 = page1.trim()
+        val p2 = page2.trim()
+        if (p1.isBlank() || p2.isBlank()) return null
+        val templated = derivePagedFromPair(p1, p2) ?: return null
+        val base = baseUrl.trimEnd('/')
+        var rel = if (templated.startsWith(base)) templated.removePrefix(base) else templated
+        val novelRel = novelUrl.trim()
+            .let { if (it.startsWith(base)) it.removePrefix(base) else it }
+            .trimEnd('/')
+        if (novelRel.isNotBlank() && rel.startsWith(novelRel)) {
+            rel = "{novelUrl}" + rel.removePrefix(novelRel)
+        }
+        return rel.ifBlank { null }
     }
 
     private fun insertQueryPlaceholder(url: String, query: String): String? {
@@ -252,11 +257,12 @@ class ElementSelectorScreenModel(
 
     fun testConfig(
         selectorConfig: SelectorConfig,
+        features: SourceFeatures,
         section: SourceTestSection = SourceTestSection.ALL,
         onResult: (SourceTestResult) -> Unit,
     ) {
         screenModelScope.launch {
-            val result = customSourceManager.testSource(convertToCustomSourceConfig(selectorConfig), section)
+            val result = customSourceManager.testSource(convertToCustomSourceConfig(selectorConfig, features), section)
             onResult(result)
         }
     }
@@ -264,23 +270,4 @@ class ElementSelectorScreenModel(
     fun clearError() {
         mutableState.update { it.copy(error = null) }
     }
-
-    fun exportConfigAsJson(config: SelectorConfig): String {
-        return json.encodeToString(convertToCustomSourceConfig(config))
-    }
 }
-
-data class StepPreviewData(
-    val stepName: String,
-    val detectedTitle: String? = null,
-    val detectedUrl: String? = null,
-    val detectedImageUrl: String? = null,
-    val detectedDescription: String? = null,
-    val detectedChaptersTotal: Int? = null,
-    val detectedChapterFirstUrl: String? = null,
-    val detectedChapterLastUrl: String? = null,
-    val sampleContentStart: String? = null,
-    val sampleContentEnd: String? = null,
-    val searchResultsCount: Int? = null,
-    val sampleSearchResults: List<String>? = null,
-)
