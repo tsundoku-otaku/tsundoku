@@ -34,6 +34,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Fix a rare translation queue exception [@mrissaoussama](https://github.com/mrissaoussama) [#286](https://github.com/tsundoku-otaku/tsundoku/pull/286)
 
 ### Other
+- jsplugins should surface fetch errors [@mrissaoussama](https://github.com/mrissaoussama) [#293](https://github.com/tsundoku-otaku/tsundoku/pull/293)
 - Merged df37d81 from Mihon [@mrissaoussama](https://github.com/mrissaoussama) [#281](https://github.com/tsundoku-otaku/tsundoku/pull/281)
 - Merged a2f3ec9 from Mihon [@Rojikku](https://github.com/Rojikku) [#251](https://github.com/tsundoku-otaku/tsundoku/pull/251)
 
