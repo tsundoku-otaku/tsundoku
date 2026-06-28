@@ -15,6 +15,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Add advanced preference to prevent entries metadata from being overwritten [@mrissaoussama](https://github.com/mrissaoussama) [#271](https://github.com/tsundoku-otaku/tsundoku/pull/271)
 - Library pagination (experimental) [@mrissaoussama](https://github.com/mrissaoussama) [#283](https://github.com/tsundoku-otaku/tsundoku/pull/283)
 - Option for tag normalization during entry updates [@mrissaoussama](https://github.com/mrissaoussama) [#287](https://github.com/tsundoku-otaku/tsundoku/pull/287)
+- Reader Status Bar [@Rojikku](https://github.com/Rojikku) [#302](https://github.com/tsundoku-otaku/tsundoku/pull/302)
 
 ### Improved
 - Custom Source Overhaul [@mrissaoussama](https://github.com/mrissaoussama) [#273](https://github.com/tsundoku-otaku/tsundoku/pull/273)
