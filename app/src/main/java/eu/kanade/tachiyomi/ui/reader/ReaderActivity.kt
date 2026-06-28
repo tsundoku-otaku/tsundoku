@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
@@ -347,6 +349,10 @@ class ReaderActivity : BaseActivity() {
         val novelStatusBarShowProgress by readerPreferences.novelStatusBarShowProgress.collectAsState()
         val novelTtsControlsActive by readerPreferences.novelTtsControlsVisible.collectAsState()
         val novelStatusBarChapterDisplay by readerPreferences.novelChapterTitleDisplay.collectAsState()
+        val novelTheme by readerPreferences.novelTheme.collectAsState()
+        val novelBgColorInt by readerPreferences.novelBackgroundColor.collectAsState()
+        val novelFontColorInt by readerPreferences.novelFontColor.collectAsState()
+        var statusBarCollapsed by remember { mutableStateOf(false) }
         val settingsScreenModel = remember {
             ReaderSettingsScreenModel(
                 readerState = viewModel.state,
@@ -381,18 +387,36 @@ class ReaderActivity : BaseActivity() {
                             }
                             "Ch. $num"
                         } else {
-                            ch.name.take(24)
+                            ch.name
                         }
                         2 -> if (ch.chapter_number >= 0f) {
                             val num = ch.chapter_number.let {
                                 if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
                             }
-                            "Ch. $num: ${ch.name.take(16)}"
+                            "Ch. $num: ${ch.name}"
                         } else {
-                            ch.name.take(24)
+                            ch.name
                         }
-                        else -> ch.name.take(24)
+                        else -> ch.name
                     }
+                }
+                val readerBgColor: ComposeColor = when (novelTheme) {
+                    "dark" -> ComposeColor(0xFF121212)
+                    "sepia" -> ComposeColor(0xFFF4ECD8)
+                    "black" -> ComposeColor.Black
+                    "grey" -> ComposeColor(0xFF292832)
+                    "light" -> ComposeColor.White
+                    "custom" -> if (novelBgColorInt != 0) ComposeColor(novelBgColorInt) else ComposeColor.White
+                    else -> MaterialTheme.colorScheme.surface // "app"
+                }
+                val readerTextColor: ComposeColor = when (novelTheme) {
+                    "dark" -> ComposeColor(0xFFE0E0E0)
+                    "sepia" -> ComposeColor(0xFF5B4636)
+                    "black" -> ComposeColor(0xFFCCCCCC)
+                    "grey" -> ComposeColor(0xFFCCCCCC)
+                    "light" -> ComposeColor.Black
+                    "custom" -> if (novelFontColorInt != 0) ComposeColor(novelFontColorInt) else ComposeColor.Black
+                    else -> MaterialTheme.colorScheme.onSurface // "app"
                 }
                 val extraPad = if (novelTtsControlsActive) 56.dp else 0.dp
                 NovelStatusBar(
@@ -402,10 +426,14 @@ class ReaderActivity : BaseActivity() {
                     showBattery = novelStatusBarShowBattery,
                     showChapter = novelStatusBarShowChapter,
                     showProgress = novelStatusBarShowProgress,
+                    backgroundColor = readerBgColor,
+                    textColor = readerTextColor,
+                    isCollapsed = statusBarCollapsed,
+                    onToggleCollapse = { statusBarCollapsed = !statusBarCollapsed },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .padding(bottom = 8.dp + extraPad),
+                        .padding(bottom = extraPad),
                 )
             }
         }

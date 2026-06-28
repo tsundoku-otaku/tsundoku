@@ -6,10 +6,25 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Battery0Bar
+import androidx.compose.material.icons.outlined.Battery1Bar
+import androidx.compose.material.icons.outlined.Battery2Bar
+import androidx.compose.material.icons.outlined.Battery3Bar
+import androidx.compose.material.icons.outlined.Battery4Bar
+import androidx.compose.material.icons.outlined.Battery5Bar
+import androidx.compose.material.icons.outlined.Battery6Bar
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -21,9 +36,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -31,10 +52,22 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Persistent reading status bar showing time, battery, chapter, and progress as a pill overlay.
+ * Full-width reading status bar that overlays the bottom of the novel reading view.
  *
- * [chapterText] is the pre-formatted chapter string from the call site (respects the
- * novelChapterTitleDisplay preference). Pass null when no chapter is loaded yet.
+ * Displays time (left), chapter (center), and battery+progress (right). A small collapse
+ * toggle at the far right lets the user hide the content — collapsed state shows only the
+ * background strip matching the reader theme so it blends into the page.
+ *
+ * @param chapterText       Pre-formatted chapter string respecting novelChapterTitleDisplay.
+ * @param progressPercent   Current scroll position, 0–100.
+ * @param showTime          Whether to include the clock segment.
+ * @param showBattery       Whether to include battery % + icon.
+ * @param showChapter       Whether to include the chapter segment.
+ * @param showProgress      Whether to include the progress % segment.
+ * @param backgroundColor   Reader's background color (matches current novel theme).
+ * @param textColor         Reader's foreground/text color (matches current novel theme).
+ * @param isCollapsed       When true, content is hidden; only the toggle icon is visible.
+ * @param onToggleCollapse  Called when the user taps the collapse/expand icon.
  */
 @Composable
 fun NovelStatusBar(
@@ -44,9 +77,17 @@ fun NovelStatusBar(
     showBattery: Boolean,
     showChapter: Boolean,
     showProgress: Boolean,
+    backgroundColor: Color,
+    textColor: Color,
+    isCollapsed: Boolean,
+    onToggleCollapse: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Clock — updated on the minute boundary to stay in sync with the system clock
+    val labelStyle = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.sp)
+    val contentColor = textColor
+    val dimColor = textColor.copy(alpha = 0.45f)
+
+    // Clock — aligned to the minute boundary so it never lags
     var timeText by remember { mutableStateOf(currentTimeHHmm()) }
     LaunchedEffect(Unit) {
         val msUntilNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L)
@@ -58,8 +99,7 @@ fun NovelStatusBar(
         }
     }
 
-    // Battery — ACTION_BATTERY_CHANGED is sticky so registerReceiver returns current state
-    // immediately, avoiding an "unknown" flash on the first frame
+    // Battery — ACTION_BATTERY_CHANGED is sticky so the current level is available immediately
     var batteryPercent by remember { mutableIntStateOf(-1) }
     val context = LocalContext.current
     DisposableEffect(context) {
@@ -85,38 +125,94 @@ fun NovelStatusBar(
         onDispose { context.unregisterReceiver(receiver) }
     }
 
-    val segments = buildList {
-        if (showTime) add(timeText)
-        if (showBattery && batteryPercent >= 0) add("$batteryPercent%")
-        if (showChapter && chapterText != null) add(chapterText)
-        if (showProgress) add("$progressPercent%")
-    }
-
-    if (segments.isEmpty()) return
-
-    // Pill style mirrors NovelTtsControlsOverlay for visual consistency
-    Row(
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .fillMaxWidth()
+            .background(backgroundColor)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        segments.forEachIndexed { index, text ->
-            if (index > 0) {
-                Text(
-                    text = " • ",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                )
-            }
+        // Left: time
+        if (!isCollapsed && showTime) {
             Text(
-                text = text,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                text = timeText,
+                style = labelStyle,
+                color = contentColor,
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+        }
+
+        // Center: chapter
+        if (!isCollapsed && showChapter && chapterText != null) {
+            Text(
+                text = chapterText,
+                style = labelStyle,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 48.dp), // keep clear of left/right elements
+            )
+        }
+
+        // Right: battery icon + % • progress + toggle
+        Row(
+            modifier = Modifier.align(Alignment.CenterEnd),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (!isCollapsed) {
+                if (showBattery && batteryPercent >= 0) {
+                    Icon(
+                        imageVector = batteryIcon(batteryPercent),
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    Text(
+                        text = "$batteryPercent%",
+                        style = labelStyle,
+                        color = contentColor,
+                    )
+                }
+                if (showProgress) {
+                    if (showBattery && batteryPercent >= 0) {
+                        Text(
+                            text = " • ",
+                            style = labelStyle,
+                            color = dimColor,
+                        )
+                    }
+                    Text(
+                        text = "$progressPercent%",
+                        style = labelStyle,
+                        color = contentColor,
+                    )
+                }
+                Spacer(Modifier.width(6.dp))
+            }
+
+            // Collapse/expand toggle — always visible
+            Icon(
+                imageVector = if (isCollapsed) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = if (isCollapsed) "Expand status bar" else "Collapse status bar",
+                tint = dimColor,
+                modifier = Modifier
+                    .size(16.dp)
+                    .clickable(role = Role.Button, onClick = onToggleCollapse),
             )
         }
     }
+}
+
+private fun batteryIcon(percent: Int): ImageVector = when {
+    percent <= 14 -> Icons.Outlined.Battery0Bar
+    percent <= 28 -> Icons.Outlined.Battery1Bar
+    percent <= 42 -> Icons.Outlined.Battery2Bar
+    percent <= 57 -> Icons.Outlined.Battery3Bar
+    percent <= 71 -> Icons.Outlined.Battery4Bar
+    percent <= 85 -> Icons.Outlined.Battery5Bar
+    else -> Icons.Outlined.Battery6Bar
 }
 
 private fun currentTimeHHmm(): String =
