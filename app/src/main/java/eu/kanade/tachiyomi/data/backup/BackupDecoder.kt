@@ -40,6 +40,7 @@ class BackupDecoder(
             }
 
             val backupBytes = payloadSource.use { readWithSizeLimit(it, MAX_BACKUP_BYTES) }
+                .let { BackupProtoMigration.migrateLegacyIsNovel(it) }
             try {
                 parser.decodeFromByteArray(Backup.serializer(), backupBytes)
             } catch (_: SerializationException) {
