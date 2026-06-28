@@ -895,6 +895,6 @@
     <string name="pref_novel_status_bar">Reading status bar</string>
     <string name="pref_novel_status_bar_show_time">Show current time</string>
     <string name="pref_novel_status_bar_show_battery">Show battery percentage</string>
-    <string name="pref_novel_status_bar_show_chapter">Show chapter position</string>
+    <string name="pref_novel_status_bar_show_chapter">Show chapter title</string>
     <string name="pref_novel_status_bar_show_progress">Show reading progress</string>
 </resources>
