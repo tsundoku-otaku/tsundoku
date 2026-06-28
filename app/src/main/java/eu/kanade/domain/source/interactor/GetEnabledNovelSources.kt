@@ -35,7 +35,7 @@ class GetEnabledNovelSources(
                 .filter { it.lang in enabledLanguages || it.isLocalNovel() }
                 .filterNot { it.id.toString() in disabledSources }
                 .filter { it.isNovelSource || it.isLocalNovel() }
-                .filter { sourceManager.get(it.id) is CatalogueSource }
+                .filter { it.isLocalNovel() || sourceManager.get(it.id) is CatalogueSource }
                 .sortedWith(
                     // Local novel source always appears first
                     compareBy<Source> { if (it.isLocalNovel()) 0 else 1 }

@@ -2,6 +2,7 @@ package tachiyomi.source.local
 
 import android.content.Context
 import com.hippo.unifile.UniFile
+import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -51,7 +52,7 @@ actual class LocalSource(
     private val context: Context,
     private val fileSystem: LocalSourceFileSystem,
     private val coverManager: LocalCoverManager,
-) : Source, UnmeteredSource {
+) : CatalogueSource, UnmeteredSource {
 
     private val json: Json by injectLazy()
     private val xml: XML by injectLazy()
