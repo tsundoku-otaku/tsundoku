@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
 import tachiyomi.domain.manga.model.CustomMangaInfo.Companion.writeInto
+import tachiyomi.domain.manga.model.CustomMangaInfo.Companion.writeSourceInto
 
 @Execution(ExecutionMode.CONCURRENT)
 class CustomMangaInfoTest {
@@ -81,5 +82,23 @@ class CustomMangaInfoTest {
         val raw = """{"${CustomMangaInfo.MEMO_KEY}":{"author":"A","unknown":"z"}}"""
         val memo = Json.parseToJsonElement(raw) as JsonObject
         CustomMangaInfo.from(memo)?.author shouldBe "A"
+    }
+
+    @Test
+    fun `source snapshot round-trips and is independent of the override`() {
+        val source = CustomMangaInfo(author = "SrcAuthor", genre = listOf("x", "y"), status = 1L)
+        val override = CustomMangaInfo(author = "MyAuthor")
+        val memo = source.writeSourceInto(override.writeInto(emptyMemo()))
+
+        CustomMangaInfo.fromSource(memo) shouldBe source
+        CustomMangaInfo.from(memo) shouldBe override
+    }
+
+    @Test
+    fun `source snapshot keeps empty values for revert`() {
+        // An empty source snapshot must persist (unlike an empty override) so revert can null a field.
+        val source = CustomMangaInfo(author = "A", genre = emptyList())
+        val memo = source.writeSourceInto(emptyMemo())
+        CustomMangaInfo.fromSource(memo)?.genre shouldBe emptyList()
     }
 }

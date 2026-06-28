@@ -2,6 +2,7 @@ package eu.kanade.presentation.manga.components
 
 import android.R.attr.label
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
@@ -42,6 +45,7 @@ import eu.kanade.presentation.components.TabbedDialog
 import eu.kanade.presentation.components.TabbedDialogPaddings
 import eu.kanade.presentation.components.imeAwareDialogProperties
 import eu.kanade.tachiyomi.source.model.SManga
+import tachiyomi.domain.manga.model.CustomMangaInfo
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
@@ -50,6 +54,7 @@ import tachiyomi.presentation.core.i18n.stringResource
 @Composable
 fun EditMangaDialog(
     manga: Manga,
+    sourceInfo: CustomMangaInfo? = null,
     onDismissRequest: () -> Unit,
     onSaveTitle: (String) -> Unit,
     onSaveUrl: (String) -> Unit,
@@ -100,6 +105,9 @@ fun EditMangaDialog(
         ) {
             when (page) {
                 0 -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (sourceInfo != null) {
+                        SourceValuesSection(sourceInfo)
+                    }
                     EditTextField(
                         label = stringResource(MR.strings.title),
                         value = title,
@@ -175,6 +183,61 @@ private fun EditTextField(
         singleLine = singleLine,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
     )
+}
+
+@Composable
+private fun SourceValuesSection(source: CustomMangaInfo) {
+    var expanded by remember { mutableStateOf(false) }
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = stringResource(TDMR.strings.edit_original_source_values),
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                contentDescription = null,
+            )
+        }
+        if (expanded) {
+            SourceValueRow(stringResource(MR.strings.author), source.author)
+            SourceValueRow(stringResource(MR.strings.artist), source.artist)
+            SourceValueRow(stringResource(MR.strings.status), statusLabel(source.status))
+            SourceValueRow(stringResource(TDMR.strings.edit_label_tags), source.genre?.joinToString(", "))
+            SourceValueRow(stringResource(TDMR.strings.edit_label_description), source.description)
+        }
+        HorizontalDivider()
+    }
+}
+
+@Composable
+private fun SourceValueRow(label: String, value: String?) {
+    if (value.isNullOrBlank()) return
+    Column(modifier = Modifier.padding(vertical = 2.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(text = value, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+private fun statusLabel(status: Long?): String? = when (status?.toInt()) {
+    null -> null
+    SManga.ONGOING -> "Ongoing"
+    SManga.COMPLETED -> "Completed"
+    SManga.LICENSED -> "Licensed"
+    SManga.PUBLISHING_FINISHED -> "Publishing finished"
+    SManga.CANCELLED -> "Cancelled"
+    SManga.ON_HIATUS -> "On hiatus"
+    else -> "Unknown"
 }
 
 @Composable

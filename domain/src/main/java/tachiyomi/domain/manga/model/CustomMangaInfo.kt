@@ -25,16 +25,25 @@ data class CustomMangaInfo(
     companion object {
         const val MEMO_KEY = "customInfo"
 
+        // Snapshot of the last source-fetched values, kept so the override can be reverted (and the
+        // originals shown) without a network refresh.
+        const val SOURCE_KEY = "sourceInfo"
+
         private val json = Json {
             ignoreUnknownKeys = true
             encodeDefaults = false
         }
 
         /** Decode the override stored in [memo], or null when none is set. */
-        fun from(memo: JsonObject): CustomMangaInfo? {
-            val element = memo[MEMO_KEY] ?: return null
+        fun from(memo: JsonObject): CustomMangaInfo? = read(memo, MEMO_KEY)?.takeUnless { it.isEmpty() }
+
+        /** Decode the source snapshot stored in [memo], or null when none is set. */
+        fun fromSource(memo: JsonObject): CustomMangaInfo? = read(memo, SOURCE_KEY)
+
+        private fun read(memo: JsonObject, key: String): CustomMangaInfo? {
+            val element = memo[key] ?: return null
             return try {
-                json.decodeFromJsonElement(serializer(), element).takeUnless { it.isEmpty() }
+                json.decodeFromJsonElement(serializer(), element)
             } catch (_: Exception) {
                 null
             }
@@ -44,11 +53,18 @@ data class CustomMangaInfo(
          * Return a copy of [memo] with this override merged in under [MEMO_KEY], preserving every
          * other key. An empty/all-null override removes the key entirely.
          */
-        fun CustomMangaInfo?.writeInto(memo: JsonObject): JsonObject = buildJsonObject {
-            memo.forEach { (key, value) -> if (key != MEMO_KEY) put(key, value) }
-            if (this@writeInto != null && !this@writeInto.isEmpty()) {
-                put(MEMO_KEY, json.encodeToJsonElement(serializer(), this@writeInto))
+        fun CustomMangaInfo?.writeInto(memo: JsonObject): JsonObject =
+            write(memo, MEMO_KEY, this?.takeUnless { it.isEmpty() })
+
+        /** Return a copy of [memo] with [this] stored as the source snapshot under [SOURCE_KEY]. */
+        fun CustomMangaInfo?.writeSourceInto(memo: JsonObject): JsonObject = write(memo, SOURCE_KEY, this)
+
+        private fun write(memo: JsonObject, key: String, info: CustomMangaInfo?): JsonObject =
+            buildJsonObject {
+                memo.forEach { (k, value) -> if (k != key) put(k, value) }
+                if (info != null) {
+                    put(key, json.encodeToJsonElement(serializer(), info))
+                }
             }
-        }
     }
 }

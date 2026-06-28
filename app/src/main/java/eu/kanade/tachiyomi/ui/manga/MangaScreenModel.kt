@@ -670,7 +670,7 @@ class MangaScreenModel(
                     if (artistChanged) info = info.copy(artist = artist.trim().ifBlank { null })
                     if (descriptionChanged) info = info.copy(description = description.trim().ifBlank { null })
                     if (statusChanged) info = info.copy(status = status)
-                    if (tagsChanged) info = info.copy(genre = tags.ifEmpty { null })
+                    if (tagsChanged) info = info.copy(genre = tags)
                     info
                 }
             }
@@ -1452,8 +1452,8 @@ class MangaScreenModel(
      */
     fun clearCustomInfo() {
         screenModelScope.launchIO {
-            val cleared = setCustomMangaInfo.clear(mangaId)
-            if (cleared) {
+            val restoredFromSnapshot = setCustomMangaInfo.clear(mangaId)
+            if (!restoredFromSnapshot) {
                 fetchMangaFromSource(manualFetch = true)
             }
         }

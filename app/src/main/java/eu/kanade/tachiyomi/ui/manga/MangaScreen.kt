@@ -70,6 +70,7 @@ import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.manga.model.CustomMangaInfo
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
@@ -194,7 +195,9 @@ class MangaScreen(
             },
             onEditNotesClicked = { navigator.push(MangaNotesScreen(manga = successState.manga)) },
             onEditClicked = screenModel::showEditDialog,
-            onClearCustomInfoClicked = if (successState.manga.favorite) {
+            onClearCustomInfoClicked = if (
+                successState.manga.favorite && CustomMangaInfo.from(successState.manga.memo) != null
+            ) {
                 screenModel::showClearCustomInfoDialog
             } else {
                 null
@@ -357,6 +360,7 @@ class MangaScreen(
             is MangaScreenModel.Dialog.Edit -> {
                 eu.kanade.presentation.manga.components.EditMangaDialog(
                     manga = dialog.manga,
+                    sourceInfo = CustomMangaInfo.fromSource(dialog.manga.memo),
                     onDismissRequest = onDismissRequest,
                     onSaveTitle = { screenModel.updateTitle(it) },
                     onSaveUrl = { screenModel.updateUrl(it) },

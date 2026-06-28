@@ -13,6 +13,8 @@ import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetCustomMangaInfo
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.model.CustomMangaInfo
+import tachiyomi.domain.manga.model.CustomMangaInfo.Companion.writeSourceInto
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -119,6 +121,17 @@ class UpdateManga(
         val genre = custom?.genre ?: remoteManga.getGenres()
         val status = custom?.status ?: remoteManga.status.toLong()
 
+        // Snapshot the raw source values so a custom override can be reverted (and the originals
+        // shown in the editor) without another network fetch.
+        val sourceSnapshot = CustomMangaInfo(
+            author = remoteManga.author,
+            artist = remoteManga.artist,
+            description = remoteManga.description,
+            genre = remoteManga.getGenres(),
+            status = remoteManga.status.toLong(),
+        )
+        val newMemo = sourceSnapshot.writeSourceInto(localManga.memo)
+
         // Alternative titles are always merged additively (never removed), so they don't clash with
         // manual edits and aren't gated by updateMetadata.
         val remoteAltTitles = try {
@@ -149,6 +162,7 @@ class UpdateManga(
                 alternativeTitles = mergedAltTitles,
                 thumbnailUrl = thumbnailUrl,
                 status = status,
+                memo = newMemo,
                 updateStrategy = remoteManga.update_strategy,
                 initialized = true,
             ),
