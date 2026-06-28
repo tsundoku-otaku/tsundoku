@@ -72,6 +72,7 @@ import eu.kanade.presentation.reader.appbars.ReaderAppBars
 import eu.kanade.presentation.reader.appbars.bottomBarItemInfo
 import eu.kanade.presentation.reader.components.ChapterNavigatorType
 import eu.kanade.presentation.reader.settings.ReaderSettingsDialog
+import eu.kanade.presentation.util.formatChapterNumber
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.coil.TachiyomiImageDecoder
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
@@ -380,24 +381,18 @@ class ReaderActivity : BaseActivity() {
             if (isNovelMode && !state.menuVisible && novelStatusBarEnabled) {
                 val chapter = state.novelVisibleChapter ?: state.currentChapter?.chapter
                 val chapterText: String? = chapter?.let { ch ->
+                    val numStr = if (ch.chapter_number >=
+                        0f
+                    ) {
+                        "Ch. ${formatChapterNumber(ch.chapter_number.toDouble())}"
+                    } else {
+                        null
+                    }
+                    val nameStr = ch.name.ifEmpty { null }
                     when (novelStatusBarChapterDisplay) {
-                        1 -> if (ch.chapter_number >= 0f) {
-                            val num = ch.chapter_number.let {
-                                if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
-                            }
-                            "Ch. $num"
-                        } else {
-                            ch.name
-                        }
-                        2 -> if (ch.chapter_number >= 0f) {
-                            val num = ch.chapter_number.let {
-                                if (it == it.toLong().toFloat()) it.toLong().toString() else it.toString()
-                            }
-                            "Ch. $num: ${ch.name}"
-                        } else {
-                            ch.name
-                        }
-                        else -> ch.name
+                        1 -> numStr ?: nameStr
+                        2 -> if (numStr != null && nameStr != null) "$numStr: $nameStr" else numStr ?: nameStr
+                        else -> nameStr ?: numStr
                     }
                 }
                 val (bgInt, textInt) = remember(novelTheme, novelBgColorInt, novelFontColorInt) {
