@@ -233,6 +233,10 @@ class ReaderPreferences(
     // Block media elements (images, videos) in WebView and TextView readers
     val novelBlockMedia: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_block_media", false)
 
+    // Render HTML tables as a drawn grid in the TextView reader (off = drop tables, as Html.fromHtml
+    // does). Drawing many large tables in one chapter has a measurable cost, hence the toggle.
+    val novelRenderTables: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_render_tables", true)
+
     // Font color (stored as ARGB int, 0 means use theme default)
     // Note: 0xFFFFFFFF (white) = -1 as signed int, so 0 is used as the "unset" marker
     val novelFontColor: Preference<Int> = preferenceStore.getInt("pref_novel_font_color", 0)

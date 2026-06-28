@@ -51,13 +51,16 @@ internal class NovelTextRenderer(
 
         val token = ++block.renderToken
 
+        val renderTables = !plainTextMode && preferences.novelRenderTables.get()
+
         scope.launch {
+            val contentWidthPx = block.chunkViews.firstOrNull()
+                ?.let { it.width - it.paddingLeft - it.paddingRight }
+                ?.takeIf { it > 0 }
+                ?: activity.resources.displayMetrics.widthPixels
+
             val imageGetter = if (!blockMedia && !plainTextMode) {
-                val widthPx = block.chunkViews.firstOrNull()
-                    ?.let { it.width - it.paddingLeft - it.paddingRight }
-                    ?.takeIf { it > 0 }
-                    ?: activity.resources.displayMetrics.widthPixels
-                CoilImageGetter(activity, scope, widthPx, block::chunkViewFor)
+                CoilImageGetter(activity, scope, contentWidthPx, block::chunkViewFor)
             } else {
                 null
             }
@@ -66,8 +69,18 @@ internal class NovelTextRenderer(
                 val spanned: CharSequence = if (plainTextMode) {
                     SpannableStringBuilder(processedContent)
                 } else {
-                    val cleanHtmlContent = normalizeHtmlForRendering(processedContent)
-                    Html.fromHtml(cleanHtmlContent, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+                    // Pull tables out before fromHtml (which drops them); their sentinels are
+                    // swapped for drawn NovelTableSpans afterwards.
+                    val (htmlForRender, tableModels) = if (renderTables) {
+                        eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils.extractTables(processedContent)
+                    } else {
+                        processedContent to emptyList()
+                    }
+                    val cleanHtmlContent = normalizeHtmlForRendering(htmlForRender)
+                    val base = Html.fromHtml(cleanHtmlContent, Html.FROM_HTML_MODE_LEGACY, imageGetter, null)
+                    val sb = SpannableStringBuilder(base)
+                    if (tableModels.isNotEmpty()) applyTableSpans(sb, tableModels, contentWidthPx, density)
+                    sb
                 }
                 SpannableStringBuilder(spanned)
             }
@@ -151,6 +164,28 @@ internal class NovelTextRenderer(
             content = "<p>$content</p>"
         }
         return content
+    }
+
+    // Replaces each table sentinel left by HtmlUtils.extractTables with a drawn NovelTableSpan.
+    // Applied back-to-front so earlier match ranges stay valid (spans are added, nothing deleted).
+    private fun applyTableSpans(
+        sb: SpannableStringBuilder,
+        models: List<eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils.TableModel>,
+        width: Int,
+        density: Float,
+    ) {
+        val matches = eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils
+            .tableSentinelRegex.findAll(sb).toList()
+        for (m in matches.asReversed()) {
+            val idx = m.groupValues[1].toIntOrNull() ?: continue
+            val model = models.getOrNull(idx) ?: continue
+            sb.setSpan(
+                NovelTableSpan(model.rows, model.hasHeader, width, density),
+                m.range.first,
+                m.range.last + 1,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
     }
 
     private fun normalizeHtmlForRendering(html: String): String {

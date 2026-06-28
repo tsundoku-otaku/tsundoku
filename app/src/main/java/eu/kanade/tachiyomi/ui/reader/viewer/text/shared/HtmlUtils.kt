@@ -251,6 +251,90 @@ object HtmlUtils {
         return result
     }
 
+    /** Parsed `<table>`: [rows] of cell text, [hasHeader] true when the first row used `<th>`. */
+    data class TableModel(val rows: List<List<String>>, val hasHeader: Boolean)
+
+    // Plain-ASCII sentinel left in place of each <table>; survives Html.fromHtml as literal text,
+    // then the TextView renderer swaps each match for a drawn table span. The token is distinctive
+    // enough not to occur in real chapter text.
+    private const val TABLE_TOKEN_OPEN = "[[tsdtbl:"
+    private const val TABLE_TOKEN_CLOSE = "]]"
+    val tableSentinelRegex = Regex("""\[\[tsdtbl:(\d+)]]""")
+
+    /**
+     * Android's `Html.fromHtml` (used by the TextView reader) has no `<table>` support: it drops the
+     * table tags and concatenates every cell's text with no structure, fusing values like `51LCK`.
+     *
+     * Instead of flattening to (fragile) monospace text, this pulls each `<table>` out into a
+     * [TableModel] and leaves a `[[tsdtbl:index]]` sentinel in its place. After `Html.fromHtml` the
+     * TextView renderer swaps each sentinel range for a [NovelTableSpan] that measures with the real
+     * paint and draws a proper aligned, bordered table. The WebView reader renders real tables and
+     * does not call this. Returns the original html + empty list when there is no `<table>`.
+     */
+    fun extractTables(html: String): Pair<String, List<TableModel>> {
+        if (!html.contains("<table", ignoreCase = true)) return html to emptyList()
+        return try {
+            val doc = org.jsoup.Jsoup.parseBodyFragment(html)
+            val tableEls = doc.select("table")
+            if (tableEls.isEmpty()) return html to emptyList()
+            val models = ArrayList<TableModel>(tableEls.size)
+            tableEls.forEach { table ->
+                val trs = table.select("tr")
+                val rows = trs.mapNotNull { row ->
+                    val cells = row.select("th, td")
+                    if (cells.isEmpty()) null else cells.map { cellToText(it) }
+                }.filter { cells -> cells.any { it.isNotBlank() } }
+
+                if (rows.isEmpty()) {
+                    table.remove()
+                    return@forEach
+                }
+                val hasHeader = trs.firstOrNull()?.select("th")?.isNotEmpty() == true
+                val index = models.size
+                models.add(TableModel(rows, hasHeader))
+                val sentinel = "$TABLE_TOKEN_OPEN$index$TABLE_TOKEN_CLOSE"
+                table.replaceWith(org.jsoup.Jsoup.parseBodyFragment("<p>$sentinel</p>").body().child(0))
+            }
+            doc.body().html() to models
+        } catch (_: Exception) {
+            html to emptyList()
+        }
+    }
+
+    private val cellBlockTags = setOf(
+        "p", "div", "li", "ul", "ol", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "table",
+    )
+
+    /**
+     * Extracts a table cell's text, honoring `<br>` and block tags (`<p>`, `<div>`, `<li>`…) as
+     * line breaks while collapsing other whitespace. Walks the already-parsed cell node, so it costs
+     * nothing extra (no second Jsoup parse per cell). Returns the cell text with `\n` between lines.
+     */
+    private fun cellToText(cell: org.jsoup.nodes.Element): String {
+        val sb = StringBuilder()
+        fun walk(node: org.jsoup.nodes.Node) {
+            when (node) {
+                is org.jsoup.nodes.TextNode -> sb.append(node.text())
+                is org.jsoup.nodes.Element -> {
+                    val tag = node.tagName().lowercase()
+                    if (tag == "br") {
+                        sb.append('\n')
+                        return
+                    }
+                    node.childNodes().forEach { walk(it) }
+                    if (tag in cellBlockTags) sb.append('\n')
+                }
+                else -> {}
+            }
+        }
+        cell.childNodes().forEach { walk(it) }
+        return sb.toString()
+            .split('\n')
+            .joinToString("\n") { it.replace(Regex("\\s+"), " ").trim() }
+            .replace(Regex("\\n{2,}"), "\n")
+            .trim()
+    }
+
     fun stripMediaTags(content: String): String {
         return content
             .replace(imgTagRegex, "")
