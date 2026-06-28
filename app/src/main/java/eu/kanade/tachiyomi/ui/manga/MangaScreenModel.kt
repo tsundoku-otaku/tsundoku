@@ -634,11 +634,8 @@ class MangaScreenModel(
     }
 
     /**
-     * Apply all editable manga info fields from the edit dialog in one pass. Only changed fields
-     * touch their column and the custom-override memo, and the memo is read-modified-written once
-     * here (not once per field) so concurrent per-field coroutines can't clobber each other's
-     * override. A changed field records an override (blank/empty reverts to source on next refresh);
-     * an untouched field is left as-is so the source value still flows through.
+     * Apply the edit dialog's fields in one pass. The override memo is read-modify-written once so
+     * concurrent per-field updates can't clobber each other; a blank field reverts to source.
      */
     fun updateMangaInfo(
         description: String,
@@ -649,9 +646,7 @@ class MangaScreenModel(
     ) {
         screenModelScope.launchIO {
             val manga = successState?.manga
-            // Capture the pre-edit values as the source snapshot the first time this manga is
-            // overridden (current values are still the source values), so the originals can be
-            // shown/restored later without a network refresh.
+            // First override: current values are still the source values, so snapshot them for revert.
             if (manga != null && tachiyomi.domain.manga.model.CustomMangaInfo.from(manga.memo) == null) {
                 setCustomMangaInfo.snapshotSourceIfAbsent(
                     mangaId,

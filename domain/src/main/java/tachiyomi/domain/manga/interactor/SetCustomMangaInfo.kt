@@ -10,21 +10,14 @@ class SetCustomMangaInfo(
     private val mangaRepository: MangaRepository,
 ) {
 
-    /**
-     * Store [source] as the source snapshot for [mangaId] when none exists yet. Used to capture the
-     * pre-edit values the first time a manga is overridden, so the source can be shown/restored
-     * later without a network refresh. No-op when a snapshot is already present.
-     */
+    /** Store [source] as the snapshot for [mangaId] when none exists yet; no-op otherwise. */
     suspend fun snapshotSourceIfAbsent(mangaId: Long, source: CustomMangaInfo): Boolean {
         val memo = mangaRepository.getMemo(mangaId)
         if (CustomMangaInfo.fromSource(memo) != null) return false
         return mangaRepository.update(MangaUpdate(id = mangaId, memo = source.writeSourceInto(memo)))
     }
 
-    /**
-     * Read the current override for [mangaId], apply [transform], and persist the result back into
-     * the manga's memo. Other memo keys are preserved; an all-null result clears the override.
-     */
+    /** Read-modify-write the override for [mangaId]; other memo keys kept, an all-null result clears it. */
     suspend fun await(mangaId: Long, transform: (CustomMangaInfo) -> CustomMangaInfo): Boolean {
         val memo = mangaRepository.getMemo(mangaId)
         val current = CustomMangaInfo.from(memo) ?: CustomMangaInfo()
@@ -34,10 +27,8 @@ class SetCustomMangaInfo(
     }
 
     /**
-     * Remove all custom overrides for [mangaId]. When a source snapshot is present, the row fields
-     * are restored from it so the original metadata returns immediately (no network). Returns true
-     * when restored from the snapshot, false when there was nothing to clear or no snapshot exists
-     * (in which case the caller should refresh from the source).
+     * Remove all overrides for [mangaId]. Returns true when row fields were restored from the source
+     * snapshot; false when nothing to clear or no snapshot exists (caller should refresh from source).
      */
     suspend fun clear(mangaId: Long): Boolean {
         val memo = mangaRepository.getMemo(mangaId)

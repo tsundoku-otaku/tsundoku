@@ -81,7 +81,6 @@ import tachiyomi.domain.history.repository.HistoryRepository
 import tachiyomi.domain.library.interactor.RefreshLibraryCache
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.FindDuplicateNovels
-import tachiyomi.domain.manga.interactor.GetCustomMangaInfo
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetFavorites
 import tachiyomi.domain.manga.interactor.GetFavoritesEntry
@@ -144,7 +143,6 @@ class DomainModule : InjektModule {
         addFactory { GetMangaWithChapters(get(), get()) }
         addFactory { GetMangaByUrlAndSourceId(get()) }
         addFactory { GetManga(get()) }
-        addFactory { GetCustomMangaInfo(get()) }
         addFactory { SetCustomMangaInfo(get()) }
         addFactory { GetNextChapters(get(), get(), get()) }
         addFactory { GetUpcomingManga(get()) }

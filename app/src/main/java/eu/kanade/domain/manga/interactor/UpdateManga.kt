@@ -10,7 +10,6 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.FetchInterval
-import tachiyomi.domain.manga.interactor.GetCustomMangaInfo
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.CustomMangaInfo
@@ -30,7 +29,6 @@ class UpdateManga(
     private val mangaRepository: MangaRepository,
     private val fetchInterval: FetchInterval,
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
-    private val getCustomMangaInfo: GetCustomMangaInfo = Injekt.get(),
 ) {
 
     private val sourceTrackerDispatcher: SourceTrackerDispatcher by lazy { Injekt.get() }
@@ -111,26 +109,29 @@ class UpdateManga(
 
         val thumbnailUrl = remoteManga.thumbnail_url?.takeIf { it.isNotEmpty() }
 
-        // Per-field user overrides win over the source value; absent fields fall through to the
-        // source (so source-set values still update and null fields get filled). Title and cover
-        // are deliberately not part of this overlay; they have their own handling above.
-        val custom = getCustomMangaInfo.await(localManga.id)
+        // Read the live memo from the db; localManga (esp. from library updates) may carry an empty
+        // memo, and writing onto that would wipe the override and any other memo keys.
+        val baseMemo = mangaRepository.getMemo(localManga.id)
+        val custom = CustomMangaInfo.from(baseMemo)
         val author = custom?.author ?: remoteManga.author
         val artist = custom?.artist ?: remoteManga.artist
         val description = custom?.description ?: remoteManga.description
         val genre = custom?.genre ?: remoteManga.getGenres()
         val status = custom?.status ?: remoteManga.status.toLong()
 
-        // Snapshot the raw source values so a custom override can be reverted (and the originals
-        // shown in the editor) without another network fetch.
-        val sourceSnapshot = CustomMangaInfo(
-            author = remoteManga.author,
-            artist = remoteManga.artist,
-            description = remoteManga.description,
-            genre = remoteManga.getGenres(),
-            status = remoteManga.status.toLong(),
-        )
-        val newMemo = sourceSnapshot.writeSourceInto(localManga.memo)
+        // Refresh the source snapshot only while an override is active, so revert can show the
+        // current source values without a fetch. Untouched entries keep their memo unchanged.
+        val newMemo = if (custom != null) {
+            CustomMangaInfo(
+                author = remoteManga.author,
+                artist = remoteManga.artist,
+                description = remoteManga.description,
+                genre = remoteManga.getGenres(),
+                status = remoteManga.status.toLong(),
+            ).writeSourceInto(baseMemo)
+        } else {
+            baseMemo
+        }
 
         // Alternative titles are always merged additively (never removed), so they don't clash with
         // manual edits and aren't gated by updateMetadata.
