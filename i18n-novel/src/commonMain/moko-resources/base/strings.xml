@@ -871,6 +871,7 @@
     <string name="quotes_add_title">Add Quote</string>
     <string name="quotes_content_label">Quote content</string>
     <string name="quotes_copy">Copy</string>
+    <string name="quotes_append_clipboard">Append Clipboard</string>
     <string name="novel_chapter_loading">Loading…</string>
     <string name="novel_chapter_translating">Translating…</string>
     <string name="novel_chapter_translating_from_api">Translating from API…</string>
