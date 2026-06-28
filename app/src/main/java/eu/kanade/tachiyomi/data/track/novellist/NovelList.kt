@@ -229,6 +229,11 @@ class NovelList(id: Long) : BaseTracker(id, "NovelList") {
                     ?: obj["raw_title"]?.jsonPrimitive?.contentOrNull
                     ?: obj["title"]?.jsonPrimitive?.contentOrNull
                     ?: ""
+                track.synonyms = listOfNotNull(
+                    obj["english_title"]?.jsonPrimitive?.contentOrNull,
+                    obj["raw_title"]?.jsonPrimitive?.contentOrNull,
+                    obj["title"]?.jsonPrimitive?.contentOrNull,
+                )
                 track.cover_url = obj["cover_image_link"]?.jsonPrimitive?.contentOrNull
                     ?: obj["image_url"]?.jsonPrimitive?.contentOrNull
                     ?: ""

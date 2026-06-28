@@ -30,6 +30,7 @@ data class BGMSubject(
     fun toTrackSearch(trackId: Long): TrackSearch = TrackSearch.create(trackId).apply {
         remote_id = this@BGMSubject.id
         title = nameCn.ifBlank { name }
+        synonyms = listOf(name, nameCn)
         cover_url = images?.common.orEmpty()
         summary = if (nameCn.isNotBlank()) {
             "作品原名：$name" + this@BGMSubject.summary?.let { "\n${it.trim()}" }.orEmpty()

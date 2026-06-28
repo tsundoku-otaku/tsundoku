@@ -122,8 +122,8 @@ class UpdateManga(
         val mergedAltTitles = if (remoteAltTitles.isNotEmpty()) {
             (localManga.alternativeTitles + remoteAltTitles)
                 .map { it.trim() }
-                .filter { it.isNotEmpty() && it != effectiveTitle }
-                .distinct()
+                .filter { it.isNotEmpty() && !it.equals(effectiveTitle, ignoreCase = true) }
+                .distinctBy { it.lowercase() }
                 .takeIf { it != localManga.alternativeTitles }
         } else {
             null

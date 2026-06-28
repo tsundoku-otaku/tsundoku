@@ -25,6 +25,7 @@ data class SeriesDto(
     fun toTrack(): TrackSearch = TrackSearch.create(TrackerManager.KAVITA).also {
         it.title = name
         it.summary = ""
+        it.synonyms = listOfNotNull(originalName, localizedName)
     }
 }
 
