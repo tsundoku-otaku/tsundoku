@@ -7,3 +7,13 @@ data class MUSeries(
     val id: Long? = null,
     val title: String? = null,
 )
+
+@Serializable
+data class MUSeriesDetail(
+    val associated: List<MUAssociatedTitle> = emptyList(),
+)
+
+@Serializable
+data class MUAssociatedTitle(
+    val title: String? = null,
+)

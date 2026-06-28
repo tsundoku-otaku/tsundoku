@@ -99,6 +99,7 @@ class KomgaApi(
 
     private fun SeriesDto.toTrack(): TrackSearch = TrackSearch.create(trackId).also {
         it.title = metadata.title
+        it.synonyms = (listOf(metadata.titleSort) + metadata.alternateTitles.map { alt -> alt.title })
         it.summary = metadata.summary
         it.publishing_status = metadata.status
     }

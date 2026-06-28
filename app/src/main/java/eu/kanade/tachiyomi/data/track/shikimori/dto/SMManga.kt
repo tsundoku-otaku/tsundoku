@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
 data class SMManga(
     val id: Long,
     val name: String,
+    val russian: String? = null,
     val chapters: Long,
     val image: SUMangaCover,
     val score: Double,
@@ -22,6 +23,7 @@ data class SMManga(
         return TrackSearch.create(trackId).apply {
             remote_id = this@SMManga.id
             title = name
+            synonyms = listOfNotNull(russian)
             total_chapters = chapters
             cover_url = ShikimoriApi.BASE_URL + image.preview
             summary = ""
@@ -38,3 +40,13 @@ data class SMManga(
 data class SUMangaCover(
     val preview: String,
 )
+
+@Serializable
+data class SMMangaDetail(
+    val russian: String? = null,
+    val english: List<String?> = emptyList(),
+    val japanese: List<String?> = emptyList(),
+    val synonyms: List<String> = emptyList(),
+) {
+    fun altTitles(): List<String> = (listOf(russian) + english + japanese + synonyms).filterNotNull()
+}

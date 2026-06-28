@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
 import eu.kanade.tachiyomi.data.track.shikimori.dto.SMAddMangaResponse
 import eu.kanade.tachiyomi.data.track.shikimori.dto.SMManga
+import eu.kanade.tachiyomi.data.track.shikimori.dto.SMMangaDetail
 import eu.kanade.tachiyomi.data.track.shikimori.dto.SMOAuth
 import eu.kanade.tachiyomi.data.track.shikimori.dto.SMUser
 import eu.kanade.tachiyomi.data.track.shikimori.dto.SMUserListEntry
@@ -87,6 +88,20 @@ class ShikimoriApi(
                     .awaitSuccess()
                     .parseAs<List<SMManga>>()
                     .map { it.toTrack(trackId) }
+            }
+        }
+    }
+
+    suspend fun getMangaSynonyms(remoteId: Long): List<String> {
+        return withIOContext {
+            val url = "$API_URL/mangas".toUri().buildUpon()
+                .appendPath(remoteId.toString())
+                .build()
+            with(json) {
+                authClient.newCall(GET(url.toString()))
+                    .awaitSuccess()
+                    .parseAs<SMMangaDetail>()
+                    .altTitles()
             }
         }
     }

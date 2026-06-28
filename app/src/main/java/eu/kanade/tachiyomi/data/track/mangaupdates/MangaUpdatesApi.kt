@@ -9,12 +9,14 @@ import eu.kanade.tachiyomi.data.track.mangaupdates.dto.MULoginResponse
 import eu.kanade.tachiyomi.data.track.mangaupdates.dto.MURating
 import eu.kanade.tachiyomi.data.track.mangaupdates.dto.MURecord
 import eu.kanade.tachiyomi.data.track.mangaupdates.dto.MUSearchResult
+import eu.kanade.tachiyomi.data.track.mangaupdates.dto.MUSeriesDetail
 import eu.kanade.tachiyomi.network.DELETE
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.PUT
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.network.parseAs
+import eu.kanade.tachiyomi.util.lang.htmlDecode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
@@ -111,6 +113,19 @@ class MangaUpdatesApi(
             ),
         )
             .awaitSuccess()
+    }
+
+    suspend fun getSeriesAssociatedTitles(remoteId: Long): List<String> {
+        return try {
+            with(json) {
+                authClient.newCall(GET("$BASE_URL/v1/series/$remoteId"))
+                    .awaitSuccess()
+                    .parseAs<MUSeriesDetail>()
+                    .associated.mapNotNull { it.title?.htmlDecode() }
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
     }
 
     private suspend fun getSeriesRating(track: Track): MURating? {

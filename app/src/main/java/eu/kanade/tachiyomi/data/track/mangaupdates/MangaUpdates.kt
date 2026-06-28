@@ -78,6 +78,9 @@ class MangaUpdates(id: Long) : BaseTracker(id, "MangaUpdates"), DeletableTracker
     }
 
     override suspend fun bind(track: Track, hasReadChapters: Boolean): Track {
+        if (track is TrackSearch) {
+            track.synonyms = api.getSeriesAssociatedTitles(track.remote_id)
+        }
         return try {
             val (series, rating) = api.getSeriesListItem(track)
             track.copyFrom(series, rating)

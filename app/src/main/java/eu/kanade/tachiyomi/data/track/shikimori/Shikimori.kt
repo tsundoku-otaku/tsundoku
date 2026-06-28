@@ -61,6 +61,9 @@ class Shikimori(id: Long) : BaseTracker(id, "Shikimori"), DeletableTracker {
     }
 
     override suspend fun bind(track: Track, hasReadChapters: Boolean): Track {
+        if (track is TrackSearch) {
+            runCatching { track.synonyms = api.getMangaSynonyms(track.remote_id) }
+        }
         val remoteTrack = api.findLibManga(track, getUsername())
         return if (remoteTrack != null) {
             track.copyPersonalFrom(remoteTrack)

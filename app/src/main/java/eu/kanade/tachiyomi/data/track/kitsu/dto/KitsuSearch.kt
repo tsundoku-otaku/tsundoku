@@ -27,6 +27,8 @@ data class KitsuAlgoliaSearchResult(
 data class KitsuAlgoliaSearchItem(
     val id: Long,
     val canonicalTitle: String,
+    val titles: Map<String, String?>? = null,
+    val abbreviatedTitles: List<String>? = null,
     val chapterCount: Long?,
     val subtype: String?,
     val posterImage: KitsuSearchItemCover?,
@@ -39,6 +41,7 @@ data class KitsuAlgoliaSearchItem(
         return TrackSearch.create(TrackerManager.KITSU).apply {
             remote_id = this@KitsuAlgoliaSearchItem.id
             title = canonicalTitle
+            synonyms = titles?.values?.filterNotNull().orEmpty() + abbreviatedTitles.orEmpty()
             total_chapters = chapterCount ?: 0
             cover_url = posterImage?.original ?: ""
             summary = synopsis ?: ""

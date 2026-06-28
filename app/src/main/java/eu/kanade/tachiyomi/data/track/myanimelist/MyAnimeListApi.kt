@@ -246,6 +246,9 @@ class MyAnimeListApi(
         return TrackSearch.create(trackId).apply {
             remote_id = searchItem.id
             title = searchItem.title
+            synonyms = searchItem.alternativeTitles
+                ?.let { it.synonyms + listOf(it.en, it.ja) }
+                .orEmpty()
             summary = searchItem.synopsis
             total_chapters = searchItem.numChapters
             score = searchItem.mean
@@ -288,7 +291,8 @@ class MyAnimeListApi(
         private const val REDIRECT_URL = "tsundoku://myanimelist-auth"
 
         private const val SEARCH_FIELDS =
-            "id,title,synopsis,num_chapters,mean,main_picture,status,media_type,start_date,authors{first_name,last_name}"
+            "id,title,synopsis,num_chapters,mean,main_picture,status,media_type,start_date," +
+                "authors{first_name,last_name},alternative_titles"
 
         private const val LIST_PAGINATION_AMOUNT = 250
 

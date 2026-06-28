@@ -25,6 +25,7 @@ data class SeriesMetadataDto(
     val lastModified: String?,
     val title: String,
     val titleSort: String,
+    val alternateTitles: List<AlternateTitleDto> = emptyList(),
     val summary: String,
     val summaryLock: Boolean,
     val readingDirection: String,
@@ -39,6 +40,12 @@ data class SeriesMetadataDto(
     val genresLock: Boolean,
     val tags: Set<String>,
     val tagsLock: Boolean,
+)
+
+@Serializable
+data class AlternateTitleDto(
+    val label: String = "",
+    val title: String = "",
 )
 
 @Serializable

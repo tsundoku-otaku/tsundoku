@@ -19,6 +19,15 @@ data class MALManga(
     @SerialName("start_date")
     val startDate: String?,
     val authors: List<MALAuthorNode> = emptyList(),
+    @SerialName("alternative_titles")
+    val alternativeTitles: MALAlternativeTitles? = null,
+)
+
+@Serializable
+data class MALAlternativeTitles(
+    val synonyms: List<String> = emptyList(),
+    val en: String = "",
+    val ja: String = "",
 )
 
 @Serializable
