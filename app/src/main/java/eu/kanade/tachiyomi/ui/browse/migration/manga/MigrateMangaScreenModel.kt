@@ -13,6 +13,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -22,7 +23,6 @@ import mihon.core.common.utils.mutate
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.interactor.GetFavorites
-import tachiyomi.domain.manga.interactor.GetMangaByUrlAndSourceId
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
@@ -34,7 +34,6 @@ class MigrateMangaScreenModel(
     private val sourceManager: SourceManager = Injekt.get(),
     private val getFavorites: GetFavorites = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
-    private val getMangaByUrlAndSourceId: GetMangaByUrlAndSourceId = Injekt.get(),
     private val getCategories: tachiyomi.domain.category.interactor.GetCategories = Injekt.get(),
     private val createCategoryWithName: tachiyomi.domain.category.interactor.CreateCategoryWithName = Injekt.get(),
     private val setMangaCategories: tachiyomi.domain.category.interactor.SetMangaCategories = Injekt.get(),
@@ -110,18 +109,9 @@ class MigrateMangaScreenModel(
         screenModelScope.launchIO {
             try {
                 val selectedManga = state.value.titles.filter { it.id in state.value.selection }
-                var skipCount = 0
-                for (manga in selectedManga) {
-                    try {
-                        val newUrl = if (manga.url.startsWith("/")) manga.url else "/${manga.url}"
-                        val existing = getMangaByUrlAndSourceId.await(newUrl, targetSourceId)
-                        if (existing?.favorite == true) {
-                            skipCount++
-                        }
-                    } catch (_: Exception) {
-                        // If we can't check, assume no duplicate
-                    }
-                }
+                val targetFavoriteUrls = getFavorites.subscribe(targetSourceId).first()
+                    .mapTo(mutableSetOf()) { it.url }
+                val skipCount = selectedManga.size - quickMigrateTargets(selectedManga, targetFavoriteUrls).size
                 mutableState.update {
                     it.copy(
                         dialog = Dialog.QuickMigrateConfirm(
@@ -144,20 +134,18 @@ class MigrateMangaScreenModel(
         screenModelScope.launchIO {
             try {
                 val selectedManga = state.value.titles.filter { it.id in state.value.selection }
-                var migrated = 0
+                val targetFavoriteUrls = getFavorites.subscribe(targetSourceId).first()
+                    .mapTo(mutableSetOf()) { it.url }
                 val migratedIds = mutableListOf<Long>()
-                for (manga in selectedManga) {
+                for ((manga, newUrl) in quickMigrateTargets(selectedManga, targetFavoriteUrls)) {
                     try {
-                        val newUrl = if (manga.url.startsWith("/")) manga.url else "/${manga.url}"
-                        val existing = getMangaByUrlAndSourceId.await(newUrl, targetSourceId)
-                        if (existing?.favorite == true) continue
                         updateManga.await(MangaUpdate(id = manga.id, source = targetSourceId, url = newUrl))
-                        migrated++
                         migratedIds.add(manga.id)
                     } catch (_: Exception) {
-                        // If check fails, proceed with migration
+                        // Skip entries that fail to update; the rest still migrate.
                     }
                 }
+                val migrated = migratedIds.size
 
                 if (migratedIds.isNotEmpty() && trackPreferences.migrationTriggersSourceTracker.get()) {
                     migratedIds.forEach { id ->
@@ -231,3 +219,20 @@ sealed interface MigrationMangaEvent {
     data object FailedFetchingFavorites : MigrationMangaEvent
     data class QuickMigrateComplete(val count: Int) : MigrationMangaEvent
 }
+
+/** Leading-slash normalization matching how source urls are stored. */
+internal fun normalizeQuickMigrateUrl(url: String): String = if (url.startsWith("/")) url else "/$url"
+
+/**
+ * Pairs each selectable manga with its normalized target url, dropping the ones already favorited on
+ * the target source. [existingFavoriteUrls] is the one-shot set of target-source favorite urls, so
+ * duplicate detection is in-memory instead of one query per manga.
+ */
+internal fun quickMigrateTargets(
+    selected: List<Manga>,
+    existingFavoriteUrls: Set<String>,
+): List<Pair<Manga, String>> =
+    selected.mapNotNull { manga ->
+        val newUrl = normalizeQuickMigrateUrl(manga.url)
+        if (newUrl in existingFavoriteUrls) null else manga to newUrl
+    }
