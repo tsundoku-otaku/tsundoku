@@ -9,7 +9,9 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-
+/*
+TODO: Remove this test after a few releases, when the migration is no longer needed.
+ */
 class BackupProtoMigrationTest {
 
     @Serializable

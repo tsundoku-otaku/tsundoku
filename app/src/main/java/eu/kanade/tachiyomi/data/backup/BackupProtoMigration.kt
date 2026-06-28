@@ -3,11 +3,8 @@ package eu.kanade.tachiyomi.data.backup
 import java.io.ByteArrayOutputStream
 
 /**
- * Older fork backups stored isNovel as a boolean at ProtoNumber 112. That number now holds memo,
- * a length-delimited ByteArray, and isNovel moved to 8000. Boolean (wire type 0, varint) and
- * ByteArray (wire type 2, length-delimited) are distinguishable on the wire, so any varint found at
- * field 112 inside a BackupManga is a legacy isNovel and is rewritten to field 8000 before decoding.
- * A current backup has no varint at 112 (it is memo bytes, or absent), so it passes through unchanged.
+This is a temporary migration fix to keep compatibility with old backup files that use isNovel proto number 112 before it was moved to 8000
+ TODO: Remove this class after a few releases.
  */
 internal object BackupProtoMigration {
     private const val BACKUP_MANGA_FIELD = 1

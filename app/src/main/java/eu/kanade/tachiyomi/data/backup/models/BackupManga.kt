@@ -47,7 +47,6 @@ class BackupManga(
     @ProtoNumber(111) var initialized: Boolean = false,
     @ProtoNumber(112) var memo: ByteArray = JsonObjectEmptyBytes,
     // Fork fields use a reserved 8000+ ProtoNumber block so they never collide with new upstream fields.
-    // isNovel was historically at 112 (now memo); BackupProtoMigration remaps legacy 112 varints to 8000.
     @ProtoNumber(8000) var isNovel: Boolean = false,
 ) {
     fun getMangaImpl(): Manga {
