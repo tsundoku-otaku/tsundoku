@@ -686,6 +686,11 @@
     <!-- Custom Source - Import/Export -->
     <string name="custom_source_imported">Source imported successfully!</string>
     <string name="custom_source_import_failed">Import failed: %s</string>
+    <string name="custom_source_duplicate_exists">A source with this name and base URL already exists</string>
+    <string name="custom_source_json_empty">JSON is empty</string>
+    <string name="custom_source_import_added">%1$d added</string>
+    <string name="custom_source_import_skipped">%1$d skipped</string>
+    <string name="custom_source_import_failed_count">%1$d failed</string>
     <string name="custom_source_read_error">Error reading file: %s</string>
     <string name="custom_source_export_title">Export Source</string>
     <string name="custom_source_export_failed">Export failed: %s</string>
