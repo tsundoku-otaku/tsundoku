@@ -360,18 +360,7 @@ class MangaScreen(
             is MangaScreenModel.Dialog.Edit -> {
                 eu.kanade.presentation.manga.components.EditMangaDialog(
                     manga = dialog.manga,
-                    // Prefer the stored source snapshot; before any override exists the current
-                    // values are still the source, so fall back to those.
-                    sourceInfo = CustomMangaInfo.fromSource(dialog.manga.memo)
-                        ?: dialog.manga.takeIf { CustomMangaInfo.from(it.memo) == null }?.let {
-                            CustomMangaInfo(
-                                author = it.author,
-                                artist = it.artist,
-                                description = it.description,
-                                genre = it.genre,
-                                status = it.status,
-                            )
-                        },
+                    sourceInfo = CustomMangaInfo.fromSource(dialog.manga.memo),
                     onDismissRequest = onDismissRequest,
                     onSaveTitle = { screenModel.updateTitle(it) },
                     onSaveUrl = { screenModel.updateUrl(it) },

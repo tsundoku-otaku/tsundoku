@@ -105,7 +105,7 @@ fun EditMangaDialog(
             when (page) {
                 0 -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (sourceInfo != null) {
-                        SourceValuesSection(sourceInfo)
+                        SourceValuesSection(sourceInfo, manga)
                     }
                     EditTextField(
                         label = stringResource(MR.strings.title),
@@ -185,7 +185,28 @@ private fun EditTextField(
 }
 
 @Composable
-private fun SourceValuesSection(source: CustomMangaInfo) {
+private fun SourceValuesSection(source: CustomMangaInfo, current: Manga) {
+    // Only the fields the user actually changed, shown with their original source value.
+    val changedRows = buildList {
+        if (source.author.orEmpty() != current.author.orEmpty()) {
+            add(stringResource(MR.strings.author) to source.author)
+        }
+        if (source.artist.orEmpty() != current.artist.orEmpty()) {
+            add(stringResource(MR.strings.artist) to source.artist)
+        }
+        if (source.status != null && source.status != current.status) {
+            add(stringResource(MR.strings.status) to statusLabel(source.status))
+        }
+        if (source.genre.orEmpty() != current.genre.orEmpty()) {
+            add(stringResource(TDMR.strings.edit_label_tags) to source.genre?.joinToString(", "))
+        }
+        if (source.description.orEmpty() != current.description.orEmpty()) {
+            add(stringResource(TDMR.strings.edit_label_description) to source.description)
+        }
+    }.filter { !it.second.isNullOrBlank() }
+
+    if (changedRows.isEmpty()) return
+
     var expanded by remember { mutableStateOf(false) }
     Column {
         Row(
@@ -205,19 +226,14 @@ private fun SourceValuesSection(source: CustomMangaInfo) {
             )
         }
         if (expanded) {
-            SourceValueRow(stringResource(MR.strings.author), source.author)
-            SourceValueRow(stringResource(MR.strings.artist), source.artist)
-            SourceValueRow(stringResource(MR.strings.status), statusLabel(source.status))
-            SourceValueRow(stringResource(TDMR.strings.edit_label_tags), source.genre?.joinToString(", "))
-            SourceValueRow(stringResource(TDMR.strings.edit_label_description), source.description)
+            changedRows.forEach { (label, value) -> SourceValueRow(label, value.orEmpty()) }
         }
         HorizontalDivider()
     }
 }
 
 @Composable
-private fun SourceValueRow(label: String, value: String?) {
-    if (value.isNullOrBlank()) return
+private fun SourceValueRow(label: String, value: String) {
     Column(modifier = Modifier.padding(vertical = 2.dp)) {
         Text(
             text = label,
