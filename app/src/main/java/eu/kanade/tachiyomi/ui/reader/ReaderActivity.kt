@@ -432,7 +432,6 @@ class ReaderActivity : BaseActivity() {
                     onToggleCollapse = { statusBarCollapsed = !statusBarCollapsed },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
                         .padding(bottom = extraPad),
                 )
             }

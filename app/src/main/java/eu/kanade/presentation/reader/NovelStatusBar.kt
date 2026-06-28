@@ -141,21 +141,28 @@ fun NovelStatusBar(
             )
         }
 
-        // Center: chapter
-        if (!isCollapsed && showChapter && chapterText != null) {
-            Text(
-                text = chapterText,
-                style = labelStyle,
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .padding(horizontal = 48.dp), // keep clear of left/right elements
-            )
+        // Center: chapter • progress
+        if (!isCollapsed) {
+            val centerText = buildString {
+                if (showChapter && chapterText != null) append(chapterText)
+                if (showChapter && chapterText != null && showProgress) append(" • ")
+                if (showProgress) append("$progressPercent%")
+            }
+            if (centerText.isNotEmpty()) {
+                Text(
+                    text = centerText,
+                    style = labelStyle,
+                    color = contentColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 48.dp),
+                )
+            }
         }
 
-        // Right: battery icon + % • progress + toggle
+        // Right: battery icon + % + toggle
         Row(
             modifier = Modifier.align(Alignment.CenterEnd),
             verticalAlignment = Alignment.CenterVertically,
@@ -171,20 +178,6 @@ fun NovelStatusBar(
                     Spacer(Modifier.width(2.dp))
                     Text(
                         text = "$batteryPercent%",
-                        style = labelStyle,
-                        color = contentColor,
-                    )
-                }
-                if (showProgress) {
-                    if (showBattery && batteryPercent >= 0) {
-                        Text(
-                            text = " • ",
-                            style = labelStyle,
-                            color = dimColor,
-                        )
-                    }
-                    Text(
-                        text = "$progressPercent%",
                         style = labelStyle,
                         color = contentColor,
                     )
