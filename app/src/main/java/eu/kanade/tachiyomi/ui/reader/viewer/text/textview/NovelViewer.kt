@@ -1568,31 +1568,30 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             libraryPreferences.novelReadProgress100.get() && savedProgress in 1..100
         }
         if (shouldRestore) {
-            val progress = savedProgress / 100f
+            val progress = (savedProgress / 100f).coerceIn(0f, 1f)
             lastSavedProgress = progress
+            val targetChapterId = page.chapter.chapter.id
 
+            // Chapter content renders async, so on orientation change the early layout passes fire
+            // against the still-empty block and a one-shot restore lands at the top. Wait across
+            // layout passes until the target chapter's text is set and height is real; the attempt
+            // cap stops a never-rendering chapter from leaking the listener.
             scrollView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                private var attempts = 0
                 override fun onGlobalLayout() {
+                    attempts++
+                    val loaded = loadedChapters.firstOrNull { it.chapter.chapter.id == targetChapterId }
+                    val child = scrollView.getChildAt(0)
+                    val totalHeight = if (child != null) child.height - scrollView.height else 0
+                    val ready = loaded?.isTextSet == true && totalHeight > 0
+                    if (!ready && attempts < 60) return
+
                     scrollView.viewTreeObserver.removeOnGlobalLayoutListener(this)
-
-                    // Double-check the content is loaded
-                    val child = scrollView.getChildAt(0) ?: return
-                    val totalHeight = child.height - scrollView.height
-                    if (totalHeight <= 0) {
-                        scrollView.postDelayed({
-                            isRestoringScroll = true
-                            setScrollProgress(progress.coerceIn(0f, 1f))
-                            logcat(LogPriority.DEBUG) {
-                                "NovelViewer: Scroll restored (delayed) to ${(progress * 100).toInt()}%"
-                            }
-                            isRestoringScroll = false
-                        }, 200)
-                        return
-                    }
-
                     isRestoringScroll = true
-                    setScrollProgress(progress.coerceIn(0f, 1f))
-                    logcat(LogPriority.DEBUG) { "NovelViewer: Scroll restored to ${(progress * 100).toInt()}%" }
+                    setScrollProgress(progress)
+                    logcat(LogPriority.DEBUG) {
+                        "NovelViewer: Scroll restored to ${(progress * 100).toInt()}% after $attempts layout pass(es)"
+                    }
                     isRestoringScroll = false
                 }
             })
