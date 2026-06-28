@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Reorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -211,6 +212,8 @@ fun QuotesSheet(
 
     // Show edit dialog when a quote is being edited
     if (editingQuote.value != null) {
+        val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+
         AlertDialog(
             onDismissRequest = { editingQuote.value = null },
             title = { Text(stringResource(TDMR.strings.quotes_edit_title)) },
@@ -242,8 +245,26 @@ fun QuotesSheet(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { editingQuote.value = null }) {
-                    Text(stringResource(MR.strings.action_cancel))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = {
+                            val clip = clipboardManager.getText()?.text
+                            if (!clip.isNullOrBlank()) {
+                                val current = editedContent.value
+                                editedContent.value = if (current.isBlank()) clip else "$current\n\n$clip"
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ContentPaste,
+                            contentDescription = stringResource(TDMR.strings.quotes_append_clipboard),
+                        )
+                    }
+                    TextButton(onClick = { editingQuote.value = null }) {
+                        Text(stringResource(MR.strings.action_cancel))
+                    }
                 }
             },
         )
