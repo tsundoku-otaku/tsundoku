@@ -35,8 +35,10 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -85,7 +87,7 @@ object SourcePriorityScreen : Screen {
                     stringResource(MR.strings.duplicate_source_type_custom_extensions),
                 DuplicateDetectionScreenModel.SourceType.LOCAL to
                     stringResource(MR.strings.duplicate_source_type_local_source),
-            )
+            ).filter { it.first != DuplicateDetectionScreenModel.SourceType.LOCAL || state.hasLocalSource }
 
             LazyColumn(
                 contentPadding = contentPadding + PaddingValues(horizontal = 16.dp),
@@ -207,6 +209,7 @@ data class SourcePriorityItem(
 class SourcePriorityScreenModel(
     private val libraryPreferences: LibraryPreferences = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
+    private val sourcePreferences: SourcePreferences = Injekt.get(),
 ) : StateScreenModel<SourcePriorityScreenModel.State>(State()) {
 
     data class State(
@@ -214,6 +217,7 @@ class SourcePriorityScreenModel(
             DuplicateDetectionScreenModel.SourceType.entries.associateWith { 0 },
         val sourcePriorities: Map<Long, Int> = emptyMap(),
         val sourceItems: List<SourcePriorityItem> = emptyList(),
+        val hasLocalSource: Boolean = false,
     )
 
     init {
@@ -268,18 +272,29 @@ class SourcePriorityScreenModel(
     private fun loadSourceItems() {
         screenModelScope.launch {
             sourceManager.sources.map { it.filterIsInstance<CatalogueSource>() }.collect { catalogueSources ->
+                val enabledLanguages = sourcePreferences.enabledLanguages.get()
+                val disabledSources = sourcePreferences.disabledSources.get()
                 val items = catalogueSources
-                    .filter { !it.isLocal() }
+                    .filter { source ->
+                        !source.isLocal() && (
+                            source is CustomNovelSource ||
+                                (source.lang in enabledLanguages && "${source.id}" !in disabledSources)
+                            )
+                    }
                     .map { source ->
-                        val isJs = source is JsSource
-                        val suffix = if (isJs) " (JS)" else ""
+                        val suffix = when (source) {
+                            is CustomNovelSource -> " (Custom)"
+                            is JsSource -> " (JS)"
+                            else -> ""
+                        }
                         SourcePriorityItem(
                             id = source.id,
                             displayName = "${source.name}$suffix",
                         )
                     }
                     .sortedBy { it.displayName.lowercase() }
-                mutableState.update { it.copy(sourceItems = items) }
+                val hasLocalSource = catalogueSources.any { it.isLocal() }
+                mutableState.update { it.copy(sourceItems = items, hasLocalSource = hasLocalSource) }
             }
         }
     }

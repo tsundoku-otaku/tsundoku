@@ -2,11 +2,13 @@ package eu.kanade.tachiyomi.ui.library.duplicate
 
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.source.isNovelSource
+import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.ensureActive
@@ -92,124 +94,126 @@ class DuplicateDetectionScreenModel(
         val sourcePriorities: Map<SourceType, Int> = SourceType.entries.associateWith { 0 },
         val specificSourcePriorities: Map<Long, Int> = emptyMap(),
         val sourceTypeMap: Map<Long, SourceType> = emptyMap(),
+        val dismissedGroups: Set<String> = emptySet(),
+        val filteredDuplicateGroups: Map<String, List<MangaWithChapterCount>> = emptyMap(),
     ) {
 
-        val filteredDuplicateGroups: Map<String, List<MangaWithChapterCount>>
-            get() {
-                val searchFiltered = if (searchQuery.isBlank()) {
-                    duplicateGroups
-                } else {
-                    val query = searchQuery.lowercase()
-                    duplicateGroups.filter { (key, items) ->
-                        key.lowercase().contains(query) ||
-                            items.any { it.manga.title.lowercase().contains(query) }
-                    }
+        fun computeFilteredGroups(): Map<String, List<MangaWithChapterCount>> {
+            val visibleGroups = duplicateGroups.filterKeys { it !in dismissedGroups }
+            val searchFiltered = if (searchQuery.isBlank()) {
+                visibleGroups
+            } else {
+                val query = searchQuery.lowercase()
+                visibleGroups.filter { (key, items) ->
+                    key.lowercase().contains(query) ||
+                        items.any { it.manga.title.lowercase().contains(query) }
                 }
+            }
 
-                val contentFiltered = when (contentType) {
-                    ContentType.ALL -> searchFiltered
-                    ContentType.MANGA -> searchFiltered.mapValues { (_, items) ->
-                        items.filter { it.manga.source !in novelSourceIds }
-                    }.filter { it.value.size > 1 }
-                    ContentType.NOVEL -> searchFiltered.mapValues { (_, items) ->
-                        items.filter { it.manga.source in novelSourceIds }
-                    }.filter { it.value.size > 1 }
-                }
+            val contentFiltered = when (contentType) {
+                ContentType.ALL -> searchFiltered
+                ContentType.MANGA -> searchFiltered.mapValues { (_, items) ->
+                    items.filter { it.manga.source !in novelSourceIds }
+                }.filter { it.value.size > 1 }
+                ContentType.NOVEL -> searchFiltered.mapValues { (_, items) ->
+                    items.filter { it.manga.source in novelSourceIds }
+                }.filter { it.value.size > 1 }
+            }
 
-                // Then filter by category
-                val filtered = if (selectedCategoryFilters.isEmpty() && excludedCategoryFilters.isEmpty()) {
-                    contentFiltered
-                } else {
-                    if (filterByGroupCategory) {
-                        contentFiltered.filter { (_, novels) ->
-                            val groupMatches = novels.any { novel ->
-                                val categoryIds = mangaCategoryIdSets[novel.manga.id] ?: setOf(0L)
-                                val passesInclude =
-                                    selectedCategoryFilters.isEmpty() || when (categoryIncludeMode) {
-                                        CategoryIncludeMode.ANY -> categoryIds.any { it in selectedCategoryFilters }
-                                        CategoryIncludeMode.ALL -> selectedCategoryFilters.all { it in categoryIds }
-                                    }
-                                val passesExclude = excludedCategoryFilters.isEmpty() ||
-                                    categoryIds.none { it in excludedCategoryFilters }
-                                passesInclude && passesExclude
-                            }
-                            groupMatches
-                        }
-                    } else {
-                        contentFiltered.filter { (_, novels) ->
-                            novels.all { novel ->
-                                val categoryIds = mangaCategoryIdSets[novel.manga.id] ?: setOf(0L)
-                                val passesInclude = selectedCategoryFilters.isEmpty() || when (categoryIncludeMode) {
+            // Then filter by category
+            val filtered = if (selectedCategoryFilters.isEmpty() && excludedCategoryFilters.isEmpty()) {
+                contentFiltered
+            } else {
+                if (filterByGroupCategory) {
+                    contentFiltered.filter { (_, novels) ->
+                        val groupMatches = novels.any { novel ->
+                            val categoryIds = mangaCategoryIdSets[novel.manga.id] ?: setOf(0L)
+                            val passesInclude =
+                                selectedCategoryFilters.isEmpty() || when (categoryIncludeMode) {
                                     CategoryIncludeMode.ANY -> categoryIds.any { it in selectedCategoryFilters }
                                     CategoryIncludeMode.ALL -> selectedCategoryFilters.all { it in categoryIds }
                                 }
-                                val passesExclude = excludedCategoryFilters.isEmpty() ||
-                                    categoryIds.none { it in excludedCategoryFilters }
-                                passesInclude && passesExclude
+                            val passesExclude = excludedCategoryFilters.isEmpty() ||
+                                categoryIds.none { it in excludedCategoryFilters }
+                            passesInclude && passesExclude
+                        }
+                        groupMatches
+                    }
+                } else {
+                    contentFiltered.filter { (_, novels) ->
+                        novels.all { novel ->
+                            val categoryIds = mangaCategoryIdSets[novel.manga.id] ?: setOf(0L)
+                            val passesInclude = selectedCategoryFilters.isEmpty() || when (categoryIncludeMode) {
+                                CategoryIncludeMode.ANY -> categoryIds.any { it in selectedCategoryFilters }
+                                CategoryIncludeMode.ALL -> selectedCategoryFilters.all { it in categoryIds }
                             }
+                            val passesExclude = excludedCategoryFilters.isEmpty() ||
+                                categoryIds.none { it in excludedCategoryFilters }
+                            passesInclude && passesExclude
                         }
                     }
                 }
-
-                return when (sortMode) {
-                    SortMode.NAME -> filtered.toSortedMap()
-                    SortMode.LATEST_ADDED ->
-                        filtered.entries
-                            .sortedByDescending { (_, novels) ->
-                                novels.maxOfOrNull { it.manga.dateAdded } ?: 0L
-                            }
-                            .associate { it.key to it.value }
-                    SortMode.CHAPTER_COUNT_DESC ->
-                        filtered.entries
-                            .sortedByDescending { (_, novels) ->
-                                novels.sumOf { it.chapterCount }
-                            }
-                            .associate { it.key to it.value }
-                    SortMode.CHAPTER_COUNT_ASC ->
-                        filtered.entries
-                            .sortedBy { (_, novels) ->
-                                novels.sumOf { it.chapterCount }
-                            }
-                            .associate { it.key to it.value }
-                    SortMode.DOWNLOAD_COUNT_DESC ->
-                        filtered.entries
-                            .sortedByDescending { (_, novels) ->
-                                novels.sumOf { mangaDownloadCounts[it.manga.id] ?: 0 }
-                            }
-                            .associate { it.key to it.value }
-                    SortMode.DOWNLOAD_COUNT_ASC ->
-                        filtered.entries
-                            .sortedBy { (_, novels) ->
-                                novels.sumOf { mangaDownloadCounts[it.manga.id] ?: 0 }
-                            }
-                            .associate { it.key to it.value }
-                    SortMode.READ_COUNT_DESC ->
-                        filtered.entries
-                            .sortedByDescending { (_, novels) ->
-                                novels.sumOf { mangaReadCounts[it.manga.id] ?: 0 }
-                            }
-                            .associate { it.key to it.value }
-                    SortMode.READ_COUNT_ASC ->
-                        filtered.entries
-                            .sortedBy { (_, novels) ->
-                                novels.sumOf { mangaReadCounts[it.manga.id] ?: 0 }
-                            }
-                            .associate { it.key to it.value }
-                    SortMode.PINNED_SOURCE ->
-                        filtered.entries
-                            .sortedByDescending { (_, novels) ->
-                                // Groups with more pinned source novels come first
-                                novels.count { it.manga.source in pinnedSourceIds }
-                            }
-                            .associate { it.key to it.value }
-                    SortMode.SOURCE_PRIORITY ->
-                        filtered.entries
-                            .sortedByDescending { (_, novels) ->
-                                novels.maxOfOrNull { getSourcePriority(it.manga.source) } ?: 0
-                            }
-                            .associate { it.key to it.value }
-                }
             }
+
+            return when (sortMode) {
+                SortMode.NAME -> filtered.toSortedMap()
+                SortMode.LATEST_ADDED ->
+                    filtered.entries
+                        .sortedByDescending { (_, novels) ->
+                            novels.maxOfOrNull { it.manga.dateAdded } ?: 0L
+                        }
+                        .associate { it.key to it.value }
+                SortMode.CHAPTER_COUNT_DESC ->
+                    filtered.entries
+                        .sortedByDescending { (_, novels) ->
+                            novels.sumOf { it.chapterCount }
+                        }
+                        .associate { it.key to it.value }
+                SortMode.CHAPTER_COUNT_ASC ->
+                    filtered.entries
+                        .sortedBy { (_, novels) ->
+                            novels.sumOf { it.chapterCount }
+                        }
+                        .associate { it.key to it.value }
+                SortMode.DOWNLOAD_COUNT_DESC ->
+                    filtered.entries
+                        .sortedByDescending { (_, novels) ->
+                            novels.sumOf { mangaDownloadCounts[it.manga.id] ?: 0 }
+                        }
+                        .associate { it.key to it.value }
+                SortMode.DOWNLOAD_COUNT_ASC ->
+                    filtered.entries
+                        .sortedBy { (_, novels) ->
+                            novels.sumOf { mangaDownloadCounts[it.manga.id] ?: 0 }
+                        }
+                        .associate { it.key to it.value }
+                SortMode.READ_COUNT_DESC ->
+                    filtered.entries
+                        .sortedByDescending { (_, novels) ->
+                            novels.sumOf { mangaReadCounts[it.manga.id] ?: 0 }
+                        }
+                        .associate { it.key to it.value }
+                SortMode.READ_COUNT_ASC ->
+                    filtered.entries
+                        .sortedBy { (_, novels) ->
+                            novels.sumOf { mangaReadCounts[it.manga.id] ?: 0 }
+                        }
+                        .associate { it.key to it.value }
+                SortMode.PINNED_SOURCE ->
+                    filtered.entries
+                        .sortedByDescending { (_, novels) ->
+                            // Groups with more pinned source novels come first
+                            novels.count { it.manga.source in pinnedSourceIds }
+                        }
+                        .associate { it.key to it.value }
+                SortMode.SOURCE_PRIORITY ->
+                    filtered.entries
+                        .sortedByDescending { (_, novels) ->
+                            novels.maxOfOrNull { getSourcePriority(it.manga.source) } ?: 0
+                        }
+                        .associate { it.key to it.value }
+            }
+        }
 
         fun getSourcePriority(sourceId: Long): Int {
             val specificPriority = specificSourcePriorities[sourceId]
@@ -292,8 +296,13 @@ class DuplicateDetectionScreenModel(
         }
     }
 
+    private fun recomputeFiltered() {
+        mutableState.update { it.copy(filteredDuplicateGroups = it.computeFilteredGroups()) }
+    }
+
     fun setSearchQuery(query: String) {
         mutableState.update { it.copy(searchQuery = query) }
+        recomputeFiltered()
     }
 
     fun loadDuplicates() {
@@ -334,11 +343,15 @@ class DuplicateDetectionScreenModel(
                         mangaDownloadCounts = downloadCounts,
                         mangaReadCounts = readCounts,
                         pinnedSourceIds = pinnedSourceIds,
+                        dismissedGroups = emptySet(),
                         isLoading = false,
                     )
                 }
+                recomputeFiltered()
             } catch (e: Exception) {
-                mutableState.update { it.copy(duplicateGroups = emptyMap(), isLoading = false) }
+                mutableState.update {
+                    it.copy(duplicateGroups = emptyMap(), filteredDuplicateGroups = emptyMap(), isLoading = false)
+                }
             }
         }
     }
@@ -352,6 +365,7 @@ class DuplicateDetectionScreenModel(
 
     fun setContentType(contentType: ContentType) {
         mutableState.update { it.copy(contentType = contentType, selection = emptySet()) }
+        recomputeFiltered()
     }
 
     fun toggleCategoryFilter(categoryId: Long) {
@@ -372,22 +386,27 @@ class DuplicateDetectionScreenModel(
                 )
             }
         }
+        recomputeFiltered()
     }
 
     fun clearCategoryFilters() {
         mutableState.update { it.copy(selectedCategoryFilters = emptySet(), excludedCategoryFilters = emptySet()) }
+        recomputeFiltered()
     }
 
     fun setCategoryIncludeMode(mode: CategoryIncludeMode) {
         mutableState.update { it.copy(categoryIncludeMode = mode) }
+        recomputeFiltered()
     }
 
     fun setFilterByGroupCategory(filter: Boolean) {
         mutableState.update { it.copy(filterByGroupCategory = filter) }
+        recomputeFiltered()
     }
 
     fun setSortMode(mode: SortMode) {
         mutableState.update { it.copy(sortMode = mode) }
+        recomputeFiltered()
     }
 
     fun toggleShowFullUrls() {
@@ -524,11 +543,25 @@ class DuplicateDetectionScreenModel(
     }
 
     fun selectGroup(groupTitle: String) {
-        val group = state.value.duplicateGroups[groupTitle] ?: return
+        val group = state.value.filteredDuplicateGroups[groupTitle] ?: return
         val groupIds = group.map { it.manga.id }.toSet()
         mutableState.update { state ->
-            state.copy(selection = state.selection + groupIds)
+            val allSelected = groupIds.isNotEmpty() && state.selection.containsAll(groupIds)
+            val newSelection = if (allSelected) state.selection - groupIds else state.selection + groupIds
+            state.copy(selection = newSelection)
         }
+    }
+
+    fun dismissGroup(groupTitle: String) {
+        val group = state.value.duplicateGroups[groupTitle]
+        val groupIds = group?.map { it.manga.id }?.toSet() ?: emptySet()
+        mutableState.update { state ->
+            state.copy(
+                dismissedGroups = state.dismissedGroups + groupTitle,
+                selection = state.selection - groupIds,
+            )
+        }
+        recomputeFiltered()
     }
 
     /**
@@ -554,6 +587,7 @@ class DuplicateDetectionScreenModel(
             .filter { it.value != 0 }
             .joinToString(";") { "${it.key.name}:${it.value}" }
         libraryPreferences.sourceTypePriorities.set(serialized)
+        recomputeFiltered()
     }
 
     /**
@@ -592,14 +626,19 @@ class DuplicateDetectionScreenModel(
             .flatten()
             .filter { it.manga.id in selectedIds }
             .map { mangaWithCount ->
-                val url = mangaWithCount.manga.url
-                // If URL doesn't start with http, it's a relative URL from a JS plugin
-                if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                    // Try to get the source's base URL
-                    // For now, just return the URL as is since we don't have source info here
+                val manga = mangaWithCount.manga
+                val url = manga.url
+                if (url.startsWith("http://") || url.startsWith("https://")) {
                     url
                 } else {
-                    url
+                    when (val source = sourceManager.getOrStub(manga.source)) {
+                        is HttpSource -> try {
+                            source.getMangaUrl(manga.toSManga())
+                        } catch (_: Exception) {
+                            source.baseUrl + url
+                        }
+                        else -> url
+                    }
                 }
             }
     }

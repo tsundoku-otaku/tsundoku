@@ -851,6 +851,7 @@ class DuplicateDetectionScreen : Screen {
                                     showFullUrls = state.showFullUrls,
                                     onToggleSelection = { screenModel.toggleSelection(it) },
                                     onSelectGroup = { screenModel.selectGroup(title) },
+                                    onDismissGroup = { screenModel.dismissGroup(title) },
                                     onClickManga = { navigator.push(MangaScreen(it)) },
                                 )
                             }
@@ -905,9 +906,11 @@ private fun DuplicateGroupCard(
     showFullUrls: Boolean,
     onToggleSelection: (Long) -> Unit,
     onSelectGroup: () -> Unit,
+    onDismissGroup: () -> Unit,
     onClickManga: (Long) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(true) }
+    val allSelected = mangaList.isNotEmpty() && mangaList.all { it.manga.id in selection }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -936,12 +939,21 @@ private fun DuplicateGroupCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                // Select Group button
                 IconButton(onClick = onSelectGroup) {
                     Icon(
-                        imageVector = Icons.Filled.SelectAll,
-                        contentDescription = stringResource(MR.strings.duplicate_select_group),
+                        imageVector = if (allSelected) Icons.Outlined.CheckBox else Icons.Filled.SelectAll,
+                        contentDescription = if (allSelected) {
+                            stringResource(TDMR.strings.duplicate_deselect_group)
+                        } else {
+                            stringResource(MR.strings.duplicate_select_group)
+                        },
                         tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                IconButton(onClick = onDismissGroup) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(TDMR.strings.duplicate_dismiss_group),
                     )
                 }
                 IconButton(onClick = { expanded = !expanded }) {
