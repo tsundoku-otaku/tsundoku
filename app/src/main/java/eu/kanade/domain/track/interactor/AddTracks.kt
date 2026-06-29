@@ -53,7 +53,7 @@ class AddTracks(
                             .map { it.trim() }
                             .filter { it.isNotBlank() && !it.equals(manga.title, ignoreCase = true) }
                             .distinctBy { it.lowercase(java.util.Locale.ROOT) }
-                        if (merged.size != manga.alternativeTitles.size) {
+                        if (merged != manga.alternativeTitles) {
                             updateManga.awaitUpdateAlternativeTitles(mangaId, merged)
                         }
                     }
