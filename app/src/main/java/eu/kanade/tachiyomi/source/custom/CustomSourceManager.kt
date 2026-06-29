@@ -35,6 +35,8 @@ class CustomSourceManager(
     private val _customSources = MutableStateFlow<List<CustomNovelSource>>(emptyList())
     val customSources: Flow<List<CustomNovelSource>> = _customSources.asStateFlow()
 
+    private val mutationLock = Any()
+
     init {
         loadAllSources()
     }
@@ -62,6 +64,10 @@ class CustomSourceManager(
      * Create a new custom source from configuration
      */
     fun createSource(config: CustomSourceConfig): Result<CustomNovelSource> {
+        return synchronized(mutationLock) { createSourceLocked(config) }
+    }
+
+    private fun createSourceLocked(config: CustomSourceConfig): Result<CustomNovelSource> {
         return try {
             val normalizedConfig = config.withStableId()
             validateConfig(normalizedConfig)
@@ -128,18 +134,26 @@ class CustomSourceManager(
             return Result.failure(IllegalArgumentException(friendlyParseError(e)))
         }
         val normalized = config.withStableId()
-        if (_customSources.value.any { it.id == normalized.id }) {
-            return Result.failure(
-                IllegalArgumentException(context.stringResource(TDMR.strings.custom_source_duplicate_exists)),
-            )
+        return synchronized(mutationLock) {
+            if (_customSources.value.any { it.id == normalized.id }) {
+                Result.failure(
+                    IllegalArgumentException(context.stringResource(TDMR.strings.custom_source_duplicate_exists)),
+                )
+            } else {
+                createSourceLocked(normalized)
+            }
         }
-        // createSource runs validateConfig, which throws joined, field-level error messages.
-        return createSource(normalized)
     }
 
     /** Export every custom source as a JSON array, for bulk backup/share. */
     fun exportAllSources(): String {
-        return json.encodeToString(_customSources.value.map { it.config })
+        val configs = _customSources.value.map { source ->
+            val file = customSourceStorageFileCandidates(customSourcesDir, source.id, source.name)
+                .firstOrNull { it.exists() }
+            file?.let { runCatching { json.decodeFromString<CustomSourceConfig>(it.readText()) }.getOrNull() }
+                ?: source.config
+        }
+        return json.encodeToString(configs)
     }
 
     /**
@@ -153,26 +167,30 @@ class CustomSourceManager(
                 IllegalArgumentException(context.stringResource(TDMR.strings.custom_source_json_empty)),
             )
         }
-        val configs = try {
-            runCatching { json.decodeFromString<List<CustomSourceConfig>>(jsonString) }
-                .getOrElse { listOf(json.decodeFromString<CustomSourceConfig>(jsonString)) }
-        } catch (e: Exception) {
-            return Result.failure(IllegalArgumentException(friendlyParseError(e)))
+        val listResult = runCatching { json.decodeFromString<List<CustomSourceConfig>>(jsonString) }
+        val configs = listResult.getOrElse {
+            runCatching { listOf(json.decodeFromString<CustomSourceConfig>(jsonString)) }
+                .getOrElse { single ->
+                    val cause = listResult.exceptionOrNull() ?: single
+                    return Result.failure(IllegalArgumentException(friendlyParseError(cause)))
+                }
         }
 
         var imported = 0
         var skipped = 0
         val errors = mutableListOf<String>()
-        configs.forEach { config ->
-            val normalized = config.withStableId()
-            if (_customSources.value.any { it.id == normalized.id }) {
-                skipped++
-                return@forEach
+        synchronized(mutationLock) {
+            configs.forEach { config ->
+                val normalized = config.withStableId()
+                if (_customSources.value.any { it.id == normalized.id }) {
+                    skipped++
+                    return@forEach
+                }
+                createSourceLocked(normalized).fold(
+                    onSuccess = { imported++ },
+                    onFailure = { errors.add("${config.name}: ${it.message}") },
+                )
             }
-            createSource(normalized).fold(
-                onSuccess = { imported++ },
-                onFailure = { errors.add("${config.name}: ${it.message}") },
-            )
         }
         return Result.success(BulkImportResult(imported, skipped, errors))
     }

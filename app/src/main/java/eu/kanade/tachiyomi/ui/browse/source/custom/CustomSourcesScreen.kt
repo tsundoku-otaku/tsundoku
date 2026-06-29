@@ -74,7 +74,9 @@ import eu.kanade.tachiyomi.source.custom.CustomSourceConfig
 import eu.kanade.tachiyomi.source.custom.CustomSourceManager
 import eu.kanade.tachiyomi.source.custom.SourceTestResult
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
@@ -326,21 +328,39 @@ class CustomSourcesScreen : Screen {
                         // importSources accepts both a single object and a JSON array (bulk import).
                         screenModel.importSources(importJsonText).fold(
                             onSuccess = { result ->
-                                if (result.imported == 0 && result.errors.isNotEmpty()) {
-                                    importError = result.errors.joinToString("\n")
-                                } else {
-                                    showImportDialog = false
-                                    val summary = buildString {
-                                        append(context.stringResource(TDMR.strings.custom_source_imported))
-                                        if (result.skipped > 0 || result.errors.isNotEmpty()) {
-                                            append(" (")
-                                            append(
-                                                context.stringResource(
-                                                    TDMR.strings.custom_source_import_added,
-                                                    result.imported,
-                                                ),
-                                            )
+                                when {
+                                    result.errors.isNotEmpty() -> {
+                                        importError = buildString {
+                                            if (result.imported > 0) {
+                                                append(
+                                                    context.stringResource(
+                                                        TDMR.strings.custom_source_import_added,
+                                                        result.imported,
+                                                    ),
+                                                )
+                                                append("\n")
+                                            }
+                                            append(result.errors.joinToString("\n"))
+                                        }
+                                    }
+                                    result.imported == 0 -> {
+                                        importError = context.stringResource(
+                                            TDMR.strings.custom_source_import_skipped,
+                                            result.skipped,
+                                        )
+                                    }
+                                    else -> {
+                                        showImportDialog = false
+                                        val summary = buildString {
+                                            append(context.stringResource(TDMR.strings.custom_source_imported))
                                             if (result.skipped > 0) {
+                                                append(" (")
+                                                append(
+                                                    context.stringResource(
+                                                        TDMR.strings.custom_source_import_added,
+                                                        result.imported,
+                                                    ),
+                                                )
                                                 append(", ")
                                                 append(
                                                     context.stringResource(
@@ -348,20 +368,11 @@ class CustomSourcesScreen : Screen {
                                                         result.skipped,
                                                     ),
                                                 )
+                                                append(")")
                                             }
-                                            if (result.errors.isNotEmpty()) {
-                                                append(", ")
-                                                append(
-                                                    context.stringResource(
-                                                        TDMR.strings.custom_source_import_failed_count,
-                                                        result.errors.size,
-                                                    ),
-                                                )
-                                            }
-                                            append(")")
                                         }
+                                        snackbarHostState.showSnackbar(summary)
                                     }
-                                    snackbarHostState.showSnackbar(summary)
                                 }
                             },
                             onFailure = { e ->
@@ -408,9 +419,12 @@ private suspend fun shareCustomSourcesJson(
     onError: suspend (String) -> Unit,
 ) {
     try {
-        val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
-        val exportFile = File(exportDir, fileName)
-        exportFile.writeText(json)
+        val uniqueName = fileName.substringBeforeLast('.') + "_" + System.currentTimeMillis() +
+            "." + fileName.substringAfterLast('.', "json")
+        val exportFile = withContext(Dispatchers.IO) {
+            val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+            File(exportDir, uniqueName).apply { writeText(json) }
+        }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", exportFile)
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "application/json"
