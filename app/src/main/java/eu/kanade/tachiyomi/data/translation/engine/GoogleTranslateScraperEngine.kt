@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.network.POST
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
@@ -207,10 +208,10 @@ class GoogleTranslateScraperEngine : TranslationEngine {
             val sentenceArray = sentence.jsonArray
             if (sentenceArray.isEmpty()) continue
             val translatedPart = try {
-                sentenceArray[0].jsonPrimitive.content
+                sentenceArray[0].jsonPrimitive.contentOrNull
             } catch (_: Exception) {
-                continue
-            }
+                null
+            } ?: continue
             result.append(translatedPart)
         }
 
