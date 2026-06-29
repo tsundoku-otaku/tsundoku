@@ -141,7 +141,9 @@ object DiskUtil {
         maxBytes: Int = MAX_FILE_NAME_BYTES,
         disallowNonAscii: Boolean = false,
     ): String {
-        val name = origName.trim('.', ' ')
+        val name = origName
+            .filterNot { it in ZERO_WIDTH_CHARS }
+            .trim { it == '.' || it.isWhitespace() || Character.isSpaceChar(it) }
         if (name.isEmpty()) {
             return "(invalid)"
         }
@@ -196,6 +198,11 @@ object DiskUtil {
             else -> true
         }
     }
+
+    // Stripped because some SAF providers drop them on create, desyncing the computed name from the
+    // on-disk name so the download cache misses after a reindex.
+    private val ZERO_WIDTH_CHARS =
+        setOf(0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF).mapTo(mutableSetOf()) { it.toChar() }
 
     const val NOMEDIA_FILE = ".nomedia"
 
