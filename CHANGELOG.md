@@ -32,6 +32,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Correct import stats when app is restarted [@mrissaoussama](https://github.com/mrissaoussama) [#272](https://github.com/tsundoku-otaku/tsundoku/pull/272)
 - Fix download queue restart preference [@mrissaoussama](https://github.com/mrissaoussama) [#297](https://github.com/tsundoku-otaku/tsundoku/pull/297)
 - Prevent issue where novel UI appeared in manga reader [@mrissaoussama](https://github.com/mrissaoussama) [#276](https://github.com/tsundoku-otaku/tsundoku/pull/276)
+- CatalogueSource novel/manga sources [@mrissaoussama](https://github.com/mrissaoussama) [#309](https://github.com/tsundoku-otaku/tsundoku/pull/309)
 - Download ahead download states should no longer get stale values [@mrissaoussama](https://github.com/mrissaoussama) [#289](https://github.com/tsundoku-otaku/tsundoku/pull/289)
 - Fix per-tab extension update badge [@mrissaoussama](https://github.com/mrissaoussama) [#277](https://github.com/tsundoku-otaku/tsundoku/pull/277)
 - Fix library setting loading and tags [@mrissaoussama](https://github.com/mrissaoussama) [#291](https://github.com/tsundoku-otaku/tsundoku/pull/291)
