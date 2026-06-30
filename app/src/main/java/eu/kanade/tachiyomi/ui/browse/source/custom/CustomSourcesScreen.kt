@@ -74,7 +74,9 @@ import eu.kanade.tachiyomi.source.custom.CustomSourceConfig
 import eu.kanade.tachiyomi.source.custom.CustomSourceManager
 import eu.kanade.tachiyomi.source.custom.SourceTestResult
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
@@ -142,6 +144,30 @@ class CustomSourcesScreen : Screen {
                         }
                     },
                     actions = {
+                        if (sources.isNotEmpty()) {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    val json = screenModel.exportAllSources()
+                                    if (json != null) {
+                                        shareCustomSourcesJson(
+                                            context = context,
+                                            json = json,
+                                            fileName = "custom_sources.json",
+                                            subject = context.stringResource(
+                                                TDMR.strings.custom_source_export_subject,
+                                                "${sources.size}",
+                                            ),
+                                            onError = { msg -> snackbarHostState.showSnackbar(msg) },
+                                        )
+                                    }
+                                }
+                            }) {
+                                Icon(
+                                    Icons.Outlined.Share,
+                                    contentDescription = stringResource(TDMR.strings.custom_sources_export),
+                                )
+                            }
+                        }
                         IconButton(onClick = {
                             importJsonText = ""
                             importError = null
@@ -299,12 +325,55 @@ class CustomSourcesScreen : Screen {
                 onCopyTemplate = { importJsonText = screenModel.blankTemplateJson() },
                 onImport = {
                     scope.launch {
-                        screenModel.importSource(importJsonText).fold(
-                            onSuccess = {
-                                showImportDialog = false
-                                snackbarHostState.showSnackbar(
-                                    context.stringResource(TDMR.strings.custom_source_imported),
-                                )
+                        // importSources accepts both a single object and a JSON array (bulk import).
+                        screenModel.importSources(importJsonText).fold(
+                            onSuccess = { result ->
+                                when {
+                                    result.errors.isNotEmpty() -> {
+                                        importError = buildString {
+                                            if (result.imported > 0) {
+                                                append(
+                                                    context.stringResource(
+                                                        TDMR.strings.custom_source_import_added,
+                                                        result.imported,
+                                                    ),
+                                                )
+                                                append("\n")
+                                            }
+                                            append(result.errors.joinToString("\n"))
+                                        }
+                                    }
+                                    result.imported == 0 -> {
+                                        importError = context.stringResource(
+                                            TDMR.strings.custom_source_import_skipped,
+                                            result.skipped,
+                                        )
+                                    }
+                                    else -> {
+                                        showImportDialog = false
+                                        val summary = buildString {
+                                            append(context.stringResource(TDMR.strings.custom_source_imported))
+                                            if (result.skipped > 0) {
+                                                append(" (")
+                                                append(
+                                                    context.stringResource(
+                                                        TDMR.strings.custom_source_import_added,
+                                                        result.imported,
+                                                    ),
+                                                )
+                                                append(", ")
+                                                append(
+                                                    context.stringResource(
+                                                        TDMR.strings.custom_source_import_skipped,
+                                                        result.skipped,
+                                                    ),
+                                                )
+                                                append(")")
+                                            }
+                                        }
+                                        snackbarHostState.showSnackbar(summary)
+                                    }
+                                }
                             },
                             onFailure = { e ->
                                 importError = e.message ?: context.stringResource(
@@ -339,6 +408,35 @@ class CustomSourcesScreen : Screen {
                 },
             )
         }
+    }
+}
+
+private suspend fun shareCustomSourcesJson(
+    context: android.content.Context,
+    json: String,
+    fileName: String,
+    subject: String,
+    onError: suspend (String) -> Unit,
+) {
+    try {
+        val uniqueName = fileName.substringBeforeLast('.') + "_" + System.currentTimeMillis() +
+            "." + fileName.substringAfterLast('.', "json")
+        val exportFile = withContext(Dispatchers.IO) {
+            val exportDir = File(context.cacheDir, "exports").apply { mkdirs() }
+            File(exportDir, uniqueName).apply { writeText(json) }
+        }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", exportFile)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(
+            Intent.createChooser(shareIntent, context.stringResource(TDMR.strings.custom_source_export_title)),
+        )
+    } catch (e: Exception) {
+        onError(context.stringResource(TDMR.strings.custom_source_export_failed, e.message ?: ""))
     }
 }
 

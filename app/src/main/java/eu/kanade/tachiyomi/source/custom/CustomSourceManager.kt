@@ -10,7 +10,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import logcat.LogPriority
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
+import tachiyomi.i18n.novel.TDMR
 import java.io.File
 
 /**
@@ -32,6 +34,8 @@ class CustomSourceManager(
 
     private val _customSources = MutableStateFlow<List<CustomNovelSource>>(emptyList())
     val customSources: Flow<List<CustomNovelSource>> = _customSources.asStateFlow()
+
+    private val mutationLock = Any()
 
     init {
         loadAllSources()
@@ -60,6 +64,10 @@ class CustomSourceManager(
      * Create a new custom source from configuration
      */
     fun createSource(config: CustomSourceConfig): Result<CustomNovelSource> {
+        return synchronized(mutationLock) { createSourceLocked(config) }
+    }
+
+    private fun createSourceLocked(config: CustomSourceConfig): Result<CustomNovelSource> {
         return try {
             val normalizedConfig = config.withStableId()
             validateConfig(normalizedConfig)
@@ -116,15 +124,75 @@ class CustomSourceManager(
      */
     fun importSource(jsonString: String): Result<CustomNovelSource> {
         if (jsonString.isBlank()) {
-            return Result.failure(IllegalArgumentException("JSON is empty"))
+            return Result.failure(
+                IllegalArgumentException(context.stringResource(TDMR.strings.custom_source_json_empty)),
+            )
         }
         val config = try {
             json.decodeFromString<CustomSourceConfig>(jsonString)
         } catch (e: Exception) {
             return Result.failure(IllegalArgumentException(friendlyParseError(e)))
         }
-        // createSource runs validateConfig, which throws joined, field-level error messages.
-        return createSource(config)
+        val normalized = config.withStableId()
+        return synchronized(mutationLock) {
+            if (_customSources.value.any { it.id == normalized.id }) {
+                Result.failure(
+                    IllegalArgumentException(context.stringResource(TDMR.strings.custom_source_duplicate_exists)),
+                )
+            } else {
+                createSourceLocked(normalized)
+            }
+        }
+    }
+
+    /** Export every custom source as a JSON array, for bulk backup/share. */
+    fun exportAllSources(): String {
+        val configs = _customSources.value.map { source ->
+            val file = customSourceStorageFileCandidates(customSourcesDir, source.id, source.name)
+                .firstOrNull { it.exists() }
+            file?.let { runCatching { json.decodeFromString<CustomSourceConfig>(it.readText()) }.getOrNull() }
+                ?: source.config
+        }
+        return json.encodeToString(configs)
+    }
+
+    /**
+     * Import many sources from a JSON array (a single object is also accepted). Sources whose
+     * stable id already exists are skipped; per-source validation failures are collected so one
+     * bad entry doesn't abort the rest.
+     */
+    fun importSources(jsonString: String): Result<BulkImportResult> {
+        if (jsonString.isBlank()) {
+            return Result.failure(
+                IllegalArgumentException(context.stringResource(TDMR.strings.custom_source_json_empty)),
+            )
+        }
+        val listResult = runCatching { json.decodeFromString<List<CustomSourceConfig>>(jsonString) }
+        val configs = listResult.getOrElse {
+            runCatching { listOf(json.decodeFromString<CustomSourceConfig>(jsonString)) }
+                .getOrElse { single ->
+                    val cause = listResult.exceptionOrNull() ?: single
+                    return Result.failure(IllegalArgumentException(friendlyParseError(cause)))
+                }
+        }
+
+        var imported = 0
+        var skipped = 0
+        val errors = mutableListOf<String>()
+        synchronized(mutationLock) {
+            configs.forEach { config ->
+                val normalized = config.withStableId()
+                if (_customSources.value.any { it.id == normalized.id }) {
+                    skipped++
+                    return@forEach
+                }
+                createSourceLocked(normalized).fold(
+                    onSuccess = { imported++ },
+                    onFailure = { errors.add("${config.name}: ${it.message}") },
+                )
+            }
+        }
+        return Result.success(BulkImportResult(imported, skipped, errors))
     }
 
     private fun friendlyParseError(e: Throwable): String = customSourceFriendlyParseError(e)
@@ -540,6 +608,12 @@ internal fun customSourceFriendlyParseError(e: Throwable): String {
         else -> "Invalid source JSON: ${msg.ifBlank { e.javaClass.simpleName }}"
     }
 }
+
+data class BulkImportResult(
+    val imported: Int,
+    val skipped: Int,
+    val errors: List<String>,
+)
 
 data class TestStepResult(
     val success: Boolean,

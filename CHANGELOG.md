@@ -30,6 +30,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Append clipboard added in edit quotes [@Rojikku](https://github.com/Rojikku) [#301](https://github.com/tsundoku-otaku/tsundoku/pull/301)
 - Prevent duplicate custom sources [@mrissaoussama](https://github.com/mrissaoussama) [#294](https://github.com/tsundoku-otaku/tsundoku/pull/294)
 - Added novel extension repos entry into browse settings [@mrissaoussama](https://github.com/mrissaoussama) [#304](https://github.com/tsundoku-otaku/tsundoku/pull/304)
+- Added bulk import/export, block duplicate imports [@mrissaoussama](https://github.com/mrissaoussama) [#303](https://github.com/tsundoku-otaku/tsundoku/pull/303)
 
 ### Fixed
 - Paginated library export to prevent potential OOM, added cancel to notif [@mrissaoussama](https://github.com/mrissaoussama) [#270](https://github.com/tsundoku-otaku/tsundoku/pull/270)

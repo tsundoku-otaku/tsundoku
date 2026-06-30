@@ -150,6 +150,32 @@ class CustomSourcesScreenModel(
     }
 
     /**
+     * Export all custom sources as a single JSON array for bulk backup/share.
+     */
+    fun exportAllSources(): String? {
+        return try {
+            customSourceManager.exportAllSources()
+        } catch (e: Exception) {
+            val context = Injekt.get<Application>()
+            _errorMessage.value = context.stringResource(TDMR.strings.custom_source_export_failed, e.message ?: "")
+            null
+        }
+    }
+
+    /**
+     * Import multiple custom sources from a JSON array.
+     */
+    suspend fun importSources(json: String): Result<eu.kanade.tachiyomi.source.custom.BulkImportResult> {
+        return withContext(Dispatchers.IO) {
+            try {
+                customSourceManager.importSources(json)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
      * A hand-editable skeleton config users can copy and fill in.
      */
     fun blankTemplateJson(): String = customSourceManager.blankTemplateJson()
