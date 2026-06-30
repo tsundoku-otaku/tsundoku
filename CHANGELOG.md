@@ -44,6 +44,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Fix per-tab extension update badge [@mrissaoussama](https://github.com/mrissaoussama) [#277](https://github.com/tsundoku-otaku/tsundoku/pull/277)
 - Prevent google translate returning literal null [@mrissaoussama](https://github.com/mrissaoussama) [#312](https://github.com/tsundoku-otaku/tsundoku/pull/312)
 - Remove invisible characters from filenames to prevent dl index issues [@mrissaoussama](https://github.com/mrissaoussama) [#307](https://github.com/tsundoku-otaku/tsundoku/pull/307)
+- Novel reader orientation and TTS highlight fix [@mrissaoussama](https://github.com/mrissaoussama) [#310](https://github.com/tsundoku-otaku/tsundoku/pull/310)
 - Fix library setting loading and tags [@mrissaoussama](https://github.com/mrissaoussama) [#291](https://github.com/tsundoku-otaku/tsundoku/pull/291)
 - Quick migrate should now duplicate check properly [@mrissaoussama](https://github.com/mrissaoussama) [#300](https://github.com/tsundoku-otaku/tsundoku/pull/300)
 - Customesource leaking baseUrl with shared extension [@mrissaoussama](https://github.com/mrissaoussama) [#298](https://github.com/tsundoku-otaku/tsundoku/pull/298)

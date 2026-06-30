@@ -21,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
+import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import eu.kanade.tachiyomi.source.model.Page
@@ -123,6 +124,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var disableScrollbarForSession = false
 
     private var lastSavedProgress = 0f
+
+    // Set by restoreProgress, consumed by onChapterTextSet once the matching chapter's text is laid out.
+    private var pendingRestoreChapterId: Long? = null
+    private var pendingRestoreProgress = 0f
 
     // Cache the last resolved custom-font so content:// URIs are not re-copied on every style refresh.
     private var cachedFontUri: String? = null
@@ -384,8 +389,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         lastSavedTtsChunkIndex = chunkIndex
         val total = ttsController.ttsChunks.size
         if (total <= 0) return
-        val chapterIdx = ttsController.ttsPlaybackChapterIndex
-        val loaded = loadedChapters.getOrNull(chapterIdx) ?: return
+        // Prefer the chapter id over the index: trimming read chapters shifts indices, so an id
+        // lookup can't save progress against the wrong chapter if the index is momentarily stale.
+        val loaded = (
+            ttsController.ttsPlaybackChapterId?.let { id ->
+                loadedChapters.firstOrNull { it.chapter.chapter.id == id }
+            } ?: loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex)
+            ) ?: return
         val page = loaded.chapter.pages?.firstOrNull() ?: return
         val percent = (((chunkIndex + 1) * 100f) / total).roundToInt().coerceIn(0, 100)
         activity.saveNovelProgress(page, percent)
@@ -844,6 +854,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
         if (preferences.novelInfiniteScroll.get()) {
             if (moveToLoadedNextChapterForTts(anchorChapterIndex)) {
+                // Free chapters well behind the playback head so a long unattended autoplay run
+                // doesn't keep every read chapter's views + precomputed text in memory.
+                trimReadChaptersForTts()
                 // For already-loaded chapters, text is ready — start immediately.
                 // For pre-fetched chapters, moveToLoadedNextChapterForTts sets pendingTtsAutoStart
                 // and fires setChapterContent; startTts() will be called once the chunks are ready.
@@ -1033,6 +1046,49 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         return true
     }
 
+    // Read chapters kept behind the TTS head for back-scroll; older ones unloaded to bound memory.
+    private val ttsKeepBehindChapters = 1
+
+    // Drops chapters far behind the TTS head and scrolls back their height so the read chapter
+    // doesn't jump. Autoplay only. Decrements currentChapterIndex and ttsPlaybackChapterIndex by
+    // removeCount to match the now-shorter loadedChapters, else reads/progress saves point at the
+    // wrong chapter.
+    private fun trimReadChaptersForTts() {
+        if (!ttsController.isTtsAutoPlay) return
+        val removeCount = currentChapterIndex - ttsKeepBehindChapters
+        if (removeCount <= 0) return
+        val toRemove = loadedChapters.take(removeCount)
+        if (toRemove.isEmpty()) return
+
+        var removedHeight = 0
+        isRestoringScroll = true
+        toRemove.forEach { lc ->
+            lc.separatorView?.let { sep ->
+                removedHeight += sep.height
+                contentContainer.removeView(sep)
+            }
+            removedHeight += lc.headerView.height
+            contentContainer.removeView(lc.headerView)
+            removedHeight += lc.block.container.height
+            contentContainer.removeView(lc.block.container)
+        }
+        chapterQueue.removeFirstN(removeCount)
+        currentChapterIndex = (currentChapterIndex - removeCount).coerceAtLeast(0)
+        ttsController.shiftPlaybackChapterIndex(removeCount)
+        // Removed views were above the viewport; compensate so the read chapter stays put.
+        // Post the scrollBy so it runs after the layout pass that follows removeView — a
+        // synchronous call here reads stale ScrollView content height and can be re-clamped
+        // by the deferred layout, causing a visible jump. isRestoringScroll stays true until
+        // after the scroll so the listener doesn't fire chapter detection mid-adjustment.
+        scrollView.post {
+            if (removedHeight > 0) scrollView.scrollBy(0, -removedHeight)
+            isRestoringScroll = false
+        }
+        logcat(LogPriority.DEBUG) {
+            "TTS: trimmed $removeCount read chapter(s), now ${loadedChapters.size} loaded, currentIndex=$currentChapterIndex"
+        }
+    }
+
     fun startTts() {
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
@@ -1060,6 +1116,18 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             chapterIndex = currentChapterIndex,
             chapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id,
         )
+
+        // Inf-scroll TTS reads in place, so the scroll listener that normally kicks the
+        // prefetch may never reach the load threshold (keep-in-view off, or a chapter shorter
+        // than the viewport). Start the prefetch when playback begins on the last loaded
+        // chapter so the next chapter is cached before onLastChunkDone hands off; otherwise
+        // the handoff stalls on a cold fetch and playback fails to advance. Idempotent: the
+        // prefetch no-ops unless handoffState is Idle.
+        if (preferences.novelInfiniteScroll.get() &&
+            currentChapterIndex == (loadedChapters.size - 1).coerceAtLeast(0)
+        ) {
+            preFetchNextChapterForTts()
+        }
     }
 
     fun stopTts() {
@@ -1196,9 +1264,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     override fun destroy() {
-        getScrollProgress { progress ->
-            saveProgress(progress)
-        }
+        // Save the live per-chapter progress, not a recomputed whole-document ratio.
+        // lastSavedProgress is 0 until restore/scroll, and a teardown before that (orientation
+        // lock recreates the activity) must not persist 0 and wipe the saved progress.
+        if (lastSavedProgress > 0f) saveProgress(lastSavedProgress)
 
         ttsController.destroy()
         scope.cancel() // cancels loadJob and all other child coroutines
@@ -1518,34 +1587,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             libraryPreferences.novelReadProgress100.get() && savedProgress in 1..100
         }
         if (shouldRestore) {
-            val progress = savedProgress / 100f
+            val progress = (savedProgress / 100f).coerceIn(0f, 1f)
             lastSavedProgress = progress
-
-            scrollView.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
-                override fun onGlobalLayout() {
-                    scrollView.viewTreeObserver.removeOnGlobalLayoutListener(this)
-
-                    // Double-check the content is loaded
-                    val child = scrollView.getChildAt(0) ?: return
-                    val totalHeight = child.height - scrollView.height
-                    if (totalHeight <= 0) {
-                        scrollView.postDelayed({
-                            isRestoringScroll = true
-                            setScrollProgress(progress.coerceIn(0f, 1f))
-                            logcat(LogPriority.DEBUG) {
-                                "NovelViewer: Scroll restored (delayed) to ${(progress * 100).toInt()}%"
-                            }
-                            isRestoringScroll = false
-                        }, 200)
-                        return
-                    }
-
-                    isRestoringScroll = true
-                    setScrollProgress(progress.coerceIn(0f, 1f))
-                    logcat(LogPriority.DEBUG) { "NovelViewer: Scroll restored to ${(progress * 100).toInt()}%" }
-                    isRestoringScroll = false
-                }
-            })
+            // Chapter content renders async (displayChapter -> setChapterContent -> onChapterTextSet).
+            // Defer the scroll to onChapterTextSet so it runs against the rendered height instead of
+            // the empty block seen during the recreate that a rotation triggers.
+            pendingRestoreChapterId = page.chapter.chapter.id
+            pendingRestoreProgress = progress
         } else {
             lastSavedProgress = 0f
             scrollView.post {
@@ -1652,6 +1700,20 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private fun onChapterTextSet(loaded: LoadedChapter) {
         loaded.isTextSet = true
+
+        if (loaded.chapter.chapter.id == pendingRestoreChapterId) {
+            pendingRestoreChapterId = null
+            val progress = pendingRestoreProgress
+            // doOnPreDraw fires once, after measure and layout, so setScrollProgress uses the final
+            // content height rather than the empty block height present when restoreProgress ran.
+            scrollView.doOnPreDraw {
+                isRestoringScroll = true
+                setScrollProgress(progress)
+                logcat(LogPriority.DEBUG) { "NovelViewer: Scroll restored to ${(progress * 100).toInt()}%" }
+                isRestoringScroll = false
+            }
+        }
+
         if (pendingTtsAutoStart) {
             pendingTtsAutoStart = false
             val loadedIdx = loadedChapters.indexOf(loaded)
@@ -1786,14 +1848,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         scrollView.scrollTo(0, 0)
     }
 
-    fun getScrollProgress(callback: (Float) -> Unit) {
-        val scrollY = scrollView.scrollY
-        val child = scrollView.getChildAt(0)
-        val totalHeight = if (child != null) child.height - scrollView.height else 0
-        val progress = if (totalHeight > 0) scrollY.toFloat() / totalHeight else 0f
-        callback(progress)
-    }
-
     fun getProgressPercent(): Int {
         val scrollY = scrollView.scrollY
         if (loadedChapters.size > 1 && preferences.novelInfiniteScroll.get()) {
@@ -1844,6 +1898,24 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     fun setProgressPercent(percent: Int) {
         val progress = percent.coerceIn(0, 100) / 100f
         setScrollProgress(progress)
+        maybeLoadNextChapterFromSlider()
+    }
+
+    private fun maybeLoadNextChapterFromSlider() {
+        if (!preferences.novelInfiniteScroll.get()) return
+        if (ttsController.isTtsAutoPlay || isLoadingNext || isRestoringScroll) return
+        scrollView.post {
+            if (ttsController.isTtsAutoPlay) return@post
+            val onLastLoaded = currentChapterIndex == (loadedChapters.size - 1).coerceAtLeast(0)
+            if (!onLastLoaded) return@post
+            val autoLoadAt = preferences.novelAutoLoadNextChapterAt.get()
+            val effectiveThreshold = if (autoLoadAt > 0) autoLoadAt / 100f else 0.95f
+            val chapterProgress = calculateCurrentChapterProgress(scrollView.scrollY)
+            if (chapterProgress >= effectiveThreshold && !isLoadingNext) {
+                logcat(LogPriority.DEBUG) { "NovelViewer: slider jump hit threshold ($chapterProgress), loading next" }
+                loadNextChapterIfAvailable()
+            }
+        }
     }
 
     override fun moveToPage(page: ReaderPage) {

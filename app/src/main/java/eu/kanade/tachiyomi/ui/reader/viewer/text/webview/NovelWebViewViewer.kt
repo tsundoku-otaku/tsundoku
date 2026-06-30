@@ -81,6 +81,39 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
         const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
         const val ID_EDIT_MODE_STYLE = "edit-mode-style"
+
+        const val TTS_TEXT_EXTRACTION_JS = """
+            (function() {
+                var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
+                var els = Array.from(document.querySelectorAll(selectors)).filter(function(el) {
+                    return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                });
+                if (!els.length) {
+                    els = Array.from(document.body.children).filter(function(el) {
+                        return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                    });
+                }
+                if (!els.length) {
+                    var body = document.body;
+                    return body ? body.innerText || body.textContent : '';
+                }
+                return els.map(function(el) {
+                    return el.innerText.trim().replace(/\s*\n\s*/g, ' ');
+                }).join('\n');
+            })();
+        """
+
+        fun unescapeJsResult(result: String): String =
+            if (result.startsWith("\"") && result.endsWith("\"")) {
+                // \\ must come first so \\n stays as backslash+n rather than becoming a newline.
+                result.substring(1, result.length - 1)
+                    .replace("\\\\", "\\")
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\\"", "\"")
+            } else {
+                result
+            }
     }
 
     private val container = FrameLayout(activity)
@@ -365,8 +398,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // TTS owns the chapter transition here; suppress the visible "Loading…"
                 // banner so it doesn't flash while the cache hits (or the fresh fetch
                 // runs in the background). Errors still surface via showInlineError.
-                appendNextChapterIfAvailable(silent = true)
-                setPendingTtsHandoffTimeout()
+                // 30 s hard cap: if the fetch stalls (e.g. no-timeout HTTP client),
+                // stop TTS rather than leaving isTtsAutoPlay stuck true indefinitely.
+                val appended = withTimeoutOrNull(30_000L) { appendNextChapterIfAvailable(silent = true) }
+                if (appended == true) {
+                    // Drive the handoff directly instead of waiting on a JS callback +
+                    // watchdog timer. The DOM append and the unload-and-start JS are queued
+                    // on the WebView in order, and evaluateJavascript completion fires even
+                    // when the activity is backgrounded (requestAnimationFrame does not), so
+                    // the next chapter starts reliably during background TTS.
+                    unloadReadChaptersAndStartNextTts()
+                } else {
+                    // Nothing appended (end of novel or fetch failure): no callback will ever
+                    // come, so stop here instead of hanging with isTtsAutoPlay stuck true.
+                    stopTts()
+                }
             } else {
                 val chapters = currentChapters ?: return@launch
                 if (chapters.nextChapter == null) {
@@ -436,43 +482,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             clearWebViewTtsHighlight()
             startTts()
         }
-    }
-
-    /**
-     * Transition to [TtsHandoffState.Appending] with a watchdog timeout. If
-     * the renderer never signals completion within 5000ms the state is
-     * cleared and TTS resumes — prevents TTS from hanging indefinitely.
-     */
-    private fun setPendingTtsHandoffTimeout() {
-        // Cancel any prior timeout regardless of state.
-        handoffState.timeoutJob?.cancel()
-
-        val loadedCountAtSchedule = loadedChapters.size
-        val timeoutJob = scope.launch {
-            delay(5000L)
-            if (handoffState.isAppending) {
-                clearPendingTtsHandoff()
-                if (loadedChapters.size <= loadedCountAtSchedule) {
-                    // No new chapter appended (end of novel or fetch failure). Restarting
-                    // would re-read the finished chapter on a loop, so stop instead.
-                    logcat(LogPriority.WARN) {
-                        "TTS (WebView): Handoff timeout, no next chapter appended; stopping playback"
-                    }
-                    stopTts()
-                } else if (ttsController.isTtsAutoPlay && !ttsController.isSpeaking()) {
-                    logcat(LogPriority.WARN) {
-                        "TTS (WebView): Handoff timeout after 5000ms; resuming playback on new chapter"
-                    }
-                    startTts()
-                }
-            }
-        }
-        handoffState = TtsHandoffState.Appending(watchdog = timeoutJob)
-    }
-
-    private fun clearPendingTtsHandoff() {
-        handoffState.timeoutJob?.cancel()
-        handoffState = TtsHandoffState.Idle
     }
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
@@ -696,14 +705,20 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 webView.postDelayed({
                     val js = """
                         (function() {
-                            var scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-                            if (scrollHeight > 0) {
-                                window.scrollTo(0, scrollHeight * $progress);
-                                console.log('Restored scroll to ' + Math.round($progress * 100) + '% (' + Math.round(scrollHeight * $progress) + 'px)');
+                            function scrollable() {
+                                var docHeight = Math.max(
+                                    document.documentElement.scrollHeight,
+                                    document.body ? document.body.scrollHeight : 0
+                                );
+                                var viewport = window.innerHeight || document.documentElement.clientHeight;
+                                return docHeight - viewport;
+                            }
+                            var range = scrollable();
+                            if (range > 0) {
+                                window.scrollTo(0, range * $progress);
                             } else {
                                 setTimeout(function() {
-                                    var newScrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-                                    window.scrollTo(0, newScrollHeight * $progress);
+                                    window.scrollTo(0, scrollable() * $progress);
                                 }, 200);
                             }
                         })();
@@ -721,7 +736,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ThemeUtils.getThemeColors(activity, preferences, theme)
 
     override fun destroy() {
-        saveProgress()
+        // Only persist if real progress exists. lastSavedProgress starts at 0 and stays 0
+        // until onPageFinished restores or the user scrolls. Saving 0 here on an early
+        // teardown (orientation lock recreates the activity before restore runs) would
+        // wipe the chapter's saved progress.
+        if (lastSavedProgress > 0f) saveProgress()
 
         ttsController.destroy()
         imageCache.clear()
@@ -788,7 +807,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             """
             (function() {
                 function checkIfShortChapter() {
-                    return document.documentElement.scrollHeight - document.documentElement.clientHeight <= 0;
+                    var docHeight = Math.max(
+                        document.documentElement.scrollHeight,
+                        document.body ? document.body.scrollHeight : 0
+                    );
+                    var viewport = window.innerHeight || document.documentElement.clientHeight;
+                    return docHeight - viewport <= 0;
                 }
                 var called = false;
                 function tryMarkShort() {
@@ -1538,12 +1562,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         @JavascriptInterface
         fun onInfiniteScrollAppendComplete(@Suppress("UNUSED_PARAMETER") chapterId: Long) {
-            activity.runOnUiThread {
-                if (ttsController.isTtsAutoPlay && handoffState.isAppending) {
-                    clearPendingTtsHandoff()
-                    unloadReadChaptersAndStartNextTts()
-                }
-            }
+            // No-op: the TTS handoff is now driven directly from loadNextChapterForTts after the
+            // append completes, instead of waiting on this requestAnimationFrame-fired callback
+            // (which is paused while the activity is backgrounded, stalling background TTS).
         }
 
         @JavascriptInterface
@@ -1732,12 +1753,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * default (`silent = false`) so the user gets the loading hint when they
      * scroll to the threshold themselves.
      */
-    private suspend fun appendNextChapterIfAvailable(silent: Boolean = false) {
+    private suspend fun appendNextChapterIfAvailable(silent: Boolean = false): Boolean {
         val cached = handoffState.cachedOrNull
         if (cached != null) {
             handoffState = TtsHandoffState.Idle
             val (preparedChapter, page) = cached
-            val nextId = preparedChapter.chapter.id ?: return
+            val nextId = preparedChapter.chapter.id ?: return false
             if (!loadedChapterIds.contains(nextId)) {
                 logcat(LogPriority.DEBUG) {
                     "NovelWebViewViewer: using pre-fetched chapter $nextId (${preparedChapter.chapter.name})"
@@ -1752,7 +1773,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     setJsLoadingNext()
                 }
             }
-            return
+            // Already loaded counts as success; the caller still advances TTS onto it.
+            return true
         }
 
         // Coalesce with an in-flight TTS pre-fetch: if one is running, wait for
@@ -1764,6 +1786,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // Cache populated while we waited — recurse to take the cache path.
                 return appendNextChapterIfAvailable(silent = true)
             }
+            // Timed out: the prefetch is still running but we're proceeding with a
+            // cold fetch. Clear PreFetching now so the racing prefetch coroutine
+            // cannot later set handoffState = Cached for a chapter we're about to
+            // load here — that stale entry would confuse the *next* TTS handoff.
+            handoffState = TtsHandoffState.Idle
         }
 
         val anchor = loadedChapters.lastOrNull() ?: currentChapters?.currChapter ?: run {
@@ -1771,7 +1798,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 "NovelWebViewViewer: appendNext failed, no anchor chapter (loadedCount=${loadedChapters.size})"
             }
             inlineFeedback.showInlineError("No anchor chapter for infinite scroll", isPrepend = false)
-            return
+            return false
         }
         logcat(LogPriority.DEBUG) {
             "NovelWebViewViewer: appendNext starting from anchor=${anchor.chapter.id}/${anchor.chapter.name}"
@@ -1780,29 +1807,29 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor) ?: run {
             logcat(LogPriority.WARN) { "NovelWebViewViewer: No next chapter available after ${anchor.chapter.name}" }
             inlineFeedback.showInlineError("No next chapter available", isPrepend = false)
-            return
+            return false
         }
         val nextId = preparedChapter.chapter.id ?: run {
             logcat(LogPriority.ERROR) { "NovelWebViewViewer: prepared next chapter has null id" }
             inlineFeedback.showInlineError("Chapter has no id", isPrepend = false)
-            return
+            return false
         }
         logcat(LogPriority.DEBUG) { "NovelWebViewViewer: prepared next=$nextId/${preparedChapter.chapter.name}" }
 
         if (loadedChapterIds.contains(nextId)) {
             logcat(LogPriority.DEBUG) { "NovelWebViewViewer: next chapter $nextId already loaded, skipping" }
-            return
+            return true
         }
 
         val page = preparedChapter.pages?.firstOrNull() ?: run {
             logcat(LogPriority.ERROR) { "NovelWebViewViewer: No page in prepared next chapter" }
             inlineFeedback.showInlineError("No page in next chapter", isPrepend = false)
-            return
+            return false
         }
         val loader = page.chapter.pageLoader ?: run {
             logcat(LogPriority.ERROR) { "NovelWebViewViewer: No page loader for next chapter" }
             inlineFeedback.showInlineError("No loader for next chapter", isPrepend = false)
-            return
+            return false
         }
 
         if (!silent) inlineFeedback.showInlineLoading(isPrepend = false)
@@ -1825,7 +1852,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 false
             }
 
-            if (!loaded) return
+            if (!loaded) return false
 
             logcat(LogPriority.DEBUG) {
                 "NovelWebViewViewer: appending content for chapter $nextId ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
@@ -1834,6 +1861,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             logcat(LogPriority.INFO) {
                 "NovelWebViewViewer: Successfully appended next chapter ${preparedChapter.chapter.name}"
             }
+            return true
         } finally {
             if (!silent) inlineFeedback.hideInlineLoading(isPrepend = false)
             setJsLoadingNext()
@@ -1900,9 +1928,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 var scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
                 var targetScroll = scrollHeight * $progress / 100;
                 window.scrollTo(0, targetScroll);
-                if (typeof lastProgress !== 'undefined') {
-                    lastProgress = $progress / 100.0;
-                }
+                // A programmatic scrollTo from the slider does not reliably fire the page's
+                // 'scroll' listener, so the infinite-scroll threshold check (which lives in
+                // that listener) never runs. Dispatch one explicitly so a slider jump to the
+                // end of the last loaded chapter loads the next chapter just like a manual scroll.
+                window.dispatchEvent(new Event('scroll'));
             })();
             """.trimIndent(),
             null,
@@ -1938,31 +1968,23 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             return
         }
         val (chapterIdx, chapterId) = getTtsChapterContext()
-        evaluateJavascriptSafe(
-            """
-            (function() {
-                var body = document.body;
-                return body ? body.innerText || body.textContent : '';
-            })();
-            """.trimIndent(),
-        ) { result ->
-            val text = result.let {
-                if (it.startsWith("\"") && it.endsWith("\"")) {
-                    // Unescape in reverse-dependency order: \\ must be replaced before
-                    // \" / \n / \t so that \\n stays as backslash+n, not newline.
-                    it.substring(1, it.length - 1)
-                        .replace("\\\\", "\\")
-                        .replace("\\n", "\n")
-                        .replace("\\t", "\t")
-                        .replace("\\\"", "\"")
-                } else {
-                    it
-                }
-            }
+        evaluateJavascriptSafe(TTS_TEXT_EXTRACTION_JS) { result ->
+            val text = unescapeJsResult(result)
 
             if (text.isNotBlank() && text != "null") {
                 logcat(LogPriority.DEBUG) { "TTS (WebView): Starting to speak ${text.length} characters" }
                 ttsController.speak(text, chapterIdx, chapterId)
+
+                // Inf-scroll TTS reads in place; the JS scroll threshold that normally kicks
+                // the prefetch may never fire. Start it when playback begins on the last loaded
+                // chapter so the next chapter is cached before onLastChunkDone hands off,
+                // instead of stalling on a cold fetch. Idempotent via the handoffState guard.
+                if (preferences.novelInfiniteScroll.get() &&
+                    handoffState.isIdle &&
+                    loadedChapters.getOrNull(currentChapterIndex + 1) == null
+                ) {
+                    scope.launch { preFetchNextChapterForTts() }
+                }
             } else {
                 logcat(LogPriority.WARN) { "TTS (WebView): No text to speak" }
             }
@@ -1976,7 +1998,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         pendingTtsAutoStartOnLoad = false
         isLoadingRealChapter = false
         ttsController.stop()
-        clearPendingTtsHandoff()
+        handoffState = TtsHandoffState.Idle
     }
 
     fun pauseTts() {
@@ -2069,25 +2091,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             """.trimIndent(),
         ) { rawIndex ->
             val firstVisibleParagraphIndex = rawIndex.trim('"').toIntOrNull() ?: 0
-            evaluateJavascriptSafe(
-                """
-                (function() {
-                    var body = document.body;
-                    return body ? body.innerText || body.textContent : '';
-                })();
-                """.trimIndent(),
-            ) { result ->
-                val text = result.let {
-                    if (it.startsWith("\"") && it.endsWith("\"")) {
-                        it.substring(1, it.length - 1)
-                            .replace("\\\\", "\\")
-                            .replace("\\n", "\n")
-                            .replace("\\t", "\t")
-                            .replace("\\\"", "\"")
-                    } else {
-                        it
-                    }
-                }
+            evaluateJavascriptSafe(TTS_TEXT_EXTRACTION_JS) { result ->
+                val text = unescapeJsResult(result)
 
                 if (text.isNotBlank() && text != "null") {
                     ttsController.ttsViewportParagraphIndex = firstVisibleParagraphIndex.coerceAtLeast(0)
@@ -2116,18 +2121,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             })();
             """.trimIndent(),
         ) { result ->
-            // JavaScript returns quoted string, need to unquote and unescape
-            selectedText = result.let {
-                if (it.startsWith("\"") && it.endsWith("\"")) {
-                    it.substring(1, it.length - 1)
-                        .replace("\\n", "\n")
-                        .replace("\\t", "\t")
-                        .replace("\\\"", "\"")
-                        .replace("\\\\", "\\")
-                } else {
-                    it
-                }
-            }
+            selectedText = unescapeJsResult(result)
         }
         return selectedText
     }
@@ -2174,17 +2168,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ) { result ->
             activity.runOnUiThread {
                 actionMode?.finish() // finish AFTER JS has read the selection
-                val selectedText = if (result != "null" &&
-                    result.startsWith("\"") && result.endsWith("\"")
-                ) {
-                    result.substring(1, result.length - 1)
-                        .replace("\\n", "\n")
-                        .replace("\\t", "\t")
-                        .replace("\\\"", "\"")
-                        .replace("\\\\", "\\")
-                } else {
-                    null
-                }
+                val selectedText = if (result != "null") unescapeJsResult(result).ifEmpty { null } else null
 
                 if (!selectedText.isNullOrBlank()) {
                     pendingSelectedText = selectedText

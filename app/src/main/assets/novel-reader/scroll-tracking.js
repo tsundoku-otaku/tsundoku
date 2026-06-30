@@ -50,10 +50,24 @@
             }
         }
 
-        var scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-        var scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-        var progress = scrollHeight > 0 ? scrollTop / scrollHeight : 1;
-        if (progress >= 0.98) progress = 1.0;
+        var scrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        // Use the real content height and the VISUAL viewport (window.innerHeight).
+        // documentElement.clientHeight is the layout viewport, which diverges from the
+        // visual viewport under useWideViewPort/loadWithOverviewMode (and any scaling),
+        // making scrollHeight - clientHeight larger than the reachable scroll range, so
+        // the true bottom computed to ~0.92 and never hit 100%.
+        var docHeight = Math.max(
+            document.documentElement.scrollHeight,
+            document.body ? document.body.scrollHeight : 0
+        );
+        var viewport = window.innerHeight || document.documentElement.clientHeight;
+        var scrollable = docHeight - viewport;
+        var progress = scrollable > 0 ? scrollTop / scrollable : 1;
+        // Snap to 100% at the real bottom: sub-pixel rounding and fractional DPI leave a
+        // few px of slack that scrollTop can never close.
+        if (scrollable > 0 && scrollTop >= scrollable - 2) progress = 1.0;
+        if (progress >= 0.99) progress = 1.0;
+        if (progress < 0) progress = 0;
 
         var currentChapterProgress = progress;
         var currentChapterIdx = 0;

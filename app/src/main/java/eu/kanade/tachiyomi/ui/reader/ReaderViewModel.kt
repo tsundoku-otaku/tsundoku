@@ -745,8 +745,10 @@ class ReaderViewModel @JvmOverloads constructor(
                 // Skip save if progress hasn't changed at all
                 if (clampedProgress == currentProgress) return@withLock
 
-                // Don't decrease progress unless user scrolled back significantly (>10%)
-                if (clampedProgress < currentProgress - 10 && clampedProgress > 0) {
+                // Reject large backward jumps (>10%), including spurious 0% reports that
+                // fire during relayout/recreation (e.g. orientation lock). A 0 used to be
+                // exempted here, which let a transient 0 wipe real progress on reopen.
+                if (clampedProgress < currentProgress - 10) {
                     logcat(LogPriority.DEBUG) {
                         "NovelProgress: Skipping save - new progress $clampedProgress% is much less than current $currentProgress%"
                     }
