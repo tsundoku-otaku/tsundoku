@@ -203,10 +203,11 @@ private fun SourceValuesSection(source: CustomMangaInfo, current: Manga) {
         if (source.description.orEmpty() != current.description.orEmpty()) {
             add(stringResource(TDMR.strings.edit_label_description) to source.description)
         }
-    }.filter { !it.second.isNullOrBlank() }
+    }
 
     if (changedRows.isEmpty()) return
 
+    val noneLabel = stringResource(MR.strings.none)
     var expanded by remember { mutableStateOf(false) }
     Column {
         Row(
@@ -226,7 +227,7 @@ private fun SourceValuesSection(source: CustomMangaInfo, current: Manga) {
             )
         }
         if (expanded) {
-            changedRows.forEach { (label, value) -> SourceValueRow(label, value.orEmpty()) }
+            changedRows.forEach { (label, value) -> SourceValueRow(label, value.takeUnless { it.isNullOrBlank() } ?: noneLabel) }
         }
         HorizontalDivider()
     }
