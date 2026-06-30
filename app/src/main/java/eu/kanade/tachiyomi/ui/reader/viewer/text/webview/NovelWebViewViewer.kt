@@ -102,6 +102,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 }).join('\n');
             })();
         """
+
+        fun unescapeJsResult(result: String): String =
+            if (result.startsWith("\"") && result.endsWith("\"")) {
+                // \\ must come first so \\n stays as backslash+n rather than becoming a newline.
+                result.substring(1, result.length - 1)
+                    .replace("\\\\", "\\")
+                    .replace("\\n", "\n")
+                    .replace("\\t", "\t")
+                    .replace("\\\"", "\"")
+            } else {
+                result
+            }
     }
 
     private val container = FrameLayout(activity)
@@ -1957,19 +1969,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
         val (chapterIdx, chapterId) = getTtsChapterContext()
         evaluateJavascriptSafe(TTS_TEXT_EXTRACTION_JS) { result ->
-            val text = result.let {
-                if (it.startsWith("\"") && it.endsWith("\"")) {
-                    // Unescape in reverse-dependency order: \\ must be replaced before
-                    // \" / \n / \t so that \\n stays as backslash+n, not newline.
-                    it.substring(1, it.length - 1)
-                        .replace("\\\\", "\\")
-                        .replace("\\n", "\n")
-                        .replace("\\t", "\t")
-                        .replace("\\\"", "\"")
-                } else {
-                    it
-                }
-            }
+            val text = unescapeJsResult(result)
 
             if (text.isNotBlank() && text != "null") {
                 logcat(LogPriority.DEBUG) { "TTS (WebView): Starting to speak ${text.length} characters" }
@@ -2092,17 +2092,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ) { rawIndex ->
             val firstVisibleParagraphIndex = rawIndex.trim('"').toIntOrNull() ?: 0
             evaluateJavascriptSafe(TTS_TEXT_EXTRACTION_JS) { result ->
-                val text = result.let {
-                    if (it.startsWith("\"") && it.endsWith("\"")) {
-                        it.substring(1, it.length - 1)
-                            .replace("\\\\", "\\")
-                            .replace("\\n", "\n")
-                            .replace("\\t", "\t")
-                            .replace("\\\"", "\"")
-                    } else {
-                        it
-                    }
-                }
+                val text = unescapeJsResult(result)
 
                 if (text.isNotBlank() && text != "null") {
                     ttsController.ttsViewportParagraphIndex = firstVisibleParagraphIndex.coerceAtLeast(0)
@@ -2131,18 +2121,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             })();
             """.trimIndent(),
         ) { result ->
-            // JavaScript returns quoted string, need to unquote and unescape
-            selectedText = result.let {
-                if (it.startsWith("\"") && it.endsWith("\"")) {
-                    it.substring(1, it.length - 1)
-                        .replace("\\n", "\n")
-                        .replace("\\t", "\t")
-                        .replace("\\\"", "\"")
-                        .replace("\\\\", "\\")
-                } else {
-                    it
-                }
-            }
+            selectedText = unescapeJsResult(result)
         }
         return selectedText
     }
@@ -2189,17 +2168,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ) { result ->
             activity.runOnUiThread {
                 actionMode?.finish() // finish AFTER JS has read the selection
-                val selectedText = if (result != "null" &&
-                    result.startsWith("\"") && result.endsWith("\"")
-                ) {
-                    result.substring(1, result.length - 1)
-                        .replace("\\n", "\n")
-                        .replace("\\t", "\t")
-                        .replace("\\\"", "\"")
-                        .replace("\\\\", "\\")
-                } else {
-                    null
-                }
+                val selectedText = if (result != "null") unescapeJsResult(result).ifEmpty { null } else null
 
                 if (!selectedText.isNullOrBlank()) {
                     pendingSelectedText = selectedText
