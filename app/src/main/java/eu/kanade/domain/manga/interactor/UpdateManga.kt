@@ -113,11 +113,15 @@ class UpdateManga(
         // memo, and writing onto that would wipe the override and any other memo keys.
         val baseMemo = mangaRepository.getMemo(localManga.id)
         val custom = CustomMangaInfo.from(baseMemo)
-        val author = custom?.author ?: remoteManga.author
-        val artist = custom?.artist ?: remoteManga.artist
-        val description = custom?.description ?: remoteManga.description
-        val genre = custom?.genre ?: remoteManga.getGenres()
-        val status = custom?.status ?: remoteManga.status.toLong()
+        // Per-field overrides take priority. When none exist, honour the old global preference so
+        // users who opted out of metadata updates before the per-field system existed don't lose
+        // their manually-edited values on the first refresh after upgrading.
+        val updateMetadata = custom != null || libraryPreferences.updateMangaMetadata.get()
+        val author = if (updateMetadata) custom?.author ?: remoteManga.author else localManga.author
+        val artist = if (updateMetadata) custom?.artist ?: remoteManga.artist else localManga.artist
+        val description = if (updateMetadata) custom?.description ?: remoteManga.description else localManga.description
+        val genre = if (updateMetadata) custom?.genre ?: remoteManga.getGenres() else localManga.genre
+        val status = if (updateMetadata) custom?.status ?: remoteManga.status.toLong() else localManga.status
 
         // Refresh the source snapshot only while an override is active, so revert can show the
         // current source values without a fetch. Untouched entries keep their memo unchanged.
