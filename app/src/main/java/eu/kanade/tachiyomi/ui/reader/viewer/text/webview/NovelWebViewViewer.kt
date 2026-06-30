@@ -386,8 +386,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // TTS owns the chapter transition here; suppress the visible "Loading…"
                 // banner so it doesn't flash while the cache hits (or the fresh fetch
                 // runs in the background). Errors still surface via showInlineError.
-                val appended = appendNextChapterIfAvailable(silent = true)
-                if (appended) {
+                // 30 s hard cap: if the fetch stalls (e.g. no-timeout HTTP client),
+                // stop TTS rather than leaving isTtsAutoPlay stuck true indefinitely.
+                val appended = withTimeoutOrNull(30_000L) { appendNextChapterIfAvailable(silent = true) }
+                if (appended == true) {
                     // Drive the handoff directly instead of waiting on a JS callback +
                     // watchdog timer. The DOM append and the unload-and-start JS are queued
                     // on the WebView in order, and evaluateJavascript completion fires even
