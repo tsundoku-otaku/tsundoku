@@ -4,11 +4,14 @@ import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.download.DownloadManager
+import eu.kanade.tachiyomi.data.library.LibraryClearJob
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.ensureActive
@@ -19,12 +22,14 @@ import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.manga.interactor.DuplicateMatchMode
 import tachiyomi.domain.manga.interactor.FindDuplicateNovels
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -37,6 +42,9 @@ class DuplicateDetectionScreenModel(
     private val sourcePreferences: SourcePreferences = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val libraryPreferences: tachiyomi.domain.library.service.LibraryPreferences = Injekt.get(),
+    private val coverCache: CoverCache = Injekt.get(),
+    private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
+    private val translatedChapterRepository: TranslatedChapterRepository = Injekt.get(),
 ) : StateScreenModel<DuplicateDetectionScreenModel.State>(State()) {
 
     private val pinnedSourceIds: Set<Long> by lazy {
@@ -120,7 +128,6 @@ class DuplicateDetectionScreenModel(
                 }.filter { it.value.size > 1 }
             }
 
-            // Then filter by category
             val filtered = if (selectedCategoryFilters.isEmpty() && excludedCategoryFilters.isEmpty()) {
                 contentFiltered
             } else {
@@ -202,7 +209,6 @@ class DuplicateDetectionScreenModel(
                 SortMode.PINNED_SOURCE ->
                     filtered.entries
                         .sortedByDescending { (_, novels) ->
-                            // Groups with more pinned source novels come first
                             novels.count { it.manga.source in pinnedSourceIds }
                         }
                         .associate { it.key to it.value }
@@ -659,66 +665,71 @@ class DuplicateDetectionScreenModel(
         mutableState.update { it.copy(showMoveToCategoryDialog = false) }
     }
 
-    suspend fun deleteSelected(deleteManga: Boolean, deleteChapters: Boolean) {
-        val selectedIds = state.value.selection.toList()
+    fun selectionContainsLocalManga(): Boolean {
+        val selectedIds = state.value.selection
+        return state.value.duplicateGroups.values.flatten()
+            .any { it.manga.id in selectedIds && sourceManager.getOrStub(it.manga.source).isLocal() }
+    }
+
+    suspend fun deleteSelected(
+        removeFromLibrary: Boolean,
+        deleteDownloads: Boolean,
+        clearChaptersFromDb: Boolean,
+        deleteTranslations: Boolean,
+        clearCovers: Boolean,
+        clearDescriptions: Boolean,
+        clearTags: Boolean,
+    ) {
+        val selectedIds = state.value.selection
+        val selectedManga = state.value.duplicateGroups.values.asSequence()
+            .flatten()
+            .map { it.manga }
+            .filter { it.id in selectedIds }
+            .distinctBy { it.id }
+            .toList()
+        val selectedIdList = selectedManga.map { it.id }
         withContext(Dispatchers.IO) {
-            if (deleteChapters) {
-                selectedIds.forEach { mangaId ->
+            if (deleteDownloads) {
+                selectedManga.forEach { manga ->
                     try {
-                        val manga = mangaRepository.getMangaById(mangaId)
                         val source = sourceManager.get(manga.source) ?: return@forEach
                         downloadManager.deleteManga(manga, source)
                     } catch (e: Exception) {
-                        logcat(LogPriority.ERROR) { "Error deleting downloads for manga $mangaId: ${e.message}" }
+                        logcat(LogPriority.ERROR) { "Error deleting downloads for manga ${manga.id}: ${e.message}" }
                     }
                 }
             }
 
-            selectedIds.chunked(100).forEach { batch ->
-                try {
-                    val updates = batch.map { mangaId ->
-                        tachiyomi.domain.manga.model.MangaUpdate(
-                            id = mangaId,
-                            favorite = false,
+            if (removeFromLibrary) {
+                selectedManga.forEach { it.removeCovers(coverCache) }
+                selectedIdList.chunked(100).forEach { batch ->
+                    try {
+                        mangaRepository.updateAll(
+                            batch.map { tachiyomi.domain.manga.model.MangaUpdate(id = it, favorite = false) },
                         )
-                    }
-                    mangaRepository.updateAll(updates)
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR) { "Error batch updating manga favorites: ${e.message}" }
-                    batch.forEach { mangaId ->
-                        try {
-                            mangaRepository.update(
-                                tachiyomi.domain.manga.model.MangaUpdate(
-                                    id = mangaId,
-                                    favorite = false,
-                                ),
-                            )
-                        } catch (individualError: Exception) {
-                            logcat(LogPriority.ERROR) { "Error updating manga $mangaId: ${individualError.message}" }
-                        }
+                    } catch (e: Exception) {
+                        logcat(LogPriority.ERROR) { "Error batch updating manga favorites: ${e.message}" }
                     }
                 }
             }
 
-            if (deleteManga) {
-                // Downloads are already deleted above if deleteChapters was true;
-                // only delete here if deleteChapters was false
-                if (!deleteChapters) {
-                    selectedIds.forEach { mangaId ->
-                        try {
-                            val manga = mangaRepository.getMangaById(mangaId)
-                            val source = sourceManager.get(manga.source)
-                            if (source != null) {
-                                downloadManager.deleteManga(manga, source)
-                            }
-                        } catch (e: Exception) {
-                            logcat(LogPriority.ERROR) { "Error cleaning up manga $mangaId: ${e.message}" }
-                        }
-                    }
+            if (deleteTranslations) {
+                selectedManga.forEach { manga ->
+                    val chapters = getChaptersByMangaId.await(manga.id)
+                    translatedChapterRepository.deleteAllForChapters(chapters.map { it.id })
                 }
             }
 
-            // Clear selection and reload to refresh the list
+            val clearOperations = buildList {
+                if (clearChaptersFromDb) add(LibraryClearJob.OP_CLEAR_CHAPTERS)
+                if (clearCovers) add(LibraryClearJob.OP_CLEAR_COVERS)
+                if (clearDescriptions) add(LibraryClearJob.OP_CLEAR_DESCRIPTIONS)
+                if (clearTags) add(LibraryClearJob.OP_CLEAR_TAGS)
+            }
+            if (clearOperations.isNotEmpty()) {
+                LibraryClearJob.start(Injekt.get<android.app.Application>(), selectedIdList, clearOperations)
+            }
+
             mutableState.update { it.copy(selection = emptySet()) }
             loadDuplicates()
         }

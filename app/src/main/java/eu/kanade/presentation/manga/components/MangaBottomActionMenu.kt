@@ -315,7 +315,6 @@ fun LibraryBottomActionMenu(
     onCopyLinksClicked: (() -> Unit)? = null,
     onUpdateClicked: (() -> Unit)? = null,
     onTranslateClicked: (() -> Unit)? = null,
-    onRemoveChaptersClicked: (() -> Unit)? = null,
     onExportEpubClicked: (() -> Unit)? = null,
 ) {
     AnimatedVisibility(
@@ -449,15 +448,6 @@ fun LibraryBottomActionMenu(
                                     onClick = {
                                         overflowMenuOpen = false
                                         onTranslateClicked()
-                                    },
-                                )
-                            }
-                            if (onRemoveChaptersClicked != null) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(TDMR.strings.action_remove_chapters)) },
-                                    onClick = {
-                                        overflowMenuOpen = false
-                                        onRemoveChaptersClicked()
                                     },
                                 )
                             }

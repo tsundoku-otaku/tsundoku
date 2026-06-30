@@ -330,9 +330,6 @@ data object LibraryTab : Tab {
                     isNovelMode = false, // Manga mode for LibraryTab
                 )
             }
-            is LibraryScreenModel.Dialog.RemoveChapters -> {
-                // Remove chapters dialog - handled in NovelsTab
-            }
             is LibraryScreenModel.Dialog.ImportEpub -> {
                 // Import EPUB is only used in NovelsTab, not here
             }

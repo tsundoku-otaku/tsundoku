@@ -1466,10 +1466,6 @@ class LibraryScreenModel(
         mutableState.update { it.copy(dialog = Dialog.UpdateSelected(state.value.selectedManga)) }
     }
 
-    fun openRemoveChaptersDialog() {
-        mutableState.update { it.copy(dialog = Dialog.RemoveChapters(state.value.selectedManga)) }
-    }
-
     fun closeDialog() {
         mutableState.update { it.copy(dialog = null) }
     }
@@ -1955,7 +1951,6 @@ class LibraryScreenModel(
             val initialSelection: List<CheckboxState<Category>>,
         ) : Dialog
         data class DeleteManga(val manga: List<Manga>) : Dialog
-        data class RemoveChapters(val manga: List<Manga>) : Dialog
         data class MarkReadConfirmation(val read: Boolean) : Dialog
     }
 

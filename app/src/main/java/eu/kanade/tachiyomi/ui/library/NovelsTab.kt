@@ -199,7 +199,6 @@ data object NovelsTab : Tab {
                     onTranslateClicked = {
                         screenModel.translateSelectedNovels()
                     },
-                    onRemoveChaptersClicked = screenModel::openRemoveChaptersDialog,
                     onExportEpubClicked = screenModel::openExportEpubDialog,
                 )
             },
@@ -335,8 +334,6 @@ data object NovelsTab : Tab {
                         screenModel.clearSelection()
                     },
                 )
-            }
-            is LibraryScreenModel.Dialog.RemoveChapters -> {
             }
             is LibraryScreenModel.Dialog.MarkReadConfirmation -> {
                 MarkReadConfirmationDialog(

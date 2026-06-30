@@ -82,6 +82,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.presentation.library.DeleteLibraryMangaDialog
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -863,13 +864,29 @@ class DuplicateDetectionScreen : Screen {
 
         // Delete confirmation dialog
         if (state.showDeleteDialog) {
-            DeleteSelectedDialog(
-                count = state.selection.size,
-                onDismiss = { screenModel.closeDeleteDialog() },
-                onConfirm = { deleteManga, deleteChapters ->
+            DeleteLibraryMangaDialog(
+                containsLocalManga = screenModel.selectionContainsLocalManga(),
+                onDismissRequest = { screenModel.closeDeleteDialog() },
+                onConfirm = {
+                        removeFromLibrary,
+                        deleteDownloads,
+                        clearChaptersFromDb,
+                        deleteTranslations,
+                        clearCovers,
+                        clearDescriptions,
+                        clearTags,
+                    ->
                     val count = state.selection.size
                     scope.launch {
-                        screenModel.deleteSelected(deleteManga, deleteChapters)
+                        screenModel.deleteSelected(
+                            removeFromLibrary = removeFromLibrary,
+                            deleteDownloads = deleteDownloads,
+                            clearChaptersFromDb = clearChaptersFromDb,
+                            deleteTranslations = deleteTranslations,
+                            clearCovers = clearCovers,
+                            clearDescriptions = clearDescriptions,
+                            clearTags = clearTags,
+                        )
                         snackbarHostState.showSnackbar(
                             context.ctxStringResource(MR.strings.duplicate_deleted_count, count),
                         )
@@ -1135,54 +1152,6 @@ private fun DuplicateItem(
             }
         }
     }
-}
-
-@Composable
-private fun DeleteSelectedDialog(
-    count: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (deleteManga: Boolean, deleteChapters: Boolean) -> Unit,
-) {
-    var deleteManga by remember { mutableStateOf(false) }
-    var deleteChapters by remember { mutableStateOf(true) }
-
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.strings.duplicate_delete_title, count)) },
-        text = {
-            Column {
-                Text(stringResource(MR.strings.duplicate_delete_message))
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { deleteChapters = !deleteChapters },
-                ) {
-                    Checkbox(checked = deleteChapters, onCheckedChange = { deleteChapters = it })
-                    Text(stringResource(MR.strings.duplicate_delete_downloaded_chapters))
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { deleteManga = !deleteManga },
-                ) {
-                    Checkbox(checked = deleteManga, onCheckedChange = { deleteManga = it })
-                    Text(stringResource(MR.strings.duplicate_delete_from_database))
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                onConfirm(deleteManga, deleteChapters)
-                onDismiss()
-            }) {
-                Text(stringResource(MR.strings.action_delete))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(MR.strings.action_cancel))
-            }
-        },
-    )
 }
 
 @Composable
