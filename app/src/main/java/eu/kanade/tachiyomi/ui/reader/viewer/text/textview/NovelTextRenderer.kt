@@ -95,9 +95,10 @@ internal class NovelTextRenderer(
                 return@launch
             }
 
-            val params = TextViewCompat.getTextMetricsParams(block.chunkViews.first())
+            val selectable = preferences.novelTextSelectable.get()
+            val params = if (selectable) null else TextViewCompat.getTextMetricsParams(block.chunkViews.first())
             val (precomputed, fullText) = withContext(Dispatchers.Default) {
-                chunks.map { PrecomputedTextCompat.create(it, params) } to spannable.toString()
+                params?.let { p -> chunks.map { PrecomputedTextCompat.create(it, p) } } to spannable.toString()
             }
 
             if (token != block.renderToken || !block.container.isAttachedToWindow) return@launch
@@ -110,8 +111,12 @@ internal class NovelTextRenderer(
             }
 
             block.clearSelections()
-            precomputed.forEachIndexed { i, text ->
-                TextViewCompat.setPrecomputedText(block.chunkViews[i], text)
+            if (precomputed != null) {
+                precomputed.forEachIndexed { i, text ->
+                    TextViewCompat.setPrecomputedText(block.chunkViews[i], text)
+                }
+            } else {
+                chunks.forEachIndexed { i, chunk -> block.chunkViews[i].text = chunk }
             }
             block.chunkStarts = starts
             block.fullText = fullText

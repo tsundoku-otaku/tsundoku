@@ -617,6 +617,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             )
             applyTextSelectionPreference(this)
 
+            if (preferences.novelTextSelectable.get() &&
+                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+            ) {
+                setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
+            }
+
             // Set custom action mode callback for text selection
             if (preferences.novelTextSelectable.get()) {
                 customSelectionActionModeCallback = object : android.view.ActionMode.Callback {
