@@ -197,7 +197,7 @@ private fun SourceValuesSection(source: CustomMangaInfo, current: Manga) {
         if (source.status != null && source.status != current.status) {
             add(stringResource(MR.strings.status) to statusLabel(source.status))
         }
-        if (source.genre.orEmpty() != current.genre.orEmpty()) {
+        if (source.genre?.toSet() != current.genre?.toSet()) {
             add(stringResource(TDMR.strings.edit_label_tags) to source.genre?.joinToString(", "))
         }
         if (source.description.orEmpty() != current.description.orEmpty()) {
