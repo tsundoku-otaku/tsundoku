@@ -645,9 +645,9 @@ class MangaScreenModel(
         status: Long,
     ) {
         screenModelScope.launchIO {
-            val manga = successState?.manga
+            val manga = successState?.manga ?: return@launchIO
             // First override: current values are still the source values, so snapshot them for revert.
-            if (manga != null && tachiyomi.domain.manga.model.CustomMangaInfo.from(manga.memo) == null) {
+            if (tachiyomi.domain.manga.model.CustomMangaInfo.from(manga.memo) == null) {
                 setCustomMangaInfo.snapshotSourceIfAbsent(
                     mangaId,
                     tachiyomi.domain.manga.model.CustomMangaInfo(
@@ -659,11 +659,11 @@ class MangaScreenModel(
                     ),
                 )
             }
-            val authorChanged = author != manga?.author.orEmpty()
-            val artistChanged = artist != manga?.artist.orEmpty()
-            val descriptionChanged = description != manga?.description.orEmpty()
-            val statusChanged = status != manga?.status
-            val tagsChanged = tags != manga?.genre.orEmpty()
+            val authorChanged = author != manga.author.orEmpty()
+            val artistChanged = artist != manga.artist.orEmpty()
+            val descriptionChanged = description != manga.description.orEmpty()
+            val statusChanged = status != manga.status
+            val tagsChanged = tags != manga.genre.orEmpty()
 
             if (authorChanged) updateManga.awaitUpdateAuthor(mangaId, author)
             if (artistChanged) updateManga.awaitUpdateArtist(mangaId, artist)
