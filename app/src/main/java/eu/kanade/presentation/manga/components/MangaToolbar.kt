@@ -44,6 +44,7 @@ fun MangaToolbar(
     onClickFindDuplicates: (() -> Unit)?,
     onClickEditNotes: () -> Unit,
     onClickEdit: (() -> Unit)?,
+    onClickClearCustomInfo: (() -> Unit)? = null,
     onClickTranslate: (() -> Unit)? = null,
     onClickTranslateDownloaded: (() -> Unit)? = null,
     onClickExportEpub: (() -> Unit)? = null,
@@ -186,6 +187,14 @@ fun MangaToolbar(
                             AppBar.OverflowAction(
                                 title = stringResource(MR.strings.action_edit),
                                 onClick = onClickEdit,
+                            ),
+                        )
+                    }
+                    if (onClickClearCustomInfo != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(TDMR.strings.action_clear_custom_metadata),
+                                onClick = onClickClearCustomInfo,
                             ),
                         )
                     }

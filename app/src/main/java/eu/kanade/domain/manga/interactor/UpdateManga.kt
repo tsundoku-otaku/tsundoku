@@ -12,6 +12,8 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.FetchInterval
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.model.CustomMangaInfo
+import tachiyomi.domain.manga.model.CustomMangaInfo.Companion.writeSourceInto
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -107,9 +109,33 @@ class UpdateManga(
 
         val thumbnailUrl = remoteManga.thumbnail_url?.takeIf { it.isNotEmpty() }
 
-        // Don't overwrite manually edited metadata unless the preference is enabled
-        val updateMetadata = libraryPreferences.updateMangaMetadata.get()
-        val status = remoteManga.status.toLong()
+        // Read the live memo from the db; localManga (esp. from library updates) may carry an empty
+        // memo, and writing onto that would wipe the override and any other memo keys.
+        val baseMemo = mangaRepository.getMemo(localManga.id)
+        val custom = CustomMangaInfo.from(baseMemo)
+        // Per-field overrides take priority. When none exist, honour the old global preference so
+        // users who opted out of metadata updates before the per-field system existed don't lose
+        // their manually-edited values on the first refresh after upgrading.
+        val updateMetadata = custom != null || libraryPreferences.updateMangaMetadata.get()
+        val author = if (updateMetadata) custom?.author ?: remoteManga.author else localManga.author
+        val artist = if (updateMetadata) custom?.artist ?: remoteManga.artist else localManga.artist
+        val description = if (updateMetadata) custom?.description ?: remoteManga.description else localManga.description
+        val genre = if (updateMetadata) custom?.genre ?: remoteManga.getGenres() else localManga.genre
+        val status = if (updateMetadata) custom?.status ?: remoteManga.status.toLong() else localManga.status
+
+        // Refresh the source snapshot only while an override is active, so revert can show the
+        // current source values without a fetch. Untouched entries keep their memo unchanged.
+        val newMemo = if (custom != null) {
+            CustomMangaInfo(
+                author = remoteManga.author,
+                artist = remoteManga.artist,
+                description = remoteManga.description,
+                genre = remoteManga.getGenres(),
+                status = remoteManga.status.toLong(),
+            ).writeSourceInto(baseMemo)
+        } else {
+            baseMemo
+        }
 
         // Alternative titles are always merged additively (never removed), so they don't clash with
         // manual edits and aren't gated by updateMetadata.
@@ -134,13 +160,14 @@ class UpdateManga(
                 id = localManga.id,
                 title = title,
                 coverLastModified = coverLastModified,
-                author = remoteManga.author.takeIf { updateMetadata },
-                artist = remoteManga.artist.takeIf { updateMetadata },
-                description = remoteManga.description.takeIf { updateMetadata },
-                genre = remoteManga.getGenres().takeIf { updateMetadata },
+                author = author,
+                artist = artist,
+                description = description,
+                genre = genre,
                 alternativeTitles = mergedAltTitles,
                 thumbnailUrl = thumbnailUrl,
-                status = status.takeIf { updateMetadata },
+                status = status,
+                memo = newMemo,
                 updateStrategy = remoteManga.update_strategy,
                 initialized = true,
             ),
@@ -154,7 +181,11 @@ class UpdateManga(
                     title = title ?: manga.title,
                     thumbnailUrl = thumbnailUrl ?: manga.thumbnailUrl,
                     coverLastModified = coverLastModified ?: manga.coverLastModified,
-                    status = if (updateMetadata) status else manga.status,
+                    author = author,
+                    artist = artist,
+                    description = description,
+                    genre = genre,
+                    status = status,
                     alternativeTitles = mergedAltTitles ?: manga.alternativeTitles,
                 )
             }

@@ -1,6 +1,7 @@
 package tachiyomi.domain.manga.repository
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.JsonObject
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
 import tachiyomi.domain.manga.model.Manga
@@ -25,6 +26,9 @@ interface MangaRepository {
     suspend fun getMangaById(id: Long): Manga
 
     suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga>
+
+    /** Raw [Manga.memo] JSON for a manga, used for per-field custom metadata overrides. */
+    suspend fun getMemo(mangaId: Long): JsonObject
 
     suspend fun getMangaByUrlAndSourceId(url: String, sourceId: Long): Manga?
 

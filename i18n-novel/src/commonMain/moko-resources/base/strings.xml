@@ -7,8 +7,11 @@
     nav_zone_next: Next
     nav_zone_prev: Prev
      -->
-    <string name="pref_update_library_manga_metadata">Update entries metadata to match source</string>
-    <string name="pref_update_library_manga_metadata_summary">When refreshing, overwrite author, description, status and tags with source data. Disable so further updates from the source never override the entry metadata, keeping your manual edits.</string>
+    <string name="action_clear_custom_metadata">Clear custom metadata</string>
+    <string name="clear_custom_metadata_confirm">Remove your manually edited author, artist, description, tags and status, then restore the source values?</string>
+    <string name="edit_original_source_values">Original source values</string>
+    <string name="edit_label_tags">Tags</string>
+    <string name="edit_label_description">Description</string>
     <!-- Screen Titles -->
     <string name="label_novel_download_queue">Novel downloads</string>
     <string name="label_manga_sources">Manga Sources</string>

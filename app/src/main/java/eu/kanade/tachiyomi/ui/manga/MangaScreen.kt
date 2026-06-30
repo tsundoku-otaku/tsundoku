@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -67,7 +70,11 @@ import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.manga.model.CustomMangaInfo
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 
 class MangaScreen(
@@ -188,6 +195,13 @@ class MangaScreen(
             },
             onEditNotesClicked = { navigator.push(MangaNotesScreen(manga = successState.manga)) },
             onEditClicked = screenModel::showEditDialog,
+            onClearCustomInfoClicked = if (
+                successState.manga.favorite && CustomMangaInfo.from(successState.manga.memo) != null
+            ) {
+                screenModel::showClearCustomInfoDialog
+            } else {
+                null
+            },
             onTranslateClicked = screenModel::translateMangaDetails,
             onTranslateDownloadedClicked = screenModel::translateDownloadedChapters,
             onExportEpubClicked = screenModel::showExportEpubDialog.takeIf { successState.isNovel },
@@ -346,17 +360,38 @@ class MangaScreen(
             is MangaScreenModel.Dialog.Edit -> {
                 eu.kanade.presentation.manga.components.EditMangaDialog(
                     manga = dialog.manga,
+                    sourceInfo = CustomMangaInfo.fromSource(dialog.manga.memo),
                     onDismissRequest = onDismissRequest,
                     onSaveTitle = { screenModel.updateTitle(it) },
-                    onSaveDescription = { screenModel.updateDescription(it) },
                     onSaveUrl = { screenModel.updateUrl(it) },
-                    onSaveTags = { screenModel.updateTags(it) },
                     onSaveAltTitles = { screenModel.updateAlternativeTitles(it) },
-                    onSaveAuthor = { screenModel.updateAuthor(it) },
-                    onSaveArtist = { screenModel.updateArtist(it) },
-                    onSaveStatus = { screenModel.updateStatus(it) },
+                    onSaveInfo = { description, tags, author, artist, status ->
+                        screenModel.updateMangaInfo(description, tags, author, artist, status)
+                    },
                     onSwapMainTitle = { newMain, updatedAlts ->
                         screenModel.swapMainTitle(newMain, updatedAlts)
+                    },
+                )
+            }
+            MangaScreenModel.Dialog.ClearCustomInfo -> {
+                AlertDialog(
+                    onDismissRequest = onDismissRequest,
+                    title = { Text(stringResource(TDMR.strings.action_clear_custom_metadata)) },
+                    text = { Text(stringResource(TDMR.strings.clear_custom_metadata_confirm)) },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                screenModel.clearCustomInfo()
+                                onDismissRequest()
+                            },
+                        ) {
+                            Text(stringResource(MR.strings.action_ok))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDismissRequest) {
+                            Text(stringResource(MR.strings.action_cancel))
+                        }
                     },
                 )
             }

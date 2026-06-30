@@ -130,6 +130,7 @@ class MangaScreenModel(
     private val updateChapter: UpdateChapter = Injekt.get(),
     private val removeChapters: RemoveChapters = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
+    private val setCustomMangaInfo: tachiyomi.domain.manga.interactor.SetCustomMangaInfo = Injekt.get(),
     private val updateMangaNotes: tachiyomi.domain.manga.interactor.UpdateMangaNotes = Injekt.get(),
     private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
@@ -633,16 +634,47 @@ class MangaScreenModel(
     }
 
     /**
-     * Update the tags (genre) of the manga.
+     * Apply the edit dialog's fields in one pass. The override memo is read-modify-written once so
+     * concurrent per-field updates can't clobber each other; a blank field reverts to source.
      */
-    fun updateTags(tags: List<String>) {
+    fun updateMangaInfo(
+        description: String,
+        tags: List<String>,
+        author: String,
+        artist: String,
+        status: Long,
+    ) {
         screenModelScope.launchIO {
-            val update = tachiyomi.domain.manga.model.MangaUpdate(
-                id = mangaId,
-                genre = tags,
+            val manga = successState?.manga ?: return@launchIO
+            val authorChanged = author != manga.author.orEmpty()
+            val artistChanged = artist != manga.artist.orEmpty()
+            val descriptionChanged = description != manga.description.orEmpty()
+            val statusChanged = status != manga.status
+            val tagsChanged = tags != manga.genre.orEmpty()
+
+            if (!authorChanged && !artistChanged && !descriptionChanged && !statusChanged &&
+                !tagsChanged
+            ) {
+                return@launchIO
+            }
+
+            setCustomMangaInfo.awaitWithFields(
+                mangaId = mangaId,
+                sourceSnapshot = tachiyomi.domain.manga.model.CustomMangaInfo(
+                    author = manga.author,
+                    artist = manga.artist,
+                    description = manga.description,
+                    genre = manga.genre,
+                    status = manga.status,
+                ),
+                author = if (authorChanged) author else null,
+                artist = if (artistChanged) artist else null,
+                description = if (descriptionChanged) description else null,
+                status = if (statusChanged) status else null,
+                genre = if (tagsChanged) tags else null,
             )
-            updateManga.await(update)
-            getLibraryManga.applyMangaDetailUpdate(mangaId) { it.copy(genre = tags) }
+
+            if (tagsChanged) getLibraryManga.applyMangaDetailUpdate(mangaId) { it.copy(genre = tags) }
         }
     }
 
@@ -1302,6 +1334,7 @@ class MangaScreenModel(
         data class Migrate(val target: Manga, val current: Manga) : Dialog
         data class SetFetchInterval(val manga: Manga) : Dialog
         data class Edit(val manga: Manga) : Dialog
+        data object ClearCustomInfo : Dialog
         data class TranslateMangaDetails(val manga: Manga) : Dialog
         data class ExportEpub(val manga: Manga, val chapters: List<Chapter>) : Dialog
         data object SettingsSheet : Dialog
@@ -1408,45 +1441,26 @@ class MangaScreenModel(
         updateSuccessState { it.copy(dialog = Dialog.Edit(manga)) }
     }
 
+    fun showClearCustomInfoDialog() {
+        updateSuccessState { it.copy(dialog = Dialog.ClearCustomInfo) }
+    }
+
     /**
-     * Update the title of the manga.
+     * Drop all custom metadata overrides for this manga and re-fetch details so the source values
+     * repopulate the entry.
      */
+    fun clearCustomInfo() {
+        screenModelScope.launchIO {
+            val restoredFromSnapshot = setCustomMangaInfo.clear(mangaId)
+            if (!restoredFromSnapshot) {
+                fetchMangaFromSource(manualFetch = true)
+            }
+        }
+    }
+
     fun updateTitle(title: String) {
         screenModelScope.launchIO {
             updateManga.awaitUpdateTitle(mangaId, title)
-        }
-    }
-
-    /**
-     * Update the Author of the manga.
-     */
-    fun updateAuthor(author: String) {
-        screenModelScope.launchIO {
-            updateManga.awaitUpdateAuthor(mangaId, author)
-        }
-    }
-
-    fun updateArtist(artist: String) {
-        screenModelScope.launchIO {
-            updateManga.awaitUpdateArtist(mangaId, artist)
-        }
-    }
-
-    /**
-     * Update the Status of the manga.
-     */
-    fun updateStatus(status: Long) {
-        screenModelScope.launchIO {
-            updateManga.awaitUpdateStatus(mangaId, status)
-        }
-    }
-
-    /**
-     * Update the description of the manga.
-     */
-    fun updateDescription(description: String) {
-        screenModelScope.launchIO {
-            updateManga.awaitUpdateDescription(mangaId, description)
         }
     }
 

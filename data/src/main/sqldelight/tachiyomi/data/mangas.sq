@@ -79,6 +79,11 @@ SELECT *
 FROM mangas
 WHERE _id = :id;
 
+getMemoById:
+SELECT memo
+FROM mangas
+WHERE _id = :id;
+
 -- TODO: this should ideally never really have more than 1 result
 getMangaByUrlAndSource:
 SELECT *
