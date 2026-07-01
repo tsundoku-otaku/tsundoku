@@ -267,6 +267,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         val title: String,
         val href: String,
         val order: Int,
+        val depth: Int = 0,
     )
 
     /**
@@ -320,104 +321,41 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
      * "Chapter 1 - Part 2". This keeps preview labels and chapter list labels consistent.
      */
     fun getNormalizedTableOfContents(): List<EpubChapter> {
-        val toc = getTableOfContents()
-        if (toc.isEmpty()) return emptyList()
-
-        var latestPrimaryTitle: String? = null
-
-        return toc.mapIndexed { index, chapter ->
-            val rawTitle = chapter.title.trim()
-            val isSubsection = subsectionTitleRegex.matches(rawTitle)
-
-            val normalizedTitle = when {
-                rawTitle.isBlank() -> "Chapter ${index + 1}"
-                isSubsection && !latestPrimaryTitle.isNullOrBlank() -> "$latestPrimaryTitle - $rawTitle"
-                else -> rawTitle
-            }
-
-            if (!isSubsection && rawTitle.isNotBlank()) {
-                latestPrimaryTitle = rawTitle
-            }
-
-            chapter.copy(title = normalizedTitle)
-        }
+        return normalizeTableOfContents(getTableOfContents())
     }
 
-    private val subsectionTitleRegex =
-        Regex("(?i)^(part|section|episode|ep\\.?|act|book|volume|vol\\.?|chapter|ch\\.?)\\s*[0-9ivxlcdm]+\\b")
-
     /**
-     * Parse EPUB 3 NAV document for TOC.
+     * Parse EPUB 3 NAV document for TOC, preserving the nested <ol>/<li> hierarchy as [EpubChapter.depth].
      * NAV hrefs are relative to the NAV file location.
      * Keep hash fragments because many EPUBs map sub-sections using anchors in the same XHTML file.
      */
     private fun parseEpub3Nav(navPath: String): List<EpubChapter> {
-        val chapters = mutableListOf<EpubChapter>()
         val navBasePath = getParentDirectory(navPath)
-        var previousResolvedPath: String? = null
-        getInputStream(navPath)?.use { inputStream ->
+        return getInputStream(navPath)?.use { inputStream ->
             val doc = Jsoup.parse(inputStream, null, "", Parser.xmlParser())
-
             // EPUB 3 NAV uses <nav epub:type="toc"> or <nav id="toc">
             val navElement = doc.selectFirst("nav[*|type=toc], nav#toc, nav[epub\\:type=toc]")
-            navElement?.select("li a")?.forEachIndexed { index, element ->
-                val title = element.text().trim()
-                val href = element.attr("href").trim().urlDecoded()
-                if (title.isNotEmpty() && href.isNotEmpty()) {
-                    // Resolve path and then restore fragment (if present).
-                    val pathPart = href.substringBefore("#")
-                    val fragment = href.substringAfter("#", "")
-                    val resolvedPath = if (pathPart.isNotBlank()) {
-                        resolveZipPath(navBasePath, pathPart).also { previousResolvedPath = it }
-                    } else {
-                        // Some EPUBs use href="#fragment" to continue pointing into the prior chapter file.
-                        previousResolvedPath ?: navPath
-                    }
-                    val resolvedHref = if (fragment.isNotEmpty()) {
-                        "$resolvedPath#$fragment"
-                    } else {
-                        resolvedPath
-                    }
-                    chapters.add(EpubChapter(title, resolvedHref, index))
-                }
+            val rootList: Element? = navElement?.selectFirst("> ol") ?: navElement?.selectFirst("ol")
+            if (rootList == null) {
+                emptyList()
+            } else {
+                buildTocFromNavList(rootList, navPath) { path -> resolveZipPath(navBasePath, path) }
             }
-        }
-        return chapters
+        }.orEmpty()
     }
 
     /**
-     * Parse EPUB 2 NCX document for TOC.
+     * Parse EPUB 2 NCX document for TOC, preserving nested <navPoint> hierarchy as [EpubChapter.depth].
      * NCX src paths are resolved relative to the NCX file location.
      * Keep hash fragments because many EPUBs map sub-sections using anchors in the same XHTML file.
      */
     private fun parseEpub2Ncx(ncxPath: String): List<EpubChapter> {
-        val chapters = mutableListOf<EpubChapter>()
         val ncxBasePath = getParentDirectory(ncxPath)
-        var previousResolvedPath: String? = null
-        getInputStream(ncxPath)?.use { inputStream ->
+        return getInputStream(ncxPath)?.use { inputStream ->
             val doc = Jsoup.parse(inputStream, null, "", Parser.xmlParser())
-            doc.select("navPoint").forEachIndexed { index, navPoint ->
-                val title = navPoint.selectFirst("navLabel > text")?.text()?.trim() ?: ""
-                val href = navPoint.selectFirst("content")?.attr("src")?.trim()?.urlDecoded() ?: ""
-                if (title.isNotEmpty() && href.isNotEmpty()) {
-                    // Resolve path and then restore fragment (if present).
-                    val pathPart = href.substringBefore("#")
-                    val fragment = href.substringAfter("#", "")
-                    val resolvedPath = if (pathPart.isNotBlank()) {
-                        resolveZipPath(ncxBasePath, pathPart).also { previousResolvedPath = it }
-                    } else {
-                        previousResolvedPath ?: ncxPath
-                    }
-                    val resolvedHref = if (fragment.isNotEmpty()) {
-                        "$resolvedPath#$fragment"
-                    } else {
-                        resolvedPath
-                    }
-                    chapters.add(EpubChapter(title, resolvedHref, index))
-                }
-            }
-        }
-        return chapters
+            val navMap = doc.selectFirst("navMap") ?: doc
+            buildTocFromNcxNavMap(navMap, ncxPath) { path -> resolveZipPath(ncxBasePath, path) }
+        }.orEmpty()
     }
 
     /**
@@ -593,6 +531,162 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
     private fun buildExportImageId(imagePath: String): String = computeExportImageId(imagePath)
 
     companion object {
+        private fun urlDecode(value: String): String =
+            runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+
+        /**
+         * Resolves a raw TOC href to an archive path while keeping any fragment. Fragment-only hrefs
+         * (href="#anchor") reuse [previousPath] so they continue pointing into the prior chapter file.
+         * Returns the resolved href and the path to remember for the next fragment-only entry.
+         */
+        private fun resolveTocHref(
+            rawHref: String,
+            defaultPath: String,
+            previousPath: String?,
+            resolvePath: (String) -> String,
+        ): Pair<String, String> {
+            val href = urlDecode(rawHref.trim())
+            val pathPart = href.substringBefore("#")
+            val fragment = href.substringAfter("#", "")
+            val resolvedPath = if (pathPart.isNotBlank()) resolvePath(pathPart) else previousPath ?: defaultPath
+            val resolvedHref = if (fragment.isNotEmpty()) "$resolvedPath#$fragment" else resolvedPath
+            return resolvedHref to resolvedPath
+        }
+
+        /**
+         * Walks an EPUB 2 NCX <navMap> in document order, emitting one [EpubChapter] per <navPoint> and
+         * recording nesting depth from the <navPoint> tree.
+         */
+        fun buildTocFromNcxNavMap(
+            navMap: Element,
+            defaultPath: String,
+            resolvePath: (String) -> String,
+        ): List<EpubChapter> {
+            val chapters = mutableListOf<EpubChapter>()
+            var order = 0
+            var previousPath: String? = null
+
+            fun walk(navPoint: Element, depth: Int) {
+                val title = navPoint.selectFirst("> navLabel > text")?.text()?.trim().orEmpty()
+                val src = navPoint.selectFirst("> content")?.attr("src")?.trim().orEmpty()
+                if (title.isNotEmpty() && src.isNotEmpty()) {
+                    val (resolvedHref, resolvedPath) = resolveTocHref(src, defaultPath, previousPath, resolvePath)
+                    if (src.substringBefore("#").isNotBlank()) previousPath = resolvedPath
+                    chapters.add(EpubChapter(title, resolvedHref, order++, depth))
+                }
+                navPoint.children()
+                    .filter { it.normalName() == "navpoint" }
+                    .forEach { walk(it, depth + 1) }
+            }
+
+            navMap.children()
+                .filter { it.normalName() == "navpoint" }
+                .forEach { walk(it, 0) }
+            return chapters
+        }
+
+        /**
+         * Walks an EPUB 3 nav <ol> in document order, emitting one [EpubChapter] per linked <li> and
+         * recording nesting depth from the nested <ol>/<li> tree.
+         */
+        fun buildTocFromNavList(
+            rootList: Element,
+            defaultPath: String,
+            resolvePath: (String) -> String,
+        ): List<EpubChapter> {
+            val chapters = mutableListOf<EpubChapter>()
+            var order = 0
+            var previousPath: String? = null
+
+            fun walk(list: Element, depth: Int) {
+                list.children()
+                    .filter { it.normalName() == "li" }
+                    .forEach { li ->
+                        val anchor = li.selectFirst("> a") ?: li.selectFirst("> span > a")
+                        val title = anchor?.text()?.trim().orEmpty()
+                        val href = anchor?.attr("href")?.trim().orEmpty()
+                        if (title.isNotEmpty() && href.isNotEmpty()) {
+                            val (resolvedHref, resolvedPath) =
+                                resolveTocHref(href, defaultPath, previousPath, resolvePath)
+                            if (href.substringBefore("#").isNotBlank()) previousPath = resolvedPath
+                            chapters.add(EpubChapter(title, resolvedHref, order++, depth))
+                        }
+                        val childList: Element? = li.selectFirst("> ol")
+                        if (childList != null) walk(childList, depth + 1)
+                    }
+            }
+
+            walk(rootList, 0)
+            return chapters
+        }
+
+        // Fallback for flat TOCs only: matches bare subsection labels like "Part 2" or "Chapter 3." A
+        // descriptive title such as "Chapter 1: Operating Behind the Scenes" must NOT match, otherwise real
+        // chapters get prefixed with the previous entry's title. Structural nesting is preferred over this.
+        private val subsectionTitleRegex =
+            Regex(
+                "(?i)^(part|section|episode|ep\\.?|act|book|volume|vol\\.?|chapter|ch\\.?)" +
+                    "\\s*[0-9ivxlcdm]+\\s*[.:)-]?\\s*$",
+            )
+
+        /**
+         * Turns a TOC into display titles where subsections carry their parent's title
+         * ("Parent - Child"). When the TOC carries real nesting ([EpubChapter.depth]) this is done
+         * structurally and is locale-agnostic. Purely flat TOCs fall back to a keyword heuristic.
+         */
+        fun normalizeTableOfContents(toc: List<EpubChapter>): List<EpubChapter> {
+            if (toc.isEmpty()) return emptyList()
+            return if (toc.any { it.depth > 0 }) {
+                normalizeByDepth(toc)
+            } else {
+                normalizeByHeuristic(toc)
+            }
+        }
+
+        private fun normalizeByDepth(toc: List<EpubChapter>): List<EpubChapter> {
+            val ancestors = mutableListOf<String>()
+
+            return toc.mapIndexed { index, chapter ->
+                val rawTitle = chapter.title.trim()
+                val depth = chapter.depth.coerceAtLeast(0)
+
+                // Drop any ancestor titles at or below the current depth, then pad gaps in the hierarchy.
+                if (ancestors.size > depth) ancestors.subList(depth, ancestors.size).clear()
+                while (ancestors.size < depth) ancestors.add("")
+
+                val prefix = ancestors.filter { it.isNotBlank() }.joinToString(" - ")
+                val normalizedTitle = when {
+                    rawTitle.isBlank() -> "Chapter ${index + 1}"
+                    depth > 0 && prefix.isNotBlank() -> "$prefix - $rawTitle"
+                    else -> rawTitle
+                }
+
+                ancestors.add(rawTitle)
+                chapter.copy(title = normalizedTitle)
+            }
+        }
+
+        private fun normalizeByHeuristic(toc: List<EpubChapter>): List<EpubChapter> {
+            var latestPrimaryTitle: String? = null
+
+            return toc.mapIndexed { index, chapter ->
+                val rawTitle = chapter.title.trim()
+                val isSubsection = subsectionTitleRegex.matches(rawTitle)
+
+                val normalizedTitle = when {
+                    rawTitle.isBlank() -> "Chapter ${index + 1}"
+                    isSubsection && !latestPrimaryTitle.isNullOrBlank() -> "$latestPrimaryTitle - $rawTitle"
+                    else -> rawTitle
+                }
+
+                if (!isSubsection && rawTitle.isNotBlank()) {
+                    latestPrimaryTitle = rawTitle
+                }
+
+                chapter.copy(title = normalizedTitle)
+            }
+        }
+
         fun computeExportImageId(imagePath: String): String {
             val normalized = imagePath.replace('\\', '/')
             val tail = normalized.substringAfterLast('.', "")
