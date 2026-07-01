@@ -309,7 +309,7 @@ class DuplicateDetectionScreen : Screen {
                     .padding(contentPadding),
             ) {
                 // Match mode selector
-                Row(
+                FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -317,6 +317,7 @@ class DuplicateDetectionScreen : Screen {
                 ) {
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.EXACT,
+                        enabled = !state.listingMode,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.EXACT) },
                         label = { Text(stringResource(MR.strings.duplicate_match_exact)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.EXACT) {
@@ -327,6 +328,7 @@ class DuplicateDetectionScreen : Screen {
                     )
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.CONTAINS,
+                        enabled = !state.listingMode,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.CONTAINS) },
                         label = { Text(stringResource(MR.strings.duplicate_match_contains)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.CONTAINS) {
@@ -337,9 +339,20 @@ class DuplicateDetectionScreen : Screen {
                     )
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.URL,
+                        enabled = !state.listingMode,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.URL) },
                         label = { Text(stringResource(MR.strings.duplicate_match_url)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.URL) {
+                            { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                        } else {
+                            null
+                        },
+                    )
+                    FilterChip(
+                        selected = state.listingMode,
+                        onClick = { screenModel.setListingMode(!state.listingMode) },
+                        label = { Text(stringResource(MR.strings.duplicate_listing_mode)) },
+                        leadingIcon = if (state.listingMode) {
                             { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                         } else {
                             null

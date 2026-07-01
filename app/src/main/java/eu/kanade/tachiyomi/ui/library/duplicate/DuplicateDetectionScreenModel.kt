@@ -104,6 +104,9 @@ class DuplicateDetectionScreenModel(
         val sourceTypeMap: Map<Long, SourceType> = emptyMap(),
         val dismissedGroups: Set<String> = emptySet(),
         val filteredDuplicateGroups: Map<String, List<MangaWithChapterCount>> = emptyMap(),
+        val listingMode: Boolean = false,
+        val filteredMangaIds: Set<Long> = emptySet(),
+        val filteredLeadIds: Set<Long> = emptySet(),
     ) {
 
         fun computeFilteredGroups(): Map<String, List<MangaWithChapterCount>> {
@@ -118,14 +121,15 @@ class DuplicateDetectionScreenModel(
                 }
             }
 
+            val minGroupSize = if (listingMode) 1 else 2
             val contentFiltered = when (contentType) {
                 ContentType.ALL -> searchFiltered
                 ContentType.MANGA -> searchFiltered.mapValues { (_, items) ->
                     items.filter { it.manga.source !in novelSourceIds }
-                }.filter { it.value.size > 1 }
+                }.filter { it.value.size >= minGroupSize }
                 ContentType.NOVEL -> searchFiltered.mapValues { (_, items) ->
                     items.filter { it.manga.source in novelSourceIds }
-                }.filter { it.value.size > 1 }
+                }.filter { it.value.size >= minGroupSize }
             }
 
             val filtered = if (selectedCategoryFilters.isEmpty() && excludedCategoryFilters.isEmpty()) {
@@ -303,7 +307,20 @@ class DuplicateDetectionScreenModel(
     }
 
     private fun recomputeFiltered() {
-        mutableState.update { it.copy(filteredDuplicateGroups = it.computeFilteredGroups()) }
+        mutableState.update { state ->
+            val filtered = state.computeFilteredGroups()
+            val allIds = LinkedHashSet<Long>()
+            val leadIds = LinkedHashSet<Long>()
+            filtered.values.forEach { group ->
+                group.firstOrNull()?.manga?.id?.let(leadIds::add)
+                group.forEach { allIds.add(it.manga.id) }
+            }
+            state.copy(
+                filteredDuplicateGroups = filtered,
+                filteredMangaIds = allIds,
+                filteredLeadIds = leadIds,
+            )
+        }
     }
 
     fun setSearchQuery(query: String) {
@@ -315,7 +332,11 @@ class DuplicateDetectionScreenModel(
         screenModelScope.launch(Dispatchers.IO) {
             mutableState.update { it.copy(isLoading = true, hasStartedAnalysis = true) }
             try {
-                val groups = findDuplicateNovels.findDuplicatesGrouped(state.value.matchMode)
+                val groups = if (state.value.listingMode) {
+                    findDuplicateNovels.findAllGrouped()
+                } else {
+                    findDuplicateNovels.findDuplicatesGrouped(state.value.matchMode)
+                }
 
                 val allMangaItems = groups.values.flatten()
                 val allMangaIds = allMangaItems.map { it.manga.id }.distinct()
@@ -372,6 +393,12 @@ class DuplicateDetectionScreenModel(
     fun setContentType(contentType: ContentType) {
         mutableState.update { it.copy(contentType = contentType, selection = emptySet()) }
         recomputeFiltered()
+    }
+
+    fun setListingMode(enabled: Boolean) {
+        if (enabled == state.value.listingMode) return
+        mutableState.update { it.copy(listingMode = enabled, selection = emptySet()) }
+        loadDuplicates()
     }
 
     fun toggleCategoryFilter(categoryId: Long) {
@@ -435,21 +462,15 @@ class DuplicateDetectionScreenModel(
     }
 
     fun invertSelection() {
-        val allIds = state.value.filteredDuplicateGroups.values.flatten().map { it.manga.id }.toSet()
-        val current = state.value.selection
-        mutableState.update { it.copy(selection = allIds - current) }
+        mutableState.update { it.copy(selection = it.filteredMangaIds - it.selection) }
     }
 
     fun selectAllDuplicates() {
-        val allIds = state.value.filteredDuplicateGroups.values.flatten().map { it.manga.id }.toSet()
-        mutableState.update { it.copy(selection = allIds) }
+        mutableState.update { it.copy(selection = it.filteredMangaIds) }
     }
 
     fun selectAllExceptFirst() {
-        val ids = state.value.filteredDuplicateGroups.values
-            .flatMap { group -> group.drop(1).map { it.manga.id } }
-            .toSet()
-        mutableState.update { it.copy(selection = ids) }
+        mutableState.update { it.copy(selection = it.filteredMangaIds - it.filteredLeadIds) }
     }
 
     /**
