@@ -25,7 +25,6 @@ CREATE TABLE chapters(
 CREATE INDEX chapters_library_aggregate_index ON chapters(manga_id, read, bookmark, date_upload, date_fetch);
 CREATE INDEX chapters_manga_scanlator_index ON chapters(manga_id, scanlator);
 CREATE INDEX chapters_read_progress_index ON chapters(manga_id, read, last_page_read) WHERE read = 1 OR last_page_read != 0;
-CREATE INDEX chapters_url_index ON chapters(url);
 
 CREATE TRIGGER update_last_modified_at_chapters
 AFTER UPDATE ON chapters
@@ -97,11 +96,6 @@ SELECT *
 FROM chapters
 WHERE bookmark
 AND manga_id = :mangaId;
-
-getChapterByUrl:
-SELECT *
-FROM chapters
-WHERE url = :chapterUrl;
 
 getChapterByUrlAndMangaId:
 SELECT *

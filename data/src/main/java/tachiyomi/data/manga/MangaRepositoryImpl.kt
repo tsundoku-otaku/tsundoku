@@ -27,7 +27,6 @@ import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.repository.DuplicateGroup
-import tachiyomi.domain.manga.repository.DuplicatePair
 import tachiyomi.domain.manga.repository.MangaRepository
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -1153,7 +1152,26 @@ class MangaRepositoryImpl(
         }.subscribeToList()
     }
 
+    // Built lazily on first duplicate-detection use instead of in the schema or a migration:
+    // building an expression index over a large library takes long enough to stall startup
+    // (the migration runs on first DB access), and duplicate detection is its only consumer.
+    // The exact lower(trim(title)) expression matches getDuplicateLibraryManga and
+    // findDuplicatesExact so SQLite can use it for both; LIKE '%..%' scans cannot use it.
+    @Volatile
+    private var normalizedTitleIndexEnsured = false
+
+    private suspend fun ensureNormalizedTitleIndex() {
+        if (normalizedTitleIndexEnsured) return
+        runCatching {
+            database.mangasQueries.createNormalizedTitleIndex()
+            normalizedTitleIndexEnsured = true
+        }.onFailure {
+            logcat(LogPriority.WARN, it) { "Failed to create mangas_normalized_title_index" }
+        }
+    }
+
     override suspend fun getDuplicateLibraryManga(id: Long, title: String): List<MangaWithChapterCount> {
+        ensureNormalizedTitleIndex()
         return database.mangasQueries.getDuplicateLibraryManga(id, title) {
                 id,
                 source,
@@ -1220,6 +1238,7 @@ class MangaRepositoryImpl(
     }
 
     override suspend fun findDuplicatesExact(): List<DuplicateGroup> {
+        ensureNormalizedTitleIndex()
         return database.mangasQueries.findDuplicatesExact { normalizedTitle, ids, count ->
             DuplicateGroup(
                 normalizedTitle = normalizedTitle ?: "",
@@ -1227,17 +1246,6 @@ class MangaRepositoryImpl(
                 ids?.let { idString -> idString.split(",").mapNotNull { id -> id.toLongOrNull() } }
                     ?: emptyList(),
                 count = count.toInt(),
-            )
-        }.awaitAsList()
-    }
-
-    override suspend fun findDuplicatesContains(): List<DuplicatePair> {
-        return database.mangasQueries.findDuplicatesContains { idA, titleA, idB, titleB ->
-            DuplicatePair(
-                idA = idA,
-                titleA = titleA,
-                idB = idB,
-                titleB = titleB,
             )
         }.awaitAsList()
     }
@@ -1260,6 +1268,10 @@ class MangaRepositoryImpl(
             }
         }.awaitAsList()
         return Triple(authorIds, artistIds, descriptionIds)
+    }
+
+    override suspend fun findContainsForTitle(id: Long, title: String): List<Long> {
+        return database.mangasQueries.findContainsForTitle(id, title).awaitAsList()
     }
 
     override suspend fun getFavoriteIdAndTitle(): List<Pair<Long, String>> {

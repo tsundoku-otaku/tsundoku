@@ -46,6 +46,10 @@ CREATE INDEX library_favorite_index ON mangas(favorite) WHERE favorite = 1;
 CREATE INDEX mangas_url_index ON mangas(url);
 CREATE INDEX mangas_is_novel_index ON mangas(is_novel);
 CREATE INDEX idx_mangas_source ON mangas(source);
+-- mangas_normalized_title_index (ON mangas(lower(trim(title))) WHERE favorite = 1) is created
+-- lazily by MangaRepositoryImpl.ensureNormalizedTitleIndex() before the first duplicate query,
+-- not here or in a migration: building it over a large library is slow enough to stall startup,
+-- and duplicate detection is its only consumer.
 
 CREATE TRIGGER update_last_favorited_at_mangas
 AFTER UPDATE OF favorite ON mangas
@@ -277,27 +281,25 @@ SELECT _id, author, artist, description
 FROM mangas
 WHERE favorite = 1;
 
--- Find all duplicate groups with contains match (one title contains another)
--- Optimized: use substr index and smaller comparisons to avoid full table scans
-findDuplicatesContains:
-SELECT
-    a._id AS id_a,
-    a.title AS title_a,
-    b._id AS id_b,
-    b.title AS title_b
-FROM mangas a
-JOIN mangas b
-    ON a._id < b._id
-   AND a.favorite = 1
-   AND b.favorite = 1
-   -- Filter by first character to reduce comparison set
-   AND substr(lower(trim(a.title)), 1, 1) = substr(lower(trim(b.title)), 1, 1)
-   -- Only check containment if lengths differ significantly
-   AND (length(trim(a.title)) < length(trim(b.title)) * 0.8 OR length(trim(b.title)) < length(trim(a.title)) * 0.8)
-   AND (lower(trim(b.title)) LIKE '%' || lower(trim(a.title)) || '%'
-        OR lower(trim(a.title)) LIKE '%' || lower(trim(b.title)) || '%')
-ORDER BY a.title
-;
+-- Single-scan containment lookup for one manga's title, used by the "similar novels"
+-- dialog. Replaces an O(N^2) self-join over all favorites: only one manga's matches
+-- are ever needed here.
+findContainsForTitle:
+SELECT M._id
+FROM mangas M
+WHERE M.favorite = 1
+AND M._id != :id
+AND length(trim(:title)) >= 3
+AND (
+    lower(trim(M.title)) LIKE '%' || lower(trim(:title)) || '%'
+    OR lower(trim(:title)) LIKE '%' || lower(trim(M.title)) || '%'
+);
+
+-- Built lazily by MangaRepositoryImpl.ensureNormalizedTitleIndex() on first duplicate query,
+-- not at schema creation: building it over a large library is slow enough to stall startup.
+createNormalizedTitleIndex:
+CREATE INDEX IF NOT EXISTS mangas_normalized_title_index
+ON mangas(lower(trim(title))) WHERE favorite = 1;
 
 -- Find duplicates by URL within the same source/extension
 findDuplicatesByUrl:

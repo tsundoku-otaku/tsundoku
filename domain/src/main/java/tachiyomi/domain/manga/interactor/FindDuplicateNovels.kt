@@ -82,11 +82,7 @@ class FindDuplicateNovels(
             ?.ids?.filter { it != mangaId }
             ?: emptyList()
 
-        val containsMatches = mangaRepository.findDuplicatesContains()
-            .filter { it.idA == mangaId || it.idB == mangaId }
-            .flatMap { listOf(it.idA, it.idB) }
-            .filter { it != mangaId }
-            .distinct()
+        val containsMatches = mangaRepository.findContainsForTitle(mangaId, title)
 
         val allMatchIds = (exactMatches + containsMatches).distinct()
 

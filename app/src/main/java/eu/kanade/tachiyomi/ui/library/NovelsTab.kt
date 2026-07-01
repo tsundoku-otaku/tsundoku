@@ -365,11 +365,6 @@ data object NovelsTab : Tab {
                     },
                 )
             }
-            // DuplicateDetection now navigates to new screen, not a dialog
-            is LibraryScreenModel.Dialog.DuplicateDetection -> {
-                // Navigation handled by toolbar click, dismiss dialog
-                onDismissRequest()
-            }
             null -> {}
         }
 

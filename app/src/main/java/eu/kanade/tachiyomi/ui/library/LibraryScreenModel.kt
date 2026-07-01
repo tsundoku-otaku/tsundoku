@@ -1881,93 +1881,11 @@ class LibraryScreenModel(
         }
     }
 
-    /**
-     * Find potential duplicate manga in the library based on title similarity.
-     * Uses Levenshtein distance for fuzzy matching.
-     */
-    fun findDuplicates(): List<DuplicateGroup> {
-        val favorites = state.value.libraryData.favorites
-        if (favorites.size < 2) return emptyList()
-
-        val duplicateGroups = mutableListOf<DuplicateGroup>()
-        val processed = mutableSetOf<Long>()
-
-        for (i in favorites.indices) {
-            if (favorites[i].id in processed) continue
-
-            val currentItem = favorites[i]
-            val currentTitle = normalizeTitle(currentItem.libraryManga.manga.title)
-            val group = mutableListOf(currentItem)
-
-            for (j in i + 1 until favorites.size) {
-                if (favorites[j].id in processed) continue
-
-                val otherItem = favorites[j]
-                val otherTitle = normalizeTitle(otherItem.libraryManga.manga.title)
-
-                if (isSimilar(currentTitle, otherTitle)) {
-                    group.add(otherItem)
-                    processed.add(favorites[j].id)
-                }
-            }
-
-            if (group.size > 1) {
-                duplicateGroups.add(DuplicateGroup(group.toList()))
-                processed.add(favorites[i].id)
-            }
-        }
-
-        return duplicateGroups
-    }
-
-    private fun normalizeTitle(title: String): String {
-        return title.lowercase()
-            .replace(Regex("""[\[\(].*?[\]\)]"""), "") // Remove content in brackets/parentheses
-            .replace(Regex("""[^a-z0-9\s]"""), "") // Remove non-alphanumeric except spaces
-            .replace(Regex("""\s+"""), " ") // Normalize whitespace
-            .trim()
-    }
-
-    private fun isSimilar(title1: String, title2: String): Boolean {
-        // Exact match after normalization
-        if (title1 == title2) return true
-
-        // Check if one contains the other
-        if (title1.contains(title2) || title2.contains(title1)) return true
-
-        // Use Levenshtein distance for fuzzy matching
-        val maxLen = maxOf(title1.length, title2.length)
-        if (maxLen == 0) return true
-        val distance = levenshteinDistance(title1, title2)
-        val similarity = 1.0 - (distance.toDouble() / maxLen)
-        return similarity >= 0.8 // 80% similarity threshold
-    }
-
-    private fun levenshteinDistance(s1: String, s2: String): Int {
-        val dp = Array(s1.length + 1) { IntArray(s2.length + 1) }
-        for (i in 0..s1.length) dp[i][0] = i
-        for (j in 0..s2.length) dp[0][j] = j
-        for (i in 1..s1.length) {
-            for (j in 1..s2.length) {
-                val cost = if (s1[i - 1] == s2[j - 1]) 0 else 1
-                dp[i][j] = minOf(
-                    dp[i - 1][j] + 1,
-                    dp[i][j - 1] + 1,
-                    dp[i - 1][j - 1] + cost,
-                )
-            }
-        }
-        return dp[s1.length][s2.length]
-    }
-
-    data class DuplicateGroup(val items: List<LibraryItem>)
-
     sealed interface Dialog {
         data object SettingsSheet : Dialog
         data object MassImport : Dialog
         data object ImportEpub : Dialog
         data class ExportEpub(val manga: List<Manga>) : Dialog
-        data class DuplicateDetection(val duplicates: List<DuplicateGroup>) : Dialog
         data class UpdateSelected(val manga: List<Manga>) : Dialog
         data class ChangeCategory(
             val manga: List<Manga>,

@@ -105,8 +105,6 @@ interface MangaRepository {
 
     suspend fun findDuplicatesExact(): List<DuplicateGroup>
 
-    suspend fun findDuplicatesContains(): List<DuplicatePair>
-
     /**
      * Stream favorites' (author, artist, description) through the given predicates and collect
      * the matching IDs per field. Single cursor scan; rows are decoded and discarded one at a
@@ -119,6 +117,13 @@ interface MangaRepository {
         matchArtist: ((String) -> Boolean)?,
         matchDescription: ((String) -> Boolean)?,
     ): Triple<Set<Long>, Set<Long>, Set<Long>>
+
+    /**
+     * Favorite IDs whose title contains (or is contained by) the given title.
+     * Single table scan; avoids an O(N^2) all-favorites self-join when only one
+     * manga's matches are needed.
+     */
+    suspend fun findContainsForTitle(id: Long, title: String): List<Long>
 
     /**
      * Get ID + title pairs for all favorites.

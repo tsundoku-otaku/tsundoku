@@ -1,0 +1,6 @@
+-- Drop redundant url indexes on chapters: the only remaining url lookup
+-- (getChapterByUrlAndMangaId) filters by manga_id first, served by
+-- chapters_library_aggregate_index. Both spellings exist depending on the
+-- migration path the install took (10.sqm idx_chapters_url, 17.sqm chapters_url_index).
+DROP INDEX IF EXISTS chapters_url_index;
+DROP INDEX IF EXISTS idx_chapters_url;
