@@ -18,7 +18,7 @@ class EpubReaderTocParseTest {
             .selectFirst("nav")!!
             .selectFirst("ol")!!
 
-    // ── EPUB 2 NCX ──────────────────────────────────────────────────
+    // EPUB 2 NCX
 
     @Test
     fun `flat ncx keeps document order and depth zero and preserves fragment hrefs`() {
@@ -96,7 +96,7 @@ class EpubReaderTocParseTest {
         assertEquals("chapter.xhtml#middle", toc[1].href)
     }
 
-    // ── EPUB 3 nav ──────────────────────────────────────────────────
+    // EPUB 3 nav
 
     @Test
     fun `nested nav ol carries depth and normalizes across locales`() {

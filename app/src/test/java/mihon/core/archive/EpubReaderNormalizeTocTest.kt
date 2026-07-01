@@ -18,7 +18,7 @@ class EpubReaderNormalizeTocTest {
             entries.mapIndexed { index, (title, depth) -> chapter(title, index, depth) },
         ).map { it.title }
 
-    // ── Flat TOC (heuristic fallback) ───────────────────────────────
+    // Flat TOC (heuristic fallback)
 
     @Test
     fun `descriptive chapter titles are left untouched`() {
@@ -77,7 +77,7 @@ class EpubReaderNormalizeTocTest {
         assertEquals(emptyList<String>(), EpubReader.normalizeTableOfContents(emptyList()))
     }
 
-    // ── Nested TOC (structural, locale-agnostic) ────────────────────
+    // Nested TOC (structural, locale-agnostic)
 
     @Test
     fun `nested entries are prefixed with their parent title`() {
