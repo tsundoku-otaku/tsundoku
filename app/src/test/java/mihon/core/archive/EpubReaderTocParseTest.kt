@@ -130,8 +130,7 @@ class EpubReaderTocParseTest {
     }
 
     @Test
-    fun `nav parent without a link still nests its children under nothing`() {
-        // A <li> that is a bare section header (no <a>) must not crash and children keep their own depth.
+    fun `nav heading without a link nests children under its own title`() {
         val root = navList(
             """
             <html xmlns:epub="http://www.idpf.org/2007/ops"><body>
@@ -146,8 +145,31 @@ class EpubReaderTocParseTest {
 
         val toc = EpubReader.buildTocFromNavList(root, "nav.xhtml", identityResolve)
 
+        assertEquals(listOf("Section", "Chapter 1"), toc.map { it.title })
+        assertEquals(listOf(0, 1), toc.map { it.depth })
+        assertEquals(listOf(0, 1), toc.map { it.order })
+        assertEquals(listOf("c1.xhtml", "c1.xhtml"), toc.map { it.href })
+
+        val names = EpubReader.normalizeTableOfContents(toc).map { it.title }
+        assertEquals(listOf("Section", "Section - Chapter 1"), names)
+    }
+
+    @Test
+    fun `nav heading with no descendant link is skipped`() {
+        val root = navList(
+            """
+            <html xmlns:epub="http://www.idpf.org/2007/ops"><body>
+              <nav epub:type="toc"><ol>
+                <li><span>Empty Section</span></li>
+                <li><a href="c1.xhtml">Chapter 1</a></li>
+              </ol></nav>
+            </body></html>
+            """.trimIndent(),
+        )
+
+        val toc = EpubReader.buildTocFromNavList(root, "nav.xhtml", identityResolve)
+
         assertEquals(listOf("Chapter 1"), toc.map { it.title })
-        assertEquals(listOf(1), toc.map { it.depth })
-        assertEquals("c1.xhtml", toc[0].href)
+        assertEquals(listOf(0), toc.map { it.depth })
     }
 }

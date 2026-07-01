@@ -15,9 +15,7 @@ import java.net.URLDecoder
  */
 class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
 
-    private fun String.urlDecoded(): String {
-        return runCatching { URLDecoder.decode(this, "UTF-8") }.getOrDefault(this)
-    }
+    private fun String.urlDecoded(): String = urlDecode(this)
 
     /**
      * Path separator used by this epub.
@@ -586,8 +584,9 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         }
 
         /**
-         * Walks an EPUB 3 nav <ol> in document order, emitting one [EpubChapter] per linked <li> and
-         * recording nesting depth from the nested <ol>/<li> tree.
+         * Walks an EPUB 3 nav <ol> in document order, emitting one [EpubChapter] per <li> and recording
+         * nesting depth from the nested <ol>/<li> tree. Unlinked heading <li>s reuse their first
+         * descendant link so they still carry a title into the depth hierarchy.
          */
         fun buildTocFromNavList(
             rootList: Element,
@@ -602,16 +601,20 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                 list.children()
                     .filter { it.normalName() == "li" }
                     .forEach { li ->
+                        val childList: Element? = li.selectFirst("> ol")
                         val anchor = li.selectFirst("> a") ?: li.selectFirst("> span > a")
-                        val title = anchor?.text()?.trim().orEmpty()
-                        val href = anchor?.attr("href")?.trim().orEmpty()
+                        val title = (anchor?.text() ?: li.selectFirst("> span")?.text() ?: li.ownText()).trim()
+                        // Unlinked heading (<li><span>Title</span><ol>…</ol></li>): keep its text as an
+                        // ancestor prefix by pointing at its first descendant link so it stays navigable.
+                        val href = anchor?.attr("href")?.trim().orEmpty().ifEmpty {
+                            if (childList != null) li.selectFirst("a[href]")?.attr("href")?.trim().orEmpty() else ""
+                        }
                         if (title.isNotEmpty() && href.isNotEmpty()) {
                             val (resolvedHref, resolvedPath) =
                                 resolveTocHref(href, defaultPath, previousPath, resolvePath)
                             if (href.substringBefore("#").isNotBlank()) previousPath = resolvedPath
                             chapters.add(EpubChapter(title, resolvedHref, order++, depth))
                         }
-                        val childList: Element? = li.selectFirst("> ol")
                         if (childList != null) walk(childList, depth + 1)
                     }
             }
