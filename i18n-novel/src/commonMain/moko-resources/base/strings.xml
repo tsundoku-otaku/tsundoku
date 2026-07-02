@@ -841,6 +841,7 @@
     <string name="library_clear_cleared_descriptions">Cleared descriptions for %d entries</string>
     <string name="library_clear_cleared_tags">Cleared tags for %d entries</string>
     <string name="library_clear_cleared_chapters">Cleared chapters for %d entries</string>
+    <string name="library_clear_cleared_generic">Cleared data for %d entries</string>
     <!-- Database maintenance notifications -->
     <string name="channel_db_maintenance">Database Maintenance</string>
     <string name="db_maintenance_title">Database maintenance</string>

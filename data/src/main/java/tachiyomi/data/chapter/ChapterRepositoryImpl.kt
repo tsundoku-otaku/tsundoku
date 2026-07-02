@@ -81,7 +81,11 @@ class ChapterRepositoryImpl(
 
     override suspend fun removeChaptersWithIds(chapterIds: List<Long>) {
         try {
-            database.chaptersQueries.removeChaptersWithIds(chapterIds)
+            database.transaction {
+                chapterIds.chunked(SQLITE_VARIABLE_LIMIT).forEach { chunk ->
+                    database.chaptersQueries.removeChaptersWithIds(chunk)
+                }
+            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }
@@ -89,7 +93,14 @@ class ChapterRepositoryImpl(
 
     override suspend fun removeChaptersByMangaIds(mangaIds: List<Long>) {
         try {
-            database.chaptersQueries.removeChaptersByMangaIds(mangaIds)
+            database.transaction {
+                mangaIds.chunked(SQLITE_VARIABLE_LIMIT).forEach { chunk ->
+                    database.mangasQueries.setIsSyncingForIds(1, chunk)
+                    database.chaptersQueries.removeChaptersByMangaIds(chunk)
+                    database.mangasQueries.resetChapterAggregatesForIds(chunk)
+                    database.mangasQueries.setIsSyncingForIds(0, chunk)
+                }
+            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
         }
@@ -182,4 +193,8 @@ class ChapterRepositoryImpl(
         version = version,
         memo = memo,
     )
+
+    companion object {
+        private const val SQLITE_VARIABLE_LIMIT = 900
+    }
 }

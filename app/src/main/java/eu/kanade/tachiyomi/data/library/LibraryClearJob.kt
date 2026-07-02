@@ -9,7 +9,6 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.util.system.cancelNotification
@@ -18,14 +17,16 @@ import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
 import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.RemoveChapters
-import tachiyomi.domain.manga.interactor.GetManga
-import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
@@ -35,54 +36,59 @@ import java.io.File
 class LibraryClearJob(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
 
-    private val getManga: GetManga = Injekt.get()
-    private val updateManga: UpdateManga = Injekt.get()
     private val coverCache: CoverCache = Injekt.get()
-    private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get()
     private val removeChapters: RemoveChapters = Injekt.get()
+    private val mangaRepository: MangaRepository = Injekt.get()
+    private val getLibraryManga: GetLibraryManga = Injekt.get()
+
+    private val progressBuilder by lazy {
+        context.notificationBuilder(Notifications.CHANNEL_LIBRARY_CLEAR) {
+            setSmallIcon(android.R.drawable.ic_menu_delete)
+            setOngoing(true)
+            setOnlyAlertOnce(true)
+        }
+    }
+    private var lastNotificationTime = 0L
 
     override suspend fun doWork(): Result {
         val mangaIds = loadMangaIds() ?: return Result.failure()
-        val operation = inputData.getString(KEY_OPERATION) ?: return Result.failure()
+        val operations = inputData.getString(KEY_OPERATIONS)
+            ?.split(",")
+            ?.filter { it.isNotEmpty() }
+            ?.takeIf { it.isNotEmpty() }
+            ?: return Result.failure()
 
         setForegroundSafely()
 
         return withIOContext {
             try {
-                when (operation) {
-                    OP_CLEAR_COVERS -> clearCovers(mangaIds)
-                    OP_CLEAR_DESCRIPTIONS -> clearDescriptions(mangaIds)
-                    OP_CLEAR_TAGS -> clearTags(mangaIds)
-                    OP_CLEAR_CHAPTERS -> clearChapters(mangaIds)
-                    else -> return@withIOContext Result.failure()
+                val combineDescTags = OP_CLEAR_DESCRIPTIONS in operations && OP_CLEAR_TAGS in operations
+                operations.forEach { operation ->
+                    when (operation) {
+                        OP_CLEAR_COVERS -> clearCovers(mangaIds)
+                        OP_CLEAR_DESCRIPTIONS -> if (!combineDescTags) clearDescriptions(mangaIds)
+                        OP_CLEAR_TAGS -> if (combineDescTags) clearDescriptionsAndTags(mangaIds) else clearTags(mangaIds)
+                        OP_CLEAR_CHAPTERS -> clearChapters(mangaIds)
+                    }
                 }
+                showComplete(context.stringResource(TDMR.strings.library_clear_cleared_generic, mangaIds.size))
                 Result.success()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                logcat(LogPriority.ERROR, e) { "Library clear job failed: $operation" }
+                logcat(LogPriority.ERROR, e) { "Library clear job failed: $operations" }
                 Result.failure()
             } finally {
                 context.cancelNotification(Notifications.ID_LIBRARY_CLEAR_PROGRESS)
+                getLibraryManga.notifyChanged()
             }
         }
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo {
-        val operation = inputData.getString(KEY_OPERATION) ?: "Clear"
-        val title = when (operation) {
-            OP_CLEAR_COVERS -> context.stringResource(TDMR.strings.library_clear_clearing_covers)
-            OP_CLEAR_DESCRIPTIONS -> context.stringResource(TDMR.strings.library_clear_clearing_descriptions)
-            OP_CLEAR_TAGS -> context.stringResource(TDMR.strings.library_clear_clearing_tags)
-            OP_CLEAR_CHAPTERS -> context.stringResource(TDMR.strings.library_clear_clearing_chapters)
-            else -> context.stringResource(TDMR.strings.library_clear_clearing)
-        }
-        val notification = context.notificationBuilder(Notifications.CHANNEL_LIBRARY_CLEAR) {
-            setSmallIcon(android.R.drawable.ic_menu_delete)
-            setContentTitle(title)
-            setOngoing(true)
-            setOnlyAlertOnce(true)
-            setProgress(0, 0, true)
-        }.build()
+        val notification = progressBuilder
+            .setContentTitle(context.stringResource(TDMR.strings.library_clear_clearing))
+            .setProgress(0, 0, true)
+            .build()
         return ForegroundInfo(
             Notifications.ID_LIBRARY_CLEAR_PROGRESS,
             notification,
@@ -95,57 +101,59 @@ class LibraryClearJob(private val context: Context, workerParams: WorkerParamete
     }
 
     private suspend fun clearCovers(mangaIds: LongArray) {
-        val total = mangaIds.size
-        mangaIds.forEachIndexed { index, id ->
-            val manga = getManga.await(id) ?: return@forEachIndexed
-            if (!manga.isLocal()) {
-                coverCache.deleteFromCache(manga, true)
+        val title = context.stringResource(TDMR.strings.library_clear_clearing_covers)
+        runChunked(mangaIds, title) { chunk ->
+            val mangas = mangaRepository.getMangasByIds(chunk)
+            coroutineScope {
+                mangas.filterNot { it.isLocal() }
+                    .map { manga -> async { coverCache.deleteFromCache(manga, true) } }
+                    .awaitAll()
             }
-            updateManga.await(
-                MangaUpdate(
-                    id = id,
-                    thumbnailUrl = "",
-                    coverLastModified = System.currentTimeMillis(),
-                ),
-            )
-            updateProgress(index + 1, total, context.stringResource(TDMR.strings.library_clear_clearing_covers))
+            mangaRepository.clearCoversForMangaIds(chunk, System.currentTimeMillis())
         }
-        showComplete(context.stringResource(TDMR.strings.library_clear_cleared_covers, total))
     }
 
     private suspend fun clearDescriptions(mangaIds: LongArray) {
-        val updates = mangaIds.map { MangaUpdate(id = it, description = "") }
-        updateManga.awaitAll(updates)
-        showComplete(context.stringResource(TDMR.strings.library_clear_cleared_descriptions, mangaIds.size))
+        val title = context.stringResource(TDMR.strings.library_clear_clearing_descriptions)
+        runChunked(mangaIds, title) { chunk -> mangaRepository.clearDescriptionsForMangaIds(chunk) }
     }
 
     private suspend fun clearTags(mangaIds: LongArray) {
-        val updates = mangaIds.map { MangaUpdate(id = it, genre = emptyList()) }
-        updateManga.awaitAll(updates)
-        showComplete(context.stringResource(TDMR.strings.library_clear_cleared_tags, mangaIds.size))
+        val title = context.stringResource(TDMR.strings.library_clear_clearing_tags)
+        runChunked(mangaIds, title) { chunk -> mangaRepository.clearGenresForMangaIds(chunk) }
+    }
+
+    private suspend fun clearDescriptionsAndTags(mangaIds: LongArray) {
+        val title = context.stringResource(TDMR.strings.library_clear_clearing)
+        runChunked(mangaIds, title) { chunk -> mangaRepository.clearDescriptionsAndGenresForMangaIds(chunk) }
     }
 
     private suspend fun clearChapters(mangaIds: LongArray) {
-        val total = mangaIds.size
-        mangaIds.forEachIndexed { index, id ->
-            val chapters = getChaptersByMangaId.await(id)
-            if (chapters.isNotEmpty()) {
-                removeChapters.await(chapters)
-            }
-            updateProgress(index + 1, total, context.stringResource(TDMR.strings.library_clear_clearing_chapters))
+        val title = context.stringResource(TDMR.strings.library_clear_clearing_chapters)
+        runChunked(mangaIds, title) { chunk ->
+            removeChapters.awaitByMangaIds(chunk)
         }
-        showComplete(context.stringResource(TDMR.strings.library_clear_cleared_chapters, total))
     }
 
-    private fun updateProgress(current: Int, total: Int, title: String) {
-        val notification = context.notificationBuilder(Notifications.CHANNEL_LIBRARY_CLEAR) {
-            setSmallIcon(android.R.drawable.ic_menu_delete)
-            setContentTitle(title)
-            setContentText("$current / $total")
-            setProgress(total, current, false)
-            setOngoing(true)
-            setOnlyAlertOnce(true)
-        }.build()
+    private suspend fun runChunked(mangaIds: LongArray, title: String, block: suspend (List<Long>) -> Unit) {
+        val total = mangaIds.size
+        var processed = 0
+        mangaIds.toList().chunked(CHUNK_SIZE).forEach { chunk ->
+            block(chunk)
+            processed += chunk.size
+            updateProgress(processed, total, title, force = processed >= total)
+        }
+    }
+
+    private fun updateProgress(current: Int, total: Int, title: String, force: Boolean) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastNotificationTime < NOTIFICATION_THROTTLE_MS) return
+        lastNotificationTime = now
+        val notification = progressBuilder
+            .setContentTitle(title)
+            .setContentText("$current / $total")
+            .setProgress(total, current, false)
+            .build()
         context.notify(Notifications.ID_LIBRARY_CLEAR_PROGRESS, notification)
     }
 
@@ -178,15 +186,19 @@ class LibraryClearJob(private val context: Context, workerParams: WorkerParamete
         private const val TAG = "LibraryClearJob"
         private const val KEY_MANGA_IDS = "manga_ids"
         private const val KEY_IDS_FILE = "ids_file"
-        private const val KEY_OPERATION = "operation"
+        private const val KEY_OPERATIONS = "operations"
         private const val MAX_DIRECT_IDS = 500
+        private const val CHUNK_SIZE = 200
+        private const val NOTIFICATION_THROTTLE_MS = 400L
         const val OP_CLEAR_COVERS = "clear_covers"
         const val OP_CLEAR_DESCRIPTIONS = "clear_descriptions"
         const val OP_CLEAR_TAGS = "clear_tags"
         const val OP_CLEAR_CHAPTERS = "clear_chapters"
 
-        fun start(context: Context, mangaIds: List<Long>, operation: String) {
-            val inputDataBuilder = workDataOf(KEY_OPERATION to operation).let {
+        fun start(context: Context, mangaIds: List<Long>, operations: List<String>) {
+            if (operations.isEmpty() || mangaIds.isEmpty()) return
+
+            val inputDataBuilder = workDataOf(KEY_OPERATIONS to operations.joinToString(",")).let {
                 androidx.work.Data.Builder().putAll(it)
             }
 
@@ -203,8 +215,8 @@ class LibraryClearJob(private val context: Context, workerParams: WorkerParamete
                 .setInputData(inputDataBuilder.build())
                 .build()
             context.workManager.enqueueUniqueWork(
-                "${TAG}_$operation",
-                ExistingWorkPolicy.REPLACE,
+                TAG,
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
                 workRequest,
             )
         }

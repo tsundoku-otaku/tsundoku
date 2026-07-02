@@ -171,7 +171,7 @@ object SettingsAdvancedScreen : SearchableSettings {
             ),
             Preference.PreferenceItem.SliderPreference(
                 value = libraryPageSize,
-                valueRange = 50..1000 step 50,
+                valueRange = 50..10000 step 500,
                 steps = 18,
                 title = stringResource(TDMR.strings.pref_experimental_library_page_size),
                 subtitle = stringResource(TDMR.strings.pref_experimental_library_page_size_summary, libraryPageSize),

@@ -100,6 +100,77 @@ class MangaRepositoryImpl(
         }.awaitAsOne()
     }
 
+    override suspend fun getMangasByIds(ids: List<Long>): List<Manga> {
+        if (ids.isEmpty()) return emptyList()
+        return ids.chunked(SQLITE_VARIABLE_LIMIT).flatMap { chunk ->
+            database.mangasQueries.getMangasByIds(chunk) {
+                    id,
+                    source,
+                    url,
+                    artist,
+                    author,
+                    description,
+                    genre,
+                    title,
+                    alternative_titles,
+                    status,
+                    thumbnail_url,
+                    favorite,
+                    last_update,
+                    next_update,
+                    initialized,
+                    viewer,
+                    chapter_flags,
+                    cover_last_modified,
+                    date_added,
+                    update_strategy,
+                    calculate_interval,
+                    last_modified_at,
+                    favorite_modified_at,
+                    version,
+                    is_syncing,
+                    notes,
+                    is_novel,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                ->
+                MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel)
+            }.awaitAsList()
+        }
+    }
+
+    override suspend fun clearDescriptionsForMangaIds(ids: List<Long>) {
+        clearFieldsForMangaIds(ids) { database.mangasQueries.clearDescriptionsForIds(it) }
+    }
+
+    override suspend fun clearGenresForMangaIds(ids: List<Long>) {
+        clearFieldsForMangaIds(ids) { database.mangasQueries.clearGenresForIds(it) }
+    }
+
+    override suspend fun clearDescriptionsAndGenresForMangaIds(ids: List<Long>) {
+        clearFieldsForMangaIds(ids) { database.mangasQueries.clearDescriptionsAndGenresForIds(it) }
+    }
+
+    override suspend fun clearCoversForMangaIds(ids: List<Long>, coverLastModified: Long) {
+        clearFieldsForMangaIds(ids) { database.mangasQueries.clearThumbnailsForIds(coverLastModified, it) }
+    }
+
+    private suspend fun clearFieldsForMangaIds(ids: List<Long>, statement: suspend (List<Long>) -> Unit) {
+        if (ids.isEmpty()) return
+        try {
+            database.transaction {
+                ids.chunked(SQLITE_VARIABLE_LIMIT).forEach { statement(it) }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+        }
+    }
+
     override suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga> {
         return database.mangasQueries.getMangaById(id) {
                 id,
@@ -2003,5 +2074,9 @@ class MangaRepositoryImpl(
         // Aggregates live directly on the mangas table, no separate cache exists.
         // Always report valid to avoid unnecessary recomputation on startup.
         return 0L to 0L
+    }
+
+    companion object {
+        private const val SQLITE_VARIABLE_LIMIT = 900
     }
 }

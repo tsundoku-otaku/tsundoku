@@ -67,7 +67,6 @@ import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetBookmarkedChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
-import tachiyomi.domain.chapter.interactor.RemoveChapters
 import tachiyomi.domain.chapter.interactor.SearchChapterNames
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.history.interactor.GetNextChapters
@@ -102,7 +101,6 @@ class LibraryScreenModel(
     private val getTracksPerManga: GetTracksPerManga = Injekt.get(),
     private val getNextChapters: GetNextChapters = Injekt.get(),
     private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get(),
-    private val removeChapters: RemoveChapters = Injekt.get(),
     private val getBookmarkedChaptersByMangaId: GetBookmarkedChaptersByMangaId = Injekt.get(),
     private val setReadStatus: SetReadStatus = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
@@ -1036,11 +1034,6 @@ class LibraryScreenModel(
                 }
             }
 
-            if (clearChaptersFromDb) {
-                val mangaIds = mangas.map { it.id }
-                removeChapters.awaitByMangaIds(mangaIds)
-            }
-
             if (deleteTranslations) {
                 mangas.forEach { manga ->
                     val chapters = getChaptersByMangaId.await(manga.id)
@@ -1048,29 +1041,17 @@ class LibraryScreenModel(
                 }
             }
 
-            // Delegate clear operations to LibraryClearJob (runs as background WorkManager job)
-            if (!deleteFromLibrary) {
-                val mangaIds = mangas.map { it.id }
-                val context = Injekt.get<android.app.Application>()
-                if (clearCovers) {
-                    LibraryClearJob.start(context, mangaIds, LibraryClearJob.OP_CLEAR_COVERS)
-                }
-                if (clearDescriptions) {
-                    LibraryClearJob.start(context, mangaIds, LibraryClearJob.OP_CLEAR_DESCRIPTIONS)
-                }
-                if (clearTags) {
-                    LibraryClearJob.start(context, mangaIds, LibraryClearJob.OP_CLEAR_TAGS)
-                }
+            val clearOperations = buildList {
+                if (clearChaptersFromDb) add(LibraryClearJob.OP_CLEAR_CHAPTERS)
+                if (clearCovers) add(LibraryClearJob.OP_CLEAR_COVERS)
+                if (clearDescriptions) add(LibraryClearJob.OP_CLEAR_DESCRIPTIONS)
+                if (clearTags) add(LibraryClearJob.OP_CLEAR_TAGS)
+            }
+            if (clearOperations.isNotEmpty()) {
+                LibraryClearJob.start(Injekt.get<android.app.Application>(), mangas.map { it.id }, clearOperations)
             }
 
-            // Refresh library UI after modifications
-            @Suppress("ktlint:standard:max-line-length")
-            if (!deleteFromLibrary &&
-                (
-                    deleteChapters || clearChaptersFromDb || deleteTranslations || clearCovers || clearDescriptions ||
-                        clearTags
-                    )
-            ) {
+            if (!deleteFromLibrary && (deleteChapters || deleteTranslations)) {
                 getLibraryManga.notifyChanged()
             }
         }

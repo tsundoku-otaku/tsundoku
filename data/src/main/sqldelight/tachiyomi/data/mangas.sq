@@ -84,6 +84,31 @@ SELECT memo
 FROM mangas
 WHERE _id = :id;
 
+getMangasByIds:
+SELECT *
+FROM mangas
+WHERE _id IN :ids;
+
+clearDescriptionsForIds:
+UPDATE mangas SET description = '' WHERE _id IN :ids;
+
+clearGenresForIds:
+UPDATE mangas SET genre = '' WHERE _id IN :ids;
+
+clearDescriptionsAndGenresForIds:
+UPDATE mangas SET description = '', genre = '' WHERE _id IN :ids;
+
+clearThumbnailsForIds:
+UPDATE mangas SET thumbnail_url = '', cover_last_modified = :coverLastModified WHERE _id IN :ids;
+
+setIsSyncingForIds:
+UPDATE mangas SET is_syncing = :value WHERE _id IN :ids;
+
+resetChapterAggregatesForIds:
+UPDATE mangas
+SET total_count = 0, read_count = 0, bookmark_count = 0, latest_upload = 0, chapter_fetched_at = 0
+WHERE _id IN :ids;
+
 -- TODO: this should ideally never really have more than 1 result
 getMangaByUrlAndSource:
 SELECT *

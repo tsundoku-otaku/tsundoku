@@ -1,0 +1,41 @@
+-- Skip the per-row chapter-delete aggregate trigger while is_syncing is set.
+DROP TRIGGER IF EXISTS manga_agg_chapter_delete;
+
+CREATE TRIGGER manga_agg_chapter_delete
+AFTER DELETE ON chapters
+WHEN (SELECT favorite FROM mangas WHERE _id = old.manga_id) = 1
+AND (SELECT is_syncing FROM mangas WHERE _id = old.manga_id) = 0
+BEGIN
+    UPDATE mangas SET
+        total_count = coalesce((
+            SELECT count(*) FROM chapters
+            LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
+                AND chapters.scanlator = excluded_scanlators.scanlator
+            WHERE chapters.manga_id = old.manga_id AND excluded_scanlators.scanlator IS NULL
+        ), 0),
+        read_count = coalesce((
+            SELECT sum(read) FROM chapters
+            LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
+                AND chapters.scanlator = excluded_scanlators.scanlator
+            WHERE chapters.manga_id = old.manga_id AND excluded_scanlators.scanlator IS NULL
+        ), 0),
+        bookmark_count = coalesce((
+            SELECT sum(bookmark) FROM chapters
+            LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
+                AND chapters.scanlator = excluded_scanlators.scanlator
+            WHERE chapters.manga_id = old.manga_id AND excluded_scanlators.scanlator IS NULL
+        ), 0),
+        latest_upload = coalesce((
+            SELECT max(date_upload) FROM chapters
+            LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
+                AND chapters.scanlator = excluded_scanlators.scanlator
+            WHERE chapters.manga_id = old.manga_id AND excluded_scanlators.scanlator IS NULL
+        ), 0),
+        chapter_fetched_at = coalesce((
+            SELECT max(date_fetch) FROM chapters
+            LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
+                AND chapters.scanlator = excluded_scanlators.scanlator
+            WHERE chapters.manga_id = old.manga_id AND excluded_scanlators.scanlator IS NULL
+        ), 0)
+    WHERE _id = old.manga_id;
+END;

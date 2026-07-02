@@ -25,10 +25,20 @@ interface MangaRepository {
 
     suspend fun getMangaById(id: Long): Manga
 
+    suspend fun getMangasByIds(ids: List<Long>): List<Manga>
+
     suspend fun getMangaByIdAsFlow(id: Long): Flow<Manga>
 
     /** Raw [Manga.memo] JSON for a manga, used for per-field custom metadata overrides. */
     suspend fun getMemo(mangaId: Long): JsonObject
+
+    suspend fun clearDescriptionsForMangaIds(ids: List<Long>)
+
+    suspend fun clearGenresForMangaIds(ids: List<Long>)
+
+    suspend fun clearDescriptionsAndGenresForMangaIds(ids: List<Long>)
+
+    suspend fun clearCoversForMangaIds(ids: List<Long>, coverLastModified: Long)
 
     suspend fun getMangaByUrlAndSourceId(url: String, sourceId: Long): Manga?
 

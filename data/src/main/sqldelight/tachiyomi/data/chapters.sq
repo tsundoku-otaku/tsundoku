@@ -200,6 +200,7 @@ END;
 CREATE TRIGGER manga_agg_chapter_delete
 AFTER DELETE ON chapters
 WHEN (SELECT favorite FROM mangas WHERE _id = old.manga_id) = 1
+AND (SELECT is_syncing FROM mangas WHERE _id = old.manga_id) = 0
 BEGIN
     UPDATE mangas SET
         total_count = coalesce((
