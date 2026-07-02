@@ -155,6 +155,9 @@ data object LibraryTab : Tab {
                     scrollBehavior = scrollBehavior.takeIf { !state.showCategoryTabs },
                     onClickMassImport = screenModel::openMassImportDialog,
                     onClickFindDuplicates = { navigator.push(DuplicateDetectionScreen()) },
+                    onClickCategoryActions = {
+                        state.activeCategory?.let(screenModel::openCategoryActionsDialog)
+                    },
                 )
             },
             bottomBar = {
@@ -315,6 +318,32 @@ data object LibraryTab : Tab {
                     },
                 )
             }
+            is LibraryScreenModel.Dialog.CategoryAction -> {
+                DeleteLibraryMangaDialog(
+                    containsLocalManga = false,
+                    onDismissRequest = onDismissRequest,
+                    onConfirm = {
+                            deleteManga,
+                            deleteChapter,
+                            clearChaptersFromDb,
+                            deleteTranslations,
+                            clearCovers,
+                            clearDescriptions,
+                            clearTags,
+                        ->
+                        screenModel.removeCategoryMangas(
+                            categoryId = dialog.category.id,
+                            deleteFromLibrary = deleteManga,
+                            deleteChapters = deleteChapter,
+                            clearChaptersFromDb = clearChaptersFromDb,
+                            deleteTranslations = deleteTranslations,
+                            clearCovers = clearCovers,
+                            clearDescriptions = clearDescriptions,
+                            clearTags = clearTags,
+                        )
+                    },
+                )
+            }
             is LibraryScreenModel.Dialog.MarkReadConfirmation -> {
                 MarkReadConfirmationDialog(
                     read = dialog.read,
@@ -329,9 +358,6 @@ data object LibraryTab : Tab {
                     onDismissRequest = onDismissRequest,
                     isNovelMode = false, // Manga mode for LibraryTab
                 )
-            }
-            is LibraryScreenModel.Dialog.RemoveChapters -> {
-                // Remove chapters dialog - handled in NovelsTab
             }
             is LibraryScreenModel.Dialog.ImportEpub -> {
                 // Import EPUB is only used in NovelsTab, not here

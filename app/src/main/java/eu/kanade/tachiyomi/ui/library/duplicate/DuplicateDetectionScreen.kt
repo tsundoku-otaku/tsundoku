@@ -82,6 +82,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.manga.model.toSManga
+import eu.kanade.presentation.library.DeleteLibraryMangaDialog
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -143,9 +144,9 @@ class DuplicateDetectionScreen : Screen {
                         if (state.selection.isNotEmpty()) {
                             // Copy links
                             IconButton(onClick = {
-                                val urls = screenModel.getSelectedUrls()
-                                clipboardManager.setText(AnnotatedString(urls.joinToString("\n")))
                                 scope.launch {
+                                    val urls = screenModel.getSelectedUrls()
+                                    clipboardManager.setText(AnnotatedString(urls.joinToString("\n")))
                                     snackbarHostState.showSnackbar(
                                         context.ctxStringResource(MR.strings.duplicate_urls_copied, urls.size),
                                     )
@@ -308,7 +309,7 @@ class DuplicateDetectionScreen : Screen {
                     .padding(contentPadding),
             ) {
                 // Match mode selector
-                Row(
+                FlowRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
@@ -316,6 +317,7 @@ class DuplicateDetectionScreen : Screen {
                 ) {
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.EXACT,
+                        enabled = !state.listingMode,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.EXACT) },
                         label = { Text(stringResource(MR.strings.duplicate_match_exact)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.EXACT) {
@@ -326,6 +328,7 @@ class DuplicateDetectionScreen : Screen {
                     )
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.CONTAINS,
+                        enabled = !state.listingMode,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.CONTAINS) },
                         label = { Text(stringResource(MR.strings.duplicate_match_contains)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.CONTAINS) {
@@ -336,6 +339,7 @@ class DuplicateDetectionScreen : Screen {
                     )
                     FilterChip(
                         selected = state.matchMode == DuplicateMatchMode.URL,
+                        enabled = !state.listingMode,
                         onClick = { screenModel.setMatchMode(DuplicateMatchMode.URL) },
                         label = { Text(stringResource(MR.strings.duplicate_match_url)) },
                         leadingIcon = if (state.matchMode == DuplicateMatchMode.URL) {
@@ -343,6 +347,25 @@ class DuplicateDetectionScreen : Screen {
                         } else {
                             null
                         },
+                    )
+                    FilterChip(
+                        selected = state.listingMode,
+                        onClick = { screenModel.setListingMode(!state.listingMode) },
+                        label = { Text(stringResource(MR.strings.duplicate_listing_mode)) },
+                        leadingIcon = if (state.listingMode) {
+                            { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                        } else {
+                            null
+                        },
+                    )
+                }
+
+                if (state.listingMode && state.listingTruncated) {
+                    Text(
+                        text = stringResource(MR.strings.duplicate_listing_truncated),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
 
@@ -851,6 +874,7 @@ class DuplicateDetectionScreen : Screen {
                                     showFullUrls = state.showFullUrls,
                                     onToggleSelection = { screenModel.toggleSelection(it) },
                                     onSelectGroup = { screenModel.selectGroup(title) },
+                                    onDismissGroup = { screenModel.dismissGroup(title) },
                                     onClickManga = { navigator.push(MangaScreen(it)) },
                                 )
                             }
@@ -862,13 +886,29 @@ class DuplicateDetectionScreen : Screen {
 
         // Delete confirmation dialog
         if (state.showDeleteDialog) {
-            DeleteSelectedDialog(
-                count = state.selection.size,
-                onDismiss = { screenModel.closeDeleteDialog() },
-                onConfirm = { deleteManga, deleteChapters ->
+            DeleteLibraryMangaDialog(
+                containsLocalManga = screenModel.selectionContainsLocalManga(),
+                onDismissRequest = { screenModel.closeDeleteDialog() },
+                onConfirm = {
+                        removeFromLibrary,
+                        deleteDownloads,
+                        clearChaptersFromDb,
+                        deleteTranslations,
+                        clearCovers,
+                        clearDescriptions,
+                        clearTags,
+                    ->
                     val count = state.selection.size
                     scope.launch {
-                        screenModel.deleteSelected(deleteManga, deleteChapters)
+                        screenModel.deleteSelected(
+                            removeFromLibrary = removeFromLibrary,
+                            deleteDownloads = deleteDownloads,
+                            clearChaptersFromDb = clearChaptersFromDb,
+                            deleteTranslations = deleteTranslations,
+                            clearCovers = clearCovers,
+                            clearDescriptions = clearDescriptions,
+                            clearTags = clearTags,
+                        )
                         snackbarHostState.showSnackbar(
                             context.ctxStringResource(MR.strings.duplicate_deleted_count, count),
                         )
@@ -905,9 +945,11 @@ private fun DuplicateGroupCard(
     showFullUrls: Boolean,
     onToggleSelection: (Long) -> Unit,
     onSelectGroup: () -> Unit,
+    onDismissGroup: () -> Unit,
     onClickManga: (Long) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(true) }
+    val allSelected = mangaList.isNotEmpty() && mangaList.all { it.manga.id in selection }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -936,12 +978,21 @@ private fun DuplicateGroupCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                // Select Group button
                 IconButton(onClick = onSelectGroup) {
                     Icon(
-                        imageVector = Icons.Filled.SelectAll,
-                        contentDescription = stringResource(MR.strings.duplicate_select_group),
+                        imageVector = if (allSelected) Icons.Outlined.CheckBox else Icons.Filled.SelectAll,
+                        contentDescription = if (allSelected) {
+                            stringResource(TDMR.strings.duplicate_deselect_group)
+                        } else {
+                            stringResource(MR.strings.duplicate_select_group)
+                        },
                         tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                IconButton(onClick = onDismissGroup) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(TDMR.strings.duplicate_dismiss_group),
                     )
                 }
                 IconButton(onClick = { expanded = !expanded }) {
@@ -1123,54 +1174,6 @@ private fun DuplicateItem(
             }
         }
     }
-}
-
-@Composable
-private fun DeleteSelectedDialog(
-    count: Int,
-    onDismiss: () -> Unit,
-    onConfirm: (deleteManga: Boolean, deleteChapters: Boolean) -> Unit,
-) {
-    var deleteManga by remember { mutableStateOf(false) }
-    var deleteChapters by remember { mutableStateOf(true) }
-
-    androidx.compose.material3.AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(MR.strings.duplicate_delete_title, count)) },
-        text = {
-            Column {
-                Text(stringResource(MR.strings.duplicate_delete_message))
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { deleteChapters = !deleteChapters },
-                ) {
-                    Checkbox(checked = deleteChapters, onCheckedChange = { deleteChapters = it })
-                    Text(stringResource(MR.strings.duplicate_delete_downloaded_chapters))
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { deleteManga = !deleteManga },
-                ) {
-                    Checkbox(checked = deleteManga, onCheckedChange = { deleteManga = it })
-                    Text(stringResource(MR.strings.duplicate_delete_from_database))
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                onConfirm(deleteManga, deleteChapters)
-                onDismiss()
-            }) {
-                Text(stringResource(MR.strings.action_delete))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(MR.strings.action_cancel))
-            }
-        },
-    )
 }
 
 @Composable

@@ -82,6 +82,7 @@ import tachiyomi.domain.manga.interactor.SearchMangaMetadata
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.applyFilter
+import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.track.interactor.GetTracksPerManga
@@ -116,6 +117,7 @@ class LibraryScreenModel(
     private val downloadCache: DownloadCache = Injekt.get(),
     private val trackerManager: TrackerManager = Injekt.get(),
     private val translatedChapterRepository: TranslatedChapterRepository = Injekt.get(),
+    private val mangaRepository: MangaRepository = Injekt.get(),
     private val type: LibraryType = LibraryType.All,
 ) : StateScreenModel<LibraryScreenModel.State>(State()) {
 
@@ -1057,6 +1059,72 @@ class LibraryScreenModel(
         }
     }
 
+    fun openCategoryActionsDialog(category: Category) {
+        mutableState.update { it.copy(dialog = Dialog.CategoryAction(category)) }
+    }
+
+    /**
+     * Apply delete/clear operations to every favorite in a category. Works off ids fetched from the DB
+     * and processes them in chunks so a category with 100k+ entries never materializes all at once.
+     */
+    fun removeCategoryMangas(
+        categoryId: Long,
+        deleteFromLibrary: Boolean,
+        deleteChapters: Boolean,
+        clearChaptersFromDb: Boolean = false,
+        deleteTranslations: Boolean = false,
+        clearCovers: Boolean = false,
+        clearDescriptions: Boolean = false,
+        clearTags: Boolean = false,
+    ) {
+        screenModelScope.launchNonCancellable {
+            val ids = mangaRepository.getFavoriteIdsForCategory(categoryId)
+            if (ids.isEmpty()) return@launchNonCancellable
+
+            val needsManga = deleteChapters || deleteTranslations || deleteFromLibrary
+            ids.chunked(500).forEach { chunk ->
+                val mangas = if (needsManga) {
+                    mangaRepository.getMangaWithCountsLight(chunk).map { it.manga }
+                } else {
+                    emptyList()
+                }
+
+                if (deleteChapters) {
+                    mangas.forEach { manga ->
+                        val source = sourceManager.get(manga.source) as? HttpSource ?: return@forEach
+                        downloadManager.deleteManga(manga, source)
+                    }
+                }
+
+                if (deleteTranslations) {
+                    mangas.forEach { manga ->
+                        val chapters = getChaptersByMangaId.await(manga.id)
+                        translatedChapterRepository.deleteAllForChapters(chapters.map { it.id })
+                    }
+                }
+
+                if (deleteFromLibrary) {
+                    mangas.forEach { it.removeCovers(coverCache) }
+                    updateManga.awaitAll(chunk.map { MangaUpdate(id = it, favorite = false) })
+                }
+            }
+
+            val clearOperations = buildList {
+                if (clearChaptersFromDb) add(LibraryClearJob.OP_CLEAR_CHAPTERS)
+                if (clearCovers) add(LibraryClearJob.OP_CLEAR_COVERS)
+                if (clearDescriptions) add(LibraryClearJob.OP_CLEAR_DESCRIPTIONS)
+                if (clearTags) add(LibraryClearJob.OP_CLEAR_TAGS)
+            }
+            if (clearOperations.isNotEmpty()) {
+                LibraryClearJob.start(Injekt.get<android.app.Application>(), ids, clearOperations)
+            }
+
+            if (!deleteFromLibrary && (deleteChapters || deleteTranslations)) {
+                getLibraryManga.notifyChanged()
+            }
+        }
+    }
+
     /**
      * Bulk update categories of manga using old and new common categories.
      *
@@ -1464,10 +1532,6 @@ class LibraryScreenModel(
 
     fun openUpdateSelectedDialog() {
         mutableState.update { it.copy(dialog = Dialog.UpdateSelected(state.value.selectedManga)) }
-    }
-
-    fun openRemoveChaptersDialog() {
-        mutableState.update { it.copy(dialog = Dialog.RemoveChapters(state.value.selectedManga)) }
     }
 
     fun closeDialog() {
@@ -1955,8 +2019,8 @@ class LibraryScreenModel(
             val initialSelection: List<CheckboxState<Category>>,
         ) : Dialog
         data class DeleteManga(val manga: List<Manga>) : Dialog
-        data class RemoveChapters(val manga: List<Manga>) : Dialog
         data class MarkReadConfirmation(val read: Boolean) : Dialog
+        data class CategoryAction(val category: Category) : Dialog
     }
 
     @Immutable

@@ -350,6 +350,8 @@
     <string name="duplicate_flexible_group_matching">Flexible group matching (allow at least one match)</string>
     <string name="duplicate_category_include_or">OR</string>
     <string name="duplicate_category_include_and">AND</string>
+    <string name="duplicate_dismiss_group">Dismiss group</string>
+    <string name="duplicate_deselect_group">Deselect group</string>
     <string name="epub_create_dir_failed">Failed to create directory for: %s</string>
     <string name="epub_novels_export_count">%d novel(s) will be exported.</string>
     <string name="epub_and_more">… and %d more</string>

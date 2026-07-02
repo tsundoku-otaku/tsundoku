@@ -5,6 +5,7 @@ import kotlinx.serialization.json.JsonObject
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaSelectionMetric
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 
@@ -134,6 +135,20 @@ interface MangaRepository {
      * Get ID + title pairs for all favorites.
      */
     suspend fun getFavoriteIdAndTitle(): List<Pair<Long, String>>
+
+    /**
+     * Get up to [limit] lightweight selection metrics for favorites, optionally restricted to any of
+     * [categoryIds] (empty means all favorites).
+     */
+    suspend fun getFavoriteSelectionMetrics(
+        categoryIds: List<Long>,
+        limit: Long,
+    ): List<MangaSelectionMetric>
+
+    /**
+     * Get all favorite manga ids in [categoryId] (0 = uncategorized). Id-only for bulk category actions.
+     */
+    suspend fun getFavoriteIdsForCategory(categoryId: Long): List<Long>
 
     /**
      * Find duplicates by URL within the same source.

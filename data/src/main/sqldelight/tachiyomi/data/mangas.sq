@@ -933,6 +933,32 @@ SELECT _id, title
 FROM mangas
 WHERE favorite = 1;
 
+-- All favorite ids in a single category (categoryId 0 = the uncategorized bucket: no category rows).
+-- Id-only so a huge category can be acted on without materializing rows.
+getFavoriteIdsForCategory:
+SELECT M._id
+FROM mangas M
+WHERE M.favorite = 1
+  AND (
+    (:categoryId = 0 AND NOT EXISTS (SELECT 1 FROM mangas_categories MCX WHERE MCX.manga_id = M._id))
+    OR EXISTS (SELECT 1 FROM mangas_categories MCY WHERE MCY.manga_id = M._id AND MCY.category_id = :categoryId)
+  );
+
+-- Primitive-only selection metrics (no heavy text columns) so bulk selection can run over the whole
+-- matching set while only the displayed page materializes full rows.
+getFavoriteSelectionMetrics:
+SELECT _id, source, title, total_count, read_count
+FROM mangas
+WHERE favorite = 1
+LIMIT :limit;
+
+getFavoriteSelectionMetricsInCategories:
+SELECT DISTINCT M._id, M.source, M.title, M.total_count, M.read_count
+FROM mangas M
+JOIN mangas_categories MC ON MC.manga_id = M._id
+WHERE M.favorite = 1 AND MC.category_id IN :categoryIds
+LIMIT :limit;
+
 -- Lightweight row shape for URL maintenance operations
 -- (avoids decoding heavy text/list columns for large libraries)
 getAllMangaUrlMaintenanceRows:

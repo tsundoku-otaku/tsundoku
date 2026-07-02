@@ -924,6 +924,9 @@
     <string name="duplicate_match_exact">Exact</string>
     <string name="duplicate_match_contains">Contains</string>
     <string name="duplicate_match_url">Same URL</string>
+    <string name="action_clear_category">Clear category…</string>
+    <string name="duplicate_listing_mode">List all</string>
+    <string name="duplicate_listing_truncated">Showing the first 2000 entries. Narrow with category filters.</string>
     <string name="duplicate_filters_sort">Filters &amp; Sort</string>
     <string name="duplicate_type_label">Type:</string>
     <string name="duplicate_type_all">All</string>

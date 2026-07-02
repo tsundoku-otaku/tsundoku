@@ -172,6 +172,9 @@ data object NovelsTab : Tab {
                     onClickMassImport = screenModel::openMassImportDialog,
                     onClickImportEpub = { navigator.push(ImportEpubScreen()) },
                     onClickFindDuplicates = { navigator.push(DuplicateDetectionScreen()) },
+                    onClickCategoryActions = {
+                        state.activeCategory?.let(screenModel::openCategoryActionsDialog)
+                    },
                 )
             },
             bottomBar = {
@@ -199,7 +202,6 @@ data object NovelsTab : Tab {
                     onTranslateClicked = {
                         screenModel.translateSelectedNovels()
                     },
-                    onRemoveChaptersClicked = screenModel::openRemoveChaptersDialog,
                     onExportEpubClicked = screenModel::openExportEpubDialog,
                 )
             },
@@ -336,7 +338,31 @@ data object NovelsTab : Tab {
                     },
                 )
             }
-            is LibraryScreenModel.Dialog.RemoveChapters -> {
+            is LibraryScreenModel.Dialog.CategoryAction -> {
+                DeleteLibraryMangaDialog(
+                    containsLocalManga = false,
+                    onDismissRequest = onDismissRequest,
+                    onConfirm = {
+                            deleteManga,
+                            deleteChapter,
+                            clearChaptersFromDb,
+                            deleteTranslations,
+                            clearCovers,
+                            clearDescriptions,
+                            clearTags,
+                        ->
+                        screenModel.removeCategoryMangas(
+                            categoryId = dialog.category.id,
+                            deleteFromLibrary = deleteManga,
+                            deleteChapters = deleteChapter,
+                            clearChaptersFromDb = clearChaptersFromDb,
+                            deleteTranslations = deleteTranslations,
+                            clearCovers = clearCovers,
+                            clearDescriptions = clearDescriptions,
+                            clearTags = clearTags,
+                        )
+                    },
+                )
             }
             is LibraryScreenModel.Dialog.MarkReadConfirmation -> {
                 MarkReadConfirmationDialog(

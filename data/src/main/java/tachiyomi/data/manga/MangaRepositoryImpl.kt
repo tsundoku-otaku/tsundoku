@@ -24,6 +24,7 @@ import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.manga.model.MangaSelectionMetric
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.repository.DuplicateGroup
@@ -1337,6 +1338,30 @@ class MangaRepositoryImpl(
         return database.mangasQueries.getFavoriteIdAndTitle { id, title ->
             id to title
         }.awaitAsList()
+    }
+
+    override suspend fun getFavoriteIdsForCategory(categoryId: Long): List<Long> {
+        return database.mangasQueries.getFavoriteIdsForCategory(categoryId).awaitAsList()
+    }
+
+    override suspend fun getFavoriteSelectionMetrics(
+        categoryIds: List<Long>,
+        limit: Long,
+    ): List<MangaSelectionMetric> {
+        val mapper = { id: Long, source: Long, title: String, totalCount: Long, readCount: Long ->
+            MangaSelectionMetric(
+                id = id,
+                groupKey = title.trim().lowercase().ifBlank { id.toString() },
+                source = source,
+                chapterCount = totalCount.toInt(),
+                readCount = readCount.toInt(),
+            )
+        }
+        return if (categoryIds.isEmpty()) {
+            database.mangasQueries.getFavoriteSelectionMetrics(limit, mapper).awaitAsList()
+        } else {
+            database.mangasQueries.getFavoriteSelectionMetricsInCategories(categoryIds, limit, mapper).awaitAsList()
+        }
     }
 
     override suspend fun findDuplicatesByUrl(): List<DuplicateGroup> {
