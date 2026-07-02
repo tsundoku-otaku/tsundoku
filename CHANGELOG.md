@@ -53,6 +53,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Other
 - jsplugins should surface fetch errors [@mrissaoussama](https://github.com/mrissaoussama) [#293](https://github.com/tsundoku-otaku/tsundoku/pull/293)
+- Optimize bulk data clearing and chapter removal [@mrissaoussama](https://github.com/mrissaoussama) [#313](https://github.com/tsundoku-otaku/tsundoku/pull/313)
 - Merged df37d81 from Mihon [@mrissaoussama](https://github.com/mrissaoussama) [#281](https://github.com/tsundoku-otaku/tsundoku/pull/281)
 - Merged a2f3ec9 from Mihon [@Rojikku](https://github.com/Rojikku) [#251](https://github.com/tsundoku-otaku/tsundoku/pull/251)
 
