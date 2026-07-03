@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -36,11 +37,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
@@ -71,6 +75,7 @@ import eu.kanade.presentation.reader.appbars.QuotesSheet
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
 import eu.kanade.presentation.reader.appbars.bottomBarItemInfo
 import eu.kanade.presentation.reader.components.ChapterNavigatorType
+import eu.kanade.presentation.reader.deserializeStatusBarOrder
 import eu.kanade.presentation.reader.settings.ReaderSettingsDialog
 import eu.kanade.presentation.util.formatChapterNumber
 import eu.kanade.tachiyomi.R
@@ -346,14 +351,20 @@ class ReaderActivity : BaseActivity() {
         val novelStatusBarEnabled by readerPreferences.novelStatusBarEnabled.collectAsState()
         val novelStatusBarShowTime by readerPreferences.novelStatusBarShowTime.collectAsState()
         val novelStatusBarShowBattery by readerPreferences.novelStatusBarShowBattery.collectAsState()
-        val novelStatusBarShowChapter by readerPreferences.novelStatusBarShowChapter.collectAsState()
+        val novelStatusBarShowChapterNumber by readerPreferences.novelStatusBarShowChapterNumber.collectAsState()
+        val novelStatusBarShowChapterTitle by readerPreferences.novelStatusBarShowChapterTitle.collectAsState()
         val novelStatusBarShowProgress by readerPreferences.novelStatusBarShowProgress.collectAsState()
+        val novelStatusBarPosition by readerPreferences.novelStatusBarPosition.collectAsState()
+        val novelStatusBarSize by readerPreferences.novelStatusBarSize.collectAsState()
+        val novelStatusBarShowCharging by readerPreferences.novelStatusBarShowCharging.collectAsState()
+        val novelStatusBarOrderRaw by readerPreferences.novelStatusBarOrder.collectAsState()
         val novelTtsControlsActive by readerPreferences.novelTtsControlsVisible.collectAsState()
-        val novelStatusBarChapterDisplay by readerPreferences.novelChapterTitleDisplay.collectAsState()
         val novelTheme by readerPreferences.novelTheme.collectAsState()
         val novelBgColorInt by readerPreferences.novelBackgroundColor.collectAsState()
         val novelFontColorInt by readerPreferences.novelFontColor.collectAsState()
         var statusBarCollapsed by remember { mutableStateOf(false) }
+        var statusBarHeightPx by remember { mutableIntStateOf(0) }
+        val density = LocalDensity.current
         val settingsScreenModel = remember {
             ReaderSettingsScreenModel(
                 readerState = viewModel.state,
@@ -376,23 +387,31 @@ class ReaderActivity : BaseActivity() {
 
             ContentOverlay(state = state)
 
-            AppBars(state = state)
+            val statusBarAtBottom = novelStatusBarPosition != "top"
+            val ttsOverlayBottomPadding = if (
+                isNovelMode && novelStatusBarEnabled && statusBarAtBottom && !state.menuVisible
+            ) {
+                with(density) { statusBarHeightPx.toDp() }
+            } else {
+                0.dp
+            }
+
+            AppBars(state = state, ttsOverlayBottomPadding = ttsOverlayBottomPadding)
 
             if (isNovelMode && !state.menuVisible && novelStatusBarEnabled) {
                 val chapter = state.novelVisibleChapter ?: state.currentChapter?.chapter
-                val chapterText: String? = chapter?.let { ch ->
-                    val numStr = if (ch.chapter_number >=
-                        0f
-                    ) {
+                val showChapterSegment = novelStatusBarShowChapterNumber || novelStatusBarShowChapterTitle
+                val chapterText: String? = chapter?.takeIf { showChapterSegment }?.let { ch ->
+                    val numStr = if (novelStatusBarShowChapterNumber && ch.chapter_number >= 0f) {
                         "Ch. ${formatChapterNumber(ch.chapter_number.toDouble())}"
                     } else {
                         null
                     }
-                    val nameStr = ch.name.ifEmpty { null }
-                    when (novelStatusBarChapterDisplay) {
-                        1 -> numStr ?: nameStr
-                        2 -> if (numStr != null && nameStr != null) "$numStr: $nameStr" else numStr ?: nameStr
-                        else -> nameStr ?: numStr
+                    val nameStr = if (novelStatusBarShowChapterTitle) ch.name.ifEmpty { null } else null
+                    when {
+                        numStr != null && nameStr != null -> "$numStr: $nameStr"
+                        numStr != null -> numStr
+                        else -> nameStr
                     }
                 }
                 val (bgInt, textInt) = remember(novelTheme, novelBgColorInt, novelFontColorInt) {
@@ -400,21 +419,27 @@ class ReaderActivity : BaseActivity() {
                 }
                 val readerBgColor = ComposeColor(bgInt)
                 val readerTextColor = ComposeColor(textInt)
-                val extraPad = if (novelTtsControlsActive) 56.dp else 0.dp
+                val statusBarOrder = remember(novelStatusBarOrderRaw) {
+                    novelStatusBarOrderRaw.deserializeStatusBarOrder()
+                }
                 NovelStatusBar(
                     chapterText = chapterText,
                     progressPercent = state.novelProgressPercent,
+                    order = statusBarOrder,
                     showTime = novelStatusBarShowTime,
-                    showBattery = novelStatusBarShowBattery,
-                    showChapter = novelStatusBarShowChapter,
+                    showChapter = showChapterSegment,
                     showProgress = novelStatusBarShowProgress,
+                    showBattery = novelStatusBarShowBattery,
+                    showCharging = novelStatusBarShowCharging,
                     backgroundColor = readerBgColor,
                     textColor = readerTextColor,
                     isCollapsed = statusBarCollapsed,
                     onToggleCollapse = { statusBarCollapsed = !statusBarCollapsed },
+                    size = novelStatusBarSize,
+                    onHeightChanged = { statusBarHeightPx = it },
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = extraPad),
+                        .align(if (statusBarAtBottom) Alignment.BottomCenter else Alignment.TopCenter)
+                        .then(if (statusBarAtBottom) Modifier else Modifier.statusBarsPadding()),
                 )
             }
         }
@@ -677,7 +702,7 @@ class ReaderActivity : BaseActivity() {
     }
 
     @Composable
-    fun AppBars(state: ReaderViewModel.State) {
+    fun AppBars(state: ReaderViewModel.State, ttsOverlayBottomPadding: Dp = 0.dp) {
         if (!ifSourcesLoaded()) {
             return
         }
@@ -1027,6 +1052,7 @@ class ReaderActivity : BaseActivity() {
                 isWebView = state.viewer is NovelWebViewViewer,
                 bottomBarItems = bottomBarItems,
                 onQuotes = ::onQuotesClicked,
+                ttsOverlayBottomPadding = ttsOverlayBottomPadding,
             )
 
             androidx.activity.compose.BackHandler(enabled = isEditing && state.hasUnsavedChanges) {

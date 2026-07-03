@@ -1711,6 +1711,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 setScrollProgress(progress)
                 logcat(LogPriority.DEBUG) { "NovelViewer: Scroll restored to ${(progress * 100).toInt()}%" }
                 isRestoringScroll = false
+                lastSavedProgress = progress
+                activity.onNovelProgressChanged(progress)
             }
         }
 

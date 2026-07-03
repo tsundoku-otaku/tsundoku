@@ -722,6 +722,16 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
         pref = screenModel.preferences.novelStatusBarEnabled,
     )
     if (statusBarEnabled) {
+        val statusBarPosition by screenModel.preferences.novelStatusBarPosition.collectAsState()
+        CheckboxItem(
+            label = stringResource(TDMR.strings.pref_novel_status_bar_at_top),
+            checked = statusBarPosition == "top",
+            onClick = {
+                screenModel.preferences.novelStatusBarPosition.set(
+                    if (statusBarPosition == "top") "bottom" else "top",
+                )
+            },
+        )
         CheckboxItem(
             label = stringResource(TDMR.strings.pref_novel_status_bar_show_time),
             pref = screenModel.preferences.novelStatusBarShowTime,
@@ -731,13 +741,31 @@ internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel
             pref = screenModel.preferences.novelStatusBarShowBattery,
         )
         CheckboxItem(
-            label = stringResource(TDMR.strings.pref_novel_status_bar_show_chapter),
-            pref = screenModel.preferences.novelStatusBarShowChapter,
+            label = stringResource(TDMR.strings.pref_novel_status_bar_show_chapter_number),
+            pref = screenModel.preferences.novelStatusBarShowChapterNumber,
+        )
+        CheckboxItem(
+            label = stringResource(TDMR.strings.pref_novel_status_bar_show_chapter_title),
+            pref = screenModel.preferences.novelStatusBarShowChapterTitle,
         )
         CheckboxItem(
             label = stringResource(TDMR.strings.pref_novel_status_bar_show_progress),
             pref = screenModel.preferences.novelStatusBarShowProgress,
         )
+        val statusBarSize by screenModel.preferences.novelStatusBarSize.collectAsState()
+        val statusBarSizeOptions = listOf(
+            stringResource(TDMR.strings.novel_status_bar_size_small) to "small",
+            stringResource(TDMR.strings.novel_status_bar_size_medium) to "medium",
+        )
+        InlineSettingsChipRow(TDMR.strings.pref_novel_status_bar_size) {
+            statusBarSizeOptions.forEach { (label, value) ->
+                FilterChip(
+                    selected = statusBarSize == value,
+                    onClick = { screenModel.preferences.novelStatusBarSize.set(value) },
+                    label = { Text(label) },
+                )
+            }
+        }
     }
 }
 

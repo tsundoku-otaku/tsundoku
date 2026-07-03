@@ -74,6 +74,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.components.AppBar
@@ -155,6 +156,9 @@ fun NovelReaderAppBars(
 
     // Toolbar customization
     bottomBarItems: List<BottomBarItemState>,
+
+    // Extra bottom offset for the floating TTS overlay so it clears the status bar
+    ttsOverlayBottomPadding: Dp = 0.dp,
 ) {
     val backgroundColor = MaterialTheme.colorScheme
         .surfaceColorAtElevation(3.dp)
@@ -230,7 +234,7 @@ fun NovelReaderAppBars(
                         onStartFromViewport = onTtsStartFromViewport,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = MaterialTheme.padding.small),
+                            .padding(bottom = MaterialTheme.padding.small + ttsOverlayBottomPadding),
                     )
                 }
             }

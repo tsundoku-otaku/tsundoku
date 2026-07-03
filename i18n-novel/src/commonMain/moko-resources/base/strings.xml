@@ -909,6 +909,22 @@
     <string name="pref_novel_status_bar">Reading status bar</string>
     <string name="pref_novel_status_bar_show_time">Show current time</string>
     <string name="pref_novel_status_bar_show_battery">Show battery percentage</string>
-    <string name="pref_novel_status_bar_show_chapter">Show chapter title</string>
     <string name="pref_novel_status_bar_show_progress">Show reading progress</string>
+    <string name="pref_novel_status_bar_position">Status bar position</string>
+    <string name="pref_novel_status_bar_size">Status bar size</string>
+    <string name="novel_status_bar_size_small">Small</string>
+    <string name="novel_status_bar_size_medium">Medium</string>
+    <string name="novel_status_bar_position_top">Top</string>
+    <string name="novel_status_bar_position_bottom">Bottom</string>
+    <string name="pref_novel_status_bar_at_top">Status bar at top</string>
+    <string name="pref_novel_status_bar_show_chapter_number">Show chapter number</string>
+    <string name="pref_novel_status_bar_show_chapter_title">Show chapter title</string>
+    <string name="pref_novel_status_bar_show_charging">Show charging indicator</string>
+    <string name="pref_novel_status_bar_show_charging_summary">Battery icon reflects charging state when plugged in</string>
+    <string name="pref_novel_status_bar_customize">Customize status bar elements</string>
+    <string name="pref_novel_status_bar_customize_summary">Reorder and toggle time, chapter, progress and battery</string>
+    <string name="novel_status_bar_element_time">Time</string>
+    <string name="novel_status_bar_element_chapter">Chapter</string>
+    <string name="novel_status_bar_element_progress">Progress</string>
+    <string name="novel_status_bar_element_battery">Battery</string>
 </resources>

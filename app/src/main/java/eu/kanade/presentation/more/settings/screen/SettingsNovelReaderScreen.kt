@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.remember
 import cafe.adriel.voyager.navigator.LocalNavigator
+import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -54,7 +55,78 @@ object SettingsNovelReaderScreen : SearchableSettings {
             getNavigationGroup(readerPref),
             getAutoScrollGroup(readerPref),
             getContentGroup(readerPref),
+            getStatusBarGroup(readerPref, navigator),
             getTtsGroup(readerPref),
+        )
+    }
+
+    @Composable
+    private fun getStatusBarGroup(
+        readerPreferences: ReaderPreferences,
+        navigator: Navigator,
+    ): Preference.PreferenceGroup {
+        val enabled = readerPreferences.novelStatusBarEnabled.collectAsState().value
+
+        val items = buildList {
+            add(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.novelStatusBarEnabled,
+                    title = stringResource(TDMR.strings.pref_novel_status_bar),
+                ),
+            )
+            if (enabled) {
+                add(
+                    Preference.PreferenceItem.ListPreference(
+                        preference = readerPreferences.novelStatusBarPosition,
+                        entries = mapOf(
+                            "bottom" to stringResource(TDMR.strings.novel_status_bar_position_bottom),
+                            "top" to stringResource(TDMR.strings.novel_status_bar_position_top),
+                        ),
+                        title = stringResource(TDMR.strings.pref_novel_status_bar_position),
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.ListPreference(
+                        preference = readerPreferences.novelStatusBarSize,
+                        entries = mapOf(
+                            "small" to stringResource(TDMR.strings.novel_status_bar_size_small),
+                            "medium" to stringResource(TDMR.strings.novel_status_bar_size_medium),
+                        ),
+                        title = stringResource(TDMR.strings.pref_novel_status_bar_size),
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelStatusBarShowChapterNumber,
+                        title = stringResource(TDMR.strings.pref_novel_status_bar_show_chapter_number),
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelStatusBarShowChapterTitle,
+                        title = stringResource(TDMR.strings.pref_novel_status_bar_show_chapter_title),
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelStatusBarShowCharging,
+                        title = stringResource(TDMR.strings.pref_novel_status_bar_show_charging),
+                        subtitle = stringResource(TDMR.strings.pref_novel_status_bar_show_charging_summary),
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.TextPreference(
+                        title = stringResource(TDMR.strings.pref_novel_status_bar_customize),
+                        subtitle = stringResource(TDMR.strings.pref_novel_status_bar_customize_summary),
+                        onClick = { navigator.push(StatusBarElementsScreen()) },
+                    ),
+                )
+            }
+        }
+
+        return Preference.PreferenceGroup(
+            title = stringResource(TDMR.strings.pref_novel_status_bar),
+            preferenceItems = items,
         )
     }
 

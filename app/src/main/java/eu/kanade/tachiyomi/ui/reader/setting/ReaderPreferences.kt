@@ -400,13 +400,37 @@ class ReaderPreferences(
         "pref_novel_status_bar_show_battery",
         true,
     )
-    val novelStatusBarShowChapter: Preference<Boolean> = preferenceStore.getBoolean(
-        "pref_novel_status_bar_show_chapter",
+    val novelStatusBarShowChapterNumber: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_novel_status_bar_show_chapter_number",
+        true,
+    )
+    val novelStatusBarShowChapterTitle: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_novel_status_bar_show_chapter_title",
         true,
     )
     val novelStatusBarShowProgress: Preference<Boolean> = preferenceStore.getBoolean(
         "pref_novel_status_bar_show_progress",
         true,
+    )
+
+    val novelStatusBarPosition: Preference<String> = preferenceStore.getString(
+        "pref_novel_status_bar_position",
+        "bottom",
+    )
+
+    val novelStatusBarSize: Preference<String> = preferenceStore.getString(
+        "pref_novel_status_bar_size",
+        "small",
+    )
+
+    val novelStatusBarShowCharging: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_novel_status_bar_show_charging",
+        true,
+    )
+
+    val novelStatusBarOrder: Preference<String> = preferenceStore.getString(
+        "pref_novel_status_bar_order",
+        "time,chapter,progress,battery",
     )
     // endregion
 
