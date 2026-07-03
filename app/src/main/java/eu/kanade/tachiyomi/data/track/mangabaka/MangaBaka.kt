@@ -154,9 +154,6 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
         track.publishing_status = obj.prim("status")?.contentOrNull?.replaceFirstChar { it.uppercase() } ?: ""
         track.publishing_type = obj.prim("type")?.contentOrNull?.replaceFirstChar { it.uppercase() } ?: ""
         obj.prim("total_chapters")?.contentOrNull?.toLongOrNull()?.let { track.total_chapters = it }
-        if (track.total_chapters == 0L) {
-            obj.prim("final_volume")?.contentOrNull?.toLongOrNull()?.let { track.total_chapters = it }
-        }
         obj.prim("rating")?.doubleOrNull?.let { track.score = it }
         (obj["published"] as? JsonObject)?.prim("start_date")?.contentOrNull?.let { track.start_date = it }
         track.authors = (obj["authors"] as? JsonArray)
