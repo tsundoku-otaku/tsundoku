@@ -618,7 +618,7 @@ class CustomNovelSource(
         val chapters = generatedChapterEntries(resolvedPattern, start, end, sel.nameTemplate).map { entry ->
             SChapter.create().apply {
                 // Normalize to a path relative to baseUrl (getPageList rebuilds the absolute URL).
-                url = buildAbsoluteUrl(entry.url).removePrefix(baseUrl.trimEnd('/')).ifBlank { entry.url }
+                url = toRelativeStoredUrl(entry.url).ifBlank { entry.url }
                 name = entry.name
                 chapter_number = entry.number
             }
@@ -727,6 +727,15 @@ class CustomNovelSource(
         return super.getPageList(chapter)
     }
 
+    // Default HttpSource builds these as baseUrl + url. A stored url may be absolute (legacy
+    // entries, or a host that didn't match baseUrl at parse time), so route through
+    // buildAbsoluteUrl to avoid gluing baseUrl onto an absolute url.
+    override fun mangaDetailsRequest(manga: SManga): Request = GET(buildAbsoluteUrl(manga.url), headers)
+
+    override fun chapterListRequest(manga: SManga): Request = GET(buildAbsoluteUrl(manga.url), headers)
+
+    override fun pageListRequest(chapter: SChapter): Request = GET(buildAbsoluteUrl(chapter.url), headers)
+
     // ======================== Popular ========================
 
     override fun popularMangaRequest(page: Int): Request {
@@ -810,7 +819,7 @@ class CustomNovelSource(
             ?: document.selectFirst("a[href*=chapter]")
 
         return SChapter.create().apply {
-            url = link?.attr("abs:href")?.removePrefix(baseUrl) ?: ""
+            url = toRelativeStoredUrl(link?.attr("abs:href"))
             name = document.selectText(selectors.name)
                 ?: link?.text()?.trim()
                 ?: "Chapter"
@@ -854,7 +863,7 @@ class CustomNovelSource(
         return document.select(selectors.list).mapNotNull { element ->
             try {
                 val link = resolveLink(element, selectors.link)
-                val url = link?.attr("abs:href")?.removePrefix(baseUrl) ?: return@mapNotNull null
+                val url = toRelativeStoredUrl(link?.attr("abs:href")).ifBlank { return@mapNotNull null }
 
                 SChapter.create().apply {
                     this.url = url
@@ -1000,7 +1009,7 @@ class CustomNovelSource(
             try {
                 SManga.create().apply {
                     val link = resolveLink(element, selectors.link)
-                    url = link?.attr("abs:href")?.removePrefix(baseUrl) ?: return@mapNotNull null
+                    url = toRelativeStoredUrl(link?.attr("abs:href")).ifBlank { return@mapNotNull null }
                     title = element.selectText(selectors.title)
                         ?: link?.attr("title")?.ifBlank { null }
                         ?: link?.text()?.trim()
@@ -1197,6 +1206,22 @@ class CustomNovelSource(
 
         // Otherwise, it's a relative path - add slash between baseUrl and path
         return "$baseUrl/$trimmedUrl"
+    }
+
+    // Strips scheme+host so a stored url is always a path, even when the site's links use a
+    // different host than baseUrl (www vs non-www, mirrors). Without this, baseUrl + absoluteUrl
+    // glues into a broken host like "site.comhttps://..." on the next request.
+    private fun toRelativeStoredUrl(href: String?): String {
+        val value = normalizeCustomUrl(href)?.trim().orEmpty()
+        if (value.isBlank()) return ""
+        value.toHttpUrlOrNull()?.let { http ->
+            return buildString {
+                append(http.encodedPath)
+                http.encodedQuery?.let { append('?').append(it) }
+                http.encodedFragment?.let { append('#').append(it) }
+            }
+        }
+        return if (value.startsWith("/")) value else "/$value"
     }
 
     companion object {
