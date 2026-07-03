@@ -207,8 +207,10 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
     }
 
     override suspend fun bind(track: Track, hasReadChapters: Boolean): Track {
-        val seriesId = track.remote_id.takeIf { it > 0 } ?: extractSeriesId(track.tracking_url) ?: return track
+        val rawId = track.remote_id.takeIf { it > 0 } ?: extractSeriesId(track.tracking_url) ?: return track
+        val (seriesId, _) = resolveSeries(rawId)
         track.remote_id = seriesId
+        if (seriesId != rawId) track.tracking_url = "$webUrl/$seriesId"
 
         val existing = fetchLibraryEntry(seriesId)
         if (existing != null) {
@@ -249,21 +251,46 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
     }
 
     override suspend fun refresh(track: Track): Track {
-        val seriesId = track.remote_id.takeIf { it > 0 } ?: extractSeriesId(track.tracking_url) ?: return track
+        val rawId = track.remote_id.takeIf { it > 0 } ?: extractSeriesId(track.tracking_url) ?: return track
+        val (seriesId, series) = resolveSeries(rawId)
         track.remote_id = seriesId
+        if (seriesId != rawId) track.tracking_url = "$webUrl/$seriesId"
         fetchLibraryEntry(seriesId)?.applyTo(track)
 
-        try {
-            val response = client.newCall(GET("$apiUrl/v1/series/$seriesId", authHeaders())).awaitSuccess()
-            val body = response.body.string()
-            val series = (json.parseToJsonElement(body) as? JsonObject)?.get("data") as? JsonObject
-                ?: return track
-            series.prim("title")?.contentOrNull?.let { track.title = it }
-            series.prim("final_volume")?.contentOrNull?.toLongOrNull()?.let { track.total_chapters = it }
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "MangaBaka metadata refresh failed for $seriesId" }
+        series?.let {
+            it.prim("title")?.contentOrNull?.let { title -> track.title = title }
+            it.prim("total_chapters")?.contentOrNull?.toLongOrNull()?.let { total -> track.total_chapters = total }
         }
         return track
+    }
+
+    // Follows merged_with so entries pinned to a merged-away id resolve to the live series.
+    private suspend fun resolveSeries(seriesId: Long): Pair<Long, JsonObject?> {
+        var currentId = seriesId
+        var lastData: JsonObject? = null
+        repeat(3) {
+            val data = fetchSeries(currentId) ?: return currentId to lastData
+            lastData = data
+            val mergedWith = data.prim("merged_with")?.contentOrNull?.toLongOrNull()
+            if (data.prim("state")?.contentOrNull == "merged" && mergedWith != null &&
+                mergedWith > 0 && mergedWith != currentId
+            ) {
+                currentId = mergedWith
+            } else {
+                return currentId to data
+            }
+        }
+        return currentId to lastData
+    }
+
+    private suspend fun fetchSeries(seriesId: Long): JsonObject? {
+        return try {
+            val response = client.newCall(GET("$apiUrl/v1/series/$seriesId", authHeaders())).awaitSuccess()
+            (json.parseToJsonElement(response.body.string()) as? JsonObject)?.get("data") as? JsonObject
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "MangaBaka series fetch failed for $seriesId" }
+            null
+        }
     }
 
     override suspend fun setRemoteLastChapterRead(track: Track, chapterNumber: Int) {
@@ -532,13 +559,14 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
  *                  finish_date,start_date,rating}
  *  Slot 1: note (string)
  *  Slot 2: state (string)
- *  Slot 3: priority (number) — site default = 20
+ *  Slot 3: priority (number), site default 20
  *  Slot 4: is_private (bool)
- *  Slot 5: lists (array) — empty unless caller manages multi-list memberships
- *  Slot 6: progress (number) — shared by progress_chapter and progress_volume
- *  Slot 7: finish_date — ["Date", "yyyy-MM-ddTHH:mm:ss.SSSZ"]
- *  Slot 8: start_date — same shape
+ *  Slot 5: lists (array), empty unless caller manages multi-list memberships
+ *  Slot 6: progress_chapter (number)
+ *  Slot 7: finish_date ["Date", "yyyy-MM-ddTHH:mm:ss.SSSZ"]
+ *  Slot 8: start_date, same shape
  *  Slot 9: rating (0..100 number, or omit for unscored)
+ *  Slot 10: progress_volume (number)
  */
 internal object MangaBakaSuperForm {
     fun encode(
@@ -551,7 +579,8 @@ internal object MangaBakaSuperForm {
         startDateIso: String?,
         finishDateIso: String?,
     ): String {
-        val progress = maxOf(progressChapter, progressVolume).coerceAtLeast(0.0)
+        val chapter = progressChapter.coerceAtLeast(0.0)
+        val volume = progressVolume.coerceAtLeast(0.0)
         val arr = buildJsonArray {
             add(
                 buildJsonObject {
@@ -561,7 +590,7 @@ internal object MangaBakaSuperForm {
                     put("is_private", 4)
                     put("lists", 5)
                     put("progress_chapter", 6)
-                    put("progress_volume", 6)
+                    put("progress_volume", 10)
                     put("finish_date", 7)
                     put("start_date", 8)
                     put("rating", 9)
@@ -572,11 +601,7 @@ internal object MangaBakaSuperForm {
             add(JsonPrimitive(20))
             add(JsonPrimitive(isPrivate))
             add(buildJsonArray { })
-            if (progress == progress.toLong().toDouble()) {
-                add(JsonPrimitive(progress.toLong()))
-            } else {
-                add(JsonPrimitive(progress))
-            }
+            add(numberValue(chapter))
             add(dateValue(finishDateIso))
             add(dateValue(startDateIso))
             if (rating != null && rating > 0) {
@@ -584,8 +609,13 @@ internal object MangaBakaSuperForm {
             } else {
                 add(JsonNull)
             }
+            add(numberValue(volume))
         }
         return Json.encodeToString(JsonArray.serializer(), arr)
+    }
+
+    private fun numberValue(value: Double): JsonPrimitive {
+        return if (value == value.toLong().toDouble()) JsonPrimitive(value.toLong()) else JsonPrimitive(value)
     }
 
     /**
