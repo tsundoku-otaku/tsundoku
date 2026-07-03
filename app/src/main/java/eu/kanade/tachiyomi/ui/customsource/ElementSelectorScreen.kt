@@ -2556,8 +2556,8 @@ internal val ELEMENT_SELECTOR_JS = """
 internal fun deriveSearchUrl(url: String, baseUrl: String, userQuery: String): String? {
     if (userQuery.isBlank()) return null
 
-    val baseHost = runCatching { java.net.URI(baseUrl.trimEnd('/')).host }.getOrNull()
-    val currentHost = runCatching { java.net.URI(url).host }.getOrNull()
+    val baseHost = runCatching { java.net.URI(baseUrl.trimEnd('/')).host }.getOrNull()?.removePrefix("www.")
+    val currentHost = runCatching { java.net.URI(url).host }.getOrNull()?.removePrefix("www.")
     if (baseHost != null && currentHost != null && !currentHost.equals(baseHost, ignoreCase = true)) {
         return null
     }
