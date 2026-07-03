@@ -210,7 +210,7 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
         val rawId = track.remote_id.takeIf { it > 0 } ?: extractSeriesId(track.tracking_url) ?: return track
         val (seriesId, _) = resolveSeries(rawId)
         track.remote_id = seriesId
-        if (seriesId != rawId) track.tracking_url = "$webUrl/$seriesId"
+        track.tracking_url = "$webUrl/$seriesId"
 
         val existing = fetchLibraryEntry(seriesId)
         if (existing != null) {
@@ -254,7 +254,7 @@ class MangaBaka(id: Long) : BaseTracker(id, "MangaBaka"), DeletableTracker {
         val rawId = track.remote_id.takeIf { it > 0 } ?: extractSeriesId(track.tracking_url) ?: return track
         val (seriesId, series) = resolveSeries(rawId)
         track.remote_id = seriesId
-        if (seriesId != rawId) track.tracking_url = "$webUrl/$seriesId"
+        track.tracking_url = "$webUrl/$seriesId"
         fetchLibraryEntry(seriesId)?.applyTo(track)
 
         series?.let {
