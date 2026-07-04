@@ -35,13 +35,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.plus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
-import logcat.LogPriority
 import nl.adaptivity.xmlutil.XmlDeclMode
 import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
 import tachiyomi.core.common.storage.AndroidStorageFolderProvider
 import tachiyomi.core.common.util.lang.launchIO
-import tachiyomi.core.common.util.system.logcat
 import tachiyomi.data.Chapters
 import tachiyomi.data.Database
 import tachiyomi.data.DatabaseMaintenance
@@ -177,13 +175,6 @@ class AppModule(val app: Application) : InjektModule {
         // thread: getMainExecutor() posts back to main, so constructing SourceManager/Database/
         // DownloadManager there stalled startup (frozen splash, SystemJobService bind timeouts).
         get<CoroutineScope>().launchIO {
-            // Self-heal columns/tables skipped by the merge migration renumbering (memo,
-            // extension_store, is_novel) before the heavy DB-touching singletons below query them.
-            // Runs off the main thread so it can't stall startup (previously a runBlocking in the
-            // SqlDriver factory ANR'd when the factory was first hit on the main thread).
-            runCatching { get<DatabaseMaintenance>().reconcileSchema() }
-                .onFailure { logcat(LogPriority.ERROR, it) { "Schema reconcile failed" } }
-
             get<NetworkHelper>()
 
             get<SourceManager>()
