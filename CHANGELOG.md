@@ -17,6 +17,11 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Option for tag normalization during entry updates [@mrissaoussama](https://github.com/mrissaoussama) [#287](https://github.com/tsundoku-otaku/tsundoku/pull/287)
 - Reader Status Bar [@Rojikku](https://github.com/Rojikku) [#302](https://github.com/tsundoku-otaku/tsundoku/pull/302)
 
+
+### Changed
+- Adjust vertical progress bar dimensions; remove percent [@mrissaoussama](https://github.com/mrissaoussama) [#319](https://github.com/tsundoku-otaku/tsundoku/pull/319)
+
+
 ### Improved
 - Custom Source Overhaul [@mrissaoussama](https://github.com/mrissaoussama) [#273](https://github.com/tsundoku-otaku/tsundoku/pull/273)
 - Novel download queue improvements to prevent errors [@mrissaoussama](https://github.com/mrissaoussama) [#284](https://github.com/tsundoku-otaku/tsundoku/pull/284)
