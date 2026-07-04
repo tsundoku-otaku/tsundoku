@@ -105,7 +105,7 @@ fun ExtensionList.toAvailableExtensions(store: ExtensionStore): List<TachiyomiEx
             versionName = extension.versionName,
             lang = if (lang.size == 1) lang.first() else "all",
             isNsfw = extension.contentWarning >= ContentWarning.MIXED,
-                // Index format carries no novel flag; novel extensions use the novelextension package prefix.
+            // Index format carries no novel flag; novel extensions use the novelextension package prefix.
             isNovel = extension.packageName.startsWith("eu.kanade.tachiyomi.novelextension"),
             sources = extension.sources.map { source ->
                 TachiyomiExtension.Available.Source(

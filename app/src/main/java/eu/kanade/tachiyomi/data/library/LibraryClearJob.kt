@@ -67,7 +67,13 @@ class LibraryClearJob(private val context: Context, workerParams: WorkerParamete
                     when (operation) {
                         OP_CLEAR_COVERS -> clearCovers(mangaIds)
                         OP_CLEAR_DESCRIPTIONS -> if (!combineDescTags) clearDescriptions(mangaIds)
-                        OP_CLEAR_TAGS -> if (combineDescTags) clearDescriptionsAndTags(mangaIds) else clearTags(mangaIds)
+                        OP_CLEAR_TAGS -> if (combineDescTags) {
+                            clearDescriptionsAndTags(
+                                mangaIds,
+                            )
+                        } else {
+                            clearTags(mangaIds)
+                        }
                         OP_CLEAR_CHAPTERS -> clearChapters(mangaIds)
                     }
                 }

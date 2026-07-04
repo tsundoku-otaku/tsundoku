@@ -37,6 +37,7 @@ class CategoriesRestorer(
                             .awaitAsOne()
                             .let { id -> it.toCategory(id).copy(order = order) }
                     }
+            }
 
             libraryPreferences.categorizedDisplaySettings.set(
                 (dbCategories + categories)

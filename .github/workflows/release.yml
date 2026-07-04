@@ -148,9 +148,7 @@ jobs:
           tag_name: ${{ needs.get_tag.outputs.tag }}
           name: Tsundoku ${{ needs.get_tag.outputs.tag }}
           body: |
-            Consider supporting the development on [Patreon](https://www.patreon.com/mihon/membership) or [OpenCollective](https://opencollective.com/mihon/contribute) to keep Mihon improving!
-
-            Check out the [past release notes](https://github.com/mihonapp/mihon/releases) if you're upgrading from an earlier version.
+            Check out the [past release notes](https://github.com/tsundoku-otaku/tsundoku/releases) if you’re upgrading from an earlier version.
 
             <!-->
 
