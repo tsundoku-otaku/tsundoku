@@ -1761,10 +1761,9 @@ class CustomSourceEditorScreen(
                         }
                     }
 
-                } // browse/detail/chapter selectors only apply to a from-scratch (non-delegated) source
+                }
 
-                // Content selectors + sample/advanced are shown even when delegating to a base
-                // extension, so a mirror on a different engine can override content extraction.
+                // Content + sample/advanced stay editable when delegating, so a mirror can override content.
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(stringResource(TDMR.strings.custom_source_chapter_content), fontWeight = FontWeight.Medium)

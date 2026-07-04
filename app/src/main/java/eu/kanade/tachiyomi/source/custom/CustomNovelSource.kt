@@ -727,9 +727,7 @@ class CustomNovelSource(
         return super.getPageList(chapter)
     }
 
-    // Default HttpSource builds these as baseUrl + url. A stored url may be absolute (legacy
-    // entries, or a host that didn't match baseUrl at parse time), so route through
-    // buildAbsoluteUrl to avoid gluing baseUrl onto an absolute url.
+    // Route through buildAbsoluteUrl so an already-absolute stored url isn't glued onto baseUrl.
     override fun mangaDetailsRequest(manga: SManga): Request = GET(buildAbsoluteUrl(manga.url), headers)
 
     override fun chapterListRequest(manga: SManga): Request = GET(buildAbsoluteUrl(manga.url), headers)
@@ -898,8 +896,7 @@ class CustomNovelSource(
 
     override suspend fun fetchPageText(page: Page): String {
         val bs = baseSource
-        // A custom content selector wins over delegation: a mirror on a different engine than the
-        // base ext (e.g. novelphoenix vs novelfire) needs its own content extraction.
+        // A custom content selector overrides delegation.
         if (bs != null && bs.isNovelSource() && config.selectors.content.primary.isBlank()) {
             // For content fetching, we need absolute URLs (not relative paths)
             // buildAbsoluteUrl() converts relative to absolute on custom base
@@ -1210,9 +1207,7 @@ class CustomNovelSource(
         return "$baseUrl/$trimmedUrl"
     }
 
-    // Strips scheme+host so a stored url is always a path, even when the site's links use a
-    // different host than baseUrl (www vs non-www, mirrors). Without this, baseUrl + absoluteUrl
-    // glues into a broken host like "site.comhttps://..." on the next request.
+    // Strip scheme+host so a mismatched host (www, mirror) can't glue into baseUrl + url later.
     private fun toRelativeStoredUrl(href: String?): String {
         val value = normalizeCustomUrl(href)?.trim().orEmpty()
         if (value.isBlank()) return ""

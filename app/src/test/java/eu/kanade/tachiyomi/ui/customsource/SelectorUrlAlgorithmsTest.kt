@@ -81,4 +81,12 @@ class SelectorUrlAlgorithmsTest {
         assertNull(deriveSearchUrl("https://site.com/?s=other", "https://site.com", "sword"))
         assertNull(deriveSearchUrl("https://site.com/?s=sword", "https://site.com", ""))
     }
+
+    @Test
+    fun `deriveSearchUrl matches across www and non-www hosts`() {
+        assertEquals(
+            "https://www.site.com/search?keyword={query}",
+            deriveSearchUrl("https://www.site.com/search?keyword=World", "https://site.com", "World"),
+        )
+    }
 }
