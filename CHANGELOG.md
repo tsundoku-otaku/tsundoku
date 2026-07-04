@@ -41,6 +41,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Disable text selection; fix textview crash on select spam [@mrissaoussama](https://github.com/mrissaoussama) [#311](https://github.com/tsundoku-otaku/tsundoku/pull/311)
 - Prevent issue where novel UI appeared in manga reader [@mrissaoussama](https://github.com/mrissaoussama) [#276](https://github.com/tsundoku-otaku/tsundoku/pull/276)
 - CatalogueSource novel/manga sources [@mrissaoussama](https://github.com/mrissaoussama) [#309](https://github.com/tsundoku-otaku/tsundoku/pull/309)
+- Mangabaka tracker new API update [@mrissaoussama](https://github.com/mrissaoussama) [#320](https://github.com/tsundoku-otaku/tsundoku/pull/320)
 - Download ahead download states should no longer get stale values [@mrissaoussama](https://github.com/mrissaoussama) [#289](https://github.com/tsundoku-otaku/tsundoku/pull/289)
 - Fix per-tab extension update badge [@mrissaoussama](https://github.com/mrissaoussama) [#277](https://github.com/tsundoku-otaku/tsundoku/pull/277)
 - Prevent google translate returning literal null [@mrissaoussama](https://github.com/mrissaoussama) [#312](https://github.com/tsundoku-otaku/tsundoku/pull/312)
