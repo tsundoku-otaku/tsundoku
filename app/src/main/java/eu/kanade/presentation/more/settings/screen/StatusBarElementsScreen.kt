@@ -89,7 +89,6 @@ class StatusBarElementsScreen : Screen {
         val lazyListState = rememberLazyListState()
         val reorderState = rememberReorderableLazyListState(lazyListState) { from, to ->
             rows.add(to.index, rows.removeAt(from.index))
-            persistOrder()
         }
 
         Scaffold(
@@ -135,7 +134,7 @@ class StatusBarElementsScreen : Screen {
                                     imageVector = Icons.Outlined.DragHandle,
                                     contentDescription = null,
                                     modifier = Modifier
-                                        .draggableHandle()
+                                        .draggableHandle(onDragStopped = { persistOrder() })
                                         .padding(end = 12.dp),
                                 )
                                 Text(elementLabel(row.item), modifier = Modifier.weight(1f))
