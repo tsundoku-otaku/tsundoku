@@ -17,12 +17,9 @@ import eu.kanade.tachiyomi.util.system.getParcelableExtraCompat
 import eu.kanade.tachiyomi.util.system.notificationManager
 import eu.kanade.tachiyomi.util.system.toShareIntent
 import eu.kanade.tachiyomi.util.system.toast
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import tachiyomi.core.common.Constants
+import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.chapter.interactor.GetChapter
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.interactor.UpdateChapter
@@ -38,8 +35,6 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 import java.util.concurrent.ConcurrentHashMap
-import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.EmptyCoroutineContext
 import eu.kanade.tachiyomi.BuildConfig.APPLICATION_ID as ID
 
 /**
@@ -55,7 +50,6 @@ class NotificationReceiver : BroadcastReceiver() {
     private val updateChapter: UpdateChapter by injectLazy()
     private val getLibraryManga: GetLibraryManga by injectLazy()
     private val downloadManager: DownloadManager by injectLazy()
-    private val scope: CoroutineScope by injectLazy()
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
@@ -231,7 +225,7 @@ class NotificationReceiver : BroadcastReceiver() {
         val downloadPreferences: DownloadPreferences = Injekt.get()
         val sourceManager: SourceManager = Injekt.get()
 
-        async(scope, Dispatchers.IO) {
+        launchIO {
             val toUpdate = chapterUrls.mapNotNull { getChapter.await(it, mangaId) }
                 .map {
                     val chapter = it.copy(read = true)
@@ -264,24 +258,10 @@ class NotificationReceiver : BroadcastReceiver() {
      * @param mangaId id of manga
      */
     private fun downloadChapters(chapterUrls: Array<String>, mangaId: Long) {
-        async(scope, Dispatchers.IO) {
-            val manga = getManga.await(mangaId) ?: return@async
+        launchIO {
+            val manga = getManga.await(mangaId) ?: return@launchIO
             val chapters = chapterUrls.mapNotNull { getChapter.await(it, mangaId) }
             downloadManager.downloadChapters(manga, chapters)
-        }
-    }
-
-    private fun BroadcastReceiver.async(
-        scope: CoroutineScope,
-        context: CoroutineContext = EmptyCoroutineContext,
-        start: CoroutineStart = CoroutineStart.DEFAULT,
-        block: suspend CoroutineScope.() -> Unit,
-    ) {
-        val result = goAsync()
-        try {
-            scope.launch(context, start, block)
-        } finally {
-            result.finish()
         }
     }
 

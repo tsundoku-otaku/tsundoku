@@ -8,7 +8,8 @@ CREATE TABLE extension_store(
     contact_website TEXT NOT NULL,
     contact_discord TEXT,
     is_legacy INTEGER AS Boolean NOT NULL,
-    is_novel INTEGER AS Boolean NOT NULL DEFAULT 0
+    is_novel INTEGER AS Boolean NOT NULL DEFAULT 0,
+    extension_list_url TEXT
 );
 
 get:
@@ -25,8 +26,8 @@ SELECT COUNT(*)
 FROM extension_store;
 
 upsert:
-INSERT INTO extension_store(index_url, name, badge_label, signing_key, contact_website, contact_discord, is_legacy, is_novel)
-VALUES (:indexUrl, :name, :badgeLabel, :signingKey, :contactWebsite, :contactDiscord, :isLegacy, :isNovel)
+INSERT INTO extension_store(index_url, name, badge_label, signing_key, contact_website, contact_discord, is_legacy, is_novel, extension_list_url)
+VALUES (:indexUrl, :name, :badgeLabel, :signingKey, :contactWebsite, :contactDiscord, :isLegacy, :isNovel, :extensionListUrl)
 ON CONFLICT(index_url)
 DO UPDATE
 SET
@@ -36,7 +37,8 @@ SET
     contact_website = :contactWebsite,
     contact_discord = :contactDiscord,
     is_legacy = :isLegacy,
-    is_novel = :isNovel
+    is_novel = :isNovel,
+    extension_list_url = :extensionListUrl
 WHERE index_url = :indexUrl;
 
 delete:

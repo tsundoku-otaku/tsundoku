@@ -4,7 +4,6 @@ import android.content.Context
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.drop
@@ -39,7 +38,6 @@ import uy.kohesive.injekt.api.get
  */
 class DownloadManager(
     private val context: Context,
-    private val scope: CoroutineScope,
     private val provider: DownloadProvider = Injekt.get(),
     private val cache: DownloadCache = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
@@ -51,7 +49,7 @@ class DownloadManager(
     /**
      * Downloader whose only task is to download chapters.
      */
-    private val downloader = Downloader(context, provider, cache, scope)
+    private val downloader = Downloader(context, provider, cache)
 
     init {
         // Keep in-memory library download badges in sync when downloads complete or are deleted
@@ -291,7 +289,7 @@ class DownloadManager(
      * @param source the source of the chapters.
      */
     fun deleteChapters(chapters: List<Chapter>, manga: Manga, source: Source) {
-        scope.launchIO {
+        launchIO {
             val filteredChapters = getChaptersToDelete(chapters, manga)
             if (filteredChapters.isEmpty()) {
                 return@launchIO
@@ -322,7 +320,7 @@ class DownloadManager(
      * @param removeQueued whether to also remove queued downloads.
      */
     fun deleteManga(manga: Manga, source: Source, removeQueued: Boolean = true) {
-        scope.launchIO {
+        launchIO {
             if (removeQueued) {
                 downloader.removeFromQueue(manga)
             }

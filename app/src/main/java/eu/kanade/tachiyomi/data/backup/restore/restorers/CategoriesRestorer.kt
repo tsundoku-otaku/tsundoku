@@ -21,21 +21,22 @@ class CategoriesRestorer(
             val dbCategoriesByName = dbCategories.groupBy { it.name }
             var nextOrder = dbCategories.maxOfOrNull { it.order }?.plus(1) ?: 0
 
-            val categories = backupCategories
-                .sortedBy { it.order }
-                .map {
-                    val dbCategory = if (it.contentType != Category.CONTENT_TYPE_ALL) {
-                        dbCategoriesByName[it.name]?.firstOrNull { db -> db.contentType == it.contentType }
-                    } else {
-                        dbCategoriesByName[it.name]?.firstOrNull()
+            val categories = database.transactionWithResult {
+                backupCategories
+                    .sortedBy { it.order }
+                    .map {
+                        val dbCategory = if (it.contentType != Category.CONTENT_TYPE_ALL) {
+                            dbCategoriesByName[it.name]?.firstOrNull { db -> db.contentType == it.contentType }
+                        } else {
+                            dbCategoriesByName[it.name]?.firstOrNull()
+                        }
+                        if (dbCategory != null) return@map dbCategory
+                        val order = nextOrder++
+                        database.categoriesQueries.insert(it.name, order, it.flags, it.contentType.toLong())
+                        database.categoriesQueries.selectLastInsertedRowId()
+                            .awaitAsOne()
+                            .let { id -> it.toCategory(id).copy(order = order) }
                     }
-                    if (dbCategory != null) return@map dbCategory
-                    val order = nextOrder++
-                    database.categoriesQueries.insert(it.name, order, it.flags, it.contentType.toLong())
-                    database.categoriesQueries.selectLastInsertedRowId()
-                        .awaitAsOne()
-                        .let { id -> it.toCategory(id).copy(order = order) }
-                }
 
             libraryPreferences.categorizedDisplaySettings.set(
                 (dbCategories + categories)

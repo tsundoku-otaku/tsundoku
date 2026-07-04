@@ -3,8 +3,6 @@ package eu.kanade.tachiyomi.di
 import android.app.Application
 import android.content.Context
 import android.os.Build
-import androidx.lifecycle.ProcessLifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import app.cash.sqldelight.db.SqlDriver
 import com.eygraber.sqldelight.androidx.driver.AndroidxSqliteConfiguration
@@ -30,9 +28,6 @@ import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.AndroidSourceManager
 import eu.kanade.tachiyomi.source.custom.CustomSourceManager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.plus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.protobuf.ProtoBuf
 import logcat.LogPriority
@@ -130,21 +125,19 @@ class AppModule(val app: Application) : InjektModule {
             ProtoBuf
         }
 
-        addSingletonFactory<CoroutineScope> { ProcessLifecycleOwner.get().lifecycleScope + SupervisorJob() }
-
         addSingletonFactory { ChapterCache(app, get()) }
         addSingletonFactory { CoverCache(app) }
         addSingletonFactory { LibrarySettingsCache(app) }
 
-        addSingletonFactory { NetworkHelper(app, get(), get()) }
+        addSingletonFactory { NetworkHelper(app, get()) }
         addSingletonFactory { JavaScriptEngine(app) }
 
-        addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get(), get()) }
-        addSingletonFactory { ExtensionManager(app, get()) }
+        addSingletonFactory<SourceManager> { AndroidSourceManager(app, get(), get()) }
+        addSingletonFactory { ExtensionManager(app) }
 
         addSingletonFactory { DownloadProvider(app) }
-        addSingletonFactory { DownloadManager(app, get()) }
-        addSingletonFactory { DownloadCache(app, get()) }
+        addSingletonFactory { DownloadManager(app) }
+        addSingletonFactory { DownloadCache(app) }
 
         addSingletonFactory { TrackerManager() }
         addSingletonFactory { DelayedTrackingStore(app) }
@@ -168,7 +161,7 @@ class AppModule(val app: Application) : InjektModule {
         addSingletonFactory { LocalNovelSourceFileSystem(get()) }
         addSingletonFactory { LocalCoverManager(app, get()) }
         addSingletonFactory { LocalNovelCoverManager(app, get()) }
-        addSingletonFactory { StorageManager(app, get(), get()) }
+        addSingletonFactory { StorageManager(app, get()) }
 
         // Font management
         addSingletonFactory { eu.kanade.tachiyomi.data.font.FontManager(app, get(), get()) }

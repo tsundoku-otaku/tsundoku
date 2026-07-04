@@ -11,6 +11,8 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+
+## [v0.20.0] - 2026-06-27
 ### Added
 - Add advanced preference to prevent entries metadata from being overwritten [@mrissaoussama](https://github.com/mrissaoussama) [#271](https://github.com/tsundoku-otaku/tsundoku/pull/271)
 - Library pagination (experimental) [@mrissaoussama](https://github.com/mrissaoussama) [#283](https://github.com/tsundoku-otaku/tsundoku/pull/283)
@@ -56,6 +58,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - jsplugins should surface fetch errors [@mrissaoussama](https://github.com/mrissaoussama) [#293](https://github.com/tsundoku-otaku/tsundoku/pull/293)
 - Optimize bulk data clearing and chapter removal [@mrissaoussama](https://github.com/mrissaoussama) [#313](https://github.com/tsundoku-otaku/tsundoku/pull/313)
 - Dismiss groups, toggle group select, filter source priority list [@mrissaoussama](https://github.com/mrissaoussama) [#314](https://github.com/tsundoku-otaku/tsundoku/pull/314)
+- Merged v0.20.0 from Mihon [@Rojikku](https://github.com/Rojikku) [#251](https://github.com/tsundoku-otaku/tsundoku/pull/251)
 - Merged df37d81 from Mihon [@mrissaoussama](https://github.com/mrissaoussama) [#281](https://github.com/tsundoku-otaku/tsundoku/pull/281)
 - Merged a2f3ec9 from Mihon [@Rojikku](https://github.com/Rojikku) [#251](https://github.com/tsundoku-otaku/tsundoku/pull/251)
 
@@ -294,11 +297,11 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 This project was originally forked from Mihon, and, while we keep separate version numbers, we would like to note in our changelog when we merge from upstream, and link to their changelog to try to give appropriate credit.
 This project is greatly advantaged by building off all of their work, and their continued contributions!
 
-Merged from v0.19.9+ [a2f3ec9](https://github.com/mihonapp/mihon/commit/df37d81dfbc071ca25985c7a4837c551048c0262)
+Merged from v0.20.0 [19f1d00](https://github.com/mihonapp/mihon/commit/19f1d00fcbef6ab7783066ff9ae8e377f696b231)
 Merged from v0.19.9 [7a91796](https://github.com/mihonapp/mihon/commit/7a917968e3bf71c4a665e6655a550877d81ead1d)
 Merged from v0.19.7 [25d4bf5](https://github.com/mihonapp/mihon/commit/25d4bf5e2ffdcb84f6469f5e0a81108777a98e85)  
 Merged from v0.19.4 [81871a3](https://github.com/mihonapp/mihon/commit/81871a34694c8e408d907731292b7266c5b993cc)  
 Forked from Mihon v0.19.3 [7161bc2](https://github.com/mihonapp/mihon/commit/7161bc2e825bdfd66a1829f7dce42bd0570b1008)
 
-[mihon]: https://github.com/mihonapp/mihon/blob/df37d81dfbc071ca25985c7a4837c551048c0262/CHANGELOG.md
+[mihon]: https://github.com/mihonapp/mihon/blob/19f1d00fcbef6ab7783066ff9ae8e377f696b231/CHANGELOG.md
 
