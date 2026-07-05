@@ -1207,11 +1207,18 @@ class CustomNovelSource(
         return "$baseUrl/$trimmedUrl"
     }
 
-    // Strip scheme+host so a mismatched host (www, mirror) can't glue into baseUrl + url later.
+    // Strip scheme+host only when it's baseUrl itself (mod www.), so a same-site url stays
+    // portable across baseUrl edits. A genuinely different host (real mirror/CDN) is kept
+    // absolute -- buildAbsoluteUrl() passes absolute urls through untouched -- instead of being
+    // silently glued onto baseUrl and pointed at the wrong site.
     private fun toRelativeStoredUrl(href: String?): String {
         val value = normalizeCustomUrl(href)?.trim().orEmpty()
         if (value.isBlank()) return ""
         value.toHttpUrlOrNull()?.let { http ->
+            val baseHost = baseUrl.toHttpUrlOrNull()?.host?.removePrefix("www.")
+            if (baseHost == null || !http.host.removePrefix("www.").equals(baseHost, ignoreCase = true)) {
+                return value
+            }
             return buildString {
                 append(http.encodedPath)
                 http.encodedQuery?.let { append('?').append(it) }
