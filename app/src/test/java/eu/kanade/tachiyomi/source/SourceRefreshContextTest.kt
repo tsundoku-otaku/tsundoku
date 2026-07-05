@@ -73,6 +73,8 @@ class SourceRefreshContextTest {
         override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
         override suspend fun getChapterList(manga: SManga): List<SChapter> =
             error("legacy path must not be used when override is present")
+
+        @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
         override suspend fun getChapterList(manga: SManga, context: RefreshContext): List<SChapter> {
             receivedContext = context
             return context.existingChapters

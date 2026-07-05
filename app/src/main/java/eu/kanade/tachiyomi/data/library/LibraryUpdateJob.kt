@@ -24,7 +24,6 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
-import eu.kanade.tachiyomi.source.model.RefreshContext
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
@@ -480,12 +479,12 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         if (skipChapterFetch) return emptyList()
 
         val existingChapters = getChaptersByMangaId.await(manga.id)
-        val refreshContext = RefreshContext(
-            mangaId = manga.id,
-            existingChapters = existingChapters.toRefreshContextChapters(),
-            lastFetchTime = manga.lastUpdate,
-        )
-        val chapters = source.getChapterList(manga.toSManga(), refreshContext)
+        val chapters = source.getMangaUpdate(
+            manga.toSManga(),
+            existingChapters.toRefreshContextChapters(),
+            fetchDetails = false,
+            fetchChapters = true,
+        ).chapters
 
         // Get manga from database to account for if it was removed during the update and
         // to get latest data so it doesn't get overwritten later on
