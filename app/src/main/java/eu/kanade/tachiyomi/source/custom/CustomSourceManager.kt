@@ -436,9 +436,9 @@ class CustomSourceManager(
             )
 
             if (chapters.isNotEmpty()) {
+                val chapterToTest = chapters.last()
+                val contentUrl = source.getChapterUrlOrNull(chapterToTest) ?: chapterToTest.url
                 try {
-                    val chapterToTest = chapters.last()
-                    val contentUrl = source.getChapterUrlOrNull(chapterToTest) ?: chapterToTest.url
                     val pages = source.getPageList(chapterToTest)
                     if (pages.isNotEmpty()) {
                         val content = source.fetchPageText(pages.first())
@@ -464,7 +464,7 @@ class CustomSourceManager(
                         )
                     }
                 } catch (e: Exception) {
-                    results["content"] = TestStepResult(success = false, message = "Error for ${chapters.last().url}: ${e.message}")
+                    results["content"] = TestStepResult(success = false, message = "Error for $contentUrl: ${e.message}")
                 }
             }
         } catch (e: Exception) {
