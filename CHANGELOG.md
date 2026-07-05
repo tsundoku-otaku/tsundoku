@@ -61,6 +61,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Fix a rare translation queue exception [@mrissaoussama](https://github.com/mrissaoussama) [#286](https://github.com/tsundoku-otaku/tsundoku/pull/286)
 
 ### Other
+- Deprecate RefreshContext for 1.6 [@Rojikku](https://github.com/Rojikku) [#325](https://github.com/tsundoku-otaku/tsundoku/pull/325)
 - jsplugins should surface fetch errors [@mrissaoussama](https://github.com/mrissaoussama) [#293](https://github.com/tsundoku-otaku/tsundoku/pull/293)
 - Improve extension repo URL format parsing [@mrissaoussama](https://github.com/mrissaoussama) [#316](https://github.com/tsundoku-otaku/tsundoku/pull/316)
 - Optimize bulk data clearing and chapter removal [@mrissaoussama](https://github.com/mrissaoussama) [#313](https://github.com/tsundoku-otaku/tsundoku/pull/313)
