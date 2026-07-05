@@ -1079,7 +1079,7 @@ class CustomSourceEditorScreen(
         var pickerUrl by remember { mutableStateOf("") }
         var pickerLabel by remember { mutableStateOf("") }
         fun firstPageUrl(u: String): String =
-            u.replace("{page}", "1").replace("{query}", "a").ifBlank { baseUrl }
+            u.replace("{baseUrl}", baseUrl).replace("{page}", "1").replace("{query}", "a").ifBlank { baseUrl }
         fun pickTrailing(url: String, fieldLabel: String, set: (String) -> Unit): @Composable () -> Unit = {
             IconButton(onClick = {
                 pickerUrl = url.ifBlank { baseUrl }
