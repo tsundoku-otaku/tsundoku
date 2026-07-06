@@ -24,8 +24,11 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.network.interceptor.withRateLimitWaitUpdates
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.lang.chop
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
@@ -43,6 +46,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.core.common.util.lang.withIOContext
@@ -333,6 +337,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                 .map { mangaInSource ->
                     async {
                         val source = sourceManager.get(mangaInSource.first().manga.source)
+                        val host = (source as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
                         val semaphore = if (source?.isNovelSource == true) novelSemaphore else defaultSemaphore
 
                         // Novel sources are paced per-request by the shared OkHttp client's
@@ -377,6 +382,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                     currentlyUpdatingManga,
                                     progressCount,
                                     manga,
+                                    host,
                                 ) {
                                     try {
                                         val newChapters = updateManga(manga, fetchWindow)
@@ -488,6 +494,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         updatingManga: CopyOnWriteArrayList<Manga>,
         completed: AtomicInt,
         manga: Manga,
+        host: String?,
         block: suspend () -> Unit,
     ) = coroutineScope {
         ensureActive()
@@ -499,7 +506,22 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             mangaToUpdate.size,
         )
 
-        block()
+        withRateLimitWaitUpdates(
+            host = host,
+            onWaitChanged = { remainingMillis ->
+                val waitingMessage = remainingMillis?.let {
+                    "Waiting %.1fs for rate limit (${manga.title.chop(30)})".format(it / 1000.0)
+                }
+                notifier.showProgressNotification(
+                    updatingManga,
+                    completed.load(),
+                    mangaToUpdate.size,
+                    waitingMessage,
+                )
+            },
+        ) {
+            block()
+        }
 
         ensureActive()
 
