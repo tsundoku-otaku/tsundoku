@@ -21,4 +21,15 @@ interface RateLimited {
      */
     val recommendedDelayMillis: Long
         get() = minimumDelayMillis
+
+    /**
+     * How many requests this source can tolerate in a quick burst before [recommendedDelayMillis]
+     * needs to be enforced. For example, a value of 3 lets 3 requests through immediately (or
+     * with minimal spacing), then the next request waits out the full delay window - useful for
+     * sources where a handful of requests per novel (e.g. one per chapter) is fine, but a long
+     * unbroken stream is not. Purely a UI-default seed, like [recommendedDelayMillis] - not a
+     * hard-enforced cap the way [minimumDelayMillis] is.
+     */
+    val recommendedPermits: Int
+        get() = 1
 }
