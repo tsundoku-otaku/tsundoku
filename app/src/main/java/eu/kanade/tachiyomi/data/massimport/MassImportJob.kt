@@ -41,9 +41,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.manga.model.toDomainManga
@@ -66,7 +64,6 @@ import java.net.URI
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.random.Random
 
 // Back off fetches once heap usage crosses this fraction of the actual VM heap limit.
 private const val MEMORY_PRESSURE_THRESHOLD = 0.75
@@ -493,23 +490,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         updateNotification(0, totalCount, "Starting import...")
 
-        val throttlingEnabled = novelDownloadPreferences.enableMassImportThrottling().get()
-        val shouldThrottle = throttlingEnabled && (fetchDetails || fetchChapters)
-        val globalBaseDelay = novelDownloadPreferences.massImportDelay().get().toLong()
-        val globalRandomRange = novelDownloadPreferences.randomDelayRange().get().toLong()
-
-        fun getDelayForSource(sourceId: Long): Pair<Long, Long> {
-            val override = novelDownloadPreferences.getSourceOverride(sourceId)
-            if (override != null && override.enabled) {
-                val baseDelay = override.massImportDelay?.toLong() ?: globalBaseDelay
-                val randomRange = override.randomDelayRange?.toLong() ?: globalRandomRange
-                return Pair(baseDelay, randomRange)
-            }
-            return Pair(globalBaseDelay, globalRandomRange)
-        }
-
-        val sourceSemaphores = globalSourceSemaphores
-
         val sourceConsecutiveFailures = ConcurrentHashMap<Long, AtomicInteger>()
         val maxSourceFailures = novelDownloadPreferences.skipSourceIfFailedXTimes().get()
 
@@ -630,78 +610,33 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         var erroredThisUrl = false
                         var cancelledWhileQueued = false
                         try {
-                            // Hold the per-source permit across delay + fetch so same-source requests
-                            // run serially spaced by delayMs. Pause is re-checked after acquiring the
-                            // permit (queued URLs would otherwise keep importing long after pause),
-                            // but parking happens OUTSIDE it - semaphores are global, so a paused
-                            // batch holding one would starve other batches on the same source.
-                            val success = if (shouldThrottle) {
-                                val sourceSemaphore = sourceSemaphores.computeIfAbsent(source.id) { Semaphore(1) }
-                                val (baseDelay, randomRange) = getDelayForSource(source.id)
-                                val delayMs = baseDelay + if (randomRange > 0) Random.nextLong(0, randomRange) else 0L
-                                var result: Boolean? = null
-                                var settled = false
-                                while (!settled) {
-                                    if (!awaitResumed(batchId)) break // cancelled; result stays null
-                                    settled = sourceSemaphore.withPermit {
-                                        when (batchStatus(batchId)) {
-                                            BatchStatus.Cancelled -> true // done; result stays null
-                                            // Release the permit and park outside the loop.
-                                            BatchStatus.Paused -> false
-                                            else -> {
-                                                delay(delayMs)
-                                                activeImports[url] = true
-                                                updateNotification(
-                                                    completedCount.get(),
-                                                    totalCount,
-                                                    "Processing: ${activeImports.size} active",
-                                                )
-                                                // Remove when the fetch returns so the "active" count
-                                                // in the notification reflects only in-progress URLs.
-                                                result = try {
-                                                    processUrlWithSource(
-                                                        url,
-                                                        source,
-                                                        addToLibrary,
-                                                        fetchDetails,
-                                                        categoryId,
-                                                        fetchChapters,
-                                                        pendingAddIds,
-                                                        flushBatchSize,
-                                                    )
-                                                } finally {
-                                                    activeImports.remove(url)
-                                                }
-                                                true
-                                            }
-                                        }
-                                    }
-                                }
-                                result
+                            // Per-request pacing now happens in the shared OkHttp client (see
+                            // PerHostDynamicRateLimitInterceptor), so same-source URLs no longer
+                            // need to be serialized through a per-source semaphore + manual delay
+                            // here - they can be dispatched concurrently and the interceptor
+                            // paces the actual HTTP calls underneath.
+                            val success = if (!awaitResumed(batchId)) {
+                                null
                             } else {
-                                if (!awaitResumed(batchId)) {
-                                    null
-                                } else {
-                                    activeImports[url] = true
-                                    updateNotification(
-                                        completedCount.get(),
-                                        totalCount,
-                                        "Processing: ${activeImports.size} active",
+                                activeImports[url] = true
+                                updateNotification(
+                                    completedCount.get(),
+                                    totalCount,
+                                    "Processing: ${activeImports.size} active",
+                                )
+                                try {
+                                    processUrlWithSource(
+                                        url,
+                                        source,
+                                        addToLibrary,
+                                        fetchDetails,
+                                        categoryId,
+                                        fetchChapters,
+                                        pendingAddIds,
+                                        flushBatchSize,
                                     )
-                                    try {
-                                        processUrlWithSource(
-                                            url,
-                                            source,
-                                            addToLibrary,
-                                            fetchDetails,
-                                            categoryId,
-                                            fetchChapters,
-                                            pendingAddIds,
-                                            flushBatchSize,
-                                        )
-                                    } finally {
-                                        activeImports.remove(url)
-                                    }
+                                } finally {
+                                    activeImports.remove(url)
                                 }
                             }
                             when (success) {
@@ -753,9 +688,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                         null
                                     },
                                 )
-                                if (!shouldThrottle) {
-                                    delay(10)
-                                }
+                                delay(10)
                             }
                         }
                         emit(Unit)
@@ -1358,8 +1291,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         private val lastMetaWrite = ConcurrentHashMap<String, Long>()
         private const val META_WRITE_THROTTLE_MS = 2000L
-
-        private val globalSourceSemaphores = ConcurrentHashMap<Long, Semaphore>()
 
         // Live error lists of running workers, so mid-run copy/export sees more than the
         // 10-entry batch preview plus the not-yet-flushed disk log.

@@ -326,9 +326,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val hasDownloads = AtomicBoolean(false)
         val fetchWindow = fetchInterval.getWindow(ZonedDateTime.now())
         val globalUpdateThrottlingMs = libraryPreferences.autoUpdateThrottle.get().toLong()
-        val novelThrottleEnabled = novelDownloadPreferences.enableUpdateThrottling().get()
         val updateStagger = novelDownloadPreferences.enableUpdateStaggering().get()
-        val novelUpdateThrottlingMs = novelDownloadPreferences.updateDelay().get().toLong()
 
         coroutineScope {
             mangaToUpdate.groupBy { it.manga.source }.values
@@ -337,18 +335,11 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                         val source = sourceManager.get(mangaInSource.first().manga.source)
                         val semaphore = if (source?.isNovelSource == true) novelSemaphore else defaultSemaphore
 
-                        // Determine update throttling based on source type and overrides
-                        Log.d("LibraryUpdate", "Source ${source?.name} novel: ${(source?.isNovelSource)}")
-                        val updateThrottlingMs = if (source?.isNovelSource == true &&
-                            novelThrottleEnabled
-                        ) {
-                            val sourceId = source.id
-                            val override = novelDownloadPreferences.getSourceOverride(sourceId)
-                            if (override != null && override.enabled) {
-                                override.updateDelay?.toLong() ?: novelUpdateThrottlingMs
-                            } else {
-                                novelUpdateThrottlingMs
-                            }
+                        // Novel sources are paced per-request by the shared OkHttp client's
+                        // rate-limit interceptor now, not here. Non-novel sources keep the
+                        // existing global library-update throttle.
+                        val updateThrottlingMs = if (source?.isNovelSource == true) {
+                            0L
                         } else {
                             globalUpdateThrottlingMs
                         }

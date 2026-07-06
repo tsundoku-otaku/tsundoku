@@ -71,7 +71,6 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.random.Random
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -325,76 +324,10 @@ class Downloader(
         }
     }
 
-    /**
-     * Track the last download time per source for throttling
-     */
-    private val lastDownloadTimePerSource = mutableMapOf<Long, Long>()
-
-    /**
-     * Get the throttle delay for a novel download based on preferences
-     */
-    private fun getThrottleDelay(sourceId: Long): Long {
-        if (!novelDownloadPreferences.enableThrottling().get()) {
-            return 0L
-        }
-
-        // Check for source-specific override
-        val override = novelDownloadPreferences.getSourceOverride(sourceId)
-        if (override != null && override.enabled) {
-            val baseDelay = override.downloadDelay?.toLong() ?: novelDownloadPreferences.downloadDelay().get().toLong()
-            val randomRange = override.randomDelayRange ?: novelDownloadPreferences.randomDelayRange().get()
-            val randomMin = novelDownloadPreferences.randomDelayMin().get().toLong()
-            val randomDelay = if (randomRange >
-                0
-            ) {
-                Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1))
-            } else {
-                0L
-            }
-            return baseDelay + randomDelay
-        }
-
-        // Use default settings
-        val baseDelay = novelDownloadPreferences.downloadDelay().get().toLong()
-        val randomRange = novelDownloadPreferences.randomDelayRange().get()
-        val randomMin = novelDownloadPreferences.randomDelayMin().get().toLong()
-        val randomDelay = if (randomRange > 0) {
-            Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1))
-        } else {
-            0L
-        }
-
-        return baseDelay + randomDelay
-    }
-
-    /**
-     * Wait for throttle delay if needed for novel sources
-     */
-    private suspend fun waitForThrottle(download: Download) {
-        if (!download.source.isNovelSource()) return
-
-        val sourceId = download.source.id
-        val now = System.currentTimeMillis()
-        val lastTime = lastDownloadTimePerSource[sourceId] ?: 0L
-        val throttleDelay = getThrottleDelay(sourceId)
-
-        val timeSinceLastDownload = now - lastTime
-        if (timeSinceLastDownload < throttleDelay) {
-            val waitTime = throttleDelay - timeSinceLastDownload
-            logcat(LogPriority.DEBUG) {
-                "Throttling novel download for ${waitTime}ms (source: ${download.source.name})"
-            }
-            delay(waitTime)
-        }
-
-        lastDownloadTimePerSource[sourceId] = System.currentTimeMillis()
-    }
-
     private fun CoroutineScope.launchDownloadJob(download: Download) = launchIO {
         try {
-            // Apply throttling for novel sources
-            waitForThrottle(download)
-
+            // Per-request pacing now happens in the shared OkHttp client
+            // (see PerHostDynamicRateLimitInterceptor), not here.
             downloadChapter(download)
 
             // Remove successful download from queue
