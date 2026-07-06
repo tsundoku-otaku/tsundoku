@@ -40,7 +40,9 @@ import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.translation.TranslationJob
 import eu.kanade.tachiyomi.data.translation.TranslationService
+import eu.kanade.tachiyomi.network.interceptor.InteractiveRateLimitBypass
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
@@ -59,6 +61,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
@@ -334,7 +337,12 @@ class MangaScreenModel(
         val state = successState ?: return
         try {
             withIOContext {
-                val networkManga = state.source.getMangaDetails(state.manga.toSManga())
+                val host = (state.source as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
+                // The user is actively looking at this screen waiting on the result - don't
+                // make them sit through the same pacing meant for large unattended batch jobs.
+                val networkManga = InteractiveRateLimitBypass.bypassing(host) {
+                    state.source.getMangaDetails(state.manga.toSManga())
+                }
                 updateManga.awaitUpdateFromSource(state.manga, networkManga, manualFetch)
             }
         } catch (e: Throwable) {
@@ -780,12 +788,17 @@ class MangaScreenModel(
             withIOContext {
                 val existingChapters = getMangaAndChapters.awaitChapters(state.manga.id)
                 val passthroughChapters = if (forceRefresh) emptyList() else existingChapters.toRefreshContextChapters()
-                val chapters = state.source.getMangaUpdate(
-                    state.manga.toSManga(),
-                    passthroughChapters,
-                    fetchDetails = false,
-                    fetchChapters = true,
-                ).chapters
+                val host = (state.source as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
+                // Same reasoning as fetchMangaFromSource: this is a foreground fetch the user
+                // is waiting on, not a background batch job - skip the per-request pacing.
+                val chapters = InteractiveRateLimitBypass.bypassing(host) {
+                    state.source.getMangaUpdate(
+                        state.manga.toSManga(),
+                        passthroughChapters,
+                        fetchDetails = false,
+                        fetchChapters = true,
+                    )
+                }.chapters
 
                 val newChapters = syncChaptersWithSource.await(
                     chapters,
