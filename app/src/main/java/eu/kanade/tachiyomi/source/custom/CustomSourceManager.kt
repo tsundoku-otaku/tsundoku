@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.source.custom
 
 import android.content.Context
+import eu.kanade.tachiyomi.util.source.getChapterUrlOrNull
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -8,8 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import eu.kanade.tachiyomi.util.source.getChapterUrlOrNull
-import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import logcat.LogPriority
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
@@ -464,7 +464,8 @@ class CustomSourceManager(
                         )
                     }
                 } catch (e: Exception) {
-                    results["content"] = TestStepResult(success = false, message = "Error for $contentUrl: ${e.message}")
+                    results["content"] =
+                        TestStepResult(success = false, message = "Error for $contentUrl: ${e.message}")
                 }
             }
         } catch (e: Exception) {

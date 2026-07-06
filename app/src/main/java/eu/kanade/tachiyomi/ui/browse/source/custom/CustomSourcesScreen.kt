@@ -1760,15 +1760,14 @@ class CustomSourceEditorScreen(
                             )
                         }
                     }
-
                 }
 
                 // Content + sample/advanced stay editable when delegating, so a mirror can override
                 // content. Still novel-only: manga sources delegate content entirely to the base source.
                 if (isNovel) {
-                Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                Text(stringResource(TDMR.strings.custom_source_chapter_content), fontWeight = FontWeight.Medium)
+                    Text(stringResource(TDMR.strings.custom_source_chapter_content), fontWeight = FontWeight.Medium)
                     OutlinedTextField(
                         value = contentPrimarySelector,
                         onValueChange = { contentPrimarySelector = it },
