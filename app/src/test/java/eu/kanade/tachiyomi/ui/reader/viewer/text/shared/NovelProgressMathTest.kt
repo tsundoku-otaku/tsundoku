@@ -23,6 +23,20 @@ class NovelProgressMathTest {
     }
 
     @Test
+    fun `snapProgress snaps at or above the done threshold`() {
+        assertEquals(1f, NovelProgressMath.snapProgress(0.99f))
+        assertEquals(1f, NovelProgressMath.snapProgress(0.995f))
+        assertEquals(1f, NovelProgressMath.snapProgress(1f))
+        assertEquals(0.98f, NovelProgressMath.snapProgress(0.98f))
+        assertEquals(0.5f, NovelProgressMath.snapProgress(0.5f))
+    }
+
+    @Test
+    fun `snapped near-complete progress stores 100 percent`() {
+        assertEquals(100, NovelProgressMath.progressToPercent(NovelProgressMath.snapProgress(0.991f)))
+    }
+
+    @Test
     fun `percentChanged only fires when rounded percent differs`() {
         assertFalse(NovelProgressMath.percentChanged(0.501f, 0.503f))
         assertTrue(NovelProgressMath.percentChanged(0.501f, 0.512f))

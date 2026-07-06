@@ -95,7 +95,10 @@
             }
         }
 
-        if (Math.abs(currentChapterProgress - lastProgress) > 0.01) {
+        // Fire on any >=1% change, and also the moment we first reach 100% even if that final
+        // step is under 1% — otherwise the dead-zone gate swallows the tail and 100% never saves.
+        var reachedEnd = currentChapterProgress >= 1.0 && lastProgress < 1.0;
+        if (Math.abs(currentChapterProgress - lastProgress) > 0.01 || reachedEnd) {
             lastProgress = currentChapterProgress;
 
             var now = Date.now();
@@ -105,9 +108,14 @@
             }
 
             clearTimeout(saveTimeout);
-            saveTimeout = setTimeout(function () {
+            if (currentChapterProgress >= 1.0) {
+                // Persist the finished state immediately rather than after the debounce.
                 Android.onScrollProgress(currentChapterProgress);
-            }, 500);
+            } else {
+                saveTimeout = setTimeout(function () {
+                    Android.onScrollProgress(currentChapterProgress);
+                }, 500);
+            }
         }
 
         var shouldLoadNext = false;

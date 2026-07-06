@@ -37,6 +37,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelProgressMath
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ProcessedContent
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
@@ -147,6 +148,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private companion object {
         const val CHAPTER_ENTRY_GRACE_MS = 800L
         const val NEXT_CHAPTER_BUTTON_TAG = "next_chapter_button"
+        const val PROGRESS_SAVE_DEBOUNCE_MS = 500L
     }
 
     private val gestureDetector = GestureDetector(
@@ -359,13 +361,25 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         return (scrollInText.toFloat() / scrollableHeight).coerceIn(0f, 1f)
     }
 
+    private var progressSaveJob: Job? = null
     private fun scheduleProgressSave(progress: Float) {
-        val intPercent = (progress * 100f).roundToInt().coerceIn(0, 100)
-        val lastIntPercent = (lastSavedProgress * 100f).roundToInt().coerceIn(0, 100)
+        val snapped = NovelProgressMath.snapProgress(progress)
+        val intPercent = NovelProgressMath.progressToPercent(snapped)
+        val lastIntPercent = NovelProgressMath.progressToPercent(lastSavedProgress)
         if (intPercent == lastIntPercent) return
 
-        saveProgress(progress)
-        lastSavedProgress = progress
+        lastSavedProgress = snapped
+        progressSaveJob?.cancel()
+        // Persist the finished state immediately; debounce intermediate saves so a fast scroll
+        // doesn't fire a DB write on every 1% tick (parity with the WebView save path).
+        if (intPercent >= 100) {
+            saveProgress(snapped)
+            return
+        }
+        progressSaveJob = scope.launch {
+            delay(PROGRESS_SAVE_DEBOUNCE_MS)
+            saveProgress(snapped)
+        }
     }
 
     private fun saveProgress(progress: Float) {
@@ -452,6 +466,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         lastChapterSwitchTime = now
 
         currentChapterIndex = newIndex
+
+        // Drop any debounced save still pending for the outgoing chapter; currentPage is about to
+        // advance and the old progress must not be written against the new chapter's page.
+        progressSaveJob?.cancel()
 
         val initialProgress = if (newIndex > oldIndex) 0f else 1f
         lastSavedProgress = initialProgress
@@ -1267,6 +1285,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         // Save the live per-chapter progress, not a recomputed whole-document ratio.
         // lastSavedProgress is 0 until restore/scroll, and a teardown before that (orientation
         // lock recreates the activity) must not persist 0 and wipe the saved progress.
+        // Flush synchronously; cancel the debounce first so scope.cancel() can't drop a pending save.
+        progressSaveJob?.cancel()
         if (lastSavedProgress > 0f) saveProgress(lastSavedProgress)
 
         ttsController.destroy()
@@ -1854,8 +1874,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val scrollY = scrollView.scrollY
         if (loadedChapters.size > 1 && preferences.novelInfiniteScroll.get()) {
             val progress = calculateCurrentChapterProgress(scrollY)
-            val percent = if (progress >= 0.98f) 100 else (progress * 100).toInt()
-            return percent.coerceIn(0, 100)
+            return NovelProgressMath.progressToPercent(NovelProgressMath.snapProgress(progress))
         }
         val child = scrollView.getChildAt(0)
         val totalHeight = if (child != null) child.height - scrollView.height else 0
@@ -1863,12 +1882,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             return if (shouldAutoMarkShortChapter(currentPage)) {
                 100
             } else {
-                (lastSavedProgress * 100).roundToInt().coerceIn(0, 100)
+                NovelProgressMath.progressToPercent(lastSavedProgress)
             }
         }
         val progress = scrollY.toFloat() / totalHeight
-        val percent = if (progress >= 0.98f) 100 else (progress * 100).toInt()
-        return percent.coerceIn(0, 100)
+        return NovelProgressMath.progressToPercent(NovelProgressMath.snapProgress(progress))
     }
 
     fun setScrollProgress(progress: Float) {
