@@ -238,6 +238,8 @@
     <string name="pref_novel_request_throttling_category">Request Throttling</string>
     <string name="pref_novel_request_throttling">Enable throttling</string>
     <string name="pref_novel_request_throttling_summary">Add delays between requests to a source to avoid rate limiting</string>
+    <string name="pref_novel_request_permits">Requests before delay</string>
+    <string name="pref_novel_request_permits_summary">How many requests to a source can go through in a quick burst before the delay is enforced. 1 paces every request individually; higher values allow a handful (e.g. one per chapter) before pausing.</string>
     <string name="pref_novel_request_delay">Request delay</string>
     <string name="pref_novel_request_delay_summary">Base delay between requests to the same source (ms). Applies once per request, so a novel needing many chapters naturally takes longer than one needing few.</string>
     <string name="pref_novel_request_jitter">Random jitter</string>

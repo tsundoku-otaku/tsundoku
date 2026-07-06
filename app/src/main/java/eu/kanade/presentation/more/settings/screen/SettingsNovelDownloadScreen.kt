@@ -65,6 +65,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         return listOf(
             prefs.requestDelay(),
             prefs.requestJitter(),
+            prefs.requestPermits(),
             prefs.parallelNovelDownloads(),
             prefs.maxImageSizeKb(),
             prefs.imageCompressionQuality(),
@@ -136,6 +137,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         val enabled = prefs.enableRequestThrottling().collectAsState().value
         val requestDelay = prefs.requestDelay().collectAsState().value
         val requestJitter = prefs.requestJitter().collectAsState().value
+        val requestPermits = prefs.requestPermits().collectAsState().value
 
         val lowDelayWarning = if (requestDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
             stringResource(TDMR.strings.pref_novel_low_delay_warning)
@@ -150,6 +152,15 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     preference = prefs.enableRequestThrottling(),
                     title = stringResource(TDMR.strings.pref_novel_request_throttling),
                     subtitle = stringResource(TDMR.strings.pref_novel_request_throttling_summary),
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = requestPermits,
+                    valueRange = 1..20,
+                    title = stringResource(TDMR.strings.pref_novel_request_permits),
+                    subtitle = stringResource(TDMR.strings.pref_novel_request_permits_summary),
+                    valueString = "$requestPermits",
+                    onValueChanged = { prefs.requestPermits().set(it) },
+                    enabled = enabled,
                 ),
                 Preference.PreferenceItem.SliderPreference(
                     value = requestDelay,
@@ -404,6 +415,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                                             style = MaterialTheme.typography.bodyMedium,
                                         )
                                         val details = buildList {
+                                            override.permits?.let { add("Permits: $it") }
                                             override.delayMillis?.let { add("Delay: ${it}ms") }
                                             override.jitterMillis?.let { add("Jitter: 0-${it}ms") }
                                         }.joinToString(", ")
@@ -470,6 +482,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         var selectedSourceId by remember { mutableStateOf(existing?.sourceId ?: 0L) }
         var delayMillis by remember { mutableIntStateOf(existing?.delayMillis ?: 3000) }
         var jitterMillis by remember { mutableIntStateOf(existing?.jitterMillis ?: 1000) }
+        var permits by remember { mutableIntStateOf(existing?.permits ?: 1) }
         var sourceExpanded by remember { mutableStateOf(false) }
 
         val selectedSource = novelSources.find { it.id == selectedSourceId }
@@ -478,6 +491,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         // An extension can declare its own floor via RateLimited; the user can't configure
         // less delay than that, no matter what they drag the slider to.
         val declaredMinimum = (selectedSource as? RateLimited)?.minimumDelayMillis?.toInt() ?: 0
+        val recommendedPermits = (selectedSource as? RateLimited)?.recommendedPermits
         val effectiveDelay = delayMillis.coerceAtLeast(declaredMinimum)
 
         AlertDialog(
@@ -527,8 +541,27 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                    if (recommendedPermits != null) {
+                        Text(
+                            "Extension recommends: $recommendedPermits requests before delay",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
 
                     HorizontalDivider()
+
+                    // Requests before delay
+                    Text(
+                        "Requests before delay: $permits",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Slider(
+                        value = permits.toFloat(),
+                        onValueChange = { permits = it.toInt() },
+                        valueRange = 1f..20f,
+                        steps = 18,
+                    )
 
                     // Base delay
                     Text(
@@ -564,6 +597,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                                 sourceId = selectedSourceId,
                                 delayMillis = effectiveDelay,
                                 jitterMillis = jitterMillis,
+                                permits = permits,
                                 enabled = true,
                             ),
                         )
