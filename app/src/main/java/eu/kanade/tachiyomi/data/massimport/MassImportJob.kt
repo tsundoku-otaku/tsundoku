@@ -18,6 +18,7 @@ import eu.kanade.domain.manga.interactor.MassImport
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.tachiyomi.network.interceptor.withRateLimitWaitUpdates
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -45,6 +46,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import mihon.domain.manga.model.toDomainManga
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
@@ -625,16 +627,29 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                     "Processing: ${activeImports.size} active",
                                 )
                                 try {
-                                    processUrlWithSource(
-                                        url,
-                                        source,
-                                        addToLibrary,
-                                        fetchDetails,
-                                        categoryId,
-                                        fetchChapters,
-                                        pendingAddIds,
-                                        flushBatchSize,
-                                    )
+                                    val host = url.toHttpUrlOrNull()?.host
+                                    withRateLimitWaitUpdates(
+                                        host = host,
+                                        onWaitChanged = { remainingMillis ->
+                                            val status = if (remainingMillis != null) {
+                                                "Waiting %.1fs for rate limit ($host)".format(remainingMillis / 1000.0)
+                                            } else {
+                                                "Processing: ${activeImports.size} active"
+                                            }
+                                            updateNotification(completedCount.get(), totalCount, status)
+                                        },
+                                    ) {
+                                        processUrlWithSource(
+                                            url,
+                                            source,
+                                            addToLibrary,
+                                            fetchDetails,
+                                            categoryId,
+                                            fetchChapters,
+                                            pendingAddIds,
+                                            flushBatchSize,
+                                        )
+                                    }
                                 } finally {
                                     activeImports.remove(url)
                                 }
