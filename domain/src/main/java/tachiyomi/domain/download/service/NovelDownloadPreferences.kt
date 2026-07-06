@@ -10,35 +10,30 @@ class NovelDownloadPreferences(
     private val preferenceStore: PreferenceStore,
 ) {
     /**
-     * Enable download throttling for novel sources
+     * Enable per-request delay throttling for novel sources.
+     * Applies once per outgoing HTTP request (via the app's shared network client),
+     * regardless of which job (download, library update, mass import) triggered it.
      */
-    fun enableThrottling() = preferenceStore.getBoolean(
-        "novel_download_throttling_enabled",
+    fun enableRequestThrottling() = preferenceStore.getBoolean(
+        "novel_request_throttling_enabled",
         true,
     )
 
     /**
-     * Base delay between chapter downloads from the same source (in milliseconds)
+     * Base delay between requests to the same source (in milliseconds)
      */
-    fun downloadDelay() = preferenceStore.getInt(
-        "novel_download_delay_ms",
+    fun requestDelay() = preferenceStore.getInt(
+        "novel_request_delay_ms",
         3000, // Default 3 seconds
     )
 
     /**
-     * Minimum random delay to add to base delay (in milliseconds)
+     * Random jitter added on top of the base delay (in milliseconds).
+     * Actual delay = requestDelay + random(0, requestJitter). This exists so requests
+     * look like a human's natural pacing rather than a bot waiting an exact interval.
      */
-    fun randomDelayMin() = preferenceStore.getInt(
-        "novel_download_random_delay_min_ms",
-        0,
-    )
-
-    /**
-     * Maximum random delay range to add to base delay (in milliseconds)
-     * Actual delay = baseDelay + random(randomDelayMin, randomDelayRange)
-     */
-    fun randomDelayRange() = preferenceStore.getInt(
-        "novel_download_random_delay_ms",
+    fun requestJitter() = preferenceStore.getInt(
+        "novel_request_jitter_ms",
         1000, // Default 0-1 second random
     )
 
@@ -52,14 +47,6 @@ class NovelDownloadPreferences(
     )
 
     /**
-     * Enable delay between library updates for novel sources
-     */
-    fun enableUpdateThrottling() = preferenceStore.getBoolean(
-        "novel_update_throttling_enabled",
-        true,
-    )
-
-    /**
      * Enable additional delay every 5 library updates for novel sources
      */
     fun enableUpdateStaggering() = preferenceStore.getBoolean(
@@ -68,35 +55,11 @@ class NovelDownloadPreferences(
     )
 
     /**
-     * Delay between checking novels during library update (in milliseconds)
-     */
-    fun updateDelay() = preferenceStore.getInt(
-        "novel_update_delay_ms",
-        3000, // Default 3 seconds
-    )
-
-    /**
      * Maximum parallel library updates for novel sources (per extension)
      */
     fun parallelNovelUpdates() = preferenceStore.getInt(
         "novel_parallel_updates",
         2, // Default to 2 concurrent novel sources
-    )
-
-    /**
-     * Enable delay for mass import operations
-     */
-    fun enableMassImportThrottling() = preferenceStore.getBoolean(
-        "novel_mass_import_throttling_enabled",
-        true,
-    )
-
-    /**
-     * Delay between imports during mass import (in milliseconds)
-     */
-    fun massImportDelay() = preferenceStore.getInt(
-        "novel_mass_import_delay_ms",
-        3000, // Default 3 seconds
     )
 
     /**
@@ -128,9 +91,13 @@ class NovelDownloadPreferences(
     /**
      * Stored source-specific overrides as JSON string
      * Format: Map<sourceId: Long, SourceOverride>
+     *
+     * Uses a new key (v2) because the shape of [SourceOverride] changed from four
+     * per-job delay fields to a single delay+jitter pair, and decoding isn't configured
+     * to tolerate unknown/missing fields from the old format.
      */
     fun sourceOverrides() = preferenceStore.getString(
-        "novel_source_overrides",
+        "novel_source_overrides_v2",
         "{}",
     )
 
@@ -265,10 +232,8 @@ class NovelDownloadPreferences(
         @kotlinx.serialization.Serializable
         data class SourceOverride(
             val sourceId: Long,
-            val downloadDelay: Int? = null,
-            val randomDelayRange: Int? = null,
-            val updateDelay: Int? = null,
-            val massImportDelay: Int? = null,
+            val delayMillis: Int? = null,
+            val jitterMillis: Int? = null,
             val enabled: Boolean = true,
         )
     }
