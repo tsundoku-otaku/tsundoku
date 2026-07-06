@@ -25,6 +25,9 @@ import kotlin.random.Random
  * app startup - long before the domain-level policy implementation's own dependencies
  * (SourceManager, etc.) are necessarily ready. Deferring the Injekt lookup to the first actual
  * request avoids that construction-order issue entirely.
+ *
+ * Actual waits are published to [RateLimitWaitTracker] so foreground UI (job notifications) can
+ * show that a wait is happening, rather than it looking like the job stalled.
  */
 class PerHostDynamicRateLimitInterceptor : Interceptor {
 
@@ -56,7 +59,14 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
                 if (window.size >= spec.permits) {
                     val jitter = if (spec.jitterMillis > 0) Random.nextLong(0, spec.jitterMillis) else 0L
                     val wait = spec.delayMillis - (now - window.peekFirst()) + jitter
-                    if (wait > 0) Thread.sleep(wait)
+                    if (wait > 0) {
+                        RateLimitWaitTracker.startWaiting(host, now + wait)
+                        try {
+                            Thread.sleep(wait)
+                        } finally {
+                            RateLimitWaitTracker.stopWaiting(host)
+                        }
+                    }
                     window.removeFirst()
                     now = SystemClock.elapsedRealtime()
                 }
