@@ -38,6 +38,17 @@ class NovelDownloadPreferences(
     )
 
     /**
+     * How many requests to a source are allowed through in a quick burst before requestDelay
+     * needs to be enforced. E.g. 3 lets 3 requests fire immediately, then the 4th waits out the
+     * delay window - useful since a few requests per novel (one per chapter) is often fine even
+     * where a long unbroken stream isn't.
+     */
+    fun requestPermits() = preferenceStore.getInt(
+        "novel_request_permits",
+        1, // Default: every request is paced individually, matching pre-burst behavior
+    )
+
+    /**
      * Skip source if details fetch failed X times consecutively
      * 0 implies disabled
      */
@@ -234,6 +245,7 @@ class NovelDownloadPreferences(
             val sourceId: Long,
             val delayMillis: Int? = null,
             val jitterMillis: Int? = null,
+            val permits: Int? = null,
             val enabled: Boolean = true,
         )
     }
