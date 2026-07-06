@@ -42,6 +42,7 @@ dependencies {
     api(libs.kotlinx.serialization.jsonOkio)
 
     api(libs.androidx.preference)
+    api(libs.injekt)
 
     implementation(libs.jsoup)
 
