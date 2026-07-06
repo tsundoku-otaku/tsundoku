@@ -299,6 +299,12 @@ abstract class HttpSource : CatalogueSource {
      * @param context refresh context containing existing local state
      * @return the chapters for the manga
      */
+    @Suppress("OVERRIDE_DEPRECATION")
+    @Deprecated(
+        "Fork-only API superseded by upstream's getMangaUpdate, which now accepts existing chapters directly. " +
+            "Kept temporarily so already-published extensions keep working; migrate to getMangaUpdate.",
+        ReplaceWith("getMangaUpdate"),
+    )
     override suspend fun getChapterList(manga: SManga, context: RefreshContext): List<SChapter> {
         return getChapterList(manga)
     }

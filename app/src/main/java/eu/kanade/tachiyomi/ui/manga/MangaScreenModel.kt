@@ -41,7 +41,6 @@ import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.translation.TranslationJob
 import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.model.RefreshContext
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
@@ -763,13 +762,13 @@ class MangaScreenModel(
         try {
             withIOContext {
                 val existingChapters = getMangaAndChapters.awaitChapters(state.manga.id)
-                val refreshContext = RefreshContext(
-                    mangaId = state.manga.id,
-                    existingChapters = if (forceRefresh) emptyList() else existingChapters.toRefreshContextChapters(),
-                    lastFetchTime = state.manga.lastUpdate,
-                    forceRefresh = forceRefresh,
-                )
-                val chapters = state.source.getChapterList(state.manga.toSManga(), refreshContext)
+                val passthroughChapters = if (forceRefresh) emptyList() else existingChapters.toRefreshContextChapters()
+                val chapters = state.source.getMangaUpdate(
+                    state.manga.toSManga(),
+                    passthroughChapters,
+                    fetchDetails = false,
+                    fetchChapters = true,
+                ).chapters
 
                 val newChapters = syncChaptersWithSource.await(
                     chapters,
