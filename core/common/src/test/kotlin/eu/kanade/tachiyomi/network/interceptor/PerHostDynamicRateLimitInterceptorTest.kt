@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Protocol
 import okhttp3.Request
@@ -94,6 +95,22 @@ class PerHostDynamicRateLimitInterceptorTest {
         (e1 < 60L) shouldBe true
         // Threshold leaves slack below the configured 100ms for OS scheduling jitter.
         (e2 >= 60L) shouldBe true
+    }
+
+    @Test
+    fun `an interactively bypassed host skips throttling even with a full window`() = runBlocking {
+        val host = "example.com"
+        specs[host] = RateLimitSpec(delayMillis = 200L)
+        val interceptor = PerHostDynamicRateLimitInterceptor()
+
+        // Fill the single default permit's window so a normal call here would have to wait.
+        interceptor.intercept(fakeChain("https://$host/a"))
+
+        val elapsed = InteractiveRateLimitBypass.bypassing(host) {
+            measureMillis { interceptor.intercept(fakeChain("https://$host/b")) }
+        }
+
+        (elapsed < 100L) shouldBe true
     }
 
     @Test

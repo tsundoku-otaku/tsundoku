@@ -35,6 +35,11 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val host = request.url.host
+
+        if (InteractiveRateLimitBypass.isBypassed(host)) {
+            return chain.proceed(request)
+        }
+
         val spec = policy.specFor(host)
 
         if (spec.delayMillis > 0) {
