@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
  * Pure progress-to-percent and chapter-marking helpers shared by the novel viewers.
  * Kept renderer-agnostic so the WebView and TextView paths persist progress identically.
  */
-object NovelProgressMath {
+object NovelProgress {
 
     /**
      * Scroll ratio at/above which a chapter counts as fully read. Shared by every renderer and by

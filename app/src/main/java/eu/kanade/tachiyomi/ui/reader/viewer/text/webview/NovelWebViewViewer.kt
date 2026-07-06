@@ -35,7 +35,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelProgressMath
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelProgress
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ProcessedContent
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
@@ -765,10 +765,20 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
+    /**
+     * Persist the latest live progress immediately. The JS debounce timer can be throttled while
+     * the WebView is backgrounded, so the activity's onPause calls this to avoid losing the tail.
+     */
+    fun flushProgress() {
+        if (lastSavedProgress > 0f && NovelProgress.progressToPercent(lastSavedProgress) != lastPersistedPercent) {
+            saveProgress()
+        }
+    }
+
     private var lastPersistedPercent = -1
     private fun saveProgress() {
         currentPage?.let { page ->
-            val progressValue = NovelProgressMath.progressToPercent(lastSavedProgress)
+            val progressValue = NovelProgress.progressToPercent(lastSavedProgress)
             lastPersistedPercent = progressValue
             activity.saveNovelProgress(page, progressValue)
             logcat(LogPriority.DEBUG) { "NovelWebViewViewer: Saving progress $progressValue%" }
@@ -1526,7 +1536,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         fun onScrollProgress(progress: Float) {
             activity.runOnUiThread {
                 lastSavedProgress = progress
-                if (NovelProgressMath.progressToPercent(progress) == lastPersistedPercent) return@runOnUiThread
+                if (NovelProgress.progressToPercent(progress) == lastPersistedPercent) return@runOnUiThread
                 saveProgress()
             }
         }
@@ -1552,7 +1562,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     // Moving forward: the outgoing chapter (and any skipped by a fast scroll) is
                     // fully read. The debounced onScrollProgress can't cover this — its currentPage
                     // has already advanced and per-chapter progress never snaps to 100 in the DOM.
-                    NovelProgressMath.forwardChaptersToMarkRead(oldIndex, chapterIndex, loadedChapters.size)
+                    NovelProgress.forwardChaptersToMarkRead(oldIndex, chapterIndex, loadedChapters.size)
                         .forEach { idx ->
                             loadedChapters.getOrNull(idx)?.pages?.firstOrNull()?.let { page ->
                                 activity.saveNovelProgress(page, 100)
@@ -1933,7 +1943,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     fun isAutoScrollActive(): Boolean = isAutoScrolling
 
     fun getProgressPercent(): Int {
-        return NovelProgressMath.progressToPercent(lastSavedProgress)
+        return NovelProgress.progressToPercent(lastSavedProgress)
     }
 
     fun setProgressPercent(percent: Int) {

@@ -590,6 +590,12 @@ class ReaderActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.flushProgress()
+            is NovelWebViewViewer -> viewer.flushProgress()
+            else -> {}
+        }
+
         lifecycleScope.launchNonCancellable {
             viewModel.updateHistory()
         }
