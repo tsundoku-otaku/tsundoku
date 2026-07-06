@@ -3,6 +3,7 @@ package tachiyomi.domain.download.service
 import eu.kanade.tachiyomi.network.interceptor.RateLimitSpec
 import eu.kanade.tachiyomi.network.interceptor.RequestRateLimitPolicy
 import eu.kanade.tachiyomi.source.RateLimited
+import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.domain.source.service.SourceManager
@@ -21,6 +22,10 @@ class SourceRateLimitPolicy(
         val source = sourceManager.getOnlineSources()
             .firstOrNull { it.baseUrl.toHttpUrlOrNull()?.host == host }
             ?: return RateLimitSpec.NONE
+
+        // A source explicitly declaring it doesn't need traffic considerations (e.g. a
+        // self-hosted server) is honored regardless of novel/RateLimited status.
+        if (source is UnmeteredSource) return RateLimitSpec.NONE
 
         val declaredMinimum = (source as? RateLimited)?.minimumDelayMillis ?: 0L
 
