@@ -24,6 +24,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Improved
 - Custom Source Overhaul [@mrissaoussama](https://github.com/mrissaoussama) [#273](https://github.com/tsundoku-otaku/tsundoku/pull/273)
+- A ton of Arabic translations [@OtakuArab](https://github.com/OtakuArab) [#327](https://github.com/tsundoku-otaku/tsundoku/pull/327)
 - Novel download queue improvements to prevent errors [@mrissaoussama](https://github.com/mrissaoussama) [#284](https://github.com/tsundoku-otaku/tsundoku/pull/284)
 - Reader status bar reordering + more [@mrissaoussama](https://github.com/mrissaoussama) [#318](https://github.com/tsundoku-otaku/tsundoku/pull/318)
 - Some great improvements to custom sources, including {novelUrl} [@mrissaoussama](https://github.com/mrissaoussama) [#296](https://github.com/tsundoku-otaku/tsundoku/pull/296)
