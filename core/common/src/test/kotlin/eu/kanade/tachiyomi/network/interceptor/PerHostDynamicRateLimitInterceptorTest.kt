@@ -21,25 +21,27 @@ import uy.kohesive.injekt.api.addSingletonFactory
  * Thread.sleep - statically mocking java.lang.Thread is a JVM-wide, load-bearing class used by
  * the test runner itself, and doing so can hang or destabilize the whole test process.
  *
- * `delays` is a companion (JVM-wide) map, mutated in place rather than reassigned per test:
+ * `specs` is a companion (JVM-wide) map, mutated in place rather than reassigned per test:
  * Injekt.addSingletonFactory caches the first-resolved instance for the process, so a later
- * test reassigning `delays` to a new map would be invisible to the already-cached policy
+ * test reassigning `specs` to a new map would be invisible to the already-cached policy
  * closure from an earlier test. Registering the factory once, against one persistent map,
  * sidesteps that entirely.
  */
 class PerHostDynamicRateLimitInterceptorTest {
 
     companion object {
-        private val delays = mutableMapOf<String, Long>()
+        private val specs = mutableMapOf<String, RateLimitSpec>()
 
         init {
-            Injekt.addSingletonFactory<RequestRateLimitPolicy> { RequestRateLimitPolicy { host -> delays[host] ?: 0L } }
+            Injekt.addSingletonFactory<RequestRateLimitPolicy> {
+                RequestRateLimitPolicy { host -> specs[host] ?: RateLimitSpec.NONE }
+            }
         }
     }
 
     @BeforeEach
     fun setUp() {
-        delays.clear()
+        specs.clear()
         mockkStatic(SystemClock::class)
         every { SystemClock.elapsedRealtime() } returns 0L
     }
@@ -64,8 +66,8 @@ class PerHostDynamicRateLimitInterceptorTest {
     }
 
     @Test
-    fun `does not delay when policy returns zero`() {
-        delays["example.com"] = 0L
+    fun `does not delay when policy returns NONE`() {
+        specs["example.com"] = RateLimitSpec.NONE
         val interceptor = PerHostDynamicRateLimitInterceptor()
 
         val elapsed = measureMillis {
@@ -77,31 +79,47 @@ class PerHostDynamicRateLimitInterceptorTest {
     }
 
     @Test
-    fun `paces consecutive requests to the same host by the policy delay`() {
+    fun `paces the second request to a host once the single default permit is used`() {
         val interceptor = PerHostDynamicRateLimitInterceptor()
 
-        // The first ever call through this code path pays a one-time JIT/proxy warmup cost
-        // unrelated to the interceptor itself (can be 100s of ms) - absorb it with a real
-        // sleeping call here so the two timed calls below measure steady-state behavior only.
-        delays["warmup.example.com"] = 1L
-        interceptor.intercept(fakeChain("https://warmup.example.com/w"))
-
-        delays["example.com"] = 100L
+        specs["example.com"] = RateLimitSpec(delayMillis = 100L)
+        // With the default permits=1, the very first request to a host has an empty window
+        // and goes through immediately - there's nothing to wait on yet.
         val e1 = measureMillis { interceptor.intercept(fakeChain("https://example.com/a")) }
+        // The second request finds the window's single slot already taken and must wait out
+        // the delay. The fake clock never advances (elapsedRealtime is stubbed to a constant
+        // 0), so it sees "no time has passed" and pays the full delay.
         val e2 = measureMillis { interceptor.intercept(fakeChain("https://example.com/b")) }
 
-        // The fake clock never advances (elapsedRealtime is stubbed to a constant 0), so both
-        // requests see "no time has passed" and each pays the full delay - a stronger check
-        // than just "some delay happened", proving pacing applies per request, not per novel.
+        (e1 < 60L) shouldBe true
         // Threshold leaves slack below the configured 100ms for OS scheduling jitter.
-        (e1 >= 60L) shouldBe true
         (e2 >= 60L) shouldBe true
     }
 
     @Test
+    fun `allows a burst of permits before enforcing the delay`() {
+        val interceptor = PerHostDynamicRateLimitInterceptor()
+
+        specs["warmup.example.com"] = RateLimitSpec(delayMillis = 1L)
+        interceptor.intercept(fakeChain("https://warmup.example.com/w"))
+
+        specs["example.com"] = RateLimitSpec(delayMillis = 200L, permits = 3)
+        val burst = measureMillis {
+            repeat(3) { interceptor.intercept(fakeChain("https://example.com/$it")) }
+        }
+        val fourth = measureMillis { interceptor.intercept(fakeChain("https://example.com/3")) }
+
+        // The first 3 requests fit within the burst capacity and shouldn't wait meaningfully.
+        (burst < 100L) shouldBe true
+        // The 4th exceeds the burst capacity and must wait out the window (with slack below
+        // the configured 200ms for OS scheduling jitter).
+        (fourth >= 150L) shouldBe true
+    }
+
+    @Test
     fun `different hosts are not serialized against each other`() {
-        delays["a.example.com"] = 300L
-        delays["b.example.com"] = 0L
+        specs["a.example.com"] = RateLimitSpec(delayMillis = 300L)
+        specs["b.example.com"] = RateLimitSpec.NONE
         val interceptor = PerHostDynamicRateLimitInterceptor()
 
         interceptor.intercept(fakeChain("https://a.example.com/x"))
