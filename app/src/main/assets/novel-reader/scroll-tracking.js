@@ -37,20 +37,24 @@
     runtime.lastBoundaryUpdate = runtime.lastBoundaryUpdate || 0;
     runtime.knownDividerCount = runtime.knownDividerCount || 0;
     runtime.knownDocHeight = runtime.knownDocHeight || 0;
+    runtime.lastBoundaryCheck = runtime.lastBoundaryCheck || 0;
 
     window.addEventListener('scroll', function () {
         if (infiniteScrollEnabled && typeof window.updateChapterBoundaries === 'function') {
             // Re-query when the DOM changed: a new divider (count) OR a height drift from a
             // reflow (image/font load) that leaves the divider count intact but moves every
-            // startOffset. Stale offsets made scrollTop miss all boundaries, so per-chapter
-            // progress fell back to the whole-document ratio (combined across chapters).
-            var domDividerCount = document.querySelectorAll('.__CHAPTER_DIVIDER_CLASS__').length;
-            var domDocHeight = document.body ? document.body.scrollHeight : 0;
-            if (domDividerCount !== runtime.knownDividerCount ||
-                Math.abs(domDocHeight - runtime.knownDocHeight) > 2) {
-                runtime.knownDividerCount = domDividerCount;
-                runtime.knownDocHeight = domDocHeight;
-                window.updateChapterBoundaries();
+            // startOffset. Time-gate the check: reading scrollHeight forces layout, so probing it
+            // every frame at 60 fps is wasteful. Appends re-query directly via rAF, so a lagged
+            // opportunistic check here only delays reflow adjustments by at most one interval.
+            var boundaryNow = Date.now();
+            if (boundaryNow - runtime.lastBoundaryCheck > 120) {
+                runtime.lastBoundaryCheck = boundaryNow;
+                var domDividerCount = document.querySelectorAll('.__CHAPTER_DIVIDER_CLASS__').length;
+                var domDocHeight = document.body ? document.body.scrollHeight : 0;
+                if (domDividerCount !== runtime.knownDividerCount ||
+                    Math.abs(domDocHeight - runtime.knownDocHeight) > 2) {
+                    window.updateChapterBoundaries();
+                }
             }
         }
 
@@ -70,7 +74,7 @@
         // Snap to 100% at the real bottom: sub-pixel rounding and fractional DPI leave a
         // few px of slack that scrollTop can never close.
         if (scrollable > 0 && scrollTop >= scrollable - 2) progress = 1.0;
-        if (progress >= 0.99) progress = 1.0;
+        if (progress >= __DONE_THRESHOLD__) progress = 1.0;
         if (progress < 0) progress = 0;
 
         var currentChapterProgress = progress;
@@ -91,10 +95,16 @@
             var boundary = window.chapterBoundaries[idx];
             currentChapterIdx = idx;
             var chapterScrollY = Math.max(scrollTop - boundary.startOffset, 0);
-            var effectiveHeight = Math.max(boundary.height - window.innerHeight, 1);
+            // A middle chapter is fully read once scrollTop reaches the next divider, so its
+            // scrollable range is the full height. Only the last loaded chapter has an unreachable
+            // trailing viewport (nothing below it), so subtract innerHeight there. Subtracting it
+            // for every chapter reported 100% a full screen early and forced short (sub-viewport)
+            // middle chapters to 100% the instant they were entered.
+            var isLastChapter = idx === window.chapterBoundaries.length - 1;
+            var effectiveHeight = Math.max(boundary.height - (isLastChapter ? window.innerHeight : 0), 1);
             currentChapterProgress = Math.min(chapterScrollY / effectiveHeight, 1.0);
             // Snap so a fully-read chapter reports 100% and gets marked read instead of ~0.98.
-            if (currentChapterProgress >= 0.99) currentChapterProgress = 1.0;
+            if (currentChapterProgress >= __DONE_THRESHOLD__) currentChapterProgress = 1.0;
 
             // Throttle onChapterScrollUpdate to 50 ms — same cadence as onScrollUpdate.
             // Without the gate this fires at 60 fps and floods the Android JS bridge.
@@ -177,6 +187,7 @@
         });
         window.chapterBoundaries = boundaries;
         runtime.knownDividerCount = dividers.length;
+        runtime.knownDocHeight = document.body ? document.body.scrollHeight : 0;
         runtime.lastBoundaryUpdate = Date.now();
     };
 

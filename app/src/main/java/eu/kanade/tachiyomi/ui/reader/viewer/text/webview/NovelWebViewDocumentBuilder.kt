@@ -148,7 +148,12 @@ internal object NovelWebViewDocumentBuilder {
             .htmlAttributeEscape()
         val name = chapterName.htmlAttributeEscape()
         val path = chapterPath.htmlAttributeEscape()
-        return """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$name" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$path" $CHAPTER_URL_ATTR="$absoluteUrl" style="display:none;height:0;margin:0;padding:0;"></div>"""
+        // visibility:hidden (not display:none) so the first chapter's boundary marker still
+        // generates a layout box: getBoundingClientRect().top on a display:none element is always 0,
+        // which made updateChapterBoundaries record startOffset = scrollY (the scroll position at
+        // requery time) instead of the chapter's true top, zeroing progress and misattributing
+        // scroll to the wrong chapter whenever a reflow re-queried mid-scroll.
+        return """<div class="$CHAPTER_DIVIDER_CLASS" $CHAPTER_ID_ATTR="$chapterId" $CHAPTER_TITLE_ATTR="$name" $CHAPTER_NUMBER_ATTR="$chapterNumber" $CHAPTER_PATH_ATTR="$path" $CHAPTER_URL_ATTR="$absoluteUrl" style="visibility:hidden;height:0;margin:0;padding:0;border:none;"></div>"""
     }
 
     private fun buildChapterWrapper(

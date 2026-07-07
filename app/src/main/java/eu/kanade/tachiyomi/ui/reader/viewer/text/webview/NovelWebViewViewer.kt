@@ -1541,11 +1541,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         @JavascriptInterface
         fun onScrollProgress(progress: Float) {
             activity.runOnUiThread {
-                lastSavedProgress = progress
                 // Don't persist mid-transition: a just-switched chapter owns its own write via the
                 // forward 100% mark; a save fired now would clobber it with a stale value (parity
-                // with NovelViewer suppressing saves during grace).
+                // with NovelViewer suppressing saves during grace). Return BEFORE touching
+                // lastSavedProgress so a transition value can't overwrite the seeded baseline and
+                // then leak out through flushProgress on pause.
                 if (System.currentTimeMillis() - chapterEntryTime < CHAPTER_ENTRY_GRACE_MS) return@runOnUiThread
+                lastSavedProgress = progress
                 if (NovelProgress.progressToPercent(progress) == lastPersistedPercent) return@runOnUiThread
                 saveProgress()
             }
@@ -1554,8 +1556,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         @JavascriptInterface
         fun onScrollUpdate(progress: Float) {
             activity.runOnUiThread {
-                lastSavedProgress = progress
                 if (System.currentTimeMillis() - chapterEntryTime < CHAPTER_ENTRY_GRACE_MS) return@runOnUiThread
+                lastSavedProgress = progress
                 activity.onNovelProgressChanged(progress)
             }
         }

@@ -6,6 +6,7 @@ import androidx.core.net.toUri
 import eu.kanade.presentation.reader.settings.CodeSnippet
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelProgress
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_DIVIDER_CLASS
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_ID_ATTR
@@ -218,6 +219,7 @@ internal class NovelWebViewStyler(
                 "CHAPTER_ID_ATTR" to CHAPTER_ID_ATTR,
                 "INFINITE_SCROLL_ENABLED" to preferences.novelInfiniteScroll.get().toString(),
                 "LOAD_THRESHOLD" to effectiveThreshold.toString(),
+                "DONE_THRESHOLD" to NovelProgress.DONE_THRESHOLD.toString(),
             ),
         )
         evaluateJs(js)
