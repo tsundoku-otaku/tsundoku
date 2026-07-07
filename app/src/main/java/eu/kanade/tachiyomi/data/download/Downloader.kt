@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.data.notification.NotificationHandler
 import eu.kanade.tachiyomi.data.translation.TranslationJob
 import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.tachiyomi.network.interceptor.InteractiveRateLimitBypass
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.isNovelSource
@@ -46,6 +47,7 @@ import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
 import mihon.core.archive.ZipWriter
 import nl.adaptivity.xmlutil.serialization.XML
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Response
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.storage.extension
@@ -328,7 +330,12 @@ class Downloader(
         try {
             // Per-request pacing now happens in the shared OkHttp client
             // (see PerHostDynamicRateLimitInterceptor), not here.
-            downloadChapter(download)
+            if (download.bypassRateLimit) {
+                val host = (download.source as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
+                InteractiveRateLimitBypass.bypassing(host) { downloadChapter(download) }
+            } else {
+                downloadChapter(download)
+            }
 
             // Remove successful download from queue
             if (download.status == Download.State.DOWNLOADED) {
@@ -374,7 +381,12 @@ class Downloader(
      * @param chapters the list of chapters to download.
      * @param autoStart whether to start the downloader after enqueing the chapters.
      */
-    fun queueChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean) {
+    fun queueChapters(
+        manga: Manga,
+        chapters: List<Chapter>,
+        autoStart: Boolean,
+        bypassRateLimitChapterIds: Set<Long> = emptySet(),
+    ) {
         logcat { "queueChapters called: manga=${manga.title}, chapters=${chapters.size}, autoStart=$autoStart" }
         if (chapters.isEmpty()) {
             logcat { "queueChapters: No chapters to queue" }
@@ -412,7 +424,12 @@ class Downloader(
                 .filter { chapter -> chapter.id !in queuedChapterIds }
                 // Create a download for each one.
                 .map { chapter ->
-                    Download.from(manga = manga, chapter = chapter, source = source)
+                    Download.from(
+                        manga = manga,
+                        chapter = chapter,
+                        source = source,
+                        bypassRateLimit = chapter.id in bypassRateLimitChapterIds,
+                    )
                 }
                 .toList()
 

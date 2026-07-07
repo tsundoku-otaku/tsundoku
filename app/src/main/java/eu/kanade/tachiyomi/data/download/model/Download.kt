@@ -34,6 +34,14 @@ data class Download(
     var pages: List<Page>? = null
 
     /**
+     * Whether this specific chapter's download should bypass rate limiting, e.g. the
+     * immediate-next chapter during reader download-ahead, which is as "wanted now" as the
+     * chapter currently being read. Not persisted; recomputed whenever chapters are (re-)queued.
+     */
+    @Transient
+    var bypassRateLimit: Boolean = false
+
+    /**
      * Optional error details for the most recent failure.
      * Not persisted; used for UI display/copy.
      */
@@ -104,6 +112,7 @@ data class Download(
             manga: tachiyomi.domain.manga.model.Manga,
             chapter: tachiyomi.domain.chapter.model.Chapter,
             source: CatalogueSource,
+            bypassRateLimit: Boolean = false,
         ): Download {
             return Download(
                 source = source,
@@ -115,7 +124,7 @@ data class Download(
                 chapterScanlator = chapter.scanlator,
                 chapterDateUpload = chapter.dateUpload,
                 chapterNumber = chapter.chapterNumber,
-            )
+            ).apply { this.bypassRateLimit = bypassRateLimit }
         }
 
         suspend fun fromChapterId(

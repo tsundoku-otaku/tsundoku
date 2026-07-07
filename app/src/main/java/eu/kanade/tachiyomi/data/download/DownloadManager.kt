@@ -168,10 +168,17 @@ class DownloadManager(
      * @param manga the manga of the chapters.
      * @param chapters the list of chapters to enqueue.
      * @param autoStart whether to start the downloader after enqueing the chapters.
+     * @param bypassRateLimitChapterIds chapter ids that should skip rate limiting entirely, e.g.
+     * the immediate-next chapter during reader download-ahead.
      */
-    fun downloadChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean = true) {
+    fun downloadChapters(
+        manga: Manga,
+        chapters: List<Chapter>,
+        autoStart: Boolean = true,
+        bypassRateLimitChapterIds: Set<Long> = emptySet(),
+    ) {
         if (manga.isLocalNovel()) return
-        downloader.queueChapters(manga, chapters, autoStart)
+        downloader.queueChapters(manga, chapters, autoStart, bypassRateLimitChapterIds)
     }
 
     /**
