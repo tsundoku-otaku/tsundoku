@@ -1876,10 +1876,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
 
         fun cancelBatch(context: Context, batchId: String) {
+            val appContext = context.applicationContext
             context.workManager.cancelUniqueWork("${TAG}_$batchId")
-            // No live worker = no finally-block cleanup; delete the staged file here. Safe
-            // alongside a worker mid-cancel - an open reader survives the unlink.
-            runCatching { File(context.cacheDir, "mass_import_$batchId.txt").delete() }
+            // No live worker = no finally-block cleanup; delete the staged file off the main
+            // thread. Safe alongside a worker mid-cancel - an open reader survives the unlink.
+            persistScope.launch { runCatching { File(appContext.cacheDir, "mass_import_$batchId.txt").delete() } }
             _sharedQueue.update { list ->
                 list.map {
                     @Suppress("ktlint:standard:max-line-length")
@@ -2086,27 +2087,33 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         }
 
         fun removeBatch(context: Context, batchId: String) {
+            val appContext = context.applicationContext
             context.workManager.cancelUniqueWork("${TAG}_$batchId")
-            runCatching { File(context.cacheDir, "mass_import_$batchId.txt").delete() }
-            MassImportStore.delete(context, batchId)
-            lastMetaWrite.remove(batchId)
-            _sharedQueue.update { list ->
-                list.filter { it.id != batchId }
-            }
+            // Drop from the live queue immediately (in-memory only), then delete the on-disk
+            // batch off the main thread: MassImportStore.delete does several SAF round-trips
+            // under a global lock, which would ANR if run on the UI thread.
+            _sharedQueue.update { list -> list.filter { it.id != batchId } }
+            persistScope.launch { deleteBatchFiles(appContext, batchId) }
         }
 
         fun clearCompleted(context: Context) {
-            _sharedQueue.update { list ->
-                list.filter { batch ->
-                    val done = batch.status == BatchStatus.Completed || batch.status == BatchStatus.Cancelled
-                    if (done) {
-                        runCatching { File(context.cacheDir, "mass_import_${batch.id}.txt").delete() }
-                        MassImportStore.delete(context, batch.id)
-                        lastMetaWrite.remove(batch.id)
-                    }
-                    !done
-                }
-            }
+            val appContext = context.applicationContext
+            val doneIds = _sharedQueue.value
+                .filter { it.status == BatchStatus.Completed || it.status == BatchStatus.Cancelled }
+                .map { it.id }
+            if (doneIds.isEmpty()) return
+            // Keep the flow update pure (it may re-run under CAS contention) and never touch
+            // disk on the main thread; the per-batch SAF deletes below would ANR with many
+            // completed batches (e.g. after a split-by-domain import).
+            val doneSet = doneIds.toHashSet()
+            _sharedQueue.update { list -> list.filterNot { it.id in doneSet } }
+            persistScope.launch { doneIds.forEach { deleteBatchFiles(appContext, it) } }
+        }
+
+        private fun deleteBatchFiles(context: Context, batchId: String) {
+            runCatching { File(context.cacheDir, "mass_import_$batchId.txt").delete() }
+            MassImportStore.delete(context, batchId)
+            lastMetaWrite.remove(batchId)
         }
 
         // From disk: the live queue only retains a preview.
