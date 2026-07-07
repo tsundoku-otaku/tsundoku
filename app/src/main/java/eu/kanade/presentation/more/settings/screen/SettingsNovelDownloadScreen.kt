@@ -365,6 +365,14 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         )
     }
 
+    /**
+     * A row in the overrides list: either a real saved [override], or a synthetic placeholder
+     * (never persisted, [isSaved] = false) for a source that declares [RateLimited] but has no
+     * saved override yet - shown so the user can see it's a 1.6-lib source using its own
+     * declared defaults, before they've customized anything.
+     */
+    private data class OverrideRow(val override: SourceOverride, val isSaved: Boolean)
+
     @Composable
     private fun PerExtensionOverridesDialog(
         prefs: NovelDownloadPreferences,
@@ -373,10 +381,24 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         onEdit: (SourceOverride) -> Unit,
     ) {
         val sourceManager = remember { Injekt.get<SourceManager>() }
-        val overrides = remember(prefs.sourceOverrides().collectAsState().value) {
-            prefs.getAllSourceOverrides()
-                .sortedBy { override ->
-                    sourceManager.get(override.sourceId)?.name?.lowercase() ?: "zzz_${override.sourceId}"
+        val rows = remember(prefs.sourceOverrides().collectAsState().value) {
+            val savedOverrides = prefs.getAllSourceOverrides()
+            val savedSourceIds = savedOverrides.map { it.sourceId }.toSet()
+
+            // Every installed novel source declaring RateLimited (a 1.6-lib source) shows up
+            // here even without a saved override, so it's visible that it's using its own
+            // declared defaults rather than looking like it's not throttled at all.
+            val unconfiguredRateLimited = sourceManager.getAll()
+                .filterIsInstance<CatalogueSource>()
+                .filter { it.isNovelSource() && it is RateLimited && it.id !in savedSourceIds }
+                .map { source -> SourceOverride(sourceId = source.id, enabled = true) }
+
+            (
+                savedOverrides.map { OverrideRow(it, isSaved = true) } +
+                    unconfiguredRateLimited.map { OverrideRow(it, isSaved = false) }
+                )
+                .sortedBy { row ->
+                    sourceManager.get(row.override.sourceId)?.name?.lowercase() ?: "zzz_${row.override.sourceId}"
                 }
         }
 
@@ -388,7 +410,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (overrides.isEmpty()) {
+                    if (rows.isEmpty()) {
                         Text(
                             "No overrides configured. Tap + to add one.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -402,23 +424,34 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                                 .heightIn(max = 400.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(overrides, key = { it.sourceId }) { override ->
-                                val sourceName = sourceManager.get(override.sourceId)?.name
-                                    ?: "Unknown (#${override.sourceId})"
+                            items(rows, key = { it.override.sourceId }) { row ->
+                                val override = row.override
+                                val source = sourceManager.get(override.sourceId)
+                                val sourceName = source?.name ?: "Unknown (#${override.sourceId})"
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            sourceName,
+                                            if (row.isSaved) sourceName else "$sourceName (1.6, not overridden)",
                                             style = MaterialTheme.typography.bodyMedium,
                                         )
-                                        val details = buildList {
-                                            override.permits?.let { add("Permits: $it") }
-                                            override.delayMillis?.let { add("Delay: ${it}ms") }
-                                            override.jitterMillis?.let { add("Jitter: 0-${it}ms") }
-                                        }.joinToString(", ")
+                                        val details = if (row.isSaved) {
+                                            buildList {
+                                                override.permits?.let { add("Permits: $it") }
+                                                override.delayMillis?.let { add("Delay: ${it}ms") }
+                                                override.jitterMillis?.let { add("Jitter: 0-${it}ms") }
+                                            }.joinToString(", ")
+                                        } else {
+                                            val rateLimited = source as? RateLimited
+                                            buildList {
+                                                rateLimited?.recommendedPermits?.let { add("Declared permits: $it") }
+                                                rateLimited?.recommendedDelayMillis?.let {
+                                                    add("Declared delay: ${it}ms")
+                                                }
+                                            }.joinToString(", ")
+                                        }
                                         if (details.isNotEmpty()) {
                                             Text(
                                                 details,
@@ -434,14 +467,16 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                                             tint = MaterialTheme.colorScheme.primary,
                                         )
                                     }
-                                    IconButton(onClick = {
-                                        prefs.removeSourceOverride(override.sourceId)
-                                    }) {
-                                        Icon(
-                                            Icons.Outlined.Delete,
-                                            contentDescription = stringResource(MR.strings.action_delete),
-                                            tint = MaterialTheme.colorScheme.error,
-                                        )
+                                    if (row.isSaved) {
+                                        IconButton(onClick = {
+                                            prefs.removeSourceOverride(override.sourceId)
+                                        }) {
+                                            Icon(
+                                                Icons.Outlined.Delete,
+                                                contentDescription = stringResource(MR.strings.action_delete),
+                                                tint = MaterialTheme.colorScheme.error,
+                                            )
+                                        }
                                     }
                                 }
                                 HorizontalDivider()
