@@ -2,6 +2,7 @@
 
 package eu.kanade.presentation.library.components
 
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -84,6 +85,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -94,6 +96,32 @@ import java.io.File
 // Clipboard crosses a binder transaction (~1MB cap); past this count a huge list would throw
 // TransactionTooLargeException, so the user is pointed at export-to-file instead.
 private const val CLIPBOARD_COPY_LIMIT = 5_000
+
+// Write typed URL text to its own temp file so a "separate file per batch" import can treat it as
+// one more source without materializing it alongside the staged files.
+private fun writeTempUrlsFile(context: Context, text: String): File {
+    val file = File(context.cacheDir, "mass_import_typed_${System.nanoTime()}.txt")
+    file.bufferedWriter().use { it.write(text); it.write("\n") }
+    return file
+}
+
+// Concatenate staged url files (+ optional typed text) into one temp file, streamed reader ->
+// writer so a large join never loads a file into memory. Consumes the inputs.
+private fun joinUrlFiles(context: Context, files: List<File>, extraText: String?): File {
+    val out = File(context.cacheDir, "mass_import_join_${System.nanoTime()}.txt")
+    out.bufferedWriter().use { writer ->
+        files.forEach { f ->
+            runCatching { f.bufferedReader().use { it.copyTo(writer) } }
+            writer.write("\n")
+        }
+        if (!extraText.isNullOrBlank()) {
+            writer.write(extraText)
+            writer.write("\n")
+        }
+    }
+    files.forEach { runCatching { it.delete() } }
+    return out
+}
 
 @Composable
 fun MassImportDialog(
@@ -107,17 +135,22 @@ fun MassImportDialog(
     val dialogScope = rememberCoroutineScope()
     var pendingUrls by remember { mutableStateOf(initialText) }
     var urlText by remember { mutableStateOf("") }
-    // A picked file is streamed to disk and staged here instead of being loaded into the text
-    // field - a large URL file would otherwise build a multi-hundred-MB String and OOM.
-    var pickedFile by remember { mutableStateOf<File?>(null) }
+    // Picked files are streamed to disk (one temp file each) and staged here instead of being
+    // loaded into the text field - a large URL file would otherwise build a multi-hundred-MB
+    // String and OOM. Kept per-file so the "separate file per batch" option can preserve
+    // boundaries; joined on import when that option is off.
+    var pickedFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var pickedFileCount by remember { mutableIntStateOf(0) }
     var pickedFileLoadedFiles by remember { mutableIntStateOf(0) }
 
-    // A staged file that never got imported would otherwise leak in cacheDir; on import the
-    // staged ref is cleared first, so this only deletes abandoned files.
+    // Staged files that never got imported would otherwise leak in cacheDir; on import the
+    // staged refs are cleared first, so this only deletes abandoned files.
     DisposableEffect(Unit) {
         onDispose {
-            pickedFile?.let { f -> Thread { runCatching { f.delete() } }.start() }
+            val abandoned = pickedFiles
+            if (abandoned.isNotEmpty()) {
+                Thread { abandoned.forEach { f -> runCatching { f.delete() } } }.start()
+            }
         }
     }
     // Restore persisted batches lazily, only when the dialog is opened. Interrupted batches come
@@ -152,18 +185,19 @@ fun MassImportDialog(
         onResult = { uris ->
             if (uris.isEmpty()) return@rememberLauncherForActivityResult
 
-            // Stream picked files to a temp file instead of accumulating in memory + the text
-            // field - a large URL list would OOM before the import even starts.
+            // Stream each picked file to its own temp file instead of accumulating in memory + the
+            // text field - a large URL list would OOM before the import even starts. Kept separate
+            // so per-file batches stay possible; joined on import when that option is off.
             dialogScope.launch(Dispatchers.IO) {
-                val tmp = File(context.cacheDir, "mass_import_pick_${System.nanoTime()}.txt")
+                val staged = ArrayList<File>(uris.size)
                 try {
                     var count = 0
-                    var loadedFiles = 0
                     var readError = false
-                    try {
-                        tmp.bufferedWriter().use { writer ->
-                            for (uri in uris) {
-                                var hadContent = false
+                    for ((index, uri) in uris.withIndex()) {
+                        val tmp = File(context.cacheDir, "mass_import_pick_${System.nanoTime()}_$index.txt")
+                        var hadContent = false
+                        try {
+                            tmp.bufferedWriter().use { writer ->
                                 runCatching {
                                     context.contentResolver.openInputStream(uri)?.bufferedReader()?.useLines { lines ->
                                         for (raw in lines) {
@@ -180,36 +214,37 @@ fun MassImportDialog(
                                     if (it is CancellationException) throw it
                                     readError = true
                                 }
-                                if (hadContent) loadedFiles++
                             }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            readError = true
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        readError = true
+                        if (hadContent) staged.add(tmp) else runCatching { tmp.delete() }
                     }
 
                     // Dialog disposed mid-read: the loop has no suspension points, so the scope's
-                    // cancellation surfaces here - treat the pick as abandoned (tmp deleted below).
+                    // cancellation surfaces here - treat the pick as abandoned (temps deleted below).
                     ensureActive()
 
                     if (count > 0) {
-                        pickedFile?.let { old -> runCatching { old.delete() } }
-                        pickedFile = tmp
+                        val previous = pickedFiles
+                        previous.forEach { old -> runCatching { old.delete() } }
+                        pickedFiles = staged
                         pickedFileCount = count
-                        pickedFileLoadedFiles = loadedFiles
+                        pickedFileLoadedFiles = staged.size
                         withContext(Dispatchers.Main) {
-                            context.toast(String.format(toastAddedUrlsFromFiles, count, loadedFiles))
+                            context.toast(String.format(toastAddedUrlsFromFiles, count, staged.size))
                         }
                     } else {
-                        runCatching { tmp.delete() }
+                        staged.forEach { runCatching { it.delete() } }
                         withContext(Dispatchers.Main) {
                             context.toast(if (readError) toastErrorReadingFile else toastNoReadableUrls)
                         }
                     }
                 } catch (e: CancellationException) {
-                    // Not staged yet, so the DisposableEffect can't clean it up.
-                    runCatching { tmp.delete() }
+                    // Not staged yet, so the DisposableEffect can't clean them up.
+                    staged.forEach { runCatching { it.delete() } }
                     throw e
                 }
             }
@@ -276,6 +311,7 @@ fun MassImportDialog(
     var syncChapterList by remember { mutableStateOf(false) }
 
     val massImportNovels = remember { Injekt.get<MassImport>() }
+    val novelDownloadPreferences = remember { Injekt.get<NovelDownloadPreferences>() }
 
     val queue by MassImportJob.sharedQueue.collectAsState()
 
@@ -684,7 +720,7 @@ fun MassImportDialog(
                 }
 
                 // Staged-file indicator (content lives on disk, not in the text field)
-                if (pickedFile != null) {
+                if (pickedFiles.isNotEmpty()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -698,8 +734,11 @@ fun MassImportDialog(
                             color = MaterialTheme.colorScheme.primary,
                         )
                         TextButton(onClick = {
-                            pickedFile?.let { f -> dialogScope.launch(Dispatchers.IO) { runCatching { f.delete() } } }
-                            pickedFile = null
+                            val toDelete = pickedFiles
+                            if (toDelete.isNotEmpty()) {
+                                dialogScope.launch(Dispatchers.IO) { toDelete.forEach { runCatching { it.delete() } } }
+                            }
+                            pickedFiles = emptyList()
                             pickedFileCount = 0
                             pickedFileLoadedFiles = 0
                         }) {
@@ -761,7 +800,7 @@ fun MassImportDialog(
             }
         },
         confirmButton = {
-            val hasUrls = pendingUrls.isNotBlank() || urlText.isNotBlank() || pickedFile != null
+            val hasUrls = pendingUrls.isNotBlank() || urlText.isNotBlank() || pickedFiles.isNotEmpty()
 
             TextButton(
                 onClick = {
@@ -772,38 +811,80 @@ fun MassImportDialog(
                             else -> urlText
                         }
 
-                        // A staged file holds the URLs on disk (large imports never touch memory).
-                        // Append any typed text to it, then import straight from the file.
-                        val staged = pickedFile
-                        if (staged != null) {
-                            pickedFile = null
-                            pickedFileCount = 0
-                            pickedFileLoadedFiles = 0
-                            urlText = ""
-                            pendingUrls = ""
-                            if (combinedRawText.isNotBlank()) {
-                                withContext(Dispatchers.IO) {
-                                    runCatching { staged.appendText("\n" + combinedRawText) }
+                        val separateFilePerBatch = novelDownloadPreferences.massImportSeparateFilePerBatch().get()
+                        val splitByDomain = novelDownloadPreferences.massImportSplitByDomain().get()
+
+                        val staged = pickedFiles
+                        pickedFiles = emptyList()
+                        pickedFileCount = 0
+                        pickedFileLoadedFiles = 0
+                        urlText = ""
+                        pendingUrls = ""
+
+                        fun startFile(file: File) {
+                            if (splitByDomain) {
+                                MassImportJob.startFromFileSplitByHost(
+                                    context = context,
+                                    source = file,
+                                    addToLibrary = true,
+                                    fetchDetails = fetchDetails,
+                                    categoryId = selectedCategoryId ?: 0L,
+                                    fetchChapters = syncChapterList,
+                                    preferredSourceId = preferredSourceId,
+                                )
+                            } else {
+                                MassImportJob.startFromFile(
+                                    context = context,
+                                    urlsFile = file,
+                                    addToLibrary = true,
+                                    fetchDetails = fetchDetails,
+                                    categoryId = selectedCategoryId ?: 0L,
+                                    fetchChapters = syncChapterList,
+                                    preferredSourceId = preferredSourceId,
+                                )
+                            }
+                        }
+
+                        // Any option that changes batch boundaries routes everything through
+                        // per-file streaming: staged files stay separate (or are joined) on disk
+                        // and typed text becomes its own file, so nothing large hits memory.
+                        if (separateFilePerBatch || splitByDomain) {
+                            val batchFiles = withContext(Dispatchers.IO) {
+                                if (separateFilePerBatch) {
+                                    // One batch per picked file; typed text is its own batch.
+                                    val files = ArrayList(staged)
+                                    if (combinedRawText.isNotBlank()) {
+                                        files.add(writeTempUrlsFile(context, combinedRawText))
+                                    }
+                                    files
+                                } else {
+                                    // Not separating files, but splitting by domain: fold
+                                    // everything into one file, then split it below.
+                                    if (staged.isNotEmpty() || combinedRawText.isNotBlank()) {
+                                        listOf(joinUrlFiles(context, staged, combinedRawText.takeIf { it.isNotBlank() }))
+                                    } else {
+                                        emptyList()
+                                    }
                                 }
                             }
-                            MassImportJob.startFromFile(
-                                context = context,
-                                urlsFile = staged,
-                                addToLibrary = true,
-                                fetchDetails = fetchDetails,
-                                categoryId = selectedCategoryId ?: 0L,
-                                fetchChapters = syncChapterList,
-                                preferredSourceId = preferredSourceId,
-                            )
+                            batchFiles.forEach { startFile(it) }
+                            return@launch
+                        }
+
+                        // Default: staged files (if any) are joined with typed text into a single
+                        // batch on disk (large imports never touch memory).
+                        if (staged.isNotEmpty()) {
+                            val joined = withContext(Dispatchers.IO) {
+                                joinUrlFiles(context, staged, combinedRawText.takeIf { it.isNotBlank() })
+                            }
+                            startFile(joined)
                             return@launch
                         }
 
                         val useRawTextFastPath = combinedRawText.length > 100_000
                         if (useRawTextFastPath) {
-                            // combinedRawText already holds the data; drop the (possibly
-                            // multi-MB) Compose-state copies so they can be reclaimed.
-                            urlText = ""
-                            pendingUrls = ""
+                            // combinedRawText already holds the data; the Compose-state copies were
+                            // already cleared above so they can be reclaimed.
                             MassImportJob.start(
                                 context = context,
                                 urls = emptyList(),
@@ -817,8 +898,7 @@ fun MassImportDialog(
                         } else {
                             val uniqueUrls = withContext(Dispatchers.Default) {
                                 val set = LinkedHashSet<String>()
-                                if (pendingUrls.isNotBlank()) set.addAll(massImportNovels.parseUrls(pendingUrls))
-                                if (urlText.isNotBlank()) set.addAll(massImportNovels.parseUrls(urlText))
+                                if (combinedRawText.isNotBlank()) set.addAll(massImportNovels.parseUrls(combinedRawText))
                                 set.toList()
                             }
 
@@ -832,8 +912,6 @@ fun MassImportDialog(
                                 preferredSourceId = preferredSourceId,
                             )
                         }
-                        urlText = ""
-                        pendingUrls = ""
                     }
                 },
                 enabled = hasUrls,

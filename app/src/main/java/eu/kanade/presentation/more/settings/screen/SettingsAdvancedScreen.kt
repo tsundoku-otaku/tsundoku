@@ -102,6 +102,7 @@ import tachiyomi.data.DatabaseMaintenance
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.SetMangaCategories
 import tachiyomi.domain.category.model.Category
+import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.ResetViewerFlags
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -131,6 +132,7 @@ object SettingsAdvancedScreen : SearchableSettings {
         val basePreferences = remember { Injekt.get<BasePreferences>() }
         val networkPreferences = remember { Injekt.get<NetworkPreferences>() }
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
+        val novelDownloadPreferences = remember { Injekt.get<NovelDownloadPreferences>() }
 
         val libraryPageSize by libraryPreferences.experimentalLibraryPageSize.collectAsState()
 
@@ -203,6 +205,28 @@ object SettingsAdvancedScreen : SearchableSettings {
             getLibraryGroup(libraryPreferences = libraryPreferences),
             getReaderGroup(basePreferences = basePreferences),
             getExtensionsGroup(basePreferences = basePreferences),
+            getMassImportGroup(novelDownloadPreferences = novelDownloadPreferences),
+        )
+    }
+
+    @Composable
+    private fun getMassImportGroup(
+        novelDownloadPreferences: NovelDownloadPreferences,
+    ): Preference.PreferenceGroup {
+        return Preference.PreferenceGroup(
+            title = stringResource(TDMR.strings.pref_category_mass_import),
+            preferenceItems = listOf(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelDownloadPreferences.massImportSeparateFilePerBatch(),
+                    title = stringResource(TDMR.strings.pref_mass_import_separate_file_per_batch),
+                    subtitle = stringResource(TDMR.strings.pref_mass_import_separate_file_per_batch_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = novelDownloadPreferences.massImportSplitByDomain(),
+                    title = stringResource(TDMR.strings.pref_mass_import_split_by_domain),
+                    subtitle = stringResource(TDMR.strings.pref_mass_import_split_by_domain_summary),
+                ),
+            ),
         )
     }
 

@@ -100,6 +100,14 @@ private const val NOTIFICATION_MIN_DELTA = 5
 // in-app error log. Stops a mostly-failing huge import from writing a gigantic results file.
 private const val RESULT_FILE_ERROR_CAP = 5000
 
+// Cap simultaneously-open per-host writers when splitting a mass-import file by domain so a file
+// with many distinct hosts can't exhaust file descriptors; evicted writers reopen in append mode.
+private const val MAX_OPEN_DOMAIN_WRITERS = 24
+
+// Cap distinct per-host files; hosts past this spill into one shared overflow batch so a
+// pathological file (a unique host per line) can't create unbounded files/batches.
+private const val MAX_DOMAIN_FILES = 300
+
 class MassImportJob(private val context: Context, workerParams: WorkerParameters) :
     CoroutineWorker(context, workerParams) {
 
@@ -1730,6 +1738,117 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
                 enqueueBatchWorker(appContext, batchId, payload)
             }
+        }
+
+        /**
+         * Split [source] into one file per URL host and start a separate batch for each. Streamed
+         * with a bounded LRU of open writers (evicted writers reopen in append mode) so a huge
+         * multi-host file stays within a fixed file-descriptor and memory budget. Hosts beyond
+         * [MAX_DOMAIN_FILES] and host-less lines spill into a single overflow batch. [source] is
+         * consumed once split; on any split failure it falls back to a single batch.
+         */
+        fun startFromFileSplitByHost(
+            context: Context,
+            source: File,
+            categoryId: Long = 0L,
+            addToLibrary: Boolean = true,
+            fetchDetails: Boolean = true,
+            fetchChapters: Boolean = false,
+            excludedHosts: List<String> = emptyList(),
+            preferredSourceId: Long? = null,
+        ) {
+            if (!source.exists()) return
+            val appContext = context.applicationContext
+            persistScope.launch {
+                val parts = runCatching { splitFileByHost(appContext, source) }.getOrElse { e ->
+                    logcat(LogPriority.ERROR, e) { "Mass import: host split failed; importing as one batch" }
+                    listOf(source)
+                }
+                parts.forEach { part ->
+                    startFromFile(
+                        context = appContext,
+                        urlsFile = part,
+                        categoryId = categoryId,
+                        addToLibrary = addToLibrary,
+                        fetchDetails = fetchDetails,
+                        fetchChapters = fetchChapters,
+                        excludedHosts = excludedHosts,
+                        preferredSourceId = preferredSourceId,
+                    )
+                }
+            }
+        }
+
+        private fun splitHostKey(line: String): String? =
+            runCatching { URI(line).host?.lowercase()?.removePrefix("www.") }.getOrNull()?.takeIf { it.isNotBlank() }
+
+        /**
+         * Group [source]'s lines into per-host cache files. Bounded FD/memory: at most
+         * [MAX_OPEN_DOMAIN_WRITERS] writers stay open (access-ordered LRU, reopened in append mode
+         * when a host recurs), and at most [MAX_DOMAIN_FILES] host files are created before the
+         * remainder (and host-less lines) go to one overflow file. Deletes [source] when done.
+         */
+        private fun splitFileByHost(context: Context, source: File): List<File> {
+            val dir = context.applicationContext.cacheDir
+            val stamp = System.nanoTime()
+            val hostFiles = LinkedHashMap<String, File>()
+            var overflow: File? = null
+            var overflowWriter: java.io.BufferedWriter? = null
+
+            val open = object : LinkedHashMap<String, java.io.BufferedWriter>(16, 0.75f, true) {
+                override fun removeEldestEntry(
+                    eldest: MutableMap.MutableEntry<String, java.io.BufferedWriter>,
+                ): Boolean {
+                    if (size > MAX_OPEN_DOMAIN_WRITERS) {
+                        runCatching { eldest.value.flush(); eldest.value.close() }
+                        return true
+                    }
+                    return false
+                }
+            }
+
+            fun overflowWriter(): java.io.BufferedWriter {
+                overflowWriter?.let { return it }
+                val f = File(dir, "mass_import_split_${stamp}_overflow.txt")
+                overflow = f
+                return f.bufferedWriter().also { overflowWriter = it }
+            }
+
+            fun writerFor(host: String): java.io.BufferedWriter {
+                open[host]?.let { return it }
+                val existing = hostFiles[host]
+                val target: File
+                val append: Boolean
+                if (existing != null) {
+                    target = existing
+                    append = true
+                } else {
+                    if (hostFiles.size >= MAX_DOMAIN_FILES) return overflowWriter()
+                    target = File(dir, "mass_import_split_${stamp}_${hostFiles.size}.txt")
+                    hostFiles[host] = target
+                    append = false
+                }
+                return java.io.BufferedWriter(java.io.FileWriter(target, append)).also { open[host] = it }
+            }
+
+            try {
+                source.bufferedReader().useLines { lines ->
+                    for (raw in lines) {
+                        val line = raw.trim()
+                        if (line.isEmpty()) continue
+                        val host = splitHostKey(line)
+                        val writer = if (host == null) overflowWriter() else writerFor(host)
+                        writer.write(line)
+                        writer.write("\n")
+                    }
+                }
+            } finally {
+                open.values.forEach { runCatching { it.flush(); it.close() } }
+                runCatching { overflowWriter?.flush(); overflowWriter?.close() }
+            }
+
+            runCatching { source.delete() }
+            return ArrayList<File>(hostFiles.values).apply { overflow?.let { add(it) } }
         }
 
         fun stop(context: Context) {

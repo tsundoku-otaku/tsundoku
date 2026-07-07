@@ -108,6 +108,24 @@ class NovelDownloadPreferences(
     )
 
     /**
+     * When multiple files are picked for mass import, import each file as its own queue/batch
+     * instead of concatenating them into a single batch.
+     */
+    fun massImportSeparateFilePerBatch() = preferenceStore.getBoolean(
+        "novel_mass_import_separate_file_per_batch",
+        false,
+    )
+
+    /**
+     * Split the imported URLs by host so each domain becomes its own queue/batch. Streamed to
+     * per-host temp files with a bounded number of open writers, so large files don't OOM.
+     */
+    fun massImportSplitByDomain() = preferenceStore.getBoolean(
+        "novel_mass_import_split_by_domain",
+        false,
+    )
+
+    /**
      * Stored source-specific overrides as JSON string
      * Format: Map<sourceId: Long, SourceOverride>
      */
