@@ -131,6 +131,13 @@ class JsSource(
             return html.replace(DOUBLE_ENCODED_ENTITY_REGEX) { "&${it.groupValues[1]};" }
         }
 
+
+        private val INVALID_CHARS = Regex("[\\x00-\\x08\\x0B\\x0C\\x0E-\\x1F\\uFFFE\\uFFFF]")
+
+        /** Remove control chars that break XML serialization and SAF file/folder names. */
+        internal fun stripInvalidChars(text: String): String =
+            if (text.isEmpty()) text else INVALID_CHARS.replace(text, "")
+
         /**
          * Pick the content field from a parsed JSON plugin response object.
          * Returns null when none of the known fields are present.
@@ -886,7 +893,7 @@ class JsSource(
     // Parsing helpers
 
     private fun String.decodeEntities(): String {
-        return org.jsoup.parser.Parser.unescapeEntities(this, true)
+        return stripInvalidChars(org.jsoup.parser.Parser.unescapeEntities(this, true))
     }
 
     private fun parseMangasPage(jsonResult: String, page: Int): MangasPage {
@@ -993,7 +1000,7 @@ class JsSource(
                     obj["summary"]?.jsonPrimitive?.content
                         ?: obj["desc"]?.jsonPrimitive?.content
                         ?: obj["description"]?.jsonPrimitive?.content,
-                )
+                )?.let { stripInvalidChars(it) }
                 genre = obj["genres"]?.jsonPrimitive?.content?.decodeEntities()
                     ?: obj["tags"]?.jsonPrimitive?.content?.decodeEntities()
                     ?: obj["genre"]?.jsonPrimitive?.content?.decodeEntities()
@@ -1058,7 +1065,7 @@ class JsSource(
                         } catch (e: Exception) {
                             0L
                         }
-                        scanlator = chapterObj["page"]?.jsonPrimitive?.content // Volume info
+                        scanlator = chapterObj["page"]?.jsonPrimitive?.content?.let { stripInvalidChars(it) } // Volume info
                     }
                 } catch (e: Exception) {
                     null
@@ -1102,7 +1109,7 @@ class JsSource(
                         } catch (_: Exception) {
                             0L
                         }
-                        scanlator = chapterObj["page"]?.jsonPrimitive?.content
+                        scanlator = chapterObj["page"]?.jsonPrimitive?.content?.let { stripInvalidChars(it) }
                     }
                 } catch (_: Exception) {
                     null
