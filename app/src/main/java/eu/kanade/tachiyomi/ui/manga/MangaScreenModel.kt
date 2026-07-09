@@ -780,6 +780,14 @@ class MangaScreenModel(
                 if (manualFetch) {
                     downloadNewChapters(newChapters)
                 }
+
+                val allChapters = getMangaAndChapters.awaitChapters(state.manga.id)
+                getLibraryManga.applyChapterUpdates(
+                    mangaId,
+                    totalChapters = allChapters.size.toLong(),
+                    readCount = allChapters.count { it.read }.toLong(),
+                    bookmarkCount = allChapters.count { it.bookmark }.toLong(),
+                )
             }
         } catch (e: Throwable) {
             val message = if (e is NoChaptersException) {
