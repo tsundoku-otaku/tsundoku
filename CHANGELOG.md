@@ -61,6 +61,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Customesource leaking baseUrl with shared extension [@mrissaoussama](https://github.com/mrissaoussama) [#298](https://github.com/tsundoku-otaku/tsundoku/pull/298)
 - Fetch json parse failrues (jsplugin) [@mrissaoussama](https://github.com/mrissaoussama) [#295](https://github.com/tsundoku-otaku/tsundoku/pull/295)
 - Fix a rare translation queue exception [@mrissaoussama](https://github.com/mrissaoussama) [#286](https://github.com/tsundoku-otaku/tsundoku/pull/286)
+- Fix some repositories not being registered properly [@mrissaoussama](https://github.com/mrissaoussama) [#330](https://github.com/tsundoku-otaku/tsundoku/pull/330)
 
 ### Other
 - Deprecate RefreshContext for 1.6 [@Rojikku](https://github.com/Rojikku) [#325](https://github.com/tsundoku-otaku/tsundoku/pull/325)
@@ -201,7 +202,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Expanded JS compatibility [@mrissaoussama](https://github.com/mrissaoussama) [#146](https://github.com/tsundoku-otaku/tsundoku/pull/146)
 - LNreader backups should now restore downloaded chapters and covers. [@mrissaoussama](https://github.com/mrissaoussama) [#145](https://github.com/tsundoku-otaku/tsundoku/pull/145)
 
-### Fixed 
+### Fixed
 - Fixed tapping novel name opening a manga search instead of novel [@mrissaoussama](https://github.com/mrissaoussama) [#143](https://github.com/tsundoku-otaku/tsundoku/pull/143)
 - Improve HTML file detection which should fix some issues with downloaded content. [@mrissaoussama](https://github.com/mrissaoussama) [#133](https://github.com/tsundoku-otaku/tsundoku/pull/133)
 - Don't download next on local novels/epubs [@mrissaoussama](https://github.com/mrissaoussama) [#139](https://github.com/tsundoku-otaku/tsundoku/pull/139)
@@ -309,8 +310,8 @@ This project is greatly advantaged by building off all of their work, and their 
 
 Merged from v0.20.0 [19f1d00](https://github.com/mihonapp/mihon/commit/19f1d00fcbef6ab7783066ff9ae8e377f696b231)
 Merged from v0.19.9 [7a91796](https://github.com/mihonapp/mihon/commit/7a917968e3bf71c4a665e6655a550877d81ead1d)
-Merged from v0.19.7 [25d4bf5](https://github.com/mihonapp/mihon/commit/25d4bf5e2ffdcb84f6469f5e0a81108777a98e85)  
-Merged from v0.19.4 [81871a3](https://github.com/mihonapp/mihon/commit/81871a34694c8e408d907731292b7266c5b993cc)  
+Merged from v0.19.7 [25d4bf5](https://github.com/mihonapp/mihon/commit/25d4bf5e2ffdcb84f6469f5e0a81108777a98e85)
+Merged from v0.19.4 [81871a3](https://github.com/mihonapp/mihon/commit/81871a34694c8e408d907731292b7266c5b993cc)
 Forked from Mihon v0.19.3 [7161bc2](https://github.com/mihonapp/mihon/commit/7161bc2e825bdfd66a1829f7dce42bd0570b1008)
 
 [mihon]: https://github.com/mihonapp/mihon/blob/19f1d00fcbef6ab7783066ff9ae8e377f696b231/CHANGELOG.md
