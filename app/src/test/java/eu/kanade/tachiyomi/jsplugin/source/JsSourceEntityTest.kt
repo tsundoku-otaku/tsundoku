@@ -182,6 +182,37 @@ class JsSourceEntityTest {
         assertEquals(input, JsSource.normalizePluginContent(input))
     }
 
+    // ── stripInvalidChars ──────────────────────────────────────────────────
+
+    @Test
+    fun `stripInvalidChars removes control characters`() {
+        val input = "Chapter One: The Beginning"
+        assertEquals("Chapter One: The Beginning", JsSource.stripInvalidChars(input))
+    }
+
+    @Test
+    fun `stripInvalidChars removes BMP noncharacters`() {
+        val input = "Volume￾ 1￿"
+        assertEquals("Volume 1", JsSource.stripInvalidChars(input))
+    }
+
+    @Test
+    fun `stripInvalidChars leaves normal text unchanged`() {
+        val input = "Amanda defeats <D> rank villain — well done!"
+        assertEquals(input, JsSource.stripInvalidChars(input))
+    }
+
+    @Test
+    fun `stripInvalidChars leaves tab, newline and carriage return untouched`() {
+        val input = "Line one\tindented\nLine two\r\n"
+        assertEquals(input, JsSource.stripInvalidChars(input))
+    }
+
+    @Test
+    fun `stripInvalidChars returns empty string unchanged`() {
+        assertEquals("", JsSource.stripInvalidChars(""))
+    }
+
     // ── pickContentField ──────────────────────────────────────────────────
 
     private val json = Json { ignoreUnknownKeys = true }
