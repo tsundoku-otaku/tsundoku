@@ -152,8 +152,10 @@ internal class NovelWebViewStyler(
         return declaration to "'CustomFont', sans-serif"
     }
 
-    private var fontUriString: String? = null
-    private var cachedFontBytes: Pair<String, ByteArray>? = null
+    // Written on the UI thread (style injection), read on the WebView worker thread (interceptFont);
+    // @Volatile so the worker sees the latest value instead of a stale cached one.
+    @Volatile private var fontUriString: String? = null
+    @Volatile private var cachedFontBytes: Pair<String, ByteArray>? = null
 
     /**
      * Serve the custom font for the sentinel URL referenced by the injected @font-face. Runs on the

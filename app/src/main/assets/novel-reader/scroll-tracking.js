@@ -29,6 +29,10 @@
     runtime.noMoreChapters = runtime.noMoreChapters || false;
     runtime.setNoMoreChapters = function (v) { runtime.noMoreChapters = !!v; };
     runtime.lastChapterIdxSeen = (typeof runtime.lastChapterIdxSeen === 'number') ? runtime.lastChapterIdxSeen : -1;
+    // Forces the next scroll frame to re-emit onChapterScrollUpdate. Called by the Android side when
+    // it lifts the scroll-restore guard, so a chapter switch dropped while the guard was up (this
+    // callback is edge-triggered and won't otherwise re-fire for the same idx) is re-reported.
+    runtime.resetChapterTracking = function () { runtime.lastChapterIdxSeen = -1; };
 
     window.chapterBoundaries = window.chapterBoundaries || [];
     runtime.knownDividerCount = runtime.knownDividerCount || 0;
@@ -179,11 +183,9 @@
             runtime.boundaryResizeObserver.observe(document.body);
         }
         if (typeof MutationObserver === 'function') {
-            runtime.boundaryMutationObserver = new MutationObserver(function () {
-                if (document.querySelectorAll('.__CHAPTER_DIVIDER_CLASS__').length !== runtime.knownDividerCount) {
-                    scheduleBoundaryRebuild();
-                }
-            });
+            // Coalesce to one rebuild per frame rather than scanning querySelectorAll on every
+            // mutation (a chapter insert fires many); updateChapterBoundaries re-reads dividers anyway.
+            runtime.boundaryMutationObserver = new MutationObserver(scheduleBoundaryRebuild);
             runtime.boundaryMutationObserver.observe(document.body, { childList: true, subtree: true });
         }
     }

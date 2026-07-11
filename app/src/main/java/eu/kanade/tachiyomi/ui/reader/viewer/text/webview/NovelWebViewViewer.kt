@@ -82,7 +82,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
         const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
         const val ID_EDIT_MODE_STYLE = "edit-mode-style"
-        const val NEXT_LOAD_RETRY_COOLDOWN_MS = 15_000L
         const val SEEK_ECHO_SUPPRESS_MS = 350L
 
         const val TTS_TEXT_EXTRACTION_JS = """
@@ -779,7 +778,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 })();
             """
             evaluateJavascriptSafe(js)
-            webView.postDelayed({ if (scrollRestoreToken == token) isRestoringScroll = false }, 3000)
+            webView.postDelayed({ liftRestoreGuard(token) }, 3000)
         } else {
             isRestoringScroll = true
             val token = ++scrollRestoreToken
@@ -787,7 +786,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             lastSavedProgress = 0f
             activity.onNovelProgressChanged(0f)
             // Hold the guard past the scrollTo(0,0) settle so it can't persist 0 over a read chapter.
-            webView.postDelayed({ if (scrollRestoreToken == token) isRestoringScroll = false }, 300)
+            webView.postDelayed({ liftRestoreGuard(token) }, 300)
         }
     }
 
@@ -1166,7 +1165,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             styler.injectScript { buildTsundokuScript() }
         }
         // JS lift runs in rAF (paused while backgrounded); fallback so the guard can't stick forever.
-        webView.postDelayed({ if (scrollRestoreToken == token) isRestoringScroll = false }, 3000)
+        webView.postDelayed({ liftRestoreGuard(token) }, 3000)
 
         logcat(LogPriority.DEBUG) {
             "NovelWebViewViewer: Prepended chapter $chapterId (${loadedChapterIds.size} total)"
@@ -1679,7 +1678,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         @JavascriptInterface
         fun onScrollRestoreComplete(token: Int) {
             // Only the latest restore may lift the guard; ignore stale completions.
-            activity.runOnUiThread { if (token == scrollRestoreToken) isRestoringScroll = false }
+            activity.runOnUiThread { liftRestoreGuard(token) }
         }
 
         @JavascriptInterface
@@ -1705,7 +1704,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     if (handoffState.isIdle) {
                         scope.launch { preFetchNextChapterForTts() }
                     }
-                } else if (System.currentTimeMillis() - lastNextLoadFailedAt < NEXT_LOAD_RETRY_COOLDOWN_MS) {
+                } else if (System.currentTimeMillis() - lastNextLoadFailedAt < NovelProgress.NEXT_LOAD_RETRY_COOLDOWN_MS) {
+                    // Release the JS load latch it set before this call, else the cooldown becomes
+                    // permanent: JS never re-fires loadNextChapter once its loadingNext stays true.
+                    setJsLoadingNext()
                     logcat(LogPriority.DEBUG) { "NovelWebViewViewer: loadNextChapter ignored, in failure cooldown" }
                 } else if (!isLoadingNext) {
                     isLoadingNext = true
@@ -1776,6 +1778,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private fun setJsNoMoreChapters(value: Boolean) {
         evaluateJavascriptSafe(
             "(function(){ if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime && window.$TSUNDOKU_OBJECT_NAME.runtime.setNoMoreChapters) window.$TSUNDOKU_OBJECT_NAME.runtime.setNoMoreChapters($value); })();",
+            null,
+        )
+    }
+
+    // Lift the scroll-restore guard for [token] only if it's still the latest restore, and tell the
+    // page to re-emit onChapterScrollUpdate so a chapter switch dropped while the guard was up isn't
+    // lost (the JS callback is edge-triggered and won't re-fire for the same idx on its own).
+    private fun liftRestoreGuard(token: Int) {
+        if (token != scrollRestoreToken) return
+        isRestoringScroll = false
+        evaluateJavascriptSafe(
+            "(function(){ if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime && window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking) window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking(); })();",
             null,
         )
     }

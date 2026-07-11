@@ -159,7 +159,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         const val CHAPTER_ENTRY_GRACE_MS = 800L
         const val NEXT_CHAPTER_BUTTON_TAG = "next_chapter_button"
         const val PROGRESS_SAVE_DEBOUNCE_MS = 500L
-        const val NEXT_LOAD_RETRY_COOLDOWN_MS = 15_000L
     }
 
     private val gestureDetector = GestureDetector(
@@ -332,7 +331,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 // visible chapter fetch while TTS still owns the chapter transition.
                 val ttsIsDrivingChapterHandoff = ttsController.isTtsAutoPlay
                 val inFailureCooldown =
-                    System.currentTimeMillis() - lastNextLoadFailedAt < NEXT_LOAD_RETRY_COOLDOWN_MS
+                    System.currentTimeMillis() - lastNextLoadFailedAt < NovelProgress.NEXT_LOAD_RETRY_COOLDOWN_MS
                 if (!isRestoringScroll && !ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
                     !isLoadingNext &&
                     !reachedNovelEnd &&
