@@ -41,11 +41,11 @@ internal class NovelTextViewInlineFeedback(
     }
 
     @android.annotation.SuppressLint("SetTextI18n")
-    fun showInlineError(message: String, isPrepend: Boolean) {
+    fun showInlineError(message: String, isPrepend: Boolean, onRetry: (() -> Unit)? = null) {
         inlineErrorView?.let { contentContainer.removeView(it) }
 
         inlineErrorView = TextView(context).apply {
-            text = "$message (tap to dismiss)"
+            text = if (onRetry != null) "$message (tap to retry)" else "$message (tap to dismiss)"
             textSize = 14f
             setTextColor(0xFFFF5252.toInt())
             setBackgroundColor(0x1AFF5252)
@@ -61,6 +61,7 @@ internal class NovelTextViewInlineFeedback(
             setOnClickListener {
                 contentContainer.removeView(this)
                 inlineErrorView = null
+                onRetry?.invoke()
             }
         }
 

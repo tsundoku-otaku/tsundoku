@@ -82,6 +82,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
         const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
         const val ID_EDIT_MODE_STYLE = "edit-mode-style"
+        const val NEXT_LOAD_RETRY_COOLDOWN_MS = 15_000L
 
         const val TTS_TEXT_EXTRACTION_JS = """
             (function() {
@@ -146,6 +147,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     // Latched once the novel has no further chapter to append.
     private var reachedNovelEnd = false
+
+    // Suppresses auto-append for NEXT_LOAD_RETRY_COOLDOWN_MS after a failure; the JS load guard
+    // clears each finally, so without this a chapter that keeps timing out re-fires every frame.
+    private var lastNextLoadFailedAt = 0L
 
     // Lightweight property accessors so existing call sites keep working.
     // Mutations should go through chapterQueue's methods (append / prepend /
@@ -1683,11 +1688,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     if (handoffState.isIdle) {
                         scope.launch { preFetchNextChapterForTts() }
                     }
+                } else if (System.currentTimeMillis() - lastNextLoadFailedAt < NEXT_LOAD_RETRY_COOLDOWN_MS) {
+                    logcat(LogPriority.DEBUG) { "NovelWebViewViewer: loadNextChapter ignored, in failure cooldown" }
                 } else if (!isLoadingNext) {
                     isLoadingNext = true
                     scope.launch {
                         try {
-                            appendNextChapterIfAvailable()
+                            val ok = appendNextChapterIfAvailable()
+                            lastNextLoadFailedAt = if (ok) 0L else System.currentTimeMillis()
                         } finally {
                             isLoadingNext = false
                             setJsLoadingNext()
