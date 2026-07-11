@@ -601,6 +601,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     request: android.webkit.WebResourceRequest?,
                 ): android.webkit.WebResourceResponse? {
                     val url = request?.url?.toString() ?: return null
+                    styler.interceptFont(url)?.let { return it }
                     val fallbackChapterId =
                         currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
                     val fallbackLoader = activity.viewModel.state.value.viewerChapters?.currChapter?.pageLoader

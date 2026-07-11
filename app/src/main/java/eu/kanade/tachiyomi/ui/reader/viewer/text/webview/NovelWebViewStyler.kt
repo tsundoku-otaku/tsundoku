@@ -130,40 +130,61 @@ internal class NovelWebViewStyler(
     }
 
     private fun resolveFontFace(fontFamily: String, useOriginalFonts: Boolean): Pair<String, String> {
-        if (useOriginalFonts) return "" to fontFamily
-        if (!(fontFamily.startsWith("file://") || fontFamily.startsWith("content://"))) return "" to fontFamily
+        if (useOriginalFonts) {
+            fontUriString = null
+            return "" to fontFamily
+        }
+        if (!(fontFamily.startsWith("file://") || fontFamily.startsWith("content://"))) {
+            fontUriString = null
+            return "" to fontFamily
+        }
 
-        // Embed bytes as a base64 data URI inside @font-face. The chapter HTML loads with
-        // an https:// base URL (loadDataWithBaseURL), and modern WebView blocks https:// →
-        // file:// font fetches as a cross-origin violation regardless of setAllowFileAccess.
-        // A data: URI sidesteps that — the bytes are part of the document.
-        val cached = cachedFontFace
-        if (cached != null && cached.first == fontFamily) return cached.second
+        // Reference the font by URL instead of a base64 data: URI so the multi-MB bytes never enter
+        // the CSS string (re-escaped + bridged + re-parsed on every style change) or the LOS/GC.
+        // interceptFont() streams the bytes from disk via the WebView's shouldInterceptRequest, off
+        // the main thread, and the WebView decodes and caches the face once.
+        fontUriString = fontFamily
+        val isOtf = fontFamily.endsWith(".otf", ignoreCase = true)
+        val format = if (isOtf) "opentype" else "truetype"
+        // Version by the uri so switching fonts busts the WebView's cached face for the same URL.
+        val url = "$FONT_URL_PREFIX?v=${fontFamily.hashCode()}"
+        val declaration = "@font-face { font-family: 'CustomFont'; src: url('$url') format('$format'); font-display: swap; }"
+        return declaration to "'CustomFont', sans-serif"
+    }
 
-        return try {
-            val fontUri = fontFamily.toUri()
-            val bytes = activity.contentResolver.openInputStream(fontUri)?.use { it.readBytes() }
-                ?: return "" to fontFamily
-            val mime = if (fontFamily.endsWith(".otf", ignoreCase = true)) "font/otf" else "font/ttf"
-            val format = if (fontFamily.endsWith(".otf", ignoreCase = true)) "opentype" else "truetype"
-            val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
-            val declaration = """
-                @font-face {
-                    font-family: 'CustomFont';
-                    src: url('data:$mime;base64,$base64') format('$format');
-                    font-display: swap;
-                }
-            """.trimIndent()
-            val pair = declaration to "'CustomFont', sans-serif"
-            cachedFontFace = fontFamily to pair
-            pair
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR) { "Failed to embed custom font: ${e.message}" }
-            "" to fontFamily
+    private var fontUriString: String? = null
+    private var cachedFontBytes: Pair<String, ByteArray>? = null
+
+    /**
+     * Serve the custom font for the sentinel URL referenced by the injected @font-face. Runs on the
+     * WebView's worker thread (not the UI thread), so the disk read never stalls the UI. Fonts are
+     * fetched in CORS mode, so the response must allow the cross-origin document.
+     */
+    fun interceptFont(url: String): android.webkit.WebResourceResponse? {
+        if (!url.startsWith(FONT_URL_PREFIX)) return null
+        val family = fontUriString ?: return null
+        val bytes = loadFontBytes(family) ?: return null
+        val mime = if (family.endsWith(".otf", ignoreCase = true)) "font/otf" else "font/ttf"
+        return android.webkit.WebResourceResponse(mime, null, java.io.ByteArrayInputStream(bytes)).apply {
+            responseHeaders = mapOf(
+                "Access-Control-Allow-Origin" to "*",
+                "Cache-Control" to "max-age=31536000",
+            )
         }
     }
 
-    private var cachedFontFace: Pair<String, Pair<String, String>>? = null
+    private fun loadFontBytes(family: String): ByteArray? {
+        cachedFontBytes?.let { if (it.first == family) return it.second }
+        return try {
+            val bytes = activity.contentResolver.openInputStream(family.toUri())?.use { it.readBytes() }
+                ?: return null
+            cachedFontBytes = family to bytes
+            bytes
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR) { "Failed to read custom font: ${e.message}" }
+            null
+        }
+    }
 
     fun injectStyles() {
         val payload = buildPayload()
@@ -228,6 +249,10 @@ internal class NovelWebViewStyler(
     companion object {
         const val STYLE_ID_CUSTOM = "tsundoku-custom-style"
         const val ID_NEXT_CHAPTER_BTN_CONTAINER = "next-chapter-btn-container"
+
+        // Sentinel URL the injected @font-face points at; resolved by interceptFont() in the
+        // WebView's shouldInterceptRequest. Never hits the network.
+        const val FONT_URL_PREFIX = "https://tsundoku.font/custom"
 
         internal fun fontOverrideCss(sourceCssPriority: Boolean, useOriginalFonts: Boolean): Pair<String, String> {
             if (sourceCssPriority) return "" to ""
