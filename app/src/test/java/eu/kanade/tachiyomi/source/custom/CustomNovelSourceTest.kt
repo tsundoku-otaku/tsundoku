@@ -78,6 +78,53 @@ class CustomNovelSourceTest {
     }
 
     @Test
+    fun `rebasing a page also rebases its imageUrl to the custom host`() {
+        val page = Page(0, "https://old.example/chapter-1", "https://old.example/images/page-1.jpg")
+
+        val rebased = rebaseCustomSourcePage(page, "https://custom.example", "https://old.example")
+
+        assertEquals("https://custom.example/chapter-1", rebased.url)
+        assertEquals("https://custom.example/images/page-1.jpg", rebased.imageUrl)
+    }
+
+    @Test
+    fun `rebasing a page leaves a null imageUrl null`() {
+        val page = Page(0, "https://old.example/chapter-1")
+
+        assertEquals(null, rebaseCustomSourcePage(page, "https://custom.example", "https://old.example").imageUrl)
+    }
+
+    @Test
+    fun `rebasing a page leaves a third-party cdn imageUrl unchanged`() {
+        // A CDN/mirror host that isn't the delegated source's own host must not be glued onto
+        // the custom base -- it's already a valid absolute URL pointing elsewhere.
+        val page = Page(0, "https://old.example/chapter-1", "https://cdn.example/images/page-1.jpg")
+
+        val rebased = rebaseCustomSourcePage(page, "https://custom.example", "https://old.example")
+
+        assertEquals("https://custom.example/chapter-1", rebased.url)
+        assertEquals("https://cdn.example/images/page-1.jpg", rebased.imageUrl)
+    }
+
+    @Test
+    fun `a rebased page's url and imageUrl both map back to the delegated source host`() {
+        // Mirrors what CustomNovelSource.getImageUrl/getImage do: a Page rebased for display
+        // (source host -> custom host) must map back to the source host on both fields before
+        // being handed to the wrapped extension, so its own image interceptors/headers apply.
+        val original = Page(0, "https://old.example/chapter-1", "https://old.example/images/page-1.jpg")
+        val rebased = rebaseCustomSourcePage(original, "https://custom.example", "https://old.example")
+
+        assertEquals(
+            original.url,
+            mapCustomUrlToSourceUrl(rebased.url, "https://custom.example", "https://old.example"),
+        )
+        assertEquals(
+            original.imageUrl,
+            mapCustomUrlToSourceUrl(rebased.imageUrl, "https://custom.example", "https://old.example"),
+        )
+    }
+
+    @Test
     fun `toBaseSourceUrl restores delegated host from custom url`() {
         assertEquals(
             "https://old.example/series/test",

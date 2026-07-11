@@ -100,7 +100,7 @@ internal fun rebaseCustomSourcePage(
     return Page(
         page.index,
         rebaseCustomSourceUrl(page.url, customBaseUrl, sourceBaseUrl).orEmpty(),
-        page.imageUrl,
+        page.imageUrl?.let { rebaseCustomSourceUrl(it, customBaseUrl, sourceBaseUrl) },
         page.uri,
     ).also {
         it.text = page.text
@@ -727,6 +727,21 @@ class CustomNovelSource(
         return super.getPageList(chapter)
     }
 
+    // Delegate image resolution/download so the ext's own image interceptors and headers apply.
+    override suspend fun getImageUrl(page: Page): String {
+        (baseSource as? HttpSource)?.let { source ->
+            return source.getImageUrl(toBaseSourcePage(page))
+        }
+        return super.getImageUrl(page)
+    }
+
+    override suspend fun getImage(page: Page): Response {
+        (baseSource as? HttpSource)?.let { source ->
+            return source.getImage(toBaseSourcePage(page))
+        }
+        return super.getImage(page)
+    }
+
     // Route through buildAbsoluteUrl so an already-absolute stored url isn't glued onto baseUrl.
     override fun mangaDetailsRequest(manga: SManga): Request = GET(buildAbsoluteUrl(manga.url), headers)
 
@@ -1185,6 +1200,16 @@ class CustomNovelSource(
         }
     }
 
+    private fun toBaseSourcePage(page: Page, sourceBaseUrlOverride: String? = null): Page {
+        val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
+        return Page(
+            page.index,
+            toBaseSourceUrl(page.url, override).orEmpty(),
+            page.imageUrl?.let { toBaseSourceUrl(it, override) },
+            page.uri,
+        ).also { it.text = page.text }
+    }
+
     /**
      * Builds an absolute URL from a relative or absolute path.
      * Handles redirects where the URL might already be absolute after a 301/302 redirect.
@@ -1366,5 +1391,5 @@ data class ContentSelectors(
     val removeBoilerplate: Boolean = true,
 )
 
-// Templates removed — use extension repos for pre-built novel source themes
+// Templates removed; use extension repos for pre-built novel source themes
 // (Madara, LightNovelWP, ReadNovelFull, ReadWN, WordPress Novel)
