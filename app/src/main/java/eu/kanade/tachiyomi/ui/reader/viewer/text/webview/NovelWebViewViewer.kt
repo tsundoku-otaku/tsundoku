@@ -758,7 +758,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     requestAnimationFrame(function() { done(); });
                 })();
             """
-            webView.evaluateJavascript(js, null)
+            evaluateJavascriptSafe(js)
             webView.postDelayed({ if (scrollRestoreToken == token) isRestoringScroll = false }, 3000)
         } else {
             isRestoringScroll = true
