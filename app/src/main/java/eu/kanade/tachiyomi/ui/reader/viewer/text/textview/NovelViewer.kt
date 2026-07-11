@@ -148,6 +148,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     // Latched once the novel has no further chapter to append.
     private var reachedNovelEnd = false
+
+    // Blocks flushing the backward-entry 1f baseline until a real scroll sample replaces it.
+    private var awaitingFirstScrollSample = false
     private companion object {
         const val CHAPTER_ENTRY_GRACE_MS = 800L
         const val NEXT_CHAPTER_BUTTON_TAG = "next_chapter_button"
@@ -370,6 +373,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val snapped = NovelProgress.snapProgress(progress)
         val intPercent = NovelProgress.progressToPercent(snapped)
         val lastIntPercent = NovelProgress.progressToPercent(lastSavedProgress)
+        awaitingFirstScrollSample = false
         if (intPercent == lastIntPercent) return
 
         lastSavedProgress = snapped
@@ -392,6 +396,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
      */
     fun flushProgress() {
         progressSaveJob?.cancel()
+        if (awaitingFirstScrollSample) return
         if (lastSavedProgress > 0f) saveProgress(lastSavedProgress)
     }
 
@@ -486,6 +491,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
         val initialProgress = if (newIndex > oldIndex) 0f else 1f
         lastSavedProgress = initialProgress
+        awaitingFirstScrollSample = true
         chapterEntryTime = now
 
         NovelProgress.forwardChaptersToMarkRead(oldIndex, newIndex, loadedChapters.size).forEach { idx ->
@@ -1291,7 +1297,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         // lock recreates the activity) must not persist 0 and wipe the saved progress.
         // Flush synchronously, cancel the debounce first so scope.cancel() can't drop a pending save.
         progressSaveJob?.cancel()
-        if (lastSavedProgress > 0f) saveProgress(lastSavedProgress)
+        if (lastSavedProgress > 0f && !awaitingFirstScrollSample) saveProgress(lastSavedProgress)
 
         ttsController.destroy()
         scope.cancel() // cancels loadJob and all other child coroutines

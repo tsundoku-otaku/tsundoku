@@ -141,6 +141,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var isRestoringScroll = false
     private var scrollRestoreToken = 0
 
+    // Blocks flushing the backward-entry 1f baseline until a real scroll sample replaces it.
+    private var awaitingFirstScrollSample = false
+
     // Latched once the novel has no further chapter to append.
     private var reachedNovelEnd = false
 
@@ -775,7 +778,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // until onPageFinished restores or the user scrolls. Saving 0 here on an early
         // teardown (orientation lock recreates the activity before restore runs) would
         // wipe the chapter's saved progress.
-        if (lastSavedProgress > 0f) saveProgress()
+        if (lastSavedProgress > 0f && !awaitingFirstScrollSample) saveProgress()
 
         ttsController.destroy()
         imageCache.clear()
@@ -804,6 +807,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * the WebView is backgrounded, so the activity's onPause calls this to avoid losing the tail.
      */
     fun flushProgress() {
+        if (awaitingFirstScrollSample) return
         if (lastSavedProgress > 0f && NovelProgress.progressToPercent(lastSavedProgress) != lastPersistedPercent) {
             saveProgress()
         }
@@ -1586,6 +1590,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         fun onScrollProgress(progress: Float) {
             activity.runOnUiThread {
                 if (isRestoringScroll) return@runOnUiThread
+                awaitingFirstScrollSample = false
                 lastSavedProgress = progress
                 if (NovelProgress.progressToPercent(progress) == lastPersistedPercent) return@runOnUiThread
                 saveProgress()
@@ -1596,6 +1601,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         fun onScrollUpdate(progress: Float) {
             activity.runOnUiThread {
                 if (isRestoringScroll) return@runOnUiThread
+                awaitingFirstScrollSample = false
                 lastSavedProgress = progress
                 activity.onNovelProgressChanged(progress)
             }
@@ -1637,6 +1643,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     // The next onScrollUpdate replaces it with the real position.
                     lastSavedProgress = if (chapterIndex > oldIndex) 0f else 1f
                     lastPersistedPercent = -1
+                    awaitingFirstScrollSample = true
 
                     updateChapterMetaJs()
                 }
