@@ -43,14 +43,20 @@ class NovelProgressTest {
     }
 
     @Test
-    fun `forwardChaptersToMarkRead returns only the outgoing chapter when moving forward`() {
+    fun `forwardChaptersToMarkRead marks the outgoing chapter on a single-step move`() {
         assertEquals(listOf(0), NovelProgress.forwardChaptersToMarkRead(0, 1, 5))
-        assertEquals(listOf(1), NovelProgress.forwardChaptersToMarkRead(1, 4, 5))
+        assertEquals(listOf(3), NovelProgress.forwardChaptersToMarkRead(3, 4, 5))
     }
 
     @Test
-    fun `forwardChaptersToMarkRead does not mark chapters skipped by a slider jump`() {
-        assertEquals(listOf(0), NovelProgress.forwardChaptersToMarkRead(0, 4, 5))
+    fun `forwardChaptersToMarkRead marks every chapter flung past on a multi-step move`() {
+        assertEquals(listOf(1, 2, 3), NovelProgress.forwardChaptersToMarkRead(1, 4, 5))
+        assertEquals(listOf(0, 1, 2, 3), NovelProgress.forwardChaptersToMarkRead(0, 4, 5))
+    }
+
+    @Test
+    fun `forwardChaptersToMarkRead clamps newIndex to size`() {
+        assertEquals(listOf(2, 3, 4), NovelProgress.forwardChaptersToMarkRead(2, 9, 5))
     }
 
     @Test

@@ -1637,7 +1637,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
 
         @JavascriptInterface
-        fun onChapterScrollUpdate(chapterId: String, progress: Float) {
+        fun onChapterScrollUpdate(chapterId: String, @Suppress("UNUSED_PARAMETER") progress: Float) {
             activity.runOnUiThread {
                 if (isRestoringScroll) return@runOnUiThread
                 // Fired edge-triggered by the JS (only on a real change). Resolve by stable chapter

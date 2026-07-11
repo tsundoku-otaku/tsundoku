@@ -35,13 +35,14 @@ object NovelProgress {
 
     /**
      * Chapters to mark 100% read when the visible chapter moves forward from [oldIndex] to
-     * [newIndex]. Only the outgoing chapter: a multi-step jump comes from the slider and skips
-     * chapters that were never shown, while a real fling fires sequential +1 steps that each mark
-     * their own outgoing chapter. Empty when not moving forward.
+     * [newIndex]. All chapters left behind ([oldIndex] until [newIndex]): the slider now seeks only
+     * within the current chapter, so a multi-step jump means a fling scrolled the whole document
+     * past those chapters, they were shown and must count as read. Empty when not moving forward.
      */
     fun forwardChaptersToMarkRead(oldIndex: Int, newIndex: Int, size: Int): List<Int> {
         if (newIndex <= oldIndex) return emptyList()
         if (oldIndex < 0 || oldIndex >= size) return emptyList()
-        return listOf(oldIndex)
+        val to = newIndex.coerceAtMost(size)
+        return (oldIndex until to).toList()
     }
 }
