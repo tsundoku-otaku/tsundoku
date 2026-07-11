@@ -35,7 +35,12 @@ object NovelPageLoader {
         }
 
         var loadJob: kotlinx.coroutines.Job? = null
-        if (page.status is Page.State.Queue) {
+        if (page.status is Page.State.Error) {
+            // Re-fetch a page cached in Error from a prior failed attempt, else statusFlow returns
+            // Error immediately and the load can never recover once the network is back. retryPage
+            // resets it to Queue and re-queues, so don't also launch loadPage below.
+            loader.retryPage(page)
+        } else if (page.status is Page.State.Queue) {
             loadJob = scope.launch(Dispatchers.IO) {
                 try {
                     loader.loadPage(page)
