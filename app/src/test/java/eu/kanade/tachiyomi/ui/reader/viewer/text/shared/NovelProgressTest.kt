@@ -43,9 +43,14 @@ class NovelProgressTest {
     }
 
     @Test
-    fun `forwardChaptersToMarkRead returns outgoing plus skipped when moving forward`() {
+    fun `forwardChaptersToMarkRead returns only the outgoing chapter when moving forward`() {
         assertEquals(listOf(0), NovelProgress.forwardChaptersToMarkRead(0, 1, 5))
-        assertEquals(listOf(1, 2, 3), NovelProgress.forwardChaptersToMarkRead(1, 4, 5))
+        assertEquals(listOf(1), NovelProgress.forwardChaptersToMarkRead(1, 4, 5))
+    }
+
+    @Test
+    fun `forwardChaptersToMarkRead does not mark chapters skipped by a slider jump`() {
+        assertEquals(listOf(0), NovelProgress.forwardChaptersToMarkRead(0, 4, 5))
     }
 
     @Test
@@ -55,8 +60,8 @@ class NovelProgressTest {
     }
 
     @Test
-    fun `forwardChaptersToMarkRead clamps to loaded size and floor`() {
-        assertEquals(listOf(2, 3), NovelProgress.forwardChaptersToMarkRead(2, 9, 4))
-        assertEquals(listOf(0, 1), NovelProgress.forwardChaptersToMarkRead(-1, 2, 5))
+    fun `forwardChaptersToMarkRead is empty when outgoing index is out of bounds`() {
+        assertEquals(emptyList<Int>(), NovelProgress.forwardChaptersToMarkRead(-1, 2, 5))
+        assertEquals(emptyList<Int>(), NovelProgress.forwardChaptersToMarkRead(9, 12, 4))
     }
 }

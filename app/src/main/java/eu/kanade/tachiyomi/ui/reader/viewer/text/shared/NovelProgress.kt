@@ -28,15 +28,14 @@ object NovelProgress {
         progressToPercent(newProgress) != progressToPercent(lastProgress)
 
     /**
-     * Chapter indices to mark 100% read when the visible chapter moves from [oldIndex] to
-     * [newIndex] within a loaded list of [size]. Returns the outgoing chapter plus any chapters
-     * skipped by a fast scroll (oldIndex until newIndex); empty when not moving forward.
+     * Chapters to mark 100% read when the visible chapter moves forward from [oldIndex] to
+     * [newIndex]. Only the outgoing chapter: a multi-step jump comes from the slider and skips
+     * chapters that were never shown, while a real fling fires sequential +1 steps that each mark
+     * their own outgoing chapter. Empty when not moving forward.
      */
     fun forwardChaptersToMarkRead(oldIndex: Int, newIndex: Int, size: Int): List<Int> {
         if (newIndex <= oldIndex) return emptyList()
-        val from = oldIndex.coerceAtLeast(0)
-        val to = newIndex.coerceAtMost(size)
-        if (from >= to) return emptyList()
-        return (from until to).toList()
+        if (oldIndex < 0 || oldIndex >= size) return emptyList()
+        return listOf(oldIndex)
     }
 }

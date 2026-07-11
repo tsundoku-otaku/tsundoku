@@ -488,22 +488,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         lastSavedProgress = initialProgress
         chapterEntryTime = now
 
-        if (newIndex > oldIndex) {
-            loadedChapters.getOrNull(oldIndex)?.chapter?.pages?.firstOrNull()?.let { page ->
+        NovelProgress.forwardChaptersToMarkRead(oldIndex, newIndex, loadedChapters.size).forEach { idx ->
+            loadedChapters.getOrNull(idx)?.chapter?.pages?.firstOrNull()?.let { page ->
                 activity.saveNovelProgress(page, 100)
                 logcat(LogPriority.DEBUG) {
-                    "NovelViewer: Marking chapter $oldIndex as 100% (moved forward)"
-                }
-            }
-        }
-
-        if (newIndex > oldIndex + 1) {
-            for (skipped in (oldIndex + 1) until newIndex) {
-                loadedChapters.getOrNull(skipped)?.chapter?.pages?.firstOrNull()?.let { page ->
-                    activity.saveNovelProgress(page, 100)
-                    logcat(LogPriority.DEBUG) {
-                        "NovelViewer: Marking skipped chapter $skipped as 100% (fast scroll)"
-                    }
+                    "NovelViewer: Marking chapter $idx as 100% (moved forward)"
                 }
             }
         }
