@@ -76,4 +76,11 @@ class SourceRateLimitPolicyTest {
         val result = policy(source).specFor("example.com")
         result.delayMillis shouldBe 5000L
     }
+
+    @Test
+    fun `www-prefixed host resolves against a bare-host baseUrl`() {
+        val source = novelSource("example.com")
+        val result = policy(source).specFor("www.example.com")
+        (result.delayMillis > 0) shouldBe true
+    }
 }

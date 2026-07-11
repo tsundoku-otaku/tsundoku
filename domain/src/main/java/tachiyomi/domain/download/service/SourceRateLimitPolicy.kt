@@ -2,6 +2,7 @@ package tachiyomi.domain.download.service
 
 import eu.kanade.tachiyomi.network.interceptor.RateLimitSpec
 import eu.kanade.tachiyomi.network.interceptor.RequestRateLimitPolicy
+import eu.kanade.tachiyomi.network.interceptor.normalizedRateLimitHost
 import eu.kanade.tachiyomi.source.RateLimited
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.isNovelSource
@@ -19,8 +20,9 @@ class SourceRateLimitPolicy(
 ) : RequestRateLimitPolicy {
 
     override fun specFor(host: String): RateLimitSpec {
+        val normalizedHost = host.normalizedRateLimitHost()
         val source = sourceManager.getOnlineSources()
-            .firstOrNull { it.baseUrl.toHttpUrlOrNull()?.host == host }
+            .firstOrNull { it.baseUrl.toHttpUrlOrNull()?.host?.normalizedRateLimitHost() == normalizedHost }
             ?: return RateLimitSpec.NONE
 
         // A source explicitly declaring it doesn't need traffic considerations (e.g. a

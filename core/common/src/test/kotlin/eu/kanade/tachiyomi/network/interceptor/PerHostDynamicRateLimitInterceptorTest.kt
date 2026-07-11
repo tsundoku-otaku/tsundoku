@@ -147,6 +147,17 @@ class PerHostDynamicRateLimitInterceptorTest {
         (bElapsed < 200L) shouldBe true
     }
 
+    @Test
+    fun `www-prefixed and bare host share the same throttling window`() {
+        specs["example.com"] = RateLimitSpec(delayMillis = 100L)
+        val interceptor = PerHostDynamicRateLimitInterceptor()
+
+        interceptor.intercept(fakeChain("https://www.example.com/a"))
+        val elapsed = measureMillis { interceptor.intercept(fakeChain("https://example.com/b")) }
+
+        (elapsed >= 60L) shouldBe true
+    }
+
     private inline fun measureMillis(block: () -> Unit): Long {
         val start = System.nanoTime()
         block()

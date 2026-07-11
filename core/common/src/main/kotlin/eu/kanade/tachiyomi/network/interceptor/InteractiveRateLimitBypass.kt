@@ -18,15 +18,15 @@ import java.util.concurrent.ConcurrentHashMap
 object InteractiveRateLimitBypass {
     private val bypassedHosts = ConcurrentHashMap<String, Int>()
 
-    fun isBypassed(host: String): Boolean = bypassedHosts.containsKey(host)
+    fun isBypassed(host: String): Boolean = bypassedHosts.containsKey(host.normalizedRateLimitHost())
 
     suspend fun <T> bypassing(host: String?, block: suspend () -> T): T {
-        if (host == null) return block()
-        bypassedHosts.merge(host, 1, Int::plus)
+        val normalized = host?.normalizedRateLimitHost() ?: return block()
+        bypassedHosts.merge(normalized, 1, Int::plus)
         try {
             return block()
         } finally {
-            bypassedHosts.computeIfPresent(host) { _, count -> (count - 1).takeIf { it > 0 } }
+            bypassedHosts.computeIfPresent(normalized) { _, count -> (count - 1).takeIf { it > 0 } }
         }
     }
 }
