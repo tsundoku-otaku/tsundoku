@@ -156,6 +156,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // clears each finally, so without this a chapter that keeps timing out re-fires every frame.
     private var lastNextLoadFailedAt = 0L
 
+    // True while a delayed JS-latch release is queued for the current cooldown, so the JS load latch
+    // is held (not re-fired every scroll frame) and released exactly once when the cooldown ends.
+    private var cooldownReleaseScheduled = false
+
     // Lightweight property accessors so existing call sites keep working.
     // Mutations should go through chapterQueue's methods (append / prepend /
     // removeFirst / clear) - they keep the cursor and id-set in sync.
@@ -1705,9 +1709,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         scope.launch { preFetchNextChapterForTts() }
                     }
                 } else if (System.currentTimeMillis() - lastNextLoadFailedAt < NovelProgress.NEXT_LOAD_RETRY_COOLDOWN_MS) {
-                    // Release the JS load latch it set before this call, else the cooldown becomes
-                    // permanent: JS never re-fires loadNextChapter once its loadingNext stays true.
-                    setJsLoadingNext()
+                    // Keep the JS load latch held (JS set it before this call) so it stops re-firing
+                    // loadNextChapter every scroll frame during the cooldown; schedule a single
+                    // release for when the cooldown expires so it can't become permanent.
+                    if (!cooldownReleaseScheduled) {
+                        cooldownReleaseScheduled = true
+                        val remaining = NovelProgress.NEXT_LOAD_RETRY_COOLDOWN_MS -
+                            (System.currentTimeMillis() - lastNextLoadFailedAt)
+                        webView.postDelayed({
+                            cooldownReleaseScheduled = false
+                            setJsLoadingNext()
+                        }, remaining.coerceAtLeast(0))
+                    }
                     logcat(LogPriority.DEBUG) { "NovelWebViewViewer: loadNextChapter ignored, in failure cooldown" }
                 } else if (!isLoadingNext) {
                     isLoadingNext = true

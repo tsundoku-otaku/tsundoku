@@ -55,6 +55,7 @@
         var chapterProgress = progress;
         var idx = 0;
         var chapterId = null;
+        var isLast = true;
         if (infiniteScrollEnabled && window.chapterBoundaries.length > 1) {
             for (var i = 0; i < window.chapterBoundaries.length; i++) {
                 if (scrollTop >= window.chapterBoundaries[i].startOffset) idx = i; else break;
@@ -64,12 +65,19 @@
             var chapterScrollY = Math.max(scrollTop - boundary.startOffset, 0);
             // Only the last loaded chapter has an unreachable trailing viewport, middle chapters
             // end at the next divider, so subtract innerHeight only for the last one.
-            var isLastChapter = idx === window.chapterBoundaries.length - 1;
-            var effectiveHeight = Math.max(boundary.height - (isLastChapter ? viewport : 0), 1);
-            chapterProgress = Math.min(chapterScrollY / effectiveHeight, 1.0);
-            if (chapterProgress >= __DONE_THRESHOLD__) chapterProgress = 1.0;
+            isLast = idx === window.chapterBoundaries.length - 1;
+            if (isLast && boundary.height <= viewport) {
+                // A last chapter shorter than the viewport has no scroll room of its own, so
+                // chapterScrollY stays 0 and it would never reach the load threshold or 100%.
+                // Fall back to whole-document progress (the doc bottom is reachable).
+                chapterProgress = progress;
+            } else {
+                var effectiveHeight = Math.max(boundary.height - (isLast ? viewport : 0), 1);
+                chapterProgress = Math.min(chapterScrollY / effectiveHeight, 1.0);
+                if (chapterProgress >= __DONE_THRESHOLD__) chapterProgress = 1.0;
+            }
         }
-        return { progress: progress, chapterProgress: chapterProgress, idx: idx, chapterId: chapterId };
+        return { progress: progress, chapterProgress: chapterProgress, idx: idx, chapterId: chapterId, isLast: isLast };
     }
 
     var framePending = false;
@@ -92,7 +100,10 @@
                 Android.onScrollUpdate(s.chapterProgress);
             }
         }
-        if (s.chapterProgress >= 1.0 && lastSliderProgress !== 1.0) {
+        // Only the last chapter flashes to 100% and self-persists; a middle chapter momentarily
+        // hitting 1.0 as it crosses a divider is marked read Android-side on the chapter switch,
+        // so flashing the slider to 100% here would just flicker it for one frame.
+        if (s.isLast && s.chapterProgress >= 1.0 && lastSliderProgress !== 1.0) {
             lastSliderProgress = 1.0;
             Android.onScrollUpdate(1.0);
             Android.onScrollProgress(1.0);
