@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
 import org.junit.jupiter.api.parallel.ExecutionMode
@@ -82,5 +83,21 @@ class SourceRateLimitPolicyTest {
         val source = novelSource("example.com")
         val result = policy(source).specFor("www.example.com")
         (result.delayMillis > 0) shouldBe true
+    }
+
+    @Test
+    fun `getOnlineSources is not re-queried on every call`() {
+        val source = novelSource("example.com")
+        val sourceManager = mockk<SourceManager> {
+            every { getOnlineSources() } returns listOf(source)
+        }
+        val resolver = RateLimitResolver(NovelDownloadPreferences(InMemoryPreferenceStore()))
+        val policy = SourceRateLimitPolicy(sourceManager, resolver)
+
+        policy.specFor("example.com")
+        policy.specFor("example.com")
+        policy.specFor("unknown.example.com")
+
+        verify(exactly = 1) { sourceManager.getOnlineSources() }
     }
 }
