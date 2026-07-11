@@ -7,6 +7,7 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
 import kotlinx.coroutines.runBlocking
+import okhttp3.Call
 import okhttp3.Interceptor
 import okhttp3.Protocol
 import okhttp3.Request
@@ -16,6 +17,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.addSingletonFactory
+import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Uses small real millisecond delays and measures actual wall-clock time rather than mocking
@@ -52,7 +55,7 @@ class PerHostDynamicRateLimitInterceptorTest {
         unmockkStatic(SystemClock::class)
     }
 
-    private fun fakeChain(url: String): Interceptor.Chain {
+    private fun fakeChain(url: String, isCanceled: () -> Boolean = { false }): Interceptor.Chain {
         val request = Request.Builder().url(url).build()
         val response = Response.Builder()
             .request(request)
@@ -60,8 +63,12 @@ class PerHostDynamicRateLimitInterceptorTest {
             .code(200)
             .message("OK")
             .build()
+        val call = mockk<Call> {
+            every { this@mockk.isCanceled() } answers { isCanceled() }
+        }
         return mockk<Interceptor.Chain> {
             every { request() } returns request
+            every { call() } returns call
             every { proceed(any()) } answers { response }
         }
     }
@@ -156,6 +163,32 @@ class PerHostDynamicRateLimitInterceptorTest {
         val elapsed = measureMillis { interceptor.intercept(fakeChain("https://example.com/b")) }
 
         (elapsed >= 60L) shouldBe true
+    }
+
+    @Test
+    fun `cancelling the call interrupts an in-progress wait instead of running the full delay`() {
+        specs["example.com"] = RateLimitSpec(delayMillis = 2000L)
+        val interceptor = PerHostDynamicRateLimitInterceptor()
+        val canceled = AtomicBoolean(false)
+
+        interceptor.intercept(fakeChain("https://example.com/a", isCanceled = { canceled.get() }))
+
+        Thread {
+            Thread.sleep(150)
+            canceled.set(true)
+        }.start()
+
+        var thrown: Throwable? = null
+        val elapsed = measureMillis {
+            try {
+                interceptor.intercept(fakeChain("https://example.com/b", isCanceled = { canceled.get() }))
+            } catch (e: IOException) {
+                thrown = e
+            }
+        }
+
+        (thrown != null) shouldBe true
+        (elapsed < 2000L) shouldBe true
     }
 
     private inline fun measureMillis(block: () -> Unit): Long {

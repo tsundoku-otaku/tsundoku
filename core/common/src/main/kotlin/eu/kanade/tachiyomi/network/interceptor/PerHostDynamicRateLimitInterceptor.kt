@@ -1,9 +1,11 @@
 package eu.kanade.tachiyomi.network.interceptor
 
 import android.os.SystemClock
+import okhttp3.Call
 import okhttp3.Interceptor
 import okhttp3.Response
 import uy.kohesive.injekt.injectLazy
+import java.io.IOException
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
@@ -36,6 +38,9 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
     private val hostLocks = ConcurrentHashMap<String, Any>()
 
     override fun intercept(chain: Interceptor.Chain): Response {
+        val call = chain.call()
+        if (call.isCanceled()) throw IOException("Canceled")
+
         val request = chain.request()
         val host = request.url.host.normalizedRateLimitHost()
 
@@ -62,7 +67,7 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
                     if (wait > 0) {
                         RateLimitWaitTracker.startWaiting(host, now + wait)
                         try {
-                            Thread.sleep(wait)
+                            waitCancellably(wait, call)
                         } finally {
                             RateLimitWaitTracker.stopWaiting(host)
                         }
@@ -76,5 +81,30 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
         }
 
         return chain.proceed(request)
+    }
+
+    /**
+     * Waits out [waitMillis] in short chunks rather than one [Thread.sleep] call, checking
+     * [call] for cancellation between chunks. A single blind sleep can't be interrupted by
+     * cancelling the underlying OkHttp call - cancel() closes sockets/connections, but a wait
+     * that hasn't reached the network yet has nothing to close, so it would otherwise run to
+     * completion even after the caller has given up (e.g. leaving the reader, cancelling a
+     * download). Uses [System.nanoTime] rather than [SystemClock.elapsedRealtime] for the
+     * countdown so this remains real wall-clock time even in tests that freeze SystemClock to
+     * exercise the window bookkeeping above.
+     */
+    private fun waitCancellably(waitMillis: Long, call: Call) {
+        var remaining = waitMillis
+        while (remaining > 0) {
+            if (call.isCanceled()) throw IOException("Canceled")
+            val chunk = minOf(remaining, POLL_INTERVAL_MILLIS)
+            val start = System.nanoTime()
+            Thread.sleep(chunk)
+            remaining -= maxOf((System.nanoTime() - start) / 1_000_000, 1L)
+        }
+    }
+
+    companion object {
+        private const val POLL_INTERVAL_MILLIS = 200L
     }
 }
