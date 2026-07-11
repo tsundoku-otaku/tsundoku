@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test
 class InteractiveRateLimitBypassTest {
 
     @Test
-    fun `host is not bypassed before or after the block runs`() = runBlocking {
+    fun `host is not bypassed before or after the block runs`() = runBlocking<Unit> {
         val host = "example-${System.nanoTime()}.com"
         InteractiveRateLimitBypass.isBypassed(host) shouldBe false
 
@@ -26,7 +26,7 @@ class InteractiveRateLimitBypassTest {
     }
 
     @Test
-    fun `nested bypass calls for the same host don't clear early`() = runBlocking {
+    fun `nested bypass calls for the same host don't clear early`() = runBlocking<Unit> {
         val host = "example-${System.nanoTime()}.com"
 
         InteractiveRateLimitBypass.bypassing(host) {

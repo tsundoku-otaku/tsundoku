@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test
 class RateLimitWaitUpdatesTest {
 
     @Test
-    fun `null host runs the block without polling at all`() = runBlocking {
+    fun `null host runs the block without polling at all`() = runBlocking<Unit> {
         var calls = 0
 
         val result = withRateLimitWaitUpdates(host = null, onWaitChanged = { calls++ }) { "done" }
@@ -18,7 +18,7 @@ class RateLimitWaitUpdatesTest {
     }
 
     @Test
-    fun `polls while the block runs and always finishes with a null update`() = runBlocking {
+    fun `polls while the block runs and always finishes with a null update`() = runBlocking<Unit> {
         val host = "example-${System.nanoTime()}.com"
         val updates = mutableListOf<Long?>()
 

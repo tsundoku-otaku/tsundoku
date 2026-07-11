@@ -105,7 +105,7 @@ class PerHostDynamicRateLimitInterceptorTest {
     }
 
     @Test
-    fun `an interactively bypassed host skips throttling even with a full window`() = runBlocking {
+    fun `an interactively bypassed host skips throttling even with a full window`() = runBlocking<Unit> {
         val host = "example.com"
         specs[host] = RateLimitSpec(delayMillis = 200L)
         val interceptor = PerHostDynamicRateLimitInterceptor()
