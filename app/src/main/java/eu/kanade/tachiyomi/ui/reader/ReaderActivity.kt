@@ -545,6 +545,7 @@ class ReaderActivity : BaseActivity() {
         if (showQuotesState.value) {
             QuotesSheet(
                 quotes = quotesState.value,
+                novelTitle = state.manga?.title.orEmpty(),
                 onDismiss = {
                     showQuotesSheet = false
                 },

@@ -9,7 +9,6 @@ import java.util.UUID
 @Serializable
 data class Quote(
     val id: String = UUID.randomUUID().toString(),
-    val novelName: String,
     val chapterName: String,
     val content: String,
     val timestamp: Long = System.currentTimeMillis(),
@@ -21,13 +20,11 @@ data class Quote(
          * Create a new quote with the given parameters
          */
         fun create(
-            novelName: String,
             chapterName: String,
             content: String,
             paragraphIndex: Int? = null,
         ): Quote {
             return Quote(
-                novelName = novelName,
                 chapterName = chapterName,
                 content = content.trim(),
                 paragraphIndex = paragraphIndex,

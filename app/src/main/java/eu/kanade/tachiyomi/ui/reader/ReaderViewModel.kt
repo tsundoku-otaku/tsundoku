@@ -1720,7 +1720,6 @@ class ReaderViewModel @JvmOverloads constructor(
         val manga = manga ?: return
         val sourceName = quoteSourceName() ?: return
         val quote = Quote(
-            novelName = manga.title,
             chapterName = chapterName,
             content = text,
             timestamp = System.currentTimeMillis(),
