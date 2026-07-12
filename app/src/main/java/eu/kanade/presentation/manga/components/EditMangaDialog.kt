@@ -369,7 +369,7 @@ private fun EditAltTitlesTab(
     onSwapMainTitle: ((String, List<String>) -> Unit)? = null,
 ) {
     var newTitle by remember { mutableStateOf("") }
-    var pendingDelete by remember { mutableStateOf<Int?>(null) }
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
     val clipboardManager = LocalClipboardManager.current
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -443,7 +443,7 @@ private fun EditAltTitlesTab(
                         }
                     }
                     IconButton(
-                        onClick = { pendingDelete = index },
+                        onClick = { pendingDelete = title },
                     ) {
                         Icon(
                             Icons.Outlined.Delete,
@@ -456,9 +456,9 @@ private fun EditAltTitlesTab(
         }
     }
 
-    pendingDelete?.let { index ->
-        val title = altTitles.getOrNull(index)
-        if (title == null) {
+    pendingDelete?.let { title ->
+        val index = altTitles.indexOf(title)
+        if (index < 0) {
             pendingDelete = null
             return@let
         }

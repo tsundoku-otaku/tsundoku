@@ -65,7 +65,8 @@ object AlternativeTitlesColumnAdapter : ColumnAdapter<List<String>, String> {
 
         val values = databaseValue
             .splitToSequence(ALT_TITLES_SEPARATOR)
-            .filter { it.isNotBlank() }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
             .take(MAX_DECODED_STRING_LIST_ITEMS + 1)
             .toList()
 
