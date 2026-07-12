@@ -109,8 +109,8 @@ class TranslatedChapterRepositoryImpl(
     private fun novelDirName(novelTitle: String): String = DiskUtil.buildValidFilename(novelTitle)
 
     private fun chapterFileBase(chapterName: String, chapterUrl: String): String {
-        // Subtract 11 bytes to leave room for the "_<6 hex>" suffix.
-        val base = DiskUtil.buildValidFilename(chapterName, DiskUtil.MAX_FILE_NAME_BYTES - 11)
+        // Reserve bytes for the longest suffix we append: "_<6 hex>" + ".html.tmp".
+        val base = DiskUtil.buildValidFilename(chapterName, DiskUtil.MAX_FILE_NAME_BYTES - 16)
         return base + "_" + Hash.md5(chapterUrl).take(6)
     }
 

@@ -75,7 +75,9 @@ object TranslationsPortableMigrator {
                 } else {
                     translatedChapterRepository.upsertTranslation(locator, translated)
                 }
-                file.delete()
+                if (!file.delete()) {
+                    logcat(LogPriority.WARN) { "Migrated $name but could not remove the legacy file" }
+                }
                 migrated++
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { "Failed to migrate translation file $name" }

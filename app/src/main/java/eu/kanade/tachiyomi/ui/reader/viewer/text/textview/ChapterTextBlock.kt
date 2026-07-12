@@ -91,20 +91,17 @@ internal class ChapterTextBlock(
         val start = chunkViews[chunkIndex].selectionStart
         if (start < 0) return null
         val text = fullText ?: return null
-        val absoluteOffset = (chunkStarts.getOrNull(chunkIndex) ?: 0) + start
+        if (text.isBlank()) return null
+        val absoluteOffset = ((chunkStarts.getOrNull(chunkIndex) ?: 0) + start)
+            .coerceIn(0, text.length)
 
-        val paragraphLines = text.split("\n").filter { it.isNotBlank() }
-        if (paragraphLines.isEmpty()) return null
-
-        var searchFrom = 0
-        var index = -1
-        for ((i, line) in paragraphLines.withIndex()) {
-            val idx = text.indexOf(line, searchFrom)
-            val offset = if (idx >= 0) idx else searchFrom
-            if (offset <= absoluteOffset) index = i else break
-            searchFrom = if (idx >= 0) idx + line.length else searchFrom
-        }
-        return index.takeIf { it >= 0 }
+        // Count the non-blank lines that end before the selection, mirroring the WebView
+        // plain-text path (setEnd at the selection, split on \n, count non-blank lines
+        // excluding the partial current line) so quote indexes align across viewers.
+        return text.substring(0, absoluteOffset)
+            .split("\n")
+            .dropLast(1)
+            .count { it.isNotBlank() }
     }
 
     fun clearSelections() {
