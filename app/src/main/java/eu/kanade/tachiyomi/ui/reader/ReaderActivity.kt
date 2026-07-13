@@ -8,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -626,6 +627,16 @@ class ReaderActivity : BaseActivity() {
     }
 
     /**
+     * The activity declares these config changes in the manifest so rotation no longer recreates it.
+     * That keeps the viewer (and its TTS engine, WebView state and scroll position) alive across an
+     * orientation change; re-assert immersive/menu since onResume won't run.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        setMenuVisibility(viewModel.state.value.menuVisible)
+    }
+
+    /**
      * Called when the window focus changes. It sets the menu visibility to the last known state
      * to apply immersive mode again if needed.
      */
@@ -855,11 +866,23 @@ class ReaderActivity : BaseActivity() {
                 currentProgress = novelProgressFromState,
                 onProgressChange = { newProgress ->
                     viewModel.updateNovelProgressPercent(newProgress)
-                    val viewer = state.viewer
-                    if (viewer is NovelViewer) {
-                        viewer.setProgressPercent(newProgress)
-                    } else if (viewer is NovelWebViewViewer) {
-                        viewer.setProgressPercent(newProgress)
+                    // A seek is an explicit position choice; a running autoscroll would immediately
+                    // scroll away from it, so stop it first and reflect that in the toggle state.
+                    when (val viewer = state.viewer) {
+                        is NovelViewer -> {
+                            if (viewer.isAutoScrollActive()) {
+                                viewer.stopAutoScroll()
+                                isAutoScrolling = false
+                            }
+                            viewer.setProgressPercent(newProgress)
+                        }
+                        is NovelWebViewViewer -> {
+                            if (viewer.isAutoScrollActive()) {
+                                viewer.stopAutoScroll()
+                                isAutoScrolling = false
+                            }
+                            viewer.setProgressPercent(newProgress)
+                        }
                     }
                 },
 
@@ -1361,6 +1384,22 @@ class ReaderActivity : BaseActivity() {
      */
     private fun updateViewer() {
         val prevViewer = viewModel.state.value.viewer
+
+        // state.manga re-emits on non-viewer changes too: the reader's orientation dialog
+        // (setMangaOrientationType) fetches a fresh manga, which would otherwise rebuild the viewer
+        // here and tear down an active novel TTS session (and reset scroll). If the novel viewer
+        // already matches the current renderer, only (re)apply the orientation and keep the viewer.
+        if (prevViewer != null &&
+            ReadingMode.fromPreference(viewModel.getMangaReadingMode()) == ReadingMode.NOVEL
+        ) {
+            val wantsWebView = readerPreferences.novelRenderingMode.get() == "webview"
+            val matches = if (wantsWebView) prevViewer is NovelWebViewViewer else prevViewer is NovelViewer
+            if (matches) {
+                setOrientation(viewModel.getMangaOrientation())
+                return
+            }
+        }
+
         val newViewer = ReadingMode.toViewer(viewModel.getMangaReadingMode(), this)
 
         if (window.sharedElementEnterTransition is MaterialContainerTransform) {
@@ -1840,6 +1879,8 @@ class ReaderActivity : BaseActivity() {
 
         private val grayBackgroundColor = Color.rgb(0x20, 0x21, 0x25)
 
+        private var brightnessJob: Job? = null
+
         /*
          * Initializes the reader subscriptions.
          */
@@ -1986,13 +2027,15 @@ class ReaderActivity : BaseActivity() {
             if (viewer is NovelViewer || viewer is NovelWebViewViewer) {
                 return
             }
-            if (enabled) {
+            brightnessJob?.cancel()
+            brightnessJob = if (enabled) {
                 readerPreferences.customBrightnessValue.changes()
                     .sample(0.1.seconds)
                     .onEach(::setCustomBrightnessValue)
                     .launchIn(lifecycleScope)
             } else {
                 setCustomBrightnessValue(0)
+                null
             }
         }
 
@@ -2005,13 +2048,15 @@ class ReaderActivity : BaseActivity() {
             if (viewer !is NovelViewer && viewer !is NovelWebViewViewer) {
                 return
             }
-            if (enabled) {
+            brightnessJob?.cancel()
+            brightnessJob = if (enabled) {
                 readerPreferences.novelCustomBrightnessValue.changes()
                     .sample(100)
                     .onEach(::setCustomBrightnessValue)
                     .launchIn(lifecycleScope)
             } else {
                 setCustomBrightnessValue(0)
+                null
             }
         }
 
