@@ -16,6 +16,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Library pagination (experimental) [@mrissaoussama](https://github.com/mrissaoussama) [#283](https://github.com/tsundoku-otaku/tsundoku/pull/283)
 - Option for tag normalization during entry updates [@mrissaoussama](https://github.com/mrissaoussama) [#287](https://github.com/tsundoku-otaku/tsundoku/pull/287)
 - Reader Status Bar [@Rojikku](https://github.com/Rojikku) [#302](https://github.com/tsundoku-otaku/tsundoku/pull/302)
+- RateLimiting revamp + backend [@Rojikku](https://github.com/Rojikku) [#329](https://github.com/tsundoku-otaku/tsundoku/pull/329)
 
 
 ### Changed
