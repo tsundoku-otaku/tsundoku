@@ -80,6 +80,7 @@ fun EditMangaDialog(
     var author by remember { mutableStateOf(manga.author.orEmpty()) }
     var artist by remember { mutableStateOf(manga.artist.orEmpty()) }
     var status by remember { mutableStateOf(manga.status) }
+    var didSwapMainTitle by remember { mutableStateOf(false) }
 
     val tabTitles = listOf(
         TabTitle.Text(stringResource(MR.strings.pref_category_general)),
@@ -88,10 +89,12 @@ fun EditMangaDialog(
 
     TabbedDialog(
         onDismissRequest = {
-            onSaveTitle(title)
-            onSaveUrl(url)
-            onSaveAltTitles(altTitles)
-            onSaveInfo(description, tags, author, artist, status)
+            if (!didSwapMainTitle) {
+                onSaveTitle(title)
+                onSaveUrl(url)
+                onSaveAltTitles(altTitles)
+                onSaveInfo(description, tags, author, artist, status)
+            }
             onDismissRequest()
         },
         tabTitles = tabTitles,
@@ -144,11 +147,12 @@ fun EditMangaDialog(
                         onTagsChange = { tags = it },
                     )
                     EditAltTitlesTab(
-                        mainTitle = manga.title,
+                        mainTitle = title,
                         altTitles = altTitles,
                         onAltTitlesChange = { altTitles = it },
                         onSwapMainTitle = onSwapMainTitle?.let { swap ->
                             { newMain, updatedAlts ->
+                                didSwapMainTitle = true
                                 swap(newMain, updatedAlts)
                                 onDismissRequest()
                             }
@@ -372,6 +376,13 @@ private fun EditAltTitlesTab(
     var pendingDelete by remember { mutableStateOf<Int?>(null) }
     val clipboardManager = LocalClipboardManager.current
 
+    val trimmedNew = newTitle.trim()
+    // Reject a new alt title that duplicates the main title or an existing alt (case-insensitive),
+    // matching the lower(trim(...)) comparison used by duplicate detection.
+    val isDuplicate = trimmedNew.isNotEmpty() &&
+        (mainTitle.trim().equals(trimmedNew, ignoreCase = true) ||
+            altTitles.any { it.trim().equals(trimmedNew, ignoreCase = true) })
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -383,15 +394,21 @@ private fun EditAltTitlesTab(
                 modifier = Modifier.weight(1f),
                 label = { Text("New title") },
                 singleLine = true,
+                isError = isDuplicate,
+                supportingText = if (isDuplicate) {
+                    { Text("Title already exists") }
+                } else {
+                    null
+                },
             )
             IconButton(
                 onClick = {
-                    if (newTitle.isNotBlank()) {
-                        onAltTitlesChange(altTitles + newTitle.trim())
+                    if (trimmedNew.isNotEmpty() && !isDuplicate) {
+                        onAltTitlesChange(altTitles + trimmedNew)
                         newTitle = ""
                     }
                 },
-                enabled = newTitle.isNotBlank(),
+                enabled = trimmedNew.isNotEmpty() && !isDuplicate,
             ) {
                 Icon(Icons.Outlined.Add, contentDescription = "Add")
             }
