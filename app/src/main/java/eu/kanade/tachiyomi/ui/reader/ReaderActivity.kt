@@ -627,11 +627,9 @@ class ReaderActivity : BaseActivity() {
     }
 
     /**
-     * The activity declares these config changes in the manifest so rotation no longer recreates it,
-     * which keeps a novel viewer (its TTS engine, WebView state and scroll position) alive across an
-     * orientation change; we only re-assert immersive/menu since onResume won't run.
-     *
-     * for non-novel viewers we recreate() to preserve the original behavior.
+     * The manifest declares these config changes so rotation no longer recreates the activity, keeping
+     * a novel viewer (TTS engine, WebView state, scroll position) alive across an orientation change.
+     * We re-assert immersive/menu since onResume won't run. Non-novel viewers recreate() as before.
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
