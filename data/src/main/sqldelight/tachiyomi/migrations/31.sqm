@@ -2,5 +2,5 @@
 -- title that legitimately contained a comma. Re-encode existing rows to use the
 -- unit separator (char(31)) so future decodes preserve commas.
 UPDATE mangas
-SET alternative_titles = REPLACE(alternative_titles, ', ', char(31))
+SET alternative_titles = replace(alternative_titles, ', ', char(31))
 WHERE alternative_titles IS NOT NULL AND alternative_titles != '';
