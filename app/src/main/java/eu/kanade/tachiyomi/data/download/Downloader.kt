@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.data.notification.NotificationHandler
 import eu.kanade.tachiyomi.data.translation.TranslationJob
 import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.tachiyomi.network.interceptor.BackgroundRateLimitGuard
 import eu.kanade.tachiyomi.network.interceptor.InteractiveRateLimitBypass
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.UnmeteredSource
@@ -330,11 +331,14 @@ class Downloader(
         try {
             // Per-request pacing now happens in the shared OkHttp client
             // (see PerHostDynamicRateLimitInterceptor), not here.
+            val host = (download.source as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
             if (download.bypassRateLimit) {
-                val host = (download.source as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
                 InteractiveRateLimitBypass.bypassing(host) { downloadChapter(download) }
             } else {
-                downloadChapter(download)
+                // Marks this host as having active background work so an unrelated interactive
+                // bypass (e.g. the user browsing the same source) can't let this download's own
+                // requests skip pacing too.
+                BackgroundRateLimitGuard.active(host) { downloadChapter(download) }
             }
 
             // Remove successful download from queue
@@ -413,6 +417,19 @@ class Downloader(
             val queuedChapterIds = HashSet<Long>(queueState.value.size)
             for (queued in queueState.value) {
                 queuedChapterIds.add(queued.chapterId)
+            }
+
+            // bypassRateLimit is "recomputed whenever chapters are (re-)queued" (see the field's
+            // doc), but a chapter already sitting in the queue never reaches the Download.from()
+            // call below where that recompute happens - update it in place here instead, or the
+            // common case (e.g. the reader re-requesting bypass for the same next chapter on
+            // every page turn, while it's still downloading from the previous request) silently
+            // never applies the bypass.
+            val chapterIdsInThisBatch = chapters.mapTo(HashSet()) { it.id }
+            queueState.value.forEach { queued ->
+                if (queued.chapterId in chapterIdsInThisBatch) {
+                    queued.bypassRateLimit = queued.chapterId in bypassRateLimitChapterIds
+                }
             }
 
             val chaptersToQueue = chapters.asSequence()
