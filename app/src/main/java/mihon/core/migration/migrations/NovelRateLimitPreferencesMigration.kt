@@ -2,9 +2,13 @@ package mihon.core.migration.migrations
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.jsonObject
+import logcat.LogPriority
 import mihon.core.migration.Migration
 import mihon.core.migration.MigrationContext
 import tachiyomi.core.common.preference.PreferenceStore
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences.Companion.SourceOverride
 
@@ -39,20 +43,38 @@ class NovelRateLimitPreferencesMigration : Migration {
 
         val oldOverridesJson = preferenceStore.getString("novel_source_overrides", "{}")
         if (oldOverridesJson.isSet() && oldOverridesJson.get().let { it.isNotEmpty() && it != "{}" }) {
-            val oldOverrides = runCatching {
-                Json.decodeFromString<Map<String, LegacySourceOverride>>(oldOverridesJson.get())
-            }.getOrNull()
+            val rawJson = oldOverridesJson.get()
+            val rootObject = runCatching { Json.parseToJsonElement(rawJson).jsonObject }.getOrNull()
 
-            oldOverrides?.values?.forEach { legacy ->
-                novelDownloadPreferences.setSourceOverride(
-                    SourceOverride(
-                        sourceId = legacy.sourceId,
-                        delayMillis = legacy.downloadDelay,
-                        jitterMillis = legacy.randomDelayRange,
-                        permits = null,
-                        enabled = legacy.enabled,
-                    ),
-                )
+            if (rootObject == null) {
+                logcat(LogPriority.ERROR) {
+                    "NovelRateLimitPreferencesMigration: novel_source_overrides isn't valid JSON, " +
+                        "skipping override migration entirely"
+                }
+            } else {
+                // Decode entry-by-entry rather than the whole map at once: one malformed entry
+                // (e.g. written by a build with a slightly different shape) shouldn't cost the
+                // user every other correctly-formed override in a one-time, unrepeatable migration.
+                rootObject.forEach { (sourceIdKey, element) ->
+                    val legacy = runCatching { Json.decodeFromJsonElement<LegacySourceOverride>(element) }
+                        .onFailure {
+                            logcat(LogPriority.ERROR) {
+                                "NovelRateLimitPreferencesMigration: skipping unparsable override " +
+                                    "for source $sourceIdKey: ${it.message}"
+                            }
+                        }
+                        .getOrNull() ?: return@forEach
+
+                    novelDownloadPreferences.setSourceOverride(
+                        SourceOverride(
+                            sourceId = legacy.sourceId,
+                            delayMillis = legacy.downloadDelay,
+                            jitterMillis = legacy.randomDelayRange,
+                            permits = null,
+                            enabled = legacy.enabled,
+                        ),
+                    )
+                }
             }
         }
 
