@@ -1176,16 +1176,31 @@ class CustomNovelSource(
         if (baseSource is JsSource) {
             val customBase = baseUrl.trimEnd('/')
             val sourceBase = override?.trimEnd('/')
-            val relativePath = when {
-                value.startsWith(customBase) -> value.removePrefix(customBase)
-                sourceBase != null && value.startsWith(sourceBase) -> value.removePrefix(sourceBase)
+            return when {
+                value.startsWith(customBase) -> {
+                    val relativePath = value.removePrefix(customBase)
+                    val normalizedPath = if (relativePath.startsWith("/")) {
+                        relativePath
+                    } else {
+                        "/${relativePath.removePrefix("/")}"
+                    }
+                    if (keepAbsolute && sourceBase != null) sourceBase + normalizedPath else normalizedPath
+                }
+                sourceBase != null && value.startsWith(sourceBase) -> {
+                    if (keepAbsolute) {
+                        value
+                    } else {
+                        val relativePath = value.removePrefix(sourceBase)
+                        if (relativePath.startsWith("/")) relativePath else "/${relativePath.removePrefix("/")}"
+                    }
+                }
                 else -> {
-                    // If URL doesn't match either base, it might be absolute from a redirect
-                    // Return it as-is so delegate can use it directly
+                    // Doesn't match either base - already absolute (e.g. a redirect to a
+                    // third-party host, or a CDN image), so it's safe to use as-is regardless
+                    // of keepAbsolute.
                     value
                 }
             }
-            return if (relativePath.startsWith("/")) relativePath else "/${relativePath.removePrefix("/")}"
         }
 
         val mapped = mapCustomUrlToSourceUrl(value, baseUrl, override)
@@ -1202,7 +1217,7 @@ class CustomNovelSource(
             val originalUrl = runCatching { manga.url }.getOrNull()
             url = toBaseSourceUrl(originalUrl, override) ?: (originalUrl ?: "")
             val originalThumb = runCatching { manga.thumbnail_url }.getOrNull()
-            thumbnail_url = toBaseSourceUrl(originalThumb, override) ?: originalThumb
+            thumbnail_url = toBaseSourceUrl(originalThumb, override, keepAbsolute = true) ?: originalThumb
         }
     }
 
