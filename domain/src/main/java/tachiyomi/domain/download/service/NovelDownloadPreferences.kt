@@ -162,33 +162,52 @@ class NovelDownloadPreferences(
         0, // Default to store for backwards compatibility
     )
 
+    @Volatile
+    private var cachedOverridesJson: String? = null
+
+    @Volatile
+    private var cachedOverrides: Map<String, SourceOverride> = emptyMap()
+
+    /**
+     * [sourceOverrides] is read (and, before this cache, fully JSON-decoded) on every single
+     * request that flows through the rate-limit interceptor via [RateLimitResolver.resolve] -
+     * wasteful when redone on every HTTP request for a value that only changes when the user
+     * edits an override. Cached by raw JSON string so a write is picked up on the very next read.
+     */
+    private fun decodedOverrides(): Map<String, SourceOverride> {
+        val json = sourceOverrides().get()
+        cachedOverridesJson?.let { cached -> if (cached == json) return cachedOverrides }
+
+        synchronized(this) {
+            val recheckJson = sourceOverrides().get()
+            cachedOverridesJson?.let { cached -> if (cached == recheckJson) return cachedOverrides }
+
+            val decoded = if (recheckJson.isEmpty() || recheckJson == "{}") {
+                emptyMap()
+            } else {
+                try {
+                    kotlinx.serialization.json.Json.decodeFromString<Map<String, SourceOverride>>(recheckJson)
+                } catch (_: Exception) {
+                    emptyMap()
+                }
+            }
+            cachedOverridesJson = recheckJson
+            cachedOverrides = decoded
+            return decoded
+        }
+    }
+
     /**
      * Get source override for a specific source ID
      */
-    fun getSourceOverride(sourceId: Long): SourceOverride? {
-        return try {
-            val json = sourceOverrides().get()
-            if (json.isEmpty() || json == "{}") return null
-
-            val overrides = kotlinx.serialization.json.Json.decodeFromString<Map<String, SourceOverride>>(json)
-            overrides[sourceId.toString()]
-        } catch (_: Exception) {
-            null
-        }
-    }
+    fun getSourceOverride(sourceId: Long): SourceOverride? = decodedOverrides()[sourceId.toString()]
 
     /**
      * Set source override for a specific source
      */
     fun setSourceOverride(override: SourceOverride) {
         try {
-            val currentJson = sourceOverrides().get()
-            val overrides = if (currentJson.isEmpty() || currentJson == "{}") {
-                mutableMapOf()
-            } else {
-                kotlinx.serialization.json.Json.decodeFromString<MutableMap<String, SourceOverride>>(currentJson)
-            }
-
+            val overrides = decodedOverrides().toMutableMap()
             overrides[override.sourceId.toString()] = override
             val newJson = kotlinx.serialization.json.Json.encodeToString(overrides)
             sourceOverrides().set(newJson)
@@ -202,12 +221,8 @@ class NovelDownloadPreferences(
      */
     fun removeSourceOverride(sourceId: Long) {
         try {
-            val currentJson = sourceOverrides().get()
-            if (currentJson.isEmpty() || currentJson == "{}") return
-
-            val overrides = kotlinx.serialization.json.Json.decodeFromString<MutableMap<String, SourceOverride>>(
-                currentJson,
-            )
+            val overrides = decodedOverrides().toMutableMap()
+            if (overrides.isEmpty()) return
             overrides.remove(sourceId.toString())
 
             val newJson = if (overrides.isEmpty()) {
@@ -224,17 +239,7 @@ class NovelDownloadPreferences(
     /**
      * Get all source overrides
      */
-    fun getAllSourceOverrides(): List<SourceOverride> {
-        return try {
-            val json = sourceOverrides().get()
-            if (json.isEmpty() || json == "{}") return emptyList()
-
-            val overrides = kotlinx.serialization.json.Json.decodeFromString<Map<String, SourceOverride>>(json)
-            overrides.values.toList()
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
+    fun getAllSourceOverrides(): List<SourceOverride> = decodedOverrides().values.toList()
 
     companion object {
         /**
