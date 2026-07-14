@@ -44,7 +44,7 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
         val request = chain.request()
         val host = request.url.host.normalizedRateLimitHost()
 
-        if (InteractiveRateLimitBypass.isBypassed(host)) {
+        if (InteractiveRateLimitBypass.isBypassed(host) && !BackgroundRateLimitGuard.isActive(host)) {
             return chain.proceed(request)
         }
 

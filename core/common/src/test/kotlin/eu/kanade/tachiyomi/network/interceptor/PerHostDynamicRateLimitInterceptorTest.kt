@@ -121,6 +121,27 @@ class PerHostDynamicRateLimitInterceptorTest {
     }
 
     @Test
+    fun `an active background job suppresses an unrelated interactive bypass for the same host`() =
+        runBlocking<Unit> {
+            val host = "example.com"
+            specs[host] = RateLimitSpec(delayMillis = 200L)
+            val interceptor = PerHostDynamicRateLimitInterceptor()
+
+            // Fill the single default permit's window so a normal call here would have to wait.
+            interceptor.intercept(fakeChain("https://$host/a"))
+
+            val elapsed = InteractiveRateLimitBypass.bypassing(host) {
+                BackgroundRateLimitGuard.active(host) {
+                    measureMillis { interceptor.intercept(fakeChain("https://$host/b")) }
+                }
+            }
+
+            // A background job is active on this host, so the interactive bypass is suppressed
+            // and the request pays the full configured delay instead of skipping it.
+            (elapsed >= 100L) shouldBe true
+        }
+
+    @Test
     fun `allows a burst of permits before enforcing the delay`() {
         val interceptor = PerHostDynamicRateLimitInterceptor()
 

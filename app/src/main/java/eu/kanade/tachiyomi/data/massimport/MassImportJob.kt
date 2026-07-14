@@ -18,6 +18,7 @@ import eu.kanade.domain.manga.interactor.MassImport
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.tachiyomi.network.interceptor.BackgroundRateLimitGuard
 import eu.kanade.tachiyomi.network.interceptor.withRateLimitWaitUpdates
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
@@ -639,16 +640,18 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                             updateNotification(completedCount.get(), totalCount, status)
                                         },
                                     ) {
-                                        processUrlWithSource(
-                                            url,
-                                            source,
-                                            addToLibrary,
-                                            fetchDetails,
-                                            categoryId,
-                                            fetchChapters,
-                                            pendingAddIds,
-                                            flushBatchSize,
-                                        )
+                                        BackgroundRateLimitGuard.active(host) {
+                                            processUrlWithSource(
+                                                url,
+                                                source,
+                                                addToLibrary,
+                                                fetchDetails,
+                                                categoryId,
+                                                fetchChapters,
+                                                pendingAddIds,
+                                                flushBatchSize,
+                                            )
+                                        }
                                     }
                                 } finally {
                                     activeImports.remove(url)

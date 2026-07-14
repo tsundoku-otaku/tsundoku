@@ -24,6 +24,7 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.network.interceptor.BackgroundRateLimitGuard
 import eu.kanade.tachiyomi.network.interceptor.withRateLimitWaitUpdates
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
@@ -350,69 +351,72 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                         }
 
                         semaphore.withPermit {
-                            mangaInSource.forEachIndexed { index, libraryManga ->
-                                val manga = libraryManga.manga
-                                ensureActive()
+                            BackgroundRateLimitGuard.active(host) {
+                                mangaInSource.forEachIndexed { index, libraryManga ->
+                                    val manga = libraryManga.manga
+                                    ensureActive()
 
-                                // Check memory pressure before each manga update
-                                checkMemoryPressure()
+                                    // Check memory pressure before each manga update
+                                    checkMemoryPressure()
 
-                                // Apply an additional delay of 3-8 minutes every 5 sources
-                                if ((index + 1) % 5 == 0 && updateStagger) {
-                                    // Randomly select minutes, convert to ms
-                                    // Add a random number to appear more typical
-                                    val stagger = (Random.nextLong(3, 8) * 60000L) + Random.nextLong(23, 999)
-                                    Log.d("LibraryUpdate", "Staggering for ${stagger}ms")
-                                    delay(stagger)
-                                }
+                                    // Apply an additional delay of 3-8 minutes every 5 sources
+                                    if ((index + 1) % 5 == 0 && updateStagger) {
+                                        // Randomly select minutes, convert to ms
+                                        // Add a random number to appear more typical
+                                        val stagger = (Random.nextLong(3, 8) * 60000L) + Random.nextLong(23, 999)
+                                        Log.d("LibraryUpdate", "Staggering for ${stagger}ms")
+                                        delay(stagger)
+                                    }
 
-                                Log.v("LibraryUpdate", "Index $index throttle $updateThrottlingMs")
-                                // Apply per-source throttling: delay only between updates from SAME source
-                                if (index > 0 && updateThrottlingMs != 0L) {
-                                    Log.d("LibraryUpdate", "Throttling for ${updateThrottlingMs}ms")
-                                    delay(updateThrottlingMs)
-                                }
+                                    Log.v("LibraryUpdate", "Index $index throttle $updateThrottlingMs")
+                                    // Apply per-source throttling: delay only between updates from SAME source
+                                    if (index > 0 && updateThrottlingMs != 0L) {
+                                        Log.d("LibraryUpdate", "Throttling for ${updateThrottlingMs}ms")
+                                        delay(updateThrottlingMs)
+                                    }
 
-                                // Don't continue to update if manga is not in library
-                                if (getManga.await(manga.id)?.favorite != true) {
-                                    return@forEachIndexed
-                                }
+                                    // Don't continue to update if manga is not in library
+                                    if (getManga.await(manga.id)?.favorite != true) {
+                                        return@forEachIndexed
+                                    }
 
-                                withUpdateNotification(
-                                    currentlyUpdatingManga,
-                                    progressCount,
-                                    manga,
-                                    host,
-                                ) {
-                                    try {
-                                        val newChapters = updateManga(manga, fetchWindow)
-                                            .sortedByDescending { it.sourceOrder }
+                                    withUpdateNotification(
+                                        currentlyUpdatingManga,
+                                        progressCount,
+                                        manga,
+                                        host,
+                                    ) {
+                                        try {
+                                            val newChapters = updateManga(manga, fetchWindow)
+                                                .sortedByDescending { it.sourceOrder }
 
-                                        if (newChapters.isNotEmpty()) {
-                                            val chaptersToDownload = filterChaptersForDownload.await(manga, newChapters)
+                                            if (newChapters.isNotEmpty()) {
+                                                val chaptersToDownload =
+                                                    filterChaptersForDownload.await(manga, newChapters)
 
-                                            if (chaptersToDownload.isNotEmpty()) {
-                                                downloadChapters(manga, chaptersToDownload)
-                                                hasDownloads.store(true)
+                                                if (chaptersToDownload.isNotEmpty()) {
+                                                    downloadChapters(manga, chaptersToDownload)
+                                                    hasDownloads.store(true)
+                                                }
+
+                                                libraryPreferences.newUpdatesCount.getAndSet { it + newChapters.size }
+
+                                                // Convert to the manga that contains new chapters
+                                                newUpdates.add(manga to newChapters.toTypedArray())
                                             }
-
-                                            libraryPreferences.newUpdatesCount.getAndSet { it + newChapters.size }
-
-                                            // Convert to the manga that contains new chapters
-                                            newUpdates.add(manga to newChapters.toTypedArray())
+                                        } catch (e: Throwable) {
+                                            val errorMessage = when (e) {
+                                                is NoChaptersException -> context.stringResource(
+                                                    MR.strings.no_chapters_error,
+                                                )
+                                                // failedUpdates will already have the source, don't need to copy it into the message
+                                                is SourceNotInstalledException -> context.stringResource(
+                                                    MR.strings.loader_not_implemented_error,
+                                                )
+                                                else -> e.message
+                                            }
+                                            failedUpdates.add(manga to errorMessage)
                                         }
-                                    } catch (e: Throwable) {
-                                        val errorMessage = when (e) {
-                                            is NoChaptersException -> context.stringResource(
-                                                MR.strings.no_chapters_error,
-                                            )
-                                            // failedUpdates will already have the source, don't need to copy it into the message
-                                            is SourceNotInstalledException -> context.stringResource(
-                                                MR.strings.loader_not_implemented_error,
-                                            )
-                                            else -> e.message
-                                        }
-                                        failedUpdates.add(manga to errorMessage)
                                     }
                                 }
                             }
