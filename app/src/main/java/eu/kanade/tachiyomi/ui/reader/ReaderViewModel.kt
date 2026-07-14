@@ -35,6 +35,7 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.rateLimitHost
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
@@ -79,7 +80,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import logcat.LogPriority
 import mihon.core.archive.archiveReader
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -674,7 +674,7 @@ class ReaderViewModel @JvmOverloads constructor(
             // Viewer preload is always the immediate next/prev chapter - as "wanted now" as the
             // chapter currently on screen, so it bypasses rate limiting like other interactive
             // fetches instead of waiting behind the shared per-host pacing.
-            val host = (getSource() as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
+            val host = getSource().rateLimitHost()
             InteractiveRateLimitBypass.bypassing(host) { loader.loadChapter(chapter) }
         } catch (e: Throwable) {
             if (e is CancellationException) {

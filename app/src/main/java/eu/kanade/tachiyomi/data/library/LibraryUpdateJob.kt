@@ -28,7 +28,7 @@ import eu.kanade.tachiyomi.network.interceptor.BackgroundRateLimitGuard
 import eu.kanade.tachiyomi.network.interceptor.withRateLimitWaitUpdates
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
-import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.rateLimitHost
 import eu.kanade.tachiyomi.util.lang.chop
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.storage.getUriCompat
@@ -47,7 +47,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.core.common.util.lang.withIOContext
@@ -338,7 +337,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                 .map { mangaInSource ->
                     async {
                         val source = sourceManager.get(mangaInSource.first().manga.source)
-                        val host = (source as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
+                        val host = source.rateLimitHost()
                         val semaphore = if (source?.isNovelSource == true) novelSemaphore else defaultSemaphore
 
                         // Novel sources are paced per-request by the shared OkHttp client's

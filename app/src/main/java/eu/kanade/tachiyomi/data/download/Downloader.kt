@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.network.interceptor.BackgroundRateLimitGuard
 import eu.kanade.tachiyomi.network.interceptor.InteractiveRateLimitBypass
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.UnmeteredSource
+import eu.kanade.tachiyomi.source.rateLimitHost
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -48,7 +49,6 @@ import kotlinx.coroutines.supervisorScope
 import logcat.LogPriority
 import mihon.core.archive.ZipWriter
 import nl.adaptivity.xmlutil.serialization.XML
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Response
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.storage.extension
@@ -331,7 +331,7 @@ class Downloader(
         try {
             // Per-request pacing now happens in the shared OkHttp client
             // (see PerHostDynamicRateLimitInterceptor), not here.
-            val host = (download.source as? HttpSource)?.baseUrl?.toHttpUrlOrNull()?.host
+            val host = download.source.rateLimitHost()
             if (download.bypassRateLimit) {
                 InteractiveRateLimitBypass.bypassing(host) { downloadChapter(download) }
             } else {
