@@ -21,7 +21,7 @@ import tachiyomi.domain.download.service.NovelDownloadPreferences.Companion.Sour
  * direct equivalent in the new unified per-request model and are intentionally not migrated.
  */
 class NovelRateLimitPreferencesMigration : Migration {
-    override val version: Float = 21f
+    override val version: Float = 22f
 
     override suspend fun invoke(migrationContext: MigrationContext): Boolean {
         val preferenceStore = migrationContext.get<PreferenceStore>() ?: return false
