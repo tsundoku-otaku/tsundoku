@@ -4,7 +4,11 @@ import android.content.Context
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
+import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.tachiyomi.source.RateLimited
+import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.custom.CustomSourceManager
+import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,6 +23,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import tachiyomi.domain.download.service.RateLimitCandidate
 import tachiyomi.domain.source.model.StubSource
 import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.source.service.SourceManager
@@ -120,6 +125,23 @@ class AndroidSourceManager(
     override fun getAll() = sourcesMapFlow.value.values.toList()
 
     override fun getOnlineSources() = sourcesMapFlow.value.values.filterIsInstance<HttpSource>()
+
+    override fun getRateLimitCandidates(): List<RateLimitCandidate> {
+        return sourcesMapFlow.value.values.mapNotNull { source ->
+            val baseUrl = when (source) {
+                is HttpSource -> source.baseUrl
+                is JsSource -> source.baseUrl
+                else -> return@mapNotNull null
+            }
+            RateLimitCandidate(
+                sourceId = source.id,
+                baseUrl = baseUrl,
+                isNovel = source.isNovelSource(),
+                isUnmetered = source is UnmeteredSource,
+                declaredMinimumMillis = (source as? RateLimited)?.minimumDelayMillis ?: 0L,
+            )
+        }
+    }
 
     override fun getStubSources(): List<StubSource> {
         val onlineSourceIds = getOnlineSources().map { it.id }
