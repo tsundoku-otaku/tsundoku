@@ -1163,7 +1163,11 @@ class CustomNovelSource(
     internal fun rebaseUrl(url: String?, sourceBaseUrlOverride: String? = null): String? =
         rebaseCustomSourceUrl(url, baseUrl, sourceBaseUrlOverride ?: effectiveRebaseUrl)
 
-    internal fun toBaseSourceUrl(url: String?, sourceBaseUrlOverride: String? = null): String? {
+    internal fun toBaseSourceUrl(
+        url: String?,
+        sourceBaseUrlOverride: String? = null,
+        keepAbsolute: Boolean = false,
+    ): String? {
         val override = sourceBaseUrlOverride ?: effectiveRebaseUrl
         val repairedUrl = normalizeCustomUrl(url)
         val value = repairedUrl.orEmpty()
@@ -1184,7 +1188,12 @@ class CustomNovelSource(
             return if (relativePath.startsWith("/")) relativePath else "/${relativePath.removePrefix("/")}"
         }
 
-        return toHttpSourceRequestPath(mapCustomUrlToSourceUrl(value, baseUrl, override), override)
+        val mapped = mapCustomUrlToSourceUrl(value, baseUrl, override)
+        // Page/chapter/manga urls are reduced to a bare path here because the delegate's own
+        // request builders expect them relative, per Tachiyomi convention. Page.imageUrl is the
+        // exception: it must stay a full absolute URL, since the base HttpSource feeds it
+        // straight into GET(), which throws on a schemeless string.
+        return if (keepAbsolute) mapped else toHttpSourceRequestPath(mapped, override)
     }
 
     private fun toBaseSourceManga(manga: SManga, sourceBaseUrlOverride: String? = null): SManga {
@@ -1210,7 +1219,7 @@ class CustomNovelSource(
         return Page(
             page.index,
             toBaseSourceUrl(page.url, override).orEmpty(),
-            page.imageUrl?.let { toBaseSourceUrl(it, override) },
+            page.imageUrl?.let { toBaseSourceUrl(it, override, keepAbsolute = true) },
             page.uri,
         ).also { it.text = page.text }
     }
