@@ -118,20 +118,14 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
      * Returns the package document where all the files are listed.
      */
     fun getPackageDocument(ref: String): Document {
-        return getInputStream(ref)!!.use { Jsoup.parse(it, null, "", Parser.xmlParser()) }
+        val doc = getInputStream(ref)!!.use { Jsoup.parse(it, null, "", Parser.xmlParser()) }
+        return stripNamespacePrefixes(doc)
     }
 
     /**
      * Returns all the pages from the epub.
      */
-    fun getPagesFromDocument(document: Document): List<String> {
-        val pages = document.select("manifest > item")
-            .filter { node -> "application/xhtml+xml" == node.attr("media-type") }
-            .associateBy { it.attr("id") }
-
-        val spine = document.select("spine > itemref").map { it.attr("idref") }
-        return spine.mapNotNull { pages[it] }.map { it.attr("href").urlDecoded() }
-    }
+    fun getPagesFromDocument(document: Document): List<String> = extractSpineHrefs(document)
 
     /**
      * Returns all the images contained in every page from the epub.
@@ -282,14 +276,14 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
         val opfBasePath = getParentDirectory(ref)
 
         // Try EPUB 3 NAV first
-        val navHref = doc.select("manifest > item[properties*=nav]").attr("href")
+        val navHref = findNavHref(doc)
         if (navHref.isNotEmpty()) {
             val navChapters = parseEpub3Nav(resolveZipPath(opfBasePath, navHref))
             if (navChapters.isNotEmpty()) return navChapters
         }
 
         // Fall back to EPUB 2 NCX
-        val ncxHref = doc.select("manifest > item[media-type='application/x-dtbncx+xml']").attr("href")
+        val ncxHref = findNcxHref(doc)
         if (ncxHref.isNotEmpty()) {
             val ncxChapters = parseEpub2Ncx(resolveZipPath(opfBasePath, ncxHref))
             if (ncxChapters.isNotEmpty()) return ncxChapters
@@ -697,6 +691,41 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                 chapter.copy(title = normalizedTitle)
             }
         }
+
+        /**
+         * Strips namespace prefixes from element tag names (e.g. "ns0:item" -> "item"). Some EPUBs
+         * (commonly produced by Python's xml.etree.ElementTree without a registered default namespace)
+         * qualify every OPF element with an auto-generated prefix instead of the usual unprefixed
+         * default-namespace form. Jsoup's XML parser keeps the prefix as part of the literal tag name,
+         * so plain-tag CSS selectors like "manifest > item" would otherwise match nothing.
+         */
+        fun stripNamespacePrefixes(doc: Document): Document {
+            doc.allElements.forEach { element ->
+                val colonIndex = element.tagName().indexOf(':')
+                if (colonIndex > 0) {
+                    element.tagName(element.tagName().substring(colonIndex + 1))
+                }
+            }
+            return doc
+        }
+
+        /** Resolves the OPF manifest+spine into the ordered list of xhtml page hrefs. */
+        fun extractSpineHrefs(document: Document): List<String> {
+            val pages = document.select("manifest > item")
+                .filter { node -> "application/xhtml+xml" == node.attr("media-type") }
+                .associateBy { it.attr("id") }
+
+            val spine = document.select("spine > itemref").map { it.attr("idref") }
+            return spine.mapNotNull { pages[it] }.map { it.attr("href").let(::urlDecode) }
+        }
+
+        /** Returns the manifest item href for the EPUB 3 NAV document, or empty if absent. */
+        fun findNavHref(document: Document): String =
+            document.select("manifest > item[properties*=nav]").attr("href")
+
+        /** Returns the manifest item href for the EPUB 2 NCX document, or empty if absent. */
+        fun findNcxHref(document: Document): String =
+            document.select("manifest > item[media-type='application/x-dtbncx+xml']").attr("href")
 
         fun computeExportImageId(imagePath: String): String {
             val normalized = imagePath.replace('\\', '/')
