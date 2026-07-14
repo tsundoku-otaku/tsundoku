@@ -1336,16 +1336,26 @@ class MangaRepositoryImpl(
         val altTitleIds = HashSet<Long>()
         // Side-effecting mapper: each row's strings are matched and discarded as the cursor
         // streams, so the full favorite metadata is never held in memory at once.
-        database.mangasQueries.getFavoriteMetadataForSearch { id, author, artist, description, altTitles ->
-            if (matchAuthor != null && author != null && matchAuthor(author)) authorIds.add(id)
-            if (matchArtist != null && artist != null && matchArtist(artist)) artistIds.add(id)
-            if (matchDescription != null && description != null && matchDescription(description)) {
-                descriptionIds.add(id)
-            }
-            if (matchAltTitle != null && !altTitles.isNullOrEmpty() && matchAltTitle(altTitles)) {
-                altTitleIds.add(id)
-            }
-        }.awaitAsList()
+        if (matchAltTitle != null) {
+            database.mangasQueries.getFavoriteMetadataForSearch { id, author, artist, description, altTitles ->
+                if (matchAuthor != null && author != null && matchAuthor(author)) authorIds.add(id)
+                if (matchArtist != null && artist != null && matchArtist(artist)) artistIds.add(id)
+                if (matchDescription != null && description != null && matchDescription(description)) {
+                    descriptionIds.add(id)
+                }
+                if (!altTitles.isNullOrEmpty() && matchAltTitle(altTitles)) altTitleIds.add(id)
+            }.awaitAsList()
+        } else {
+            // Skips the alternative_titles column entirely so its adapter never decodes when
+            // alt-title matching wasn't requested (pref disabled or a field-scoped search).
+            database.mangasQueries.getFavoriteMetadataForSearchBasic { id, author, artist, description ->
+                if (matchAuthor != null && author != null && matchAuthor(author)) authorIds.add(id)
+                if (matchArtist != null && artist != null && matchArtist(artist)) artistIds.add(id)
+                if (matchDescription != null && description != null && matchDescription(description)) {
+                    descriptionIds.add(id)
+                }
+            }.awaitAsList()
+        }
         return FavoriteMetadataMatches(authorIds, artistIds, descriptionIds, altTitleIds)
     }
 

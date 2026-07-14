@@ -323,6 +323,13 @@ SELECT _id, author, artist, description, alternative_titles
 FROM mangas
 WHERE favorite = 1;
 
+-- Same as getFavoriteMetadataForSearch but skips alternative_titles: avoids decoding the
+-- U+001F-joined column adapter on every favorite row when alt-title matching isn't requested.
+getFavoriteMetadataForSearchBasic:
+SELECT _id, author, artist, description
+FROM mangas
+WHERE favorite = 1;
+
 -- Find all duplicate groups with contains match (one title contains another)
 -- Optimized: use substr index and smaller comparisons to avoid full table scans
 findDuplicatesContains:
