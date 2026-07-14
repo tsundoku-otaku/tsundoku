@@ -417,18 +417,16 @@ class Downloader(
             val queuedChapterIds = HashSet<Long>(queueState.value.size)
             for (queued in queueState.value) {
                 queuedChapterIds.add(queued.chapterId)
-            }
-
-            // bypassRateLimit is "recomputed whenever chapters are (re-)queued" (see the field's
-            // doc), but a chapter already sitting in the queue never reaches the Download.from()
-            // call below where that recompute happens - update it in place here instead, or the
-            // common case (e.g. the reader re-requesting bypass for the same next chapter on
-            // every page turn, while it's still downloading from the previous request) silently
-            // never applies the bypass.
-            val chapterIdsInThisBatch = chapters.mapTo(HashSet()) { it.id }
-            queueState.value.forEach { queued ->
-                if (queued.chapterId in chapterIdsInThisBatch) {
-                    queued.bypassRateLimit = queued.chapterId in bypassRateLimitChapterIds
+                // bypassRateLimit is set on new Download objects below, but a chapter already
+                // sitting in the queue never reaches that Download.from() call - set it here
+                // instead, or the common case (e.g. the reader re-requesting bypass for the same
+                // next chapter on every page turn, while it's still downloading from the
+                // previous request) silently never applies. Only ever sets it, never clears it:
+                // an unrelated queueChapters() call with no bypass intent of its own (the default
+                // empty bypassRateLimitChapterIds) must not wipe out a bypass a different caller
+                // is still relying on for this same chapter.
+                if (queued.chapterId in bypassRateLimitChapterIds) {
+                    queued.bypassRateLimit = true
                 }
             }
 

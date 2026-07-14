@@ -39,6 +39,7 @@ data class Download(
      * chapter currently being read. Not persisted; recomputed whenever chapters are (re-)queued.
      */
     @Transient
+    @Volatile
     var bypassRateLimit: Boolean = false
 
     /**
