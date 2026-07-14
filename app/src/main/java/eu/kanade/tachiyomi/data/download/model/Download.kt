@@ -36,7 +36,9 @@ data class Download(
     /**
      * Whether this specific chapter's download should bypass rate limiting, e.g. the
      * immediate-next chapter during reader download-ahead, which is as "wanted now" as the
-     * chapter currently being read. Not persisted; recomputed whenever chapters are (re-)queued.
+     * chapter currently being read. Not persisted; only ever set true by a (re-)queue that wants
+     * it, never cleared back to false by one that doesn't, so an unrelated caller can't silently
+     * revoke a bypass another caller is still relying on for this chapter.
      */
     @Transient
     @Volatile
