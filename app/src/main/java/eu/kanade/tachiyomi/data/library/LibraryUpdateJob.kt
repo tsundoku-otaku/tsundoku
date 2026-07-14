@@ -350,41 +350,47 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                         }
 
                         semaphore.withPermit {
-                            BackgroundRateLimitGuard.active(host) {
-                                mangaInSource.forEachIndexed { index, libraryManga ->
-                                    val manga = libraryManga.manga
-                                    ensureActive()
+                            mangaInSource.forEachIndexed { index, libraryManga ->
+                                val manga = libraryManga.manga
+                                ensureActive()
 
-                                    // Check memory pressure before each manga update
-                                    checkMemoryPressure()
+                                // Check memory pressure before each manga update
+                                checkMemoryPressure()
 
-                                    // Apply an additional delay of 3-8 minutes every 5 sources
-                                    if ((index + 1) % 5 == 0 && updateStagger) {
-                                        // Randomly select minutes, convert to ms
-                                        // Add a random number to appear more typical
-                                        val stagger = (Random.nextLong(3, 8) * 60000L) + Random.nextLong(23, 999)
-                                        Log.d("LibraryUpdate", "Staggering for ${stagger}ms")
-                                        delay(stagger)
-                                    }
+                                // Apply an additional delay of 3-8 minutes every 5 sources
+                                if ((index + 1) % 5 == 0 && updateStagger) {
+                                    // Randomly select minutes, convert to ms
+                                    // Add a random number to appear more typical
+                                    val stagger = (Random.nextLong(3, 8) * 60000L) + Random.nextLong(23, 999)
+                                    Log.d("LibraryUpdate", "Staggering for ${stagger}ms")
+                                    delay(stagger)
+                                }
 
-                                    Log.v("LibraryUpdate", "Index $index throttle $updateThrottlingMs")
-                                    // Apply per-source throttling: delay only between updates from SAME source
-                                    if (index > 0 && updateThrottlingMs != 0L) {
-                                        Log.d("LibraryUpdate", "Throttling for ${updateThrottlingMs}ms")
-                                        delay(updateThrottlingMs)
-                                    }
+                                Log.v("LibraryUpdate", "Index $index throttle $updateThrottlingMs")
+                                // Apply per-source throttling: delay only between updates from SAME source
+                                if (index > 0 && updateThrottlingMs != 0L) {
+                                    Log.d("LibraryUpdate", "Throttling for ${updateThrottlingMs}ms")
+                                    delay(updateThrottlingMs)
+                                }
 
-                                    // Don't continue to update if manga is not in library
-                                    if (getManga.await(manga.id)?.favorite != true) {
-                                        return@forEachIndexed
-                                    }
+                                // Don't continue to update if manga is not in library
+                                if (getManga.await(manga.id)?.favorite != true) {
+                                    return@forEachIndexed
+                                }
 
-                                    withUpdateNotification(
-                                        currentlyUpdatingManga,
-                                        progressCount,
-                                        manga,
-                                        host,
-                                    ) {
+                                withUpdateNotification(
+                                    currentlyUpdatingManga,
+                                    progressCount,
+                                    manga,
+                                    host,
+                                ) {
+                                    // Scoped to just the actual network-triggering work, not the
+                                    // surrounding staggering delays/notification bookkeeping - an
+                                    // interactive fetch on this host between manga (e.g. during a
+                                    // multi-minute staggering pause) should still get the fast
+                                    // path, not pay for a background job that isn't even making
+                                    // requests right now.
+                                    BackgroundRateLimitGuard.active(host) {
                                         try {
                                             val newChapters = updateManga(manga, fetchWindow)
                                                 .sortedByDescending { it.sourceOrder }
