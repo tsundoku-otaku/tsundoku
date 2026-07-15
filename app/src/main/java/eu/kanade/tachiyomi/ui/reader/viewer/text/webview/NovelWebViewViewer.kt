@@ -129,6 +129,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var loadJob: Job? = null
     private var contentJob: Job? = null
+    private var appendJob: Job? = null
     private var attachListener: View.OnAttachStateChangeListener? = null
     private var currentPage: ReaderPage? = null
     private var currentChapters: ViewerChapters? = null
@@ -1059,6 +1060,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         if (!isAppendOrPrepend) {
             contentJob?.cancel()
+            // Cancel any in-flight infinite-scroll append too - it targets the DOM this base load
+            // is about to replace, and would otherwise splice a stale chapter's content onto the
+            // newly loaded one once it resumes.
+            appendJob?.cancel()
             // Gate infinite-scroll appends until this base chapter's DOM is committed (onPageFinished
             // flips it back true). Otherwise an early append (JS scroll threshold) is wiped by the
             // clear()+loadHtmlContent this job runs, which re-appends and duplicates the chapter.
@@ -1847,7 +1852,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     logcat(LogPriority.DEBUG) { "NovelWebViewViewer: loadNextChapter ignored, in failure cooldown" }
                 } else if (!isLoadingNext) {
                     isLoadingNext = true
-                    scope.launch {
+                    appendJob = scope.launch {
                         try {
                             val ok = appendNextChapterIfAvailable()
                             lastNextLoadFailedAt = if (ok) 0L else System.currentTimeMillis()
@@ -1876,7 +1881,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // Trigger infinite scroll append manually.
                 if (preferences.novelInfiniteScroll.get() && !isLoadingNext && !ttsController.isTtsAutoPlay) {
                     isLoadingNext = true
-                    scope.launch {
+                    appendJob = scope.launch {
                         try {
                             appendNextChapterIfAvailable()
                         } finally {
