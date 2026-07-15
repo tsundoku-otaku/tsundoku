@@ -633,9 +633,15 @@ class ReaderActivity : BaseActivity() {
      */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        val viewer = viewModel.state.value.viewer
-        if (viewer is NovelViewer || viewer is NovelWebViewViewer) {
-            setMenuVisibility(viewModel.state.value.menuVisible)
+        val state = viewModel.state.value
+        val viewer = state.viewer
+        // viewer is null until updateViewer() runs, which happens asynchronously after manga
+        // loads. Rotating in that window shouldn't fall through to recreate() for a novel entry,
+        // so fall back to the manga's type while the viewer hasn't been created yet.
+        val isNovel = viewer is NovelViewer || viewer is NovelWebViewViewer ||
+            (viewer == null && state.manga?.isNovel == true)
+        if (isNovel) {
+            setMenuVisibility(state.menuVisible)
         } else {
             recreate()
         }
