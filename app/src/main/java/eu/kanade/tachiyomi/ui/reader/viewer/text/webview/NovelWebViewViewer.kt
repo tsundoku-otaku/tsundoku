@@ -2359,11 +2359,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         dispatchTtsState()
         // The loadNextChapter TTS branch skips the JS-latch release, so after a threshold hit during
         // playback runtime.loadingNext stays true and scroll-driven appending never re-fires. Clear
-        // it (plus the Kotlin mirror and end latch) so infinite scroll resumes once TTS is off.
+        // it so infinite scroll resumes once TTS is off.
         isLoadingNext = false
-        reachedNovelEnd = false
         setJsLoadingNext()
-        setJsNoMoreChapters(false)
+        // Don't clear the end-of-novel latch if it's already set: loadNextChapterForTts() calls
+        // stopTts() right after appendNextChapterIfAvailable() sets reachedNovelEnd on a genuine
+        // "no next chapter" result, and resetting it here would let the next scroll event re-fetch
+        // and re-show the "No next chapter available" error a second time.
+        if (!reachedNovelEnd) {
+            setJsNoMoreChapters(false)
+        }
     }
 
     fun pauseTts() {
