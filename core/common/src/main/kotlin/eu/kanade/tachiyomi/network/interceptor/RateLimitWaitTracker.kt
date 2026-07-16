@@ -15,16 +15,16 @@ object RateLimitWaitTracker {
     val waitingUntil: StateFlow<Map<String, Long>> = _waitingUntil
 
     internal fun startWaiting(host: String, untilElapsedRealtime: Long) {
-        _waitingUntil.update { it + (host to untilElapsedRealtime) }
+        _waitingUntil.update { it + (host.normalizedRateLimitHost() to untilElapsedRealtime) }
     }
 
     internal fun stopWaiting(host: String) {
-        _waitingUntil.update { it - host }
+        _waitingUntil.update { it - host.normalizedRateLimitHost() }
     }
 
     /** Remaining wait (ms) for [host], or null if it isn't currently being waited on. */
     fun remainingMillisFor(host: String): Long? {
-        val until = _waitingUntil.value[host] ?: return null
+        val until = _waitingUntil.value[host.normalizedRateLimitHost()] ?: return null
         val remaining = until - SystemClock.elapsedRealtime()
         return remaining.takeIf { it > 0 }
     }
