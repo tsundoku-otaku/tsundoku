@@ -392,6 +392,12 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     subtitle = "Block images and media loading in both readers",
                 ),
                 Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.novelRenderTables,
+                    title = "Render tables (TextView)",
+                    subtitle = "Draw HTML tables as a grid. Off drops tables. " +
+                        "Many large tables in one chapter can slow rendering.",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.novelTextSelectable,
                     title = "Text selectable (WebView)",
                     subtitle = "Allow selecting and copying text in the WebView reader",

@@ -362,4 +362,57 @@ class HtmlUtilsTest {
         val out = HtmlUtils.stripChapterTitle(content, "Chapter 1")
         assertTrue(out.contains("<h1>Chapter 1</h1>"), "heading beyond search limit must be preserved")
     }
+
+    // ── extractTables ─────────────────────────────────────────────────────────
+
+    @Test
+    fun `extractTables pulls table into a model and leaves a sentinel`() {
+        val html = "<p>Intro</p><table><tr><th>Name</th><th>Value</th></tr>" +
+            "<tr><td>STR</td><td>51</td></tr></table>"
+        val (out, models) = HtmlUtils.extractTables(html)
+        assertFalse(out.contains("<table", ignoreCase = true), "table tag should be gone")
+        assertTrue(out.contains("Intro"), "surrounding content kept")
+        assertEquals(1, models.size)
+        val m = models[0]
+        assertTrue(m.hasHeader, "first row used <th>")
+        assertEquals(listOf("Name", "Value"), m.rows[0])
+        assertEquals(listOf("STR", "51"), m.rows[1])
+        // Sentinel present and parseable back to the model index.
+        val match = HtmlUtils.tableSentinelRegex.find(out)
+        assertTrue(match != null, "sentinel left in html")
+        assertEquals(0, match!!.groupValues[1].toInt())
+    }
+
+    @Test
+    fun `extractTables is a no-op without a table`() {
+        val html = "<p>Just text.</p>"
+        val (out, models) = HtmlUtils.extractTables(html)
+        assertEquals(html, out)
+        assertTrue(models.isEmpty())
+    }
+
+    @Test
+    fun `extractTables honors br and p as line breaks inside a cell`() {
+        val html = "<table><tr><td>Line1<br>Line2</td><td><p>A</p><p>B</p></td></tr></table>"
+        val (_, models) = HtmlUtils.extractTables(html)
+        assertEquals(listOf("Line1\nLine2", "A\nB"), models[0].rows[0])
+    }
+
+    @Test
+    fun `extractTables collapses inner whitespace but keeps intended breaks`() {
+        val html = "<table><tr><td>  big   gap <br>  next  </td></tr></table>"
+        val (_, models) = HtmlUtils.extractTables(html)
+        assertEquals(listOf("big gap\nnext"), models[0].rows[0])
+    }
+
+    @Test
+    fun `extractTables indexes multiple tables in order`() {
+        val html = "<table><tr><td>A</td></tr></table><p>mid</p><table><tr><td>B</td></tr></table>"
+        val (out, models) = HtmlUtils.extractTables(html)
+        assertEquals(2, models.size)
+        assertEquals(listOf("A"), models[0].rows[0])
+        assertEquals(listOf("B"), models[1].rows[0])
+        val indices = HtmlUtils.tableSentinelRegex.findAll(out).map { it.groupValues[1].toInt() }.toList()
+        assertEquals(listOf(0, 1), indices)
+    }
 }
