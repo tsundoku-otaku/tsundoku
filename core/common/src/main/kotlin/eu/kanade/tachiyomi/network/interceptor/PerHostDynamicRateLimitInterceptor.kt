@@ -104,7 +104,13 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
             if (call.isCanceled()) throw IOException("Canceled")
             val chunk = minOf(remaining, POLL_INTERVAL_MILLIS)
             val start = System.nanoTime()
-            Thread.sleep(chunk)
+            try {
+                Thread.sleep(chunk)
+            } catch (e: InterruptedException) {
+                // OkHttp expects interceptor failures as IOException; keep the interrupt flag set.
+                Thread.currentThread().interrupt()
+                throw IOException("Interrupted while waiting for rate limit", e)
+            }
             remaining -= maxOf((System.nanoTime() - start) / 1_000_000, 1L)
         }
     }
