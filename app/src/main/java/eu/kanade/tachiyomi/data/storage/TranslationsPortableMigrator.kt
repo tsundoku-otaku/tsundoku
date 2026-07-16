@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.data.storage
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.repository.ChapterRepository
@@ -21,14 +23,14 @@ object TranslationsPortableMigrator {
     private val flatFileRegex = Regex("^(\\d+)_(.+?)\\.html(\\.tmp)?$")
     private val metaRegex = Regex("^<!-- tsundoku-meta:(.+?):(-?\\d+)(?::[a-f0-9]{64})? -->\\n?")
 
-    suspend fun run(): Int {
+    suspend fun run(): Int = withContext(Dispatchers.IO) {
         val storageManager = Injekt.get<StorageManager>()
         val translatedChapterRepository = Injekt.get<TranslatedChapterRepository>()
         val chapterRepository = Injekt.get<ChapterRepository>()
         val mangaRepository = Injekt.get<MangaRepository>()
         val sourceManager = Injekt.get<SourceManager>()
 
-        val translationsDir = storageManager.getTranslationsDirectory() ?: return 0
+        val translationsDir = storageManager.getTranslationsDirectory() ?: return@withContext 0
 
         val flatFiles = translationsDir.listFiles()
             ?.filter { !it.isDirectory && flatFileRegex.matches(it.name.orEmpty()) }
@@ -48,7 +50,7 @@ object TranslationsPortableMigrator {
                     file.delete()
                     continue
                 }
-                val manga = mangaRepository.getMangaById(chapter.mangaId)
+                val manga = mangaRepository.getMangaByIdOrNull(chapter.mangaId) ?: continue
                 val locator = TranslationLocator(
                     sourceName = sourceManager.getOrStub(manga.source).toString(),
                     novelTitle = manga.title,
@@ -83,6 +85,6 @@ object TranslationsPortableMigrator {
                 logcat(LogPriority.WARN, e) { "Failed to migrate translation file $name" }
             }
         }
-        return migrated
+        migrated
     }
 }
