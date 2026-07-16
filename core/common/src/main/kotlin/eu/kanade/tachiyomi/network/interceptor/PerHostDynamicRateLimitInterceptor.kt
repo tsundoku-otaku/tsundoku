@@ -52,31 +52,36 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
 
         if (spec.delayMillis > 0) {
             val lock = hostLocks.computeIfAbsent(host) { Any() }
-            synchronized(lock) {
-                val window = dispatchWindows.computeIfAbsent(host) { ArrayDeque() }
-                var now = SystemClock.elapsedRealtime()
+            // Compute the required wait under the lock, then sleep with the lock released so other
+            // threads can pace against their own window instead of blocking on the monitor. A slot
+            // is only ever taken under the lock while the window has room, so the permit bound holds
+            // even though several threads may be waiting concurrently.
+            while (true) {
+                var wait = 0L
+                synchronized(lock) {
+                    val window = dispatchWindows.computeIfAbsent(host) { ArrayDeque() }
+                    val now = SystemClock.elapsedRealtime()
 
-                // Drop dispatches that have aged out of the window.
-                while (window.isNotEmpty() && now - window.peekFirst() >= spec.delayMillis) {
-                    window.removeFirst()
-                }
-
-                if (window.size >= spec.permits) {
-                    val jitter = if (spec.jitterMillis > 0) Random.nextLong(0, spec.jitterMillis) else 0L
-                    val wait = spec.delayMillis - (now - window.peekFirst()) + jitter
-                    if (wait > 0) {
-                        RateLimitWaitTracker.startWaiting(host, now + wait)
-                        try {
-                            waitCancellably(wait, call)
-                        } finally {
-                            RateLimitWaitTracker.stopWaiting(host)
-                        }
+                    // Drop dispatches that have aged out of the window.
+                    while (window.isNotEmpty() && now - window.peekFirst() >= spec.delayMillis) {
+                        window.removeFirst()
                     }
-                    window.removeFirst()
-                    now = SystemClock.elapsedRealtime()
-                }
 
-                window.addLast(now)
+                    if (window.size < spec.permits) {
+                        window.addLast(now)
+                    } else {
+                        val jitter = if (spec.jitterMillis > 0) Random.nextLong(0, spec.jitterMillis) else 0L
+                        wait = spec.delayMillis - (now - window.peekFirst()) + jitter
+                    }
+                }
+                if (wait <= 0) break
+
+                RateLimitWaitTracker.startWaiting(host, SystemClock.elapsedRealtime() + wait)
+                try {
+                    waitCancellably(wait, call)
+                } finally {
+                    RateLimitWaitTracker.stopWaiting(host)
+                }
             }
         }
 
