@@ -70,7 +70,10 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
                     if (window.size < spec.permits) {
                         window.addLast(now)
                     } else {
-                        val jitter = if (spec.jitterMillis > 0) Random.nextLong(0, spec.jitterMillis) else 0L
+                        // Clamp jitter to the delay so a large/misconfigured jitterMillis can't
+                        // balloon a single wait to several multiples of delayMillis.
+                        val jitterBound = minOf(spec.jitterMillis, spec.delayMillis)
+                        val jitter = if (jitterBound > 0) Random.nextLong(0, jitterBound) else 0L
                         wait = spec.delayMillis - (now - window.peekFirst()) + jitter
                     }
                 }
