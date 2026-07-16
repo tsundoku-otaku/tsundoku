@@ -41,6 +41,7 @@ import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.translation.TranslationJob
 import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
@@ -150,6 +151,8 @@ class MangaScreenModel(
 
     val source: Source?
         get() = successState?.source
+
+    private val quoteManager by lazy { QuoteManager(Injekt.get<android.app.Application>()) }
 
     private val isFavorited: Boolean
         get() = manga?.favorite ?: false
@@ -617,10 +620,21 @@ class MangaScreenModel(
      */
     fun swapMainTitle(newMainTitle: String, updatedAltTitles: List<String>) {
         screenModelScope.launchIO {
+            val current = mangaRepository.getMangaByIdOrNull(mangaId)
+            val oldTitle = current?.title
             updateManga.awaitUpdateTitle(mangaId, newMainTitle)
             updateManga.awaitUpdateAlternativeTitles(mangaId, updatedAltTitles)
             getLibraryManga.applyMangaDetailUpdate(mangaId) {
                 it.copy(title = newMainTitle, alternativeTitles = updatedAltTitles)
+            }
+            // Quotes/translations are stored under directories keyed on the title, so move them
+            // to follow the rename or they'd be orphaned under the old title.
+            if (current != null && oldTitle != null && oldTitle != newMainTitle) {
+                val sourceName = sourceManager.getOrStub(current.source).toString()
+                runCatching { quoteManager.renameNovel(sourceName, oldTitle, newMainTitle) }
+                    .onFailure { logcat(LogPriority.ERROR, it) { "Failed to move quotes on title swap" } }
+                runCatching { translatedChapterRepository.renameNovel(sourceName, oldTitle, newMainTitle) }
+                    .onFailure { logcat(LogPriority.ERROR, it) { "Failed to move translations on title swap" } }
             }
         }
     }

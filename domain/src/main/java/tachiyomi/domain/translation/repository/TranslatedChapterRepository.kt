@@ -69,6 +69,11 @@ interface TranslatedChapterRepository {
     suspend fun deleteAllForManga(sourceName: String, novelTitle: String)
 
     /**
+     * Move a novel's translations when its title changes (translations are keyed by title on disk).
+     */
+    suspend fun renameNovel(sourceName: String, oldTitle: String, newTitle: String)
+
+    /**
      * Delete all translations.
      */
     suspend fun deleteAll()

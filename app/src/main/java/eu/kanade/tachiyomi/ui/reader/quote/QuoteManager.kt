@@ -54,6 +54,15 @@ class QuoteManager(private val context: Context) {
         return findSourceDir(sourceName)?.findFile(getNovelFileName(novelTitle))
     }
 
+    // If a save crashed after deleting the destination but before renaming its tmp in, the
+    // just-written data survives only as "<name>.json.tmp". Promote it so no committed save is lost.
+    private fun recoverPendingQuotes(sourceName: String, novelTitle: String): UniFile? {
+        val dir = findSourceDir(sourceName) ?: return null
+        val fileName = getNovelFileName(novelTitle)
+        val tmp = dir.findFile("$fileName.tmp")?.takeIf { it.exists() } ?: return null
+        return if (tmp.renameTo(fileName)) dir.findFile(fileName)?.takeIf { it.exists() } else null
+    }
+
     /**
      * Save quotes for a novel
      */
@@ -79,7 +88,8 @@ class QuoteManager(private val context: Context) {
             }
             getQuotesFile(sourceName, novelTitle)?.takeIf { it.exists() }?.delete()
             if (!tmp.renameTo(fileName)) {
-                tmp.delete()
+                // Leave the tmp in place; loadQuotes recovers it, so a failed rename
+                // (or a crash before this point) doesn't lose the just-written data.
                 logcat(LogPriority.ERROR) { "Failed to finalize quotes file for $sourceName/$novelTitle" }
                 return false
             }
@@ -99,8 +109,9 @@ class QuoteManager(private val context: Context) {
      */
     fun loadQuotes(sourceName: String, novelTitle: String): List<Quote> {
         return try {
-            val file = getQuotesFile(sourceName, novelTitle)
-            if (file == null || !file.exists()) {
+            val file = getQuotesFile(sourceName, novelTitle)?.takeIf { it.exists() }
+                ?: recoverPendingQuotes(sourceName, novelTitle)
+            if (file == null) {
                 emptyList()
             } else {
                 val json = file.openInputStream().use { inputStream ->
@@ -177,6 +188,21 @@ class QuoteManager(private val context: Context) {
     fun reorderQuotes(sourceName: String, novelTitle: String, quotes: List<Quote>) {
         saveQuotes(sourceName, novelTitle, quotes)
         logcat(LogPriority.DEBUG) { "Quotes reordered for $sourceName/$novelTitle: ${quotes.size} quotes" }
+    }
+
+    /**
+     * Move a novel's quotes file when its title changes (quotes are keyed by title on disk).
+     */
+    fun renameNovel(sourceName: String, oldTitle: String, newTitle: String): Boolean {
+        val dir = findSourceDir(sourceName) ?: return true
+        val oldName = getNovelFileName(oldTitle)
+        val newName = getNovelFileName(newTitle)
+        if (oldName == newName) return true
+        val file = dir.findFile(oldName)?.takeIf { it.exists() } ?: return true
+        dir.findFile(newName)?.takeIf { it.exists() }?.delete()
+        return file.renameTo(newName).also {
+            if (!it) logcat(LogPriority.ERROR) { "Failed to rename quotes $oldName -> $newName" }
+        }
     }
 }
 

@@ -217,9 +217,20 @@ class TranslatedChapterRepositoryImpl(
         locator: TranslationLocator,
         targetLanguage: String,
     ): TranslatedChapter? = withContext(Dispatchers.IO) {
-        val file = findLangDir(locator, targetLanguage)?.findFile(fileName(locator)) ?: return@withContext null
+        val langDir = findLangDir(locator, targetLanguage) ?: return@withContext null
+        val name = fileName(locator)
+        val file = langDir.findFile(name)?.takeIf { it.exists() }
+            ?: recoverPendingTranslation(langDir, name)
+            ?: return@withContext null
         val meta = parseUniFile(file) ?: return@withContext null
         toTranslatedChapter(meta, targetLanguage)
+    }
+
+    // If upsertTranslation crashed after deleting the destination but before renaming its scratch
+    // in, the data survives only as "<name>.saving". Promote it so no committed write is lost.
+    private fun recoverPendingTranslation(langDir: UniFile, name: String): UniFile? {
+        val scratch = langDir.findFile("$name.saving")?.takeIf { it.exists() } ?: return null
+        return if (scratch.renameTo(name)) langDir.findFile(name)?.takeIf { it.exists() } else null
     }
 
     override suspend fun getAllTranslationsForChapter(locator: TranslationLocator): List<TranslatedChapter> =
@@ -281,7 +292,8 @@ class TranslatedChapterRepositoryImpl(
 
             dir.findFile(name)?.delete()
             if (!scratch.renameTo(name)) {
-                scratch.delete()
+                // Leave the scratch; getTranslatedChapter recovers it, so a failed rename
+                // (or a crash before this point) doesn't lose the just-written translation.
                 throw IllegalStateException("Failed to finalize translation file: $name")
             }
 
@@ -361,6 +373,24 @@ class TranslatedChapterRepositoryImpl(
         findNovelDir(sourceName, novelTitle)?.let { deleteRecursive(it) }
         Unit
     }
+
+    override suspend fun renameNovel(sourceName: String, oldTitle: String, newTitle: String) =
+        withContext(Dispatchers.IO) {
+            val oldName = novelDirName(oldTitle)
+            val newName = novelDirName(newTitle)
+            if (oldName == newName) return@withContext
+            val srcDir = translationsDir.findFile(sourceDirName(sourceName)) ?: return@withContext
+            val oldDir = srcDir.findFile(oldName)?.takeIf { it.isDirectory && it.exists() } ?: return@withContext
+            if (srcDir.findFile(newName) != null) {
+                // Destination already exists; renaming would clobber it. Leave both in place.
+                logcat(LogPriority.WARN) { "Translation dir '$newName' already exists; not renaming '$oldName'" }
+                return@withContext
+            }
+            if (!oldDir.renameTo(newName)) {
+                logcat(LogPriority.ERROR) { "Failed to rename translation dir '$oldName' -> '$newName'" }
+            }
+            Unit
+        }
 
     override suspend fun deleteAll() = withContext(Dispatchers.IO) {
         translationsDir.listFiles()?.forEach { deleteRecursive(it) }
