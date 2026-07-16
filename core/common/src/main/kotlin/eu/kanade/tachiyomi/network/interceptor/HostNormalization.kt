@@ -6,4 +6,4 @@ package eu.kanade.tachiyomi.network.interceptor
  * land on aren't always consistent about the "www." prefix, and treating them as distinct hosts
  * would split traffic across two untracked windows instead of pacing it together.
  */
-fun String.normalizedRateLimitHost(): String = removePrefix("www.")
+fun String.normalizedRateLimitHost(): String = lowercase().removePrefix("www.")
