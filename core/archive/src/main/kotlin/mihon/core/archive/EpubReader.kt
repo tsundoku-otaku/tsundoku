@@ -698,11 +698,13 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
          * qualify every OPF element with an auto-generated prefix instead of the usual unprefixed
          * default-namespace form. Jsoup's XML parser keeps the prefix as part of the literal tag name,
          * so plain-tag CSS selectors like "manifest > item" would otherwise match nothing.
+         *
+         * "dc:" is kept because [fillMetadata] queries Dublin Core metadata by prefixed tag name.
          */
         fun stripNamespacePrefixes(doc: Document): Document {
             doc.allElements.forEach { element ->
                 val colonIndex = element.tagName().indexOf(':')
-                if (colonIndex > 0) {
+                if (colonIndex > 0 && !element.tagName().startsWith("dc:", ignoreCase = true)) {
                     element.tagName(element.tagName().substring(colonIndex + 1))
                 }
             }

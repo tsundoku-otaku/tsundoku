@@ -69,7 +69,7 @@ class ParseEpubPreview {
                 val chapter = SChapter.create()
                 epubReader.fillMetadata(manga, chapter)
 
-                val metadataTitle = manga.title.takeIf { it.isNotBlank() }
+                val metadataTitle = runCatching { manga.title }.getOrNull()?.takeIf { it.isNotBlank() }
                 val title = metadataTitle
                     ?: chapter.name.takeIf { it.isNotBlank() }
                     ?: fileName.removeSuffix(".epub")

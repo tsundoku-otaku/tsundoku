@@ -16,6 +16,9 @@ fun EpubReader.fillMetadata(manga: SManga, chapter: SChapter) {
     val doc = getPackageDocument(ref)
     var title = doc.getElementsByTag("dc:title").firstOrNull()?.text()
     if (title.isNullOrBlank()) {
+        title = doc.select("metadata > title").firstOrNull()?.text()
+    }
+    if (title.isNullOrBlank()) {
         title = doc.select("docTitle").firstOrNull()?.text()
     }
 
@@ -23,16 +26,18 @@ fun EpubReader.fillMetadata(manga: SManga, chapter: SChapter) {
         title = doc.select("meta[name=title]").firstOrNull()?.attr("content")
     }
     val publisher = doc.getElementsByTag("dc:publisher").firstOrNull()
+        ?: doc.select("metadata > publisher").firstOrNull()
     val creator = doc.getElementsByTag("dc:creator").firstOrNull()
+        ?: doc.select("metadata > creator").firstOrNull()
     var description = doc.getElementsByTag("dc:description").firstOrNull()?.text()
     if (description.isNullOrBlank()) {
-        description = doc.select("dc\\:description").firstOrNull()?.text()
+        description = doc.select("dc\\:description, metadata > description").firstOrNull()?.text()
     }
     val normalizedDescription = normalizeHtmlDescription(description)
 
     val subjects = doc.getElementsByTag("dc:subject").map { it.text() }
     val mappedSubjects = if (subjects.isEmpty()) {
-        doc.select("dc\\:subject").map { it.text() }
+        doc.select("dc\\:subject, metadata > subject").map { it.text() }
     } else {
         subjects
     }
@@ -47,6 +52,7 @@ fun EpubReader.fillMetadata(manga: SManga, chapter: SChapter) {
     }
 
     var date = doc.getElementsByTag("dc:date").firstOrNull()
+        ?: doc.select("metadata > date").firstOrNull()
     if (date == null) {
         date = doc.select("meta[property=dcterms:modified]").firstOrNull()
     }
