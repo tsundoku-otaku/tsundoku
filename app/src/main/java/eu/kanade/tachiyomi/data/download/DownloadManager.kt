@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.download
 
 import android.content.Context
+import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.download.model.Download
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
@@ -430,6 +431,51 @@ class DownloadManager(
         } else {
             logcat(LogPriority.ERROR) { "Failed to rename manga download folder: ${oldFolder.name}" }
         }
+    }
+
+    /**
+     * Moves a manga's downloads from one source folder to another (e.g. on migration). SAF renameTo
+     * only renames within the same parent, so this copies the tree then deletes the original. Denies
+     * the move if the destination already holds downloads.
+     *
+     * @return true if the move succeeded or there was nothing to move.
+     */
+    suspend fun moveMangaToNewSource(manga: Manga, oldSource: Source, newSource: Source): Boolean {
+        if (oldSource.id == newSource.id) return true
+        val oldFolder = provider.findMangaDir(manga.title, oldSource) ?: return true
+
+        val existingNew = provider.findMangaDir(manga.title, newSource)
+        if (existingNew != null && !existingNew.listFiles().isNullOrEmpty()) {
+            logcat(LogPriority.WARN) { "Downloads already exist for ${manga.title} under new source; not moving" }
+            return false
+        }
+
+        downloader.removeFromQueue(manga)
+        val destFolder = provider.getMangaDir(manga.title, newSource).getOrElse {
+            logcat(LogPriority.ERROR, it) { "Failed to create destination download folder for ${manga.title}" }
+            return false
+        }
+        copyContentsRecursive(oldFolder, destFolder)
+        deleteRecursive(oldFolder)
+        cache.invalidateCache()
+        return true
+    }
+
+    private fun copyContentsRecursive(src: UniFile, dest: UniFile) {
+        src.listFiles()?.forEach { child ->
+            val name = child.name ?: return@forEach
+            if (child.isDirectory) {
+                dest.createDirectory(name)?.let { copyContentsRecursive(child, it) }
+            } else {
+                val out = dest.createFile(name) ?: return@forEach
+                child.openInputStream().use { input -> out.openOutputStream().use { input.copyTo(it) } }
+            }
+        }
+    }
+
+    private fun deleteRecursive(file: UniFile) {
+        if (file.isDirectory) file.listFiles()?.forEach { deleteRecursive(it) }
+        file.delete()
     }
 
     /**

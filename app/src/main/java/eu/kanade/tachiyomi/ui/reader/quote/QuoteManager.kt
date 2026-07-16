@@ -199,9 +199,39 @@ class QuoteManager(private val context: Context) {
         val newName = getNovelFileName(newTitle)
         if (oldName == newName) return true
         val file = dir.findFile(oldName)?.takeIf { it.exists() } ?: return true
-        dir.findFile(newName)?.takeIf { it.exists() }?.delete()
+        // Don't clobber existing quotes at the destination; deny rather than overwrite.
+        if (dir.findFile(newName)?.exists() == true) {
+            logcat(LogPriority.WARN) { "Quotes '$newName' already exists; not overwriting on rename" }
+            return false
+        }
         return file.renameTo(newName).also {
             if (!it) logcat(LogPriority.ERROR) { "Failed to rename quotes $oldName -> $newName" }
+        }
+    }
+
+    /**
+     * Move a novel's quotes to a different source and/or title (e.g. on migration).
+     * Denies the move if a quotes file already exists at the destination.
+     */
+    fun moveNovel(oldSourceName: String, oldTitle: String, newSourceName: String, newTitle: String): Boolean {
+        if (getSourceDirName(oldSourceName) == getSourceDirName(newSourceName)) {
+            return renameNovel(oldSourceName, oldTitle, newTitle)
+        }
+        val oldFile = getQuotesFile(oldSourceName, oldTitle)?.takeIf { it.exists() } ?: return true
+        val newDir = getOrCreateSourceDir(newSourceName) ?: return false
+        val newName = getNovelFileName(newTitle)
+        if (newDir.findFile(newName)?.exists() == true) {
+            logcat(LogPriority.WARN) { "Quotes already exist at destination for $newSourceName/$newTitle; not moving" }
+            return false
+        }
+        return try {
+            val dest = newDir.createFile(newName) ?: return false
+            oldFile.openInputStream().use { input -> dest.openOutputStream().use { input.copyTo(it) } }
+            oldFile.delete()
+            true
+        } catch (e: IOException) {
+            logcat(LogPriority.ERROR) { "Failed to move quotes for $oldTitle: ${e.message}" }
+            false
         }
     }
 }

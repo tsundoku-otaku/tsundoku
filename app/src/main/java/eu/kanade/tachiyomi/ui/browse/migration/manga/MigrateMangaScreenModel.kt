@@ -40,6 +40,11 @@ class MigrateMangaScreenModel(
     private val sourceTrackerDispatcher: SourceTrackerDispatcher = Injekt.get(),
     private val trackPreferences: TrackPreferences = Injekt.get(),
     private val getManga: tachiyomi.domain.manga.interactor.GetManga = Injekt.get(),
+    private val downloadManager: eu.kanade.tachiyomi.data.download.DownloadManager = Injekt.get(),
+    private val translatedChapterRepository: tachiyomi.domain.translation.repository.TranslatedChapterRepository =
+        Injekt.get(),
+    private val quoteManager: eu.kanade.tachiyomi.ui.reader.quote.QuoteManager =
+        eu.kanade.tachiyomi.ui.reader.quote.QuoteManager(Injekt.get<android.app.Application>()),
 ) : StateScreenModel<MigrateMangaScreenModel.State>(State()) {
 
     private val _events: Channel<MigrationMangaEvent> = Channel()
@@ -139,8 +144,31 @@ class MigrateMangaScreenModel(
                 val migratedIds = mutableListOf<Long>()
                 for ((manga, newUrl) in quickMigrateTargets(selectedManga, targetFavoriteUrls)) {
                     try {
+                        val oldSource = sourceManager.getOrStub(manga.source)
+                        val newSource = sourceManager.getOrStub(targetSourceId)
                         updateManga.await(MangaUpdate(id = manga.id, source = targetSourceId, url = newUrl))
                         migratedIds.add(manga.id)
+                        // Downloads and translations are keyed by source, so relocate them to the new
+                        // source or they'd be orphaned. Only preserves data for same-URL migrations
+                        // (e.g. JS->KT); different-site moves change chapter URLs and won't line up.
+                        runCatching { downloadManager.moveMangaToNewSource(manga, oldSource, newSource) }
+                            .onFailure { logcat(LogPriority.ERROR, it) { "Failed to move downloads on quick migrate" } }
+                        runCatching {
+                            translatedChapterRepository.moveNovel(
+                                oldSource.toString(),
+                                manga.title,
+                                newSource.toString(),
+                                manga.title,
+                            )
+                        }.onFailure { logcat(LogPriority.ERROR, it) { "Failed to move translations on quick migrate" } }
+                        runCatching {
+                            quoteManager.moveNovel(
+                                oldSource.toString(),
+                                manga.title,
+                                newSource.toString(),
+                                manga.title,
+                            )
+                        }.onFailure { logcat(LogPriority.ERROR, it) { "Failed to move quotes on quick migrate" } }
                     } catch (_: Exception) {
                         // Skip entries that fail to update; the rest still migrate.
                     }

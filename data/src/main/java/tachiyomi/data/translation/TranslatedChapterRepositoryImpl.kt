@@ -381,16 +381,72 @@ class TranslatedChapterRepositoryImpl(
             if (oldName == newName) return@withContext
             val srcDir = translationsDir.findFile(sourceDirName(sourceName)) ?: return@withContext
             val oldDir = srcDir.findFile(oldName)?.takeIf { it.isDirectory && it.exists() } ?: return@withContext
-            if (srcDir.findFile(newName) != null) {
-                // Destination already exists; renaming would clobber it. Leave both in place.
-                logcat(LogPriority.WARN) { "Translation dir '$newName' already exists; not renaming '$oldName'" }
-                return@withContext
+            val existing = srcDir.findFile(newName)
+            if (existing != null) {
+                // Deny if a non-empty dir already holds translations; only reclaim an empty one.
+                if (!existing.isDirectory || !existing.listFiles().isNullOrEmpty()) {
+                    logcat(LogPriority.WARN) { "Translation dir '$newName' exists and is not empty; not renaming '$oldName'" }
+                    return@withContext
+                }
+                existing.delete()
             }
             if (!oldDir.renameTo(newName)) {
                 logcat(LogPriority.ERROR) { "Failed to rename translation dir '$oldName' -> '$newName'" }
             }
             Unit
         }
+
+    override suspend fun moveNovel(
+        oldSourceName: String,
+        oldTitle: String,
+        newSourceName: String,
+        newTitle: String,
+    ) = withContext(Dispatchers.IO) {
+        val oldSrcName = sourceDirName(oldSourceName)
+        val newSrcName = sourceDirName(newSourceName)
+        val oldNovel = novelDirName(oldTitle)
+        val newNovel = novelDirName(newTitle)
+        if (oldSrcName == newSrcName && oldNovel == newNovel) return@withContext
+
+        val oldDir = translationsDir.findFile(oldSrcName)?.findFile(oldNovel)
+            ?.takeIf { it.isDirectory && it.exists() } ?: return@withContext
+        val newSrcDir = translationsDir.findChildDir(newSrcName) ?: return@withContext
+
+        val existing = newSrcDir.findFile(newNovel)
+        if (existing != null) {
+            if (!existing.isDirectory || !existing.listFiles().isNullOrEmpty()) {
+                logcat(LogPriority.WARN) { "Translation dir '$newSrcName/$newNovel' exists and is not empty; not moving" }
+                return@withContext
+            }
+            existing.delete()
+        }
+
+        if (oldSrcName == newSrcName) {
+            // Same parent: a rename suffices (no cross-directory copy needed).
+            if (!oldDir.renameTo(newNovel)) {
+                logcat(LogPriority.ERROR) { "Failed to rename translation dir '$oldNovel' -> '$newNovel'" }
+            }
+            return@withContext
+        }
+
+        val destDir = newSrcDir.createDirectory(newNovel) ?: return@withContext
+        copyContentsRecursive(oldDir, destDir)
+        deleteRecursive(oldDir)
+        Unit
+    }
+
+    // SAF renameTo only renames within the same parent, so a cross-source move is copy-then-delete.
+    private fun copyContentsRecursive(src: UniFile, dest: UniFile) {
+        src.listFiles()?.forEach { child ->
+            val name = child.name ?: return@forEach
+            if (child.isDirectory) {
+                dest.findChildDir(name)?.let { copyContentsRecursive(child, it) }
+            } else {
+                val out = dest.createFile(name) ?: return@forEach
+                child.openInputStream().use { input -> out.openOutputStream().use { input.copyTo(it) } }
+            }
+        }
+    }
 
     override suspend fun deleteAll() = withContext(Dispatchers.IO) {
         translationsDir.listFiles()?.forEach { deleteRecursive(it) }

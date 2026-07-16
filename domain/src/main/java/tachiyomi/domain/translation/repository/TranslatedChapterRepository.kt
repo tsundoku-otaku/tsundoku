@@ -74,6 +74,12 @@ interface TranslatedChapterRepository {
     suspend fun renameNovel(sourceName: String, oldTitle: String, newTitle: String)
 
     /**
+     * Move a novel's translations to a different source and/or title (e.g. on migration).
+     * Denies the move if a non-empty destination already exists.
+     */
+    suspend fun moveNovel(oldSourceName: String, oldTitle: String, newSourceName: String, newTitle: String)
+
+    /**
      * Delete all translations.
      */
     suspend fun deleteAll()
