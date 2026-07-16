@@ -1,12 +1,5 @@
 package tachiyomi.source.local
 
-/**
- * Rewrites relative resource references in local novel chapter markup to the reader image scheme
- * ([SCHEME]) so the WebView/TextView loaders can stream the bytes from the source's filesystem.
- *
- * Covers any resource-bearing tag/attribute (img, source, video, audio, track, embed, object,
- * image, link, script), srcset candidate lists, CSS url(), and Markdown image syntax.
- */
 internal object NovelAssetRewriter {
 
     const val SCHEME = "tsundoku-novel-image://"
@@ -80,21 +73,23 @@ internal object NovelAssetRewriter {
         return !ABSOLUTE_SCHEME_REGEX.containsMatchIn(v)
     }
 
-    // Loose-file / directory chapters: keep the path relative to the chapter document's directory.
     fun relativeScheme(ref: String): String? {
         if (!isRelativeRef(ref)) return null
-        val path = ref.trim().substringBefore('#').removePrefix("./")
+        val path = decodePath(ref.trim().substringBefore('#')).removePrefix("./")
         if (path.isBlank()) return null
         return "$SCHEME${java.net.URLEncoder.encode(path, "UTF-8")}"
     }
 
-    // Archive chapters: resolve to an absolute in-archive path (getInputStream needs it).
     fun archiveScheme(baseDir: String, ref: String): String? {
         if (!isRelativeRef(ref)) return null
-        val path = resolveArchivePath(baseDir, ref.trim().substringBefore('#'))
+        val path = resolveArchivePath(baseDir, decodePath(ref.trim().substringBefore('#')))
         if (path.isBlank()) return null
         return "$SCHEME${java.net.URLEncoder.encode(path, "UTF-8")}"
     }
+
+    // Saved web pages write pre-encoded refs; decode before re-encoding so "%20" doesn't become "%2520".
+    private fun decodePath(path: String): String =
+        runCatching { java.net.URLDecoder.decode(path, "UTF-8") }.getOrDefault(path)
 
     fun resolveArchivePath(baseDir: String, ref: String): String {
         val stack = ArrayDeque<String>()

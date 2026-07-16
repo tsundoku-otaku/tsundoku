@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.net.URLDecoder
 import java.net.URLEncoder
 
 class NovelAssetRewriterTest {
@@ -89,6 +90,16 @@ class NovelAssetRewriterTest {
             NovelAssetRewriter.archiveScheme("OEBPS/text", it)
         }
         assertEquals("""<img src="${scheme("OEBPS/img/x.png")}">""", out)
+    }
+
+    @Test
+    fun `pre-encoded refs are decoded before re-encoding`() {
+        // Browser "Save as complete" writes percent-encoded paths with spaces and parens.
+        val html = """<img src="Saved%20Page%20(Complete)_files/x.png">"""
+        val out = NovelAssetRewriter.rewrite(html, "html", NovelAssetRewriter::relativeScheme)
+        // Scheme path must round-trip (via URLDecoder in the interceptor) back to the real on-disk name.
+        val encoded = out.substringAfter(NovelAssetRewriter.SCHEME).substringBefore('"')
+        assertEquals("Saved Page (Complete)_files/x.png", URLDecoder.decode(encoded, "UTF-8"))
     }
 
     @Test

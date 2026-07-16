@@ -503,7 +503,6 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
                     }
                 }
                 chapterFile.isFile -> {
-                    // Loose text/HTML chapter: resolve the asset relative to the file's directory.
                     chapterFile.parentFile?.let { resolveRelativeFile(it, imagePath) }
                         ?.openInputStream()?.readBytes()?.let { java.io.ByteArrayInputStream(it) }
                 }
@@ -595,7 +594,6 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
         }
     }
 
-    // Descends [base] by a slash-separated relative path, honoring "." and "..".
     private fun resolveRelativeFile(base: UniFile, path: String): UniFile? {
         var current: UniFile? = base
         for (segment in path.split('/')) {
