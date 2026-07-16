@@ -58,16 +58,20 @@ class SetReadStatus(
 
         if (read) {
             chaptersToUpdate.groupBy { it.mangaId }.forEach { (mangaId, chapters) ->
-                try {
-                    val manga = mangaRepository.getMangaById(mangaId)
+                val manga = mangaRepository.getMangaByIdOrNull(mangaId)
+                if (manga == null) {
+                    logcat(LogPriority.WARN) { "Skipping translation cleanup: manga $mangaId not found" }
+                } else {
                     val sourceName = sourceManager.getOrStub(manga.source).toString()
                     chapters.forEach { chapter ->
-                        translatedChapterRepository.deleteAllForChapter(
-                            TranslationLocator(sourceName, manga.title, chapter.name, chapter.url),
-                        )
+                        try {
+                            translatedChapterRepository.deleteAllForChapter(
+                                TranslationLocator(sourceName, manga.title, chapter.name, chapter.url),
+                            )
+                        } catch (e: Exception) {
+                            logcat(LogPriority.WARN, e) { "Failed to delete translations for chapter ${chapter.id}" }
+                        }
                     }
-                } catch (e: Exception) {
-                    logcat(LogPriority.WARN, e) { "Failed to delete translations on mark-as-read for manga $mangaId" }
                 }
             }
         }

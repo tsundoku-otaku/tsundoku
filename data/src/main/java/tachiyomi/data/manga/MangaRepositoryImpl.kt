@@ -103,6 +103,8 @@ class MangaRepositoryImpl(
         }.awaitAsOne()
     }
 
+    override suspend fun getMangaByIdOrNull(id: Long): Manga? = getMangasByIds(listOf(id)).firstOrNull()
+
     override suspend fun getMangasByIds(ids: List<Long>): List<Manga> {
         if (ids.isEmpty()) return emptyList()
         return ids.chunked(SQLITE_VARIABLE_LIMIT).flatMap { chunk ->
