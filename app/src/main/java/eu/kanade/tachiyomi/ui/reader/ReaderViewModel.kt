@@ -14,6 +14,7 @@ import eu.kanade.domain.chapter.model.toDbChapter
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
 import eu.kanade.domain.manga.model.readerOrientation
 import eu.kanade.domain.manga.model.readingMode
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
@@ -55,6 +56,7 @@ import eu.kanade.tachiyomi.util.chapter.removeDuplicates
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.source.getChapterUrlOrNull
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import eu.kanade.tachiyomi.util.system.toast
@@ -1051,6 +1053,21 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     fun getSource() = manga?.source?.let { sourceManager.getOrStub(it) }
+
+    fun getMangaUrl(): String? {
+        val manga = manga ?: return null
+        val source = getSource() ?: return null
+
+        return try {
+            when (source) {
+                is HttpSource, is JsSource -> source.getMangaUrlOrNull(manga.toSManga())
+                else -> manga.url.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+            null
+        }
+    }
 
     fun getChapterUrl(): String? {
         val sChapter = getCurrentChapter()?.chapter ?: return null

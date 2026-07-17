@@ -83,6 +83,7 @@ import eu.kanade.presentation.library.DeleteLibraryMangaDialog
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.launch
 import tachiyomi.domain.manga.interactor.DuplicateMatchMode
 import tachiyomi.domain.manga.model.MangaWithChapterCount
@@ -1147,17 +1148,7 @@ private fun DuplicateItem(
                 Spacer(modifier = Modifier.height(2.dp))
                 val source = remember(manga.manga.source) { sourceManager.getOrStub(manga.manga.source) }
                 val fullUrl = remember(manga.manga.url, source) {
-                    if (manga.manga.url.startsWith("http://") || manga.manga.url.startsWith("https://")) {
-                        manga.manga.url
-                    } else if (source is eu.kanade.tachiyomi.source.online.HttpSource) {
-                        try {
-                            source.getMangaUrl(manga.manga.toSManga())
-                        } catch (_: Exception) {
-                            source.baseUrl + manga.manga.url
-                        }
-                    } else {
-                        manga.manga.url
-                    }
+                    source.getMangaUrlOrNull(manga.manga.toSManga()) ?: manga.manga.url
                 }
                 Text(
                     text = fullUrl,
