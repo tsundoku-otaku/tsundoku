@@ -185,6 +185,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var isAutoScrolling = false
     private var autoScrollJob: Job? = null
 
+    // The error page is a fresh document that drops the autoscroll rAF loop; re-arm it once its
+    // onPageFinished lands, since that load bypasses the isLoadingRealChapter re-arm path.
+    private var rearmAutoScrollOnErrorPage = false
+
     private val config = NovelConfig(scope)
     private val navigator get() = config.navigator
 
@@ -665,6 +669,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         }
                         // A full reload replaces window, dropping the autoscroll rAF loop; re-arm it
                         // on the new document so autoscroll survives a non-inf-scroll chapter change.
+                        if (isAutoScrolling) startAutoScroll()
+                    }
+                    if (rearmAutoScrollOnErrorPage) {
+                        rearmAutoScrollOnErrorPage = false
                         if (isAutoScrolling) startAutoScroll()
                     }
                 }
@@ -1538,6 +1546,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             </html>
         """.trimIndent()
 
+        rearmAutoScrollOnErrorPage = isAutoScrolling
         webView.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null)
     }
 
@@ -2358,9 +2367,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         dispatchTtsState()
         // The loadNextChapter TTS branch skips the JS-latch release, so after a threshold hit during
         // playback runtime.loadingNext stays true and scroll-driven appending never re-fires. Clear
-        // it so infinite scroll resumes once TTS is off.
-        isLoadingNext = false
-        setJsLoadingNext()
+        // it so infinite scroll resumes once TTS is off, but not while a real append is in flight:
+        // that append still owns the latch and will release it, and clobbering it here would let a
+        // second scroll launch a duplicate append.
+        if (appendJob?.isActive != true) {
+            isLoadingNext = false
+            setJsLoadingNext()
+        }
         // Don't clear the end-of-novel latch if it's already set: loadNextChapterForTts() calls
         // stopTts() right after appendNextChapterIfAvailable() sets reachedNovelEnd on a genuine
         // "no next chapter" result, and resetting it here would let the next scroll event re-fetch
