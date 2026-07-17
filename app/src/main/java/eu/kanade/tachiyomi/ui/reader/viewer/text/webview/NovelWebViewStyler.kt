@@ -205,16 +205,21 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
-    fun injectScript(buildTsundokuScript: () -> String) {
+    fun injectScript(isAppend: Boolean = false, buildTsundokuScript: () -> String) {
         evaluateJs(buildTsundokuScript())
 
-        val customJs = preferences.novelCustomJs.get()
-        if (customJs.isNotBlank()) evaluateJs(customJs)
+        // Appends re-run only runOnAppend snippets; one-shot code stays on the initial load so it
+        // doesn't fire again on every appended chapter.
+        if (!isAppend) {
+            val customJs = preferences.novelCustomJs.get()
+            if (customJs.isNotBlank()) evaluateJs(customJs)
+        }
 
         val jsSnippetsJson = preferences.novelCustomJsSnippets.get()
         val enabledSnippetsJs = try {
             val snippets = Json.decodeFromString<List<CodeSnippet>>(jsSnippetsJson)
-            snippets.filter { it.enabled }.joinToString("\n") { it.code }
+            snippets.filter { it.enabled && (!isAppend || it.runOnAppend) }
+                .joinToString("\n") { it.code }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Failed to parse JS snippets: ${e.message}" }
             ""
