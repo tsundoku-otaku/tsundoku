@@ -28,10 +28,14 @@ internal class NovelWebViewImageCache(
         if (!url.startsWith(URL_SCHEME_NOVEL_IMAGE)) return null
         val rawPath = URLDecoder.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE), "UTF-8")
 
+        // Only the infinite-scroll append path prefixes the URL with "<chapterId>/". Treat the first
+        // segment as a chapter id only when it is a registered loader, so a relative asset folder that
+        // happens to be all-digits (e.g. "2020/cover.jpg") on the unprefixed initial load isn't
+        // mistaken for a chapter id and dropped.
         val slashIdx = rawPath.indexOf('/')
         val (chapterId, imagePath) = if (slashIdx > 0) {
             val possibleId = rawPath.substring(0, slashIdx).toLongOrNull()
-            if (possibleId != null) {
+            if (possibleId != null && chapterLoaderMap.containsKey(possibleId)) {
                 possibleId to rawPath.substring(slashIdx + 1)
             } else {
                 fallbackChapterId to rawPath

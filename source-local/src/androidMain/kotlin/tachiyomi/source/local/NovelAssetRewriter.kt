@@ -16,6 +16,14 @@ internal object NovelAssetRewriter {
         "url\\(\\s*([\"']?)([^\"')]+)\\1\\s*\\)",
         RegexOption.IGNORE_CASE,
     )
+    private val STYLE_BLOCK_REGEX = Regex(
+        "(<style\\b[^>]*>)(.*?)(</style>)",
+        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+    )
+    private val STYLE_ATTR_REGEX = Regex(
+        "(style\\s*=\\s*)([\"'])(.*?)\\2",
+        RegexOption.IGNORE_CASE,
+    )
     private val MD_IMAGE_REGEX = Regex("""(!\[[^\]]*]\()([^)\s]+)""")
     private val ABSOLUTE_SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:|^//")
 
@@ -42,7 +50,20 @@ internal object NovelAssetRewriter {
                 "$name$eq$quote$newValue$quote"
             }
         }
-        return CSS_URL_REGEX.replace(withTags) { m ->
+        // Scope url() rewriting to actual CSS (<style> blocks and inline style attributes) so a
+        // relative-looking url(...) token inside a <script> body or text node isn't corrupted.
+        val withStyleBlocks = STYLE_BLOCK_REGEX.replace(withTags) { m ->
+            "${m.groupValues[1]}${rewriteCssUrls(m.groupValues[2], toScheme)}${m.groupValues[3]}"
+        }
+        return STYLE_ATTR_REGEX.replace(withStyleBlocks) { m ->
+            val eqAndQuote = m.groupValues[1]
+            val quote = m.groupValues[2]
+            "$eqAndQuote$quote${rewriteCssUrls(m.groupValues[3], toScheme)}$quote"
+        }
+    }
+
+    private fun rewriteCssUrls(css: String, toScheme: (String) -> String?): String {
+        return CSS_URL_REGEX.replace(css) { m ->
             val quote = m.groupValues[1]
             val url = m.groupValues[2]
             "url($quote${toScheme(url) ?: url}$quote)"
@@ -94,8 +115,10 @@ internal object NovelAssetRewriter {
     }
 
     // Saved web pages write pre-encoded refs; decode before re-encoding so "%20" doesn't become "%2520".
+    // URLDecoder is form-decoding and maps "+" to space, but "+" is a literal in a URL path, so
+    // shield it as "%2B" first to keep filenames like "a+b.png" intact.
     private fun decodePath(path: String): String =
-        runCatching { java.net.URLDecoder.decode(path, "UTF-8") }.getOrDefault(path)
+        runCatching { java.net.URLDecoder.decode(path.replace("+", "%2B"), "UTF-8") }.getOrDefault(path)
 
     fun resolveArchivePath(baseDir: String, ref: String): String {
         val stack = ArrayDeque<String>()
