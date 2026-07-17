@@ -146,11 +146,11 @@ class MigrateMangaScreenModel(
                     try {
                         val oldSource = sourceManager.getOrStub(manga.source)
                         val newSource = sourceManager.getOrStub(targetSourceId)
-                        updateManga.await(MangaUpdate(id = manga.id, source = targetSourceId, url = newUrl))
-                        migratedIds.add(manga.id)
-                        // Downloads and translations are keyed by source, so relocate them to the new
-                        // source or they'd be orphaned. Only preserves data for same-URL migrations
-                        // (e.g. JS->KT); different-site moves change chapter URLs and won't line up.
+                        // Relocate source-keyed data (downloads/translations/quotes) BEFORE flipping the
+                        // DB source, so a crash in between can't leave files under the old source name
+                        // while the DB already points at the new one (orphaned data). Only preserves
+                        // data for same-URL migrations (e.g. JS->KT); different-site moves change
+                        // chapter URLs and won't line up.
                         runCatching { downloadManager.moveMangaToNewSource(manga, oldSource, newSource) }
                             .onFailure { logcat(LogPriority.ERROR, it) { "Failed to move downloads on quick migrate" } }
                         runCatching {
@@ -169,6 +169,8 @@ class MigrateMangaScreenModel(
                                 manga.title,
                             )
                         }.onFailure { logcat(LogPriority.ERROR, it) { "Failed to move quotes on quick migrate" } }
+                        updateManga.await(MangaUpdate(id = manga.id, source = targetSourceId, url = newUrl))
+                        migratedIds.add(manga.id)
                     } catch (_: Exception) {
                         // Skip entries that fail to update; the rest still migrate.
                     }

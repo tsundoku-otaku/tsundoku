@@ -70,6 +70,15 @@ class QuoteManager(private val context: Context) {
         val dir = findSourceDir(sourceName) ?: return null
         val fileName = getNovelFileName(novelTitle)
         val tmp = dir.findFile("$fileName.tmp")?.takeIf { it.exists() } ?: return null
+        // Only promote a scratch that parses cleanly; a crash mid-write can leave a truncated tmp
+        // that must not be promoted and served as a complete quote set.
+        val valid = runCatching {
+            tmp.openInputStream().use { jsonFormat.decodeFromString<NovelQuotes>(String(it.readBytes())) }
+        }.isSuccess
+        if (!valid) {
+            tmp.delete()
+            return null
+        }
         return if (tmp.renameTo(fileName)) dir.findFile(fileName)?.takeIf { it.exists() } else null
     }
 
@@ -219,21 +228,22 @@ class QuoteManager(private val context: Context) {
     /**
      * Move a novel's quotes file when its title changes (quotes are keyed by title on disk).
      */
-    fun renameNovel(sourceName: String, oldTitle: String, newTitle: String): Boolean {
-        val dir = findSourceDir(sourceName) ?: return true
-        val oldName = getNovelFileName(oldTitle)
-        val newName = getNovelFileName(newTitle)
-        if (oldName == newName) return true
-        val file = dir.findFile(oldName)?.takeIf { it.exists() } ?: return true
-        // Don't clobber existing quotes at the destination; deny rather than overwrite.
-        if (dir.findFile(newName)?.exists() == true) {
-            logcat(LogPriority.WARN) { "Quotes '$newName' already exists; not overwriting on rename" }
-            return false
+    fun renameNovel(sourceName: String, oldTitle: String, newTitle: String): Boolean =
+        withNovelLock(sourceName, oldTitle) {
+            val dir = findSourceDir(sourceName) ?: return@withNovelLock true
+            val oldName = getNovelFileName(oldTitle)
+            val newName = getNovelFileName(newTitle)
+            if (oldName == newName) return@withNovelLock true
+            val file = dir.findFile(oldName)?.takeIf { it.exists() } ?: return@withNovelLock true
+            // Don't clobber existing quotes at the destination; deny rather than overwrite.
+            if (dir.findFile(newName)?.exists() == true) {
+                logcat(LogPriority.WARN) { "Quotes '$newName' already exists; not overwriting on rename" }
+                return@withNovelLock false
+            }
+            file.renameTo(newName).also {
+                if (!it) logcat(LogPriority.ERROR) { "Failed to rename quotes $oldName -> $newName" }
+            }
         }
-        return file.renameTo(newName).also {
-            if (!it) logcat(LogPriority.ERROR) { "Failed to rename quotes $oldName -> $newName" }
-        }
-    }
 
     /**
      * Move a novel's quotes to a different source and/or title (e.g. on migration).
@@ -243,24 +253,26 @@ class QuoteManager(private val context: Context) {
         if (getSourceDirName(oldSourceName) == getSourceDirName(newSourceName)) {
             return renameNovel(oldSourceName, oldTitle, newTitle)
         }
-        val oldFile = getQuotesFile(oldSourceName, oldTitle)?.takeIf { it.exists() } ?: return true
-        val newDir = getOrCreateSourceDir(newSourceName) ?: return false
-        val newName = getNovelFileName(newTitle)
-        if (newDir.findFile(newName)?.exists() == true) {
-            logcat(LogPriority.WARN) { "Quotes already exist at destination for $newSourceName/$newTitle; not moving" }
-            return false
-        }
-        return try {
-            val dest = newDir.createFile(newName) ?: return false
-            oldFile.openInputStream().use { input -> dest.openOutputStream().use { input.copyTo(it) } }
-            oldFile.delete()
-            true
-        } catch (e: IOException) {
-            logcat(LogPriority.ERROR) { "Failed to move quotes for $oldTitle: ${e.message}" }
-            // A partially written destination is worse than none; loadQuotes would parse a
-            // truncated file. Drop it so the source remains the single source of truth.
-            newDir.findFile(newName)?.takeIf { it.exists() }?.delete()
-            false
+        return withNovelLock(oldSourceName, oldTitle) {
+            val oldFile = getQuotesFile(oldSourceName, oldTitle)?.takeIf { it.exists() } ?: return@withNovelLock true
+            val newDir = getOrCreateSourceDir(newSourceName) ?: return@withNovelLock false
+            val newName = getNovelFileName(newTitle)
+            if (newDir.findFile(newName)?.exists() == true) {
+                logcat(LogPriority.WARN) { "Quotes already exist at destination for $newSourceName/$newTitle; not moving" }
+                return@withNovelLock false
+            }
+            try {
+                val dest = newDir.createFile(newName) ?: return@withNovelLock false
+                oldFile.openInputStream().use { input -> dest.openOutputStream().use { input.copyTo(it) } }
+                oldFile.delete()
+                true
+            } catch (e: IOException) {
+                logcat(LogPriority.ERROR) { "Failed to move quotes for $oldTitle: ${e.message}" }
+                // A partially written destination is worse than none; loadQuotes would parse a
+                // truncated file. Drop it so the source remains the single source of truth.
+                newDir.findFile(newName)?.takeIf { it.exists() }?.delete()
+                false
+            }
         }
     }
 

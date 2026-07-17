@@ -109,7 +109,7 @@ class TranslatedChapterRepositoryImpl(
         }
     }
 
-    // ── Path helpers ──────────────────────────────────────────────────
+    // Path helpers
 
     private fun sourceDirName(sourceName: String): String =
         DiskUtil.buildValidFilename(sourceName).ifEmpty { "source" }
@@ -166,7 +166,7 @@ class TranslatedChapterRepositoryImpl(
         file.delete()
     }
 
-    // ── Metadata helpers ──────────────────────────────────────────────
+    // Metadata helpers
 
     private val metaPrefix = "<!-- tsundoku-meta:"
     private val metaSuffix = " -->"
@@ -212,7 +212,7 @@ class TranslatedChapterRepositoryImpl(
             dateTranslated = meta.dateTranslated,
         )
 
-    // ── Read operations ───────────────────────────────────────────────
+    // Read operations
 
     override suspend fun getTranslatedChapter(
         locator: TranslationLocator,
@@ -228,9 +228,16 @@ class TranslatedChapterRepositoryImpl(
     }
 
     // If upsertTranslation crashed after deleting the destination but before renaming its scratch
-    // in, the data survives only as "<name>.saving". Promote it so no committed write is lost.
+    // in, the data survives only as "<name>.saving". Promote it so no committed write is lost, but
+    // only when it holds content: a crash right after createFile leaves an empty/header-only scratch
+    // that must not be promoted and served as a complete translation.
     private fun recoverPendingTranslation(langDir: UniFile, name: String): UniFile? {
         val scratch = langDir.findFile("$name.saving")?.takeIf { it.exists() } ?: return null
+        val meta = parseUniFile(scratch)
+        if (meta == null || meta.content.isBlank()) {
+            scratch.delete()
+            return null
+        }
         return if (scratch.renameTo(name)) langDir.findFile(name)?.takeIf { it.exists() } else null
     }
 
@@ -251,7 +258,11 @@ class TranslatedChapterRepositoryImpl(
 
     override suspend fun hasTranslation(locator: TranslationLocator, targetLanguage: String): Boolean =
         withContext(Dispatchers.IO) {
-            findLangDir(locator, targetLanguage)?.findFile(fileName(locator)) != null
+            val langDir = findLangDir(locator, targetLanguage) ?: return@withContext false
+            val name = fileName(locator)
+            // A recoverable ".saving" scratch counts as translated so a crash before the final rename
+            // doesn't make the badge/skip-translated logic re-translate over the recovered write.
+            langDir.findFile(name) != null || langDir.findFile("$name.saving")?.exists() == true
         }
 
     override suspend fun filterTranslatedChapters(
@@ -263,10 +274,16 @@ class TranslatedChapterRepositoryImpl(
         if (chapters.isEmpty()) return@withContext emptySet()
         val langDir =
             findNovelDir(sourceName, novelTitle)?.findFile(langDirName(targetLanguage)) ?: return@withContext emptySet()
-        val present = langDir.listFiles()
-            ?.mapNotNull { it.name }
-            ?.filterTo(HashSet()) { it.endsWith(".html") && !it.endsWith(".html.tmp") }
-            ?: return@withContext emptySet()
+        val names = langDir.listFiles()?.mapNotNull { it.name } ?: return@withContext emptySet()
+        // Count a recoverable ".saving" scratch as its committed ".html" so a crashed-but-recoverable
+        // write isn't reported as untranslated.
+        val present = HashSet<String>()
+        names.forEach { n ->
+            when {
+                n.endsWith(".html.saving") -> present.add(n.removeSuffix(".saving"))
+                n.endsWith(".html") -> present.add(n)
+            }
+        }
         if (present.isEmpty()) return@withContext emptySet()
         chapters.asSequence()
             .filter { (chapterFileBase(it.name, it.url) + ".html") in present }
@@ -274,7 +291,7 @@ class TranslatedChapterRepositoryImpl(
             .toSet()
     }
 
-    // ── Write operations ──────────────────────────────────────────────
+    // Write operations
 
     override suspend fun upsertTranslation(locator: TranslationLocator, translatedChapter: TranslatedChapter) =
         withContext(Dispatchers.IO) {

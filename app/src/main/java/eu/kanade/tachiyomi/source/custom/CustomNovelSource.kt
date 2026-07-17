@@ -477,6 +477,11 @@ class CustomNovelSource(
     override val supportsLatest: Boolean
         get() = config.latestUrl != null || baseSource?.supportsLatest == true
 
+    // Must match StubSource.toString() so translations/quotes resolve to the same on-disk directory
+    // whether this source is loaded or currently stubbed. Novel sources render as "Name (LANG) (JS)".
+    override fun toString(): String =
+        if (isNovelSource) "$name (${lang.uppercase()}) (JS)" else "$name (${lang.uppercase()})"
+
     override val client = network.cloudflareClient
 
     /**
