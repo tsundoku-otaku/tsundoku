@@ -28,9 +28,41 @@ class NovelAssetRewriterTest {
             <img src="data:image/png;base64,AAAA">
             <img src="tsundoku-novel-image://already">
             <img src="//cdn/x.png">
-            <img src="/root/x.png">
         """.trimIndent()
         assertEquals(html, NovelAssetRewriter.rewrite(html, "html", NovelAssetRewriter::relativeScheme))
+    }
+
+    @Test
+    fun `rewrites root-absolute refs relative to the chapter base`() {
+        // Saved sites emit root-absolute paths (e.g. <img src="/forks/logo.webp">); for a local
+        // novel the site root is the chapter's base dir, so the leading slash is dropped.
+        val out = NovelAssetRewriter.rewrite(
+            """<img src="/forks/logo-mihon.webp">""",
+            "html",
+            NovelAssetRewriter::relativeScheme,
+        )
+        assertEquals("""<img src="${scheme("forks/logo-mihon.webp")}">""", out)
+    }
+
+    @Test
+    fun `archive rewrite resolves root-absolute from archive root`() {
+        val out = NovelAssetRewriter.rewrite("""<img src="/img/x.png">""", "html") {
+            NovelAssetRewriter.archiveScheme("OEBPS/text", it)
+        }
+        assertEquals("""<img src="${scheme("img/x.png")}">""", out)
+    }
+
+    @Test
+    fun `isResolvableRef classification`() {
+        assertTrue(NovelAssetRewriter.isResolvableRef("images/x.png"))
+        assertTrue(NovelAssetRewriter.isResolvableRef("../x.png"))
+        assertTrue(NovelAssetRewriter.isResolvableRef("/root/x"))
+        assertFalse(NovelAssetRewriter.isResolvableRef("http://x/y"))
+        assertFalse(NovelAssetRewriter.isResolvableRef("https://x/y"))
+        assertFalse(NovelAssetRewriter.isResolvableRef("//cdn/x"))
+        assertFalse(NovelAssetRewriter.isResolvableRef("data:x"))
+        assertFalse(NovelAssetRewriter.isResolvableRef("#frag"))
+        assertFalse(NovelAssetRewriter.isResolvableRef(""))
     }
 
     @Test
