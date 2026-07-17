@@ -1060,9 +1060,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         if (!isAppendOrPrepend) {
             contentJob?.cancel()
-            // Cancel any in-flight infinite-scroll append too - it targets the DOM this base load
-            // is about to replace, and would otherwise splice a stale chapter's content onto the
-            // newly loaded one once it resumes.
+            // An in-flight append targets the DOM this base load is about to replace; cancelling it
+            // avoids splicing a stale chapter's content onto the newly loaded one when it resumes.
             appendJob?.cancel()
             // Gate infinite-scroll appends until this base chapter's DOM is committed (onPageFinished
             // flips it back true). Otherwise an early append (JS scroll threshold) is wiped by the

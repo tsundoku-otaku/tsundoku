@@ -280,7 +280,6 @@ object SettingsNovelReaderScreen : SearchableSettings {
             preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
                     value = autoScrollSpeed,
-                    // Pref is half-steps (x2). 2..20 shows as speed 1.0..10.0 in 0.5 increments.
                     valueRange = 2..20,
                     title = stringResource(TDMR.strings.pref_novel_auto_scroll_speed),
                     valueString = "${autoScrollSpeed / 2f}",
