@@ -85,6 +85,7 @@ import eu.kanade.tachiyomi.network.PREF_DOH_QUAD101
 import eu.kanade.tachiyomi.network.PREF_DOH_QUAD9
 import eu.kanade.tachiyomi.network.PREF_DOH_SHECAN
 import eu.kanade.tachiyomi.ui.more.OnboardingScreen
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.CrashLogUtil
 import eu.kanade.tachiyomi.util.system.GLUtil
 import eu.kanade.tachiyomi.util.system.copyToClipboard
@@ -206,6 +207,7 @@ object SettingsAdvancedScreen : SearchableSettings {
             getNetworkGroup(networkPreferences = networkPreferences),
             getLibraryGroup(libraryPreferences = libraryPreferences),
             getReaderGroup(basePreferences = basePreferences),
+            getNovelReaderGroup(),
             getExtensionsGroup(basePreferences = basePreferences),
             getMassImportGroup(novelDownloadPreferences = novelDownloadPreferences),
         )
@@ -227,6 +229,29 @@ object SettingsAdvancedScreen : SearchableSettings {
                     preference = novelDownloadPreferences.massImportSplitByDomain(),
                     title = stringResource(TDMR.strings.pref_mass_import_split_by_domain),
                     subtitle = stringResource(TDMR.strings.pref_mass_import_split_by_domain_summary),
+                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun getNovelReaderGroup(): Preference.PreferenceGroup {
+        val readerPreferences = remember { Injekt.get<ReaderPreferences>() }
+        val devToolsEnabled by readerPreferences.novelWebViewDevTools.collectAsState()
+
+        return Preference.PreferenceGroup(
+            title = stringResource(TDMR.strings.pref_category_novel_webview),
+            preferenceItems = listOf(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.novelWebViewDevTools,
+                    title = stringResource(TDMR.strings.pref_novel_webview_devtools),
+                    subtitle = stringResource(TDMR.strings.pref_novel_webview_devtools_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.novelConsoleErrorToast,
+                    title = stringResource(TDMR.strings.pref_novel_console_error_toast),
+                    subtitle = stringResource(TDMR.strings.pref_novel_console_error_toast_summary),
+                    enabled = devToolsEnabled,
                 ),
             ),
         )

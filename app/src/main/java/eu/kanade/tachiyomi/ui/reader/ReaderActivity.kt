@@ -21,8 +21,11 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.View.LAYER_TYPE_HARDWARE
 import android.view.WindowManager
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -167,6 +170,31 @@ class ReaderActivity : BaseActivity() {
     private var menuToggleToast: Toast? = null
     private var readingModeToast: Toast? = null
     private val displayRefreshHost = DisplayRefreshHost()
+
+    // Registered eagerly (before the viewer exists) so a WebView file chooser has a launcher to call.
+    private var webViewFileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private val webViewFileChooserLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val uris = WebChromeClient.FileChooserParams.parseResult(result.resultCode, result.data)
+        webViewFileChooserCallback?.onReceiveValue(uris)
+        webViewFileChooserCallback = null
+    }
+
+    fun launchWebViewFileChooser(
+        callback: ValueCallback<Array<Uri>>,
+        params: WebChromeClient.FileChooserParams,
+    ): Boolean {
+        webViewFileChooserCallback?.onReceiveValue(null)
+        webViewFileChooserCallback = callback
+        return try {
+            webViewFileChooserLauncher.launch(params.createIntent())
+            true
+        } catch (e: Exception) {
+            webViewFileChooserCallback = null
+            false
+        }
+    }
 
     private val windowInsetsController by lazy { WindowInsetsControllerCompat(window, window.decorView) }
 

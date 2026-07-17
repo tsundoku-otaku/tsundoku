@@ -134,6 +134,22 @@ class NovelWebViewChapterMetaTest {
         )
     }
 
+    @Test
+    fun `toAbsoluteChapterUrl resolves root-relative path against novel origin`() {
+        assertEquals(
+            "https://example.com/dir/img.webp",
+            toAbsoluteChapterUrl("/dir/img.webp", "https://example.com/dir/"),
+        )
+    }
+
+    @Test
+    fun `toAbsoluteChapterUrl resolves document-relative path against novel directory`() {
+        assertEquals(
+            "https://example.com/dir/img.webp",
+            toAbsoluteChapterUrl("img.webp", "https://example.com/dir/"),
+        )
+    }
+
     // â”€â”€ resolveWebViewBaseUrl â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test

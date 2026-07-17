@@ -51,10 +51,29 @@ internal object NovelWebViewDocumentBuilder {
         }
 
         val finalContent = if (input.processed.isPlainText) {
+            // Per-paragraph <p> (textContent-set, never parsed as markup) instead of one <pre>, so
+            // plain text exposes the same block elements the copy/quote paragraph-index counter walks.
+            val paragraphsJsonArray = input.processed.text
+                .split(Regex("\n{2,}"))
+                .filter { it.isNotEmpty() }
+                .joinToString(",", prefix = "[", postfix = "]") { quoteForJson(it) }
             """
-                <pre class="$PLAIN_TEXT_CLASS" $ATTR_DATA_PLAIN_TEXT="1" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; margin: 0;"></pre>
+                <div class="$PLAIN_TEXT_CLASS" $ATTR_DATA_PLAIN_TEXT="1"></div>
                 <script>
-                    document.querySelector('.$PLAIN_TEXT_CLASS').textContent = ${quoteForJson(input.processed.text)};
+                    (function() {
+                        var container = document.querySelector('.$PLAIN_TEXT_CLASS');
+                        var paragraphs = $paragraphsJsonArray;
+                        var frag = document.createDocumentFragment();
+                        for (var i = 0; i < paragraphs.length; i++) {
+                            var p = document.createElement('p');
+                            p.style.whiteSpace = 'pre-wrap';
+                            p.style.wordBreak = 'break-word';
+                            p.style.overflowWrap = 'anywhere';
+                            p.textContent = paragraphs[i];
+                            frag.appendChild(p);
+                        }
+                        container.appendChild(frag);
+                    })();
                 </script>
             """.trimIndent()
         } else {
@@ -104,6 +123,7 @@ internal object NovelWebViewDocumentBuilder {
                     $chapterDividerCss
                     tsundoku-chapter {
                         display: block;
+                        contain: content;
                     }
                     img {
                         max-width: 100%;

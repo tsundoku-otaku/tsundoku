@@ -23,6 +23,10 @@
     var loadThreshold = __LOAD_THRESHOLD__;
     var lastSliderProgress = -1;
     var lastScrollUpdateTime = 0;
+    // Late reflow (images/fonts) triggers scroll anchoring that fires scrollend off a
+    // still-settling docHeight; persistCurrent waits this out before saving.
+    var lastBodyResizeAt = 0;
+    var SETTLE_MS = 400;
 
     runtime.loadingNext = runtime.loadingNext || false;
     runtime.setLoadingNext = function (v) { runtime.loadingNext = !!v; };
@@ -132,17 +136,30 @@
     window.addEventListener('scroll', onScroll, { passive: true });
 
     // computeState() is re-read here so a chapter switch mid-scroll can't persist a stale value.
-    function persistCurrent() {
+    function persistCurrent(retriesLeft) {
+        if (retriesLeft === undefined) retriesLeft = 3;
+        if (retriesLeft > 0 && Date.now() - lastBodyResizeAt < SETTLE_MS) {
+            setTimeout(function () { persistCurrent(retriesLeft - 1); }, SETTLE_MS);
+            return;
+        }
         Android.onScrollProgress(computeState().chapterProgress);
     }
     if ('onscrollend' in window) {
-        window.addEventListener('scrollend', persistCurrent, { passive: true });
+        window.addEventListener('scrollend', function () { persistCurrent(); }, { passive: true });
     } else {
         var settleTimer = null;
         window.addEventListener('scroll', function () {
             clearTimeout(settleTimer);
             settleTimer = setTimeout(persistCurrent, 250);
         }, { passive: true });
+    }
+
+    // Marks in-flight reflow so persistCurrent can wait it out before saving.
+    if (typeof ResizeObserver === 'function' && document.body) {
+        var bodyResizeObserver = new ResizeObserver(function () {
+            lastBodyResizeAt = Date.now();
+        });
+        bodyResizeObserver.observe(document.body);
     }
 
     window.addChapterBoundary = function (chapterId, startOffset, height) {
