@@ -38,10 +38,24 @@ class QuoteManager(private val context: Context) {
     // A fresh QuoteManager is handed out per Context access, so the write lock has to be
     // process-wide, not per-instance. Serialize load-modify-save mutators on a per-novel monitor
     // so concurrent add/remove/update/rename can't lose each other's writes.
+    private fun novelLockKey(sourceName: String, novelTitle: String): String =
+        "${getSourceDirName(sourceName)}/${getNovelFileName(novelTitle)}"
+
     private fun <T> withNovelLock(sourceName: String, novelTitle: String, block: () -> T): T {
-        val key = "${getSourceDirName(sourceName)}/${getNovelFileName(novelTitle)}"
-        val lock = novelLocks.computeIfAbsent(key) { Any() }
+        val lock = novelLocks.computeIfAbsent(novelLockKey(sourceName, novelTitle)) { Any() }
         return synchronized(lock) { block() }
+    }
+
+    // Locks every distinct key in sorted order so two concurrent calls that reference the same
+    // pair of novels (e.g. a move and its reverse) always acquire locks in the same order.
+    private fun <T> withNovelLocks(keys: List<Pair<String, String>>, block: () -> T): T {
+        val lockKeys = keys.map { (s, t) -> novelLockKey(s, t) }.distinct().sorted()
+        fun lockNext(remaining: List<String>): T {
+            if (remaining.isEmpty()) return block()
+            val lock = novelLocks.computeIfAbsent(remaining.first()) { Any() }
+            return synchronized(lock) { lockNext(remaining.drop(1)) }
+        }
+        return lockNext(lockKeys)
     }
 
     private fun getSourceDirName(sourceName: String): String =
@@ -85,52 +99,58 @@ class QuoteManager(private val context: Context) {
     /**
      * Save quotes for a novel
      */
-    fun saveQuotes(sourceName: String, novelTitle: String, quotes: List<Quote>): Boolean {
-        try {
-            val fileName = getNovelFileName(novelTitle)
+    fun saveQuotes(sourceName: String, novelTitle: String, quotes: List<Quote>): Boolean =
+        withNovelLock(sourceName, novelTitle) {
+            try {
+                val fileName = getNovelFileName(novelTitle)
 
-            if (quotes.isEmpty()) {
+                if (quotes.isEmpty()) {
+                    getQuotesFile(sourceName, novelTitle)?.takeIf { it.exists() }?.delete()
+                    deletePendingTmp(sourceName, novelTitle)
+                    return@withNovelLock true
+                }
+
+                val json = jsonFormat.encodeToString(NovelQuotes(quotes))
+                val dir = getOrCreateSourceDir(sourceName) ?: return@withNovelLock false
+
+                // Write to a temp file then swap it in, so a crash mid-write or a
+                // concurrent save can't corrupt or duplicate the destination.
+                val tmpName = "$fileName.tmp"
+                dir.findFile(tmpName)?.takeIf { it.exists() }?.delete()
+                val tmp = dir.createFile(tmpName) ?: return@withNovelLock false
+                tmp.openOutputStream().use { outputStream ->
+                    outputStream.write(json.toByteArray())
+                }
                 getQuotesFile(sourceName, novelTitle)?.takeIf { it.exists() }?.delete()
-                deletePendingTmp(sourceName, novelTitle)
-                return true
+                if (!tmp.renameTo(fileName)) {
+                    // Leave the tmp in place; loadQuotes recovers it, so a failed rename
+                    // (or a crash before this point) doesn't lose the just-written data.
+                    logcat(LogPriority.ERROR) { "Failed to finalize quotes file for $sourceName/$novelTitle" }
+                    return@withNovelLock false
+                }
+                logcat(LogPriority.DEBUG) { "Quotes saved for $sourceName/$novelTitle: ${quotes.size} quotes" }
+                true
+            } catch (e: IOException) {
+                logcat(LogPriority.ERROR) { "Failed to save quotes for $sourceName/$novelTitle: ${e.message}" }
+                false
+            } catch (e: SerializationException) {
+                logcat(LogPriority.ERROR) { "Failed to serialize quotes for $sourceName/$novelTitle: ${e.message}" }
+                false
             }
-
-            val json = jsonFormat.encodeToString(NovelQuotes(quotes))
-            val dir = getOrCreateSourceDir(sourceName) ?: return false
-
-            // Write to a temp file then swap it in, so a crash mid-write or a
-            // concurrent save can't corrupt or duplicate the destination.
-            val tmpName = "$fileName.tmp"
-            dir.findFile(tmpName)?.takeIf { it.exists() }?.delete()
-            val tmp = dir.createFile(tmpName) ?: return false
-            tmp.openOutputStream().use { outputStream ->
-                outputStream.write(json.toByteArray())
-            }
-            getQuotesFile(sourceName, novelTitle)?.takeIf { it.exists() }?.delete()
-            if (!tmp.renameTo(fileName)) {
-                // Leave the tmp in place; loadQuotes recovers it, so a failed rename
-                // (or a crash before this point) doesn't lose the just-written data.
-                logcat(LogPriority.ERROR) { "Failed to finalize quotes file for $sourceName/$novelTitle" }
-                return false
-            }
-            logcat(LogPriority.DEBUG) { "Quotes saved for $sourceName/$novelTitle: ${quotes.size} quotes" }
-            return true
-        } catch (e: IOException) {
-            logcat(LogPriority.ERROR) { "Failed to save quotes for $sourceName/$novelTitle: ${e.message}" }
-            return false
-        } catch (e: SerializationException) {
-            logcat(LogPriority.ERROR) { "Failed to serialize quotes for $sourceName/$novelTitle: ${e.message}" }
-            return false
         }
-    }
 
     /**
      * Load quotes for a novel
      */
     fun loadQuotes(sourceName: String, novelTitle: String): List<Quote> {
         return try {
-            val file = getQuotesFile(sourceName, novelTitle)?.takeIf { it.exists() }
-                ?: recoverPendingQuotes(sourceName, novelTitle)
+            // Resolving (and possibly promoting a pending ".tmp" scratch) under the same lock
+            // saveQuotes uses for its own delete+rename finalize closes the race where a
+            // concurrent read could win the promotion and make the writer's own rename fail.
+            val file = withNovelLock(sourceName, novelTitle) {
+                getQuotesFile(sourceName, novelTitle)?.takeIf { it.exists() }
+                    ?: recoverPendingQuotes(sourceName, novelTitle)
+            }
             if (file == null) {
                 emptyList()
             } else {
@@ -229,16 +249,18 @@ class QuoteManager(private val context: Context) {
      * Move a novel's quotes file when its title changes (quotes are keyed by title on disk).
      */
     fun renameNovel(sourceName: String, oldTitle: String, newTitle: String): Boolean =
-        withNovelLock(sourceName, oldTitle) {
-            val dir = findSourceDir(sourceName) ?: return@withNovelLock true
+        // Lock both the old and new keys so this can't race a concurrent add/update/remove
+        // targeting either the source or destination novel.
+        withNovelLocks(listOf(sourceName to oldTitle, sourceName to newTitle)) {
+            val dir = findSourceDir(sourceName) ?: return@withNovelLocks true
             val oldName = getNovelFileName(oldTitle)
             val newName = getNovelFileName(newTitle)
-            if (oldName == newName) return@withNovelLock true
-            val file = dir.findFile(oldName)?.takeIf { it.exists() } ?: return@withNovelLock true
+            if (oldName == newName) return@withNovelLocks true
+            val file = dir.findFile(oldName)?.takeIf { it.exists() } ?: return@withNovelLocks true
             // Don't clobber existing quotes at the destination; deny rather than overwrite.
             if (dir.findFile(newName)?.exists() == true) {
                 logcat(LogPriority.WARN) { "Quotes '$newName' already exists; not overwriting on rename" }
-                return@withNovelLock false
+                return@withNovelLocks false
             }
             file.renameTo(newName).also {
                 if (!it) logcat(LogPriority.ERROR) { "Failed to rename quotes $oldName -> $newName" }
@@ -253,16 +275,16 @@ class QuoteManager(private val context: Context) {
         if (getSourceDirName(oldSourceName) == getSourceDirName(newSourceName)) {
             return renameNovel(oldSourceName, oldTitle, newTitle)
         }
-        return withNovelLock(oldSourceName, oldTitle) {
-            val oldFile = getQuotesFile(oldSourceName, oldTitle)?.takeIf { it.exists() } ?: return@withNovelLock true
-            val newDir = getOrCreateSourceDir(newSourceName) ?: return@withNovelLock false
+        return withNovelLocks(listOf(oldSourceName to oldTitle, newSourceName to newTitle)) {
+            val oldFile = getQuotesFile(oldSourceName, oldTitle)?.takeIf { it.exists() } ?: return@withNovelLocks true
+            val newDir = getOrCreateSourceDir(newSourceName) ?: return@withNovelLocks false
             val newName = getNovelFileName(newTitle)
             if (newDir.findFile(newName)?.exists() == true) {
                 logcat(LogPriority.WARN) { "Quotes already exist at destination for $newSourceName/$newTitle; not moving" }
-                return@withNovelLock false
+                return@withNovelLocks false
             }
             try {
-                val dest = newDir.createFile(newName) ?: return@withNovelLock false
+                val dest = newDir.createFile(newName) ?: return@withNovelLocks false
                 oldFile.openInputStream().use { input -> dest.openOutputStream().use { input.copyTo(it) } }
                 oldFile.delete()
                 true
