@@ -56,6 +56,7 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
             // threads can pace against their own window instead of blocking on the monitor. A slot
             // is only ever taken under the lock while the window has room, so the permit bound holds
             // even though several threads may be waiting concurrently.
+            var hasWaited = false
             while (true) {
                 var wait = 0L
                 synchronized(lock) {
@@ -68,6 +69,13 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
                     }
 
                     if (window.size < spec.permits) {
+                        window.addLast(now)
+                    } else if (hasWaited) {
+                        // This request already served its wait, so claim a slot by evicting the
+                        // oldest rather than looping until it ages out. The wait we paid is the
+                        // pacing; relying on aging would spin forever whenever the clock hasn't
+                        // advanced past the oldest entry (e.g. a frozen clock under test).
+                        window.removeFirst()
                         window.addLast(now)
                     } else {
                         // Clamp jitter to the delay so a large/misconfigured jitterMillis can't
@@ -85,6 +93,7 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
                 } finally {
                     RateLimitWaitTracker.stopWaiting(host)
                 }
+                hasWaited = true
             }
         }
 
