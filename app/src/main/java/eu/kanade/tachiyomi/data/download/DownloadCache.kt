@@ -473,7 +473,9 @@ class DownloadCache(
         updateDiskCacheJob = scope.launchIO {
             delay(1.seconds)
             ensureActive()
-            val bytes = ProtoBuf.encodeToByteArray(rootDownloadsDir)
+            val bytes = rootDownloadsDirMutex.withLock {
+                ProtoBuf.encodeToByteArray(rootDownloadsDir)
+            }
             ensureActive()
             try {
                 diskCacheFile.writeBytes(bytes)
