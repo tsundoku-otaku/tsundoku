@@ -1719,8 +1719,11 @@ class ReaderViewModel @JvmOverloads constructor(
     fun saveQuote(text: String, chapterName: String, paragraphIndex: Int? = null) {
         val manga = manga ?: return
         val sourceName = quoteSourceName() ?: return
+        // A manually added quote arrives with no chapter label; anchor it to the open chapter so the
+        // list doesn't render a blank line.
+        val resolvedChapterName = chapterName.ifBlank { getCurrentChapter()?.chapter?.name.orEmpty() }
         val quote = Quote(
-            chapterName = chapterName,
+            chapterName = resolvedChapterName,
             content = text,
             timestamp = System.currentTimeMillis(),
             paragraphIndex = paragraphIndex,
