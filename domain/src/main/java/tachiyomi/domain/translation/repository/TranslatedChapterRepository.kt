@@ -24,6 +24,18 @@ interface TranslatedChapterRepository {
     suspend fun getAllTranslationsForChapter(locator: TranslationLocator): List<TranslatedChapter>
 
     /**
+     * Batched form of [getAllTranslationsForChapter] for a whole novel: resolves the novel
+     * directory and lists each language dir once, then maps every candidate chapter to its
+     * translations (all languages) keyed by [ChapterRef.id]. Avoids the per-chapter directory
+     * scan of calling [getAllTranslationsForChapter] in a loop.
+     */
+    suspend fun getAllTranslationsForNovel(
+        sourceName: String,
+        novelTitle: String,
+        chapters: Collection<ChapterRef>,
+    ): Map<Long, List<TranslatedChapter>>
+
+    /**
      * Check if a chapter has a translation for a specific language.
      */
     suspend fun hasTranslation(locator: TranslationLocator, targetLanguage: String): Boolean

@@ -1652,6 +1652,30 @@ class LibraryScreenModel(
 
                         val exportSourceName = sourceManager.getOrStub(manga.source).toString()
 
+                        // Resolve every chapter's translations in a single novel scan instead of one
+                        // directory scan per chapter (O(chapters) SAF walks on large novels).
+                        val translationsByChapterId =
+                            if (options.translationMode !=
+                                tachiyomi.domain.translation.model.TranslationMode.ORIGINAL
+                            ) {
+                                try {
+                                    translatedChapterRepository.getAllTranslationsForNovel(
+                                        exportSourceName,
+                                        manga.title,
+                                        chapters.map {
+                                            tachiyomi.domain.translation.model.ChapterRef(it.id, it.name, it.url)
+                                        },
+                                    )
+                                } catch (e: Exception) {
+                                    logcat(LogPriority.WARN, e) {
+                                        "Failed to get translations for novel: ${manga.title}"
+                                    }
+                                    emptyMap()
+                                }
+                            } else {
+                                emptyMap()
+                            }
+
                         for ((chapterIndex, chapter) in chapters.withIndex()) {
                             // Check if chapter is downloaded first
                             val isDownloaded = downloadManager.isChapterDownloaded(
@@ -1662,28 +1686,7 @@ class LibraryScreenModel(
                                 manga.source,
                             )
 
-                            val chapterTranslations =
-                                if (options.translationMode !=
-                                    tachiyomi.domain.translation.model.TranslationMode.ORIGINAL
-                                ) {
-                                    try {
-                                        translatedChapterRepository.getAllTranslationsForChapter(
-                                            tachiyomi.domain.translation.model.TranslationLocator(
-                                                exportSourceName,
-                                                manga.title,
-                                                chapter.name,
-                                                chapter.url,
-                                            ),
-                                        )
-                                    } catch (e: Exception) {
-                                        logcat(LogPriority.WARN, e) {
-                                            "Failed to get translations for chapter: ${chapter.name}"
-                                        }
-                                        emptyList()
-                                    }
-                                } else {
-                                    emptyList()
-                                }
+                            val chapterTranslations = translationsByChapterId[chapter.id].orEmpty()
                             val hasTranslation = chapterTranslations.isNotEmpty()
 
                             if (isDownloaded) hasDownloads = true

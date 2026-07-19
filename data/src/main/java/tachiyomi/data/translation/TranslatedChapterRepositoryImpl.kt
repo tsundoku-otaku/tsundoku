@@ -271,6 +271,16 @@ class TranslatedChapterRepositoryImpl(
         return if (scratch.renameTo(name)) langDir.findFile(name)?.takeIf { it.exists() } else null
     }
 
+    // A ".saving" scratch only counts as a real translation once it holds content: a crash right
+    // after createFile (before the write) leaves an empty/header-only scratch that recovery discards,
+    // so the badge/skip-translated predicates must not treat it as translated either. Read-only: it
+    // never promotes or deletes, unlike recoverPendingTranslation.
+    private fun savingHasContent(scratch: UniFile?): Boolean {
+        val file = scratch?.takeIf { it.exists() } ?: return false
+        val meta = parseUniFile(file)
+        return meta != null && meta.content.isNotBlank()
+    }
+
     override suspend fun getAllTranslationsForChapter(locator: TranslationLocator): List<TranslatedChapter> =
         withContext(Dispatchers.IO) {
             val novelDir = findNovelDir(locator.sourceName, locator.novelTitle) ?: return@withContext emptyList()
@@ -286,13 +296,45 @@ class TranslatedChapterRepositoryImpl(
                 .orEmpty()
         }
 
+    override suspend fun getAllTranslationsForNovel(
+        sourceName: String,
+        novelTitle: String,
+        chapters: Collection<ChapterRef>,
+    ): Map<Long, List<TranslatedChapter>> = withContext(Dispatchers.IO) {
+        if (chapters.isEmpty()) return@withContext emptyMap()
+        val novelDir = findNovelDir(sourceName, novelTitle) ?: return@withContext emptyMap()
+        // List each language dir once up front (name -> file) so the per-chapter lookup below is an
+        // in-memory map hit rather than a SAF findFile call.
+        val langFiles = novelDir.listFiles()
+            ?.filter { it.isDirectory }
+            ?.mapNotNull { langDir ->
+                val lang = langDir.name ?: return@mapNotNull null
+                val files = langDir.listFiles()?.mapNotNull { f -> f.name?.let { it to f } }?.toMap().orEmpty()
+                lang to files
+            }
+            .orEmpty()
+        if (langFiles.isEmpty()) return@withContext emptyMap()
+        val result = HashMap<Long, List<TranslatedChapter>>()
+        chapters.forEach { ref ->
+            val target = "${chapterFileBase(ref.name, ref.url)}.html"
+            val translations = langFiles.mapNotNull { (lang, files) ->
+                val file = files[target] ?: return@mapNotNull null
+                val meta = parseUniFile(file) ?: return@mapNotNull null
+                toTranslatedChapter(meta, lang)
+            }
+            if (translations.isNotEmpty()) result[ref.id] = translations
+        }
+        result
+    }
+
     override suspend fun hasTranslation(locator: TranslationLocator, targetLanguage: String): Boolean =
         withContext(Dispatchers.IO) {
             val langDir = findLangDir(locator, targetLanguage) ?: return@withContext false
             val name = fileName(locator)
             // A recoverable ".saving" scratch counts as translated so a crash before the final rename
-            // doesn't make the badge/skip-translated logic re-translate over the recovered write.
-            langDir.findFile(name) != null || langDir.findFile("$name.saving")?.exists() == true
+            // doesn't make the badge/skip-translated logic re-translate over the recovered write; an
+            // empty scratch (crash before the write) does not, matching recoverPendingTranslation.
+            langDir.findFile(name) != null || savingHasContent(langDir.findFile("$name.saving"))
         }
 
     override suspend fun filterTranslatedChapters(
@@ -304,13 +346,15 @@ class TranslatedChapterRepositoryImpl(
         if (chapters.isEmpty()) return@withContext emptySet()
         val langDir =
             findNovelDir(sourceName, novelTitle)?.findFile(langDirName(targetLanguage)) ?: return@withContext emptySet()
-        val names = langDir.listFiles()?.mapNotNull { it.name } ?: return@withContext emptySet()
+        val files = langDir.listFiles() ?: return@withContext emptySet()
         // Count a recoverable ".saving" scratch as its committed ".html" so a crashed-but-recoverable
-        // write isn't reported as untranslated.
+        // write isn't reported as untranslated, but only when it holds content (an empty scratch is
+        // discarded on the read path, so reporting it translated would wrongly skip re-translation).
         val present = HashSet<String>()
-        names.forEach { n ->
+        files.forEach { file ->
+            val n = file.name ?: return@forEach
             when {
-                n.endsWith(".html.saving") -> present.add(n.removeSuffix(".saving"))
+                n.endsWith(".html.saving") -> if (savingHasContent(file)) present.add(n.removeSuffix(".saving"))
                 n.endsWith(".html") -> present.add(n)
             }
         }
@@ -538,12 +582,12 @@ class TranslatedChapterRepositoryImpl(
             if (copyContentsRecursive(oldDir, destDir)) {
                 deleteRecursive(oldDir)
             } else {
-                // Deleting the source after a partial copy would lose the un-copied translations.
-                // Keep it so the move can be retried; the half-written dest is denied on retry by
-                // the non-empty-existing guard above (or reclaimed once empty).
+                // Keep the source (it still holds every translation) but drop the half-copied dest,
+                // otherwise the non-empty-existing guard above would block every future retry.
                 logcat(LogPriority.ERROR) {
-                    "Copy incomplete moving '$oldSrcName/$oldNovel' -> '$newSrcName/$newNovel'; keeping source"
+                    "Copy incomplete moving '$oldSrcName/$oldNovel' -> '$newSrcName/$newNovel'; reverting"
                 }
+                deleteRecursive(destDir)
             }
         }
         Unit
@@ -580,18 +624,50 @@ class TranslatedChapterRepositoryImpl(
     }
 
     override suspend fun deleteAll() = withContext(Dispatchers.IO) {
-        translationsDir.listFiles()?.forEach { deleteRecursive(it) }
+        // Delete each novel dir under its own lock so this can't race an in-flight upsert/rename for
+        // that novel. The on-disk dir names equal the sanitized lock-key components, so the key
+        // built here matches the one writers use (see novelLockKey).
+        translationsDir.listFiles()?.forEach { srcDir ->
+            val srcName = srcDir.name
+            if (srcName == null || !srcDir.isDirectory) {
+                srcDir.delete()
+                return@forEach
+            }
+            srcDir.listFiles()?.forEach { novelDir ->
+                val novelName = novelDir.name
+                if (novelName == null || !novelDir.isDirectory) {
+                    novelDir.delete()
+                    return@forEach
+                }
+                val lock = novelLocks.computeIfAbsent("$srcName/$novelName") { Any() }
+                synchronized(lock) { deleteRecursive(novelDir) }
+            }
+            srcDir.delete()
+        }
         Unit
     }
 
     override suspend fun clearTmpFiles(): Long = withContext(Dispatchers.IO) {
         var freed = 0L
-        allFilesRecursive(translationsDir)
-            .filter { it.name?.endsWith(".html.tmp") == true }
-            .forEach {
-                freed += it.length()
-                it.delete()
+        // Same per-novel locking as deleteAll: a tmp sweep must not race the writer creating/renaming
+        // scratch files for the novel it is scanning.
+        translationsDir.listFiles()?.forEach { srcDir ->
+            val srcName = srcDir.name ?: return@forEach
+            if (!srcDir.isDirectory) return@forEach
+            srcDir.listFiles()?.forEach { novelDir ->
+                val novelName = novelDir.name ?: return@forEach
+                if (!novelDir.isDirectory) return@forEach
+                val lock = novelLocks.computeIfAbsent("$srcName/$novelName") { Any() }
+                synchronized(lock) {
+                    allFilesRecursive(novelDir)
+                        .filter { it.name?.endsWith(".html.tmp") == true }
+                        .forEach {
+                            freed += it.length()
+                            it.delete()
+                        }
+                }
             }
+        }
         freed
     }
 }
