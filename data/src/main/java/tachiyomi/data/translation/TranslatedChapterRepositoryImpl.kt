@@ -15,6 +15,7 @@ import tachiyomi.domain.translation.model.TranslationLocator
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Filesystem-only implementation of [TranslatedChapterRepository].
@@ -54,6 +55,31 @@ class TranslatedChapterRepositoryImpl(
         // Hex chars of the url MD5 appended to disambiguate chapters whose sanitized
         // names collide. 8 chars (~4.3B values) keeps per-novel collisions negligible.
         const val HASH_LENGTH = 8
+
+        // Process-wide per-novel monitors, mirroring QuoteManager's withNovelLock: serializes
+        // writes/relocations for the same novel so a rename/move can't race an in-flight upsert,
+        // and closes the read-side recovery race (see getTranslatedChapter).
+        val novelLocks = ConcurrentHashMap<String, Any>()
+    }
+
+    private fun novelLockKey(sourceName: String, novelTitle: String): String =
+        "${sourceDirName(sourceName)}/${novelDirName(novelTitle)}"
+
+    private fun <T> withNovelLock(sourceName: String, novelTitle: String, block: () -> T): T {
+        val lock = novelLocks.computeIfAbsent(novelLockKey(sourceName, novelTitle)) { Any() }
+        return synchronized(lock) { block() }
+    }
+
+    // Locks every distinct key in sorted order so two concurrent calls that reference the same
+    // pair of novels (e.g. a move and its reverse) always acquire locks in the same order.
+    private fun <T> withNovelLocks(keys: List<Pair<String, String>>, block: () -> T): T {
+        val lockKeys = keys.map { (s, t) -> novelLockKey(s, t) }.distinct().sorted()
+        fun lockNext(remaining: List<String>): T {
+            if (remaining.isEmpty()) return block()
+            val lock = novelLocks.computeIfAbsent(remaining.first()) { Any() }
+            return synchronized(lock) { lockNext(remaining.drop(1)) }
+        }
+        return lockNext(lockKeys)
     }
 
     /**
@@ -220,9 +246,13 @@ class TranslatedChapterRepositoryImpl(
     ): TranslatedChapter? = withContext(Dispatchers.IO) {
         val langDir = findLangDir(locator, targetLanguage) ?: return@withContext null
         val name = fileName(locator)
-        val file = langDir.findFile(name)?.takeIf { it.exists() }
-            ?: recoverPendingTranslation(langDir, name)
-            ?: return@withContext null
+        // Resolving (and possibly promoting a pending ".saving" scratch) under the same lock
+        // upsertTranslation uses for its own delete+rename finalize closes the race where a
+        // concurrent read could win the promotion and make the writer's own rename fail.
+        val file = withNovelLock(locator.sourceName, locator.novelTitle) {
+            langDir.findFile(name)?.takeIf { it.exists() }
+                ?: recoverPendingTranslation(langDir, name)
+        } ?: return@withContext null
         val meta = parseUniFile(file) ?: return@withContext null
         toTranslatedChapter(meta, targetLanguage)
     }
@@ -295,43 +325,47 @@ class TranslatedChapterRepositoryImpl(
 
     override suspend fun upsertTranslation(locator: TranslationLocator, translatedChapter: TranslatedChapter) =
         withContext(Dispatchers.IO) {
-            val dir = getOrCreateLangDir(locator, translatedChapter.targetLanguage)
-                ?: throw IllegalStateException("Failed to create translation dir for ${locator.novelTitle}")
-            val name = fileName(locator)
-            val meta = buildMetaComment(translatedChapter.engineId, translatedChapter.dateTranslated)
-            val content = (meta + translatedChapter.translatedContent).toByteArray()
+            withNovelLock(locator.sourceName, locator.novelTitle) {
+                val dir = getOrCreateLangDir(locator, translatedChapter.targetLanguage)
+                    ?: throw IllegalStateException("Failed to create translation dir for ${locator.novelTitle}")
+                val name = fileName(locator)
+                val meta = buildMetaComment(translatedChapter.engineId, translatedChapter.dateTranslated)
+                val content = (meta + translatedChapter.translatedContent).toByteArray()
 
-            // Write to a scratch file then swap it in so a crash mid-write can't leave a
-            // truncated translation. ".saving" is not read back (reads require ".html").
-            val savingName = "$name.saving"
-            dir.findFile(savingName)?.delete()
-            val scratch = dir.createFile(savingName)
-                ?: throw IllegalStateException("Failed to create translation file: $name")
-            scratch.openOutputStream().use { it.write(content) }
+                // Write to a scratch file then swap it in so a crash mid-write can't leave a
+                // truncated translation. ".saving" is not read back (reads require ".html").
+                val savingName = "$name.saving"
+                dir.findFile(savingName)?.delete()
+                val scratch = dir.createFile(savingName)
+                    ?: throw IllegalStateException("Failed to create translation file: $name")
+                scratch.openOutputStream().use { it.write(content) }
 
-            dir.findFile(name)?.delete()
-            if (!scratch.renameTo(name)) {
-                // Leave the scratch; getTranslatedChapter recovers it, so a failed rename
-                // (or a crash before this point) doesn't lose the just-written translation.
-                throw IllegalStateException("Failed to finalize translation file: $name")
+                dir.findFile(name)?.delete()
+                if (!scratch.renameTo(name)) {
+                    // Leave the scratch; getTranslatedChapter recovers it, so a failed rename
+                    // (or a crash before this point) doesn't lose the just-written translation.
+                    throw IllegalStateException("Failed to finalize translation file: $name")
+                }
+
+                dir.findFile(tmpFileName(locator))?.delete()
+                Unit
             }
-
-            dir.findFile(tmpFileName(locator))?.delete()
-            Unit
         }
 
     override suspend fun upsertTmpTranslation(locator: TranslationLocator, translatedChapter: TranslatedChapter) =
         withContext(Dispatchers.IO) {
-            val dir = getOrCreateLangDir(locator, translatedChapter.targetLanguage)
-                ?: throw IllegalStateException("Failed to create translation dir for ${locator.novelTitle}")
-            val name = tmpFileName(locator)
-            val meta = buildMetaComment(translatedChapter.engineId, translatedChapter.dateTranslated)
-            val content = (meta + translatedChapter.translatedContent).toByteArray()
+            withNovelLock(locator.sourceName, locator.novelTitle) {
+                val dir = getOrCreateLangDir(locator, translatedChapter.targetLanguage)
+                    ?: throw IllegalStateException("Failed to create translation dir for ${locator.novelTitle}")
+                val name = tmpFileName(locator)
+                val meta = buildMetaComment(translatedChapter.engineId, translatedChapter.dateTranslated)
+                val content = (meta + translatedChapter.translatedContent).toByteArray()
 
-            dir.findFile(name)?.delete()
-            val file = dir.createFile(name)
-                ?: throw IllegalStateException("Failed to create tmp translation file: $name")
-            file.openOutputStream().use { it.write(content) }
+                dir.findFile(name)?.delete()
+                val file = dir.createFile(name)
+                    ?: throw IllegalStateException("Failed to create tmp translation file: $name")
+                file.openOutputStream().use { it.write(content) }
+            }
         }
 
     override suspend fun getTmpTranslation(
@@ -347,26 +381,30 @@ class TranslatedChapterRepositoryImpl(
 
     override suspend fun deleteTranslation(locator: TranslationLocator, targetLanguage: String) =
         withContext(Dispatchers.IO) {
-            findLangDir(locator, targetLanguage)?.let { dir ->
-                val name = fileName(locator)
-                dir.findFile(name)?.delete()
-                dir.findFile("$name.saving")?.delete()
-                dir.findFile(tmpFileName(locator))?.delete()
+            withNovelLock(locator.sourceName, locator.novelTitle) {
+                findLangDir(locator, targetLanguage)?.let { dir ->
+                    val name = fileName(locator)
+                    dir.findFile(name)?.delete()
+                    dir.findFile("$name.saving")?.delete()
+                    dir.findFile(tmpFileName(locator))?.delete()
+                }
             }
             Unit
         }
 
     override suspend fun deleteAllForChapter(locator: TranslationLocator) = withContext(Dispatchers.IO) {
-        val novelDir = findNovelDir(locator.sourceName, locator.novelTitle) ?: return@withContext
-        val target = fileName(locator)
-        val tmp = tmpFileName(locator)
-        novelDir.listFiles()
-            ?.filter { it.isDirectory }
-            ?.forEach { langDir ->
-                langDir.findFile(target)?.delete()
-                langDir.findFile("$target.saving")?.delete()
-                langDir.findFile(tmp)?.delete()
-            }
+        withNovelLock(locator.sourceName, locator.novelTitle) {
+            val novelDir = findNovelDir(locator.sourceName, locator.novelTitle) ?: return@withNovelLock
+            val target = fileName(locator)
+            val tmp = tmpFileName(locator)
+            novelDir.listFiles()
+                ?.filter { it.isDirectory }
+                ?.forEach { langDir ->
+                    langDir.findFile(target)?.delete()
+                    langDir.findFile("$target.saving")?.delete()
+                    langDir.findFile(tmp)?.delete()
+                }
+        }
         Unit
     }
 
@@ -376,46 +414,86 @@ class TranslatedChapterRepositoryImpl(
         chapters: Collection<ChapterRef>,
     ) = withContext(Dispatchers.IO) {
         if (chapters.isEmpty()) return@withContext
-        val novelDir = findNovelDir(sourceName, novelTitle) ?: return@withContext
-        val wanted = chapters.flatMapTo(HashSet()) {
-            val base = chapterFileBase(it.name, it.url)
-            listOf("$base.html", "$base.html.saving", "$base.html.tmp")
-        }
-        novelDir.listFiles()
-            ?.filter { it.isDirectory }
-            ?.forEach { langDir ->
-                langDir.listFiles()
-                    ?.filter { it.name in wanted }
-                    ?.forEach { it.delete() }
+        withNovelLock(sourceName, novelTitle) {
+            val novelDir = findNovelDir(sourceName, novelTitle) ?: return@withNovelLock
+            val wanted = chapters.flatMapTo(HashSet()) {
+                val base = chapterFileBase(it.name, it.url)
+                listOf("$base.html", "$base.html.saving", "$base.html.tmp")
             }
+            novelDir.listFiles()
+                ?.filter { it.isDirectory }
+                ?.forEach { langDir ->
+                    langDir.listFiles()
+                        ?.filter { it.name in wanted }
+                        ?.forEach { it.delete() }
+                }
+        }
         Unit
     }
 
     override suspend fun deleteAllForManga(sourceName: String, novelTitle: String) = withContext(Dispatchers.IO) {
-        findNovelDir(sourceName, novelTitle)?.let { deleteRecursive(it) }
+        withNovelLock(sourceName, novelTitle) {
+            findNovelDir(sourceName, novelTitle)?.let { deleteRecursive(it) }
+        }
+        Unit
+    }
+
+    override suspend fun renameChapter(
+        sourceName: String,
+        novelTitle: String,
+        oldChapterName: String,
+        newChapterName: String,
+        chapterUrl: String,
+    ) = withContext(Dispatchers.IO) {
+        withNovelLock(sourceName, novelTitle) {
+            val oldBase = chapterFileBase(oldChapterName, chapterUrl)
+            val newBase = chapterFileBase(newChapterName, chapterUrl)
+            if (oldBase == newBase) return@withNovelLock
+            val novelDir = findNovelDir(sourceName, novelTitle) ?: return@withNovelLock
+            novelDir.listFiles()
+                ?.filter { it.isDirectory }
+                ?.forEach { langDir ->
+                    listOf(".html", ".html.saving", ".html.tmp").forEach { suffix ->
+                        val oldFile = langDir.findFile("$oldBase$suffix") ?: return@forEach
+                        val newName = "$newBase$suffix"
+                        if (langDir.findFile(newName) == null) {
+                            if (!oldFile.renameTo(newName)) {
+                                logcat(LogPriority.ERROR) {
+                                    "Failed to rename translation file '$oldBase$suffix' -> '$newName'"
+                                }
+                            }
+                        }
+                    }
+                }
+        }
         Unit
     }
 
     override suspend fun renameNovel(sourceName: String, oldTitle: String, newTitle: String) =
         withContext(Dispatchers.IO) {
-            val oldName = novelDirName(oldTitle)
-            val newName = novelDirName(newTitle)
-            if (oldName == newName) return@withContext
-            val srcDir = translationsDir.findFile(sourceDirName(sourceName)) ?: return@withContext
-            val oldDir = srcDir.findFile(oldName)?.takeIf { it.isDirectory && it.exists() } ?: return@withContext
-            val existing = srcDir.findFile(newName)
-            if (existing != null) {
-                // Deny if a non-empty dir already holds translations; only reclaim an empty one.
-                if (!existing.isDirectory || !existing.listFiles().isNullOrEmpty()) {
-                    logcat(LogPriority.WARN) {
-                        "Translation dir '$newName' exists and is not empty; not renaming '$oldName'"
+            // Lock both the old and new keys so this can't race a concurrent upsert/delete
+            // targeting either the source or destination novel.
+            withNovelLocks(listOf(sourceName to oldTitle, sourceName to newTitle)) {
+                val oldName = novelDirName(oldTitle)
+                val newName = novelDirName(newTitle)
+                if (oldName == newName) return@withNovelLocks
+                val srcDir = translationsDir.findFile(sourceDirName(sourceName)) ?: return@withNovelLocks
+                val oldDir = srcDir.findFile(oldName)?.takeIf { it.isDirectory && it.exists() }
+                    ?: return@withNovelLocks
+                val existing = srcDir.findFile(newName)
+                if (existing != null) {
+                    // Deny if a non-empty dir already holds translations; only reclaim an empty one.
+                    if (!existing.isDirectory || !existing.listFiles().isNullOrEmpty()) {
+                        logcat(LogPriority.WARN) {
+                            "Translation dir '$newName' exists and is not empty; not renaming '$oldName'"
+                        }
+                        return@withNovelLocks
                     }
-                    return@withContext
+                    existing.delete()
                 }
-                existing.delete()
-            }
-            if (!oldDir.renameTo(newName)) {
-                logcat(LogPriority.ERROR) { "Failed to rename translation dir '$oldName' -> '$newName'" }
+                if (!oldDir.renameTo(newName)) {
+                    logcat(LogPriority.ERROR) { "Failed to rename translation dir '$oldName' -> '$newName'" }
+                }
             }
             Unit
         }
@@ -426,44 +504,46 @@ class TranslatedChapterRepositoryImpl(
         newSourceName: String,
         newTitle: String,
     ) = withContext(Dispatchers.IO) {
-        val oldSrcName = sourceDirName(oldSourceName)
-        val newSrcName = sourceDirName(newSourceName)
-        val oldNovel = novelDirName(oldTitle)
-        val newNovel = novelDirName(newTitle)
-        if (oldSrcName == newSrcName && oldNovel == newNovel) return@withContext
+        withNovelLocks(listOf(oldSourceName to oldTitle, newSourceName to newTitle)) {
+            val oldSrcName = sourceDirName(oldSourceName)
+            val newSrcName = sourceDirName(newSourceName)
+            val oldNovel = novelDirName(oldTitle)
+            val newNovel = novelDirName(newTitle)
+            if (oldSrcName == newSrcName && oldNovel == newNovel) return@withNovelLocks
 
-        val oldDir = translationsDir.findFile(oldSrcName)?.findFile(oldNovel)
-            ?.takeIf { it.isDirectory && it.exists() } ?: return@withContext
-        val newSrcDir = translationsDir.findChildDir(newSrcName) ?: return@withContext
+            val oldDir = translationsDir.findFile(oldSrcName)?.findFile(oldNovel)
+                ?.takeIf { it.isDirectory && it.exists() } ?: return@withNovelLocks
+            val newSrcDir = translationsDir.findChildDir(newSrcName) ?: return@withNovelLocks
 
-        val existing = newSrcDir.findFile(newNovel)
-        if (existing != null) {
-            if (!existing.isDirectory || !existing.listFiles().isNullOrEmpty()) {
-                logcat(LogPriority.WARN) {
-                    "Translation dir '$newSrcName/$newNovel' exists and is not empty; not moving"
+            val existing = newSrcDir.findFile(newNovel)
+            if (existing != null) {
+                if (!existing.isDirectory || !existing.listFiles().isNullOrEmpty()) {
+                    logcat(LogPriority.WARN) {
+                        "Translation dir '$newSrcName/$newNovel' exists and is not empty; not moving"
+                    }
+                    return@withNovelLocks
                 }
-                return@withContext
+                existing.delete()
             }
-            existing.delete()
-        }
 
-        if (oldSrcName == newSrcName) {
-            // Same parent: a rename suffices (no cross-directory copy needed).
-            if (!oldDir.renameTo(newNovel)) {
-                logcat(LogPriority.ERROR) { "Failed to rename translation dir '$oldNovel' -> '$newNovel'" }
+            if (oldSrcName == newSrcName) {
+                // Same parent: a rename suffices (no cross-directory copy needed).
+                if (!oldDir.renameTo(newNovel)) {
+                    logcat(LogPriority.ERROR) { "Failed to rename translation dir '$oldNovel' -> '$newNovel'" }
+                }
+                return@withNovelLocks
             }
-            return@withContext
-        }
 
-        val destDir = newSrcDir.createDirectory(newNovel) ?: return@withContext
-        if (copyContentsRecursive(oldDir, destDir)) {
-            deleteRecursive(oldDir)
-        } else {
-            // Deleting the source after a partial copy would lose the un-copied translations.
-            // Keep it so the move can be retried; the half-written dest is denied on retry by the
-            // non-empty-existing guard above (or reclaimed once empty).
-            logcat(LogPriority.ERROR) {
-                "Copy incomplete moving '$oldSrcName/$oldNovel' -> '$newSrcName/$newNovel'; keeping source"
+            val destDir = newSrcDir.createDirectory(newNovel) ?: return@withNovelLocks
+            if (copyContentsRecursive(oldDir, destDir)) {
+                deleteRecursive(oldDir)
+            } else {
+                // Deleting the source after a partial copy would lose the un-copied translations.
+                // Keep it so the move can be retried; the half-written dest is denied on retry by
+                // the non-empty-existing guard above (or reclaimed once empty).
+                logcat(LogPriority.ERROR) {
+                    "Copy incomplete moving '$oldSrcName/$oldNovel' -> '$newSrcName/$newNovel'; keeping source"
+                }
             }
         }
         Unit
