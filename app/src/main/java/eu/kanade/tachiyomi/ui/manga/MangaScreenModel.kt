@@ -622,19 +622,24 @@ class MangaScreenModel(
         screenModelScope.launchIO {
             val current = mangaRepository.getMangaByIdOrNull(mangaId)
             val oldTitle = current?.title
-            updateManga.awaitUpdateTitle(mangaId, newMainTitle)
-            updateManga.awaitUpdateAlternativeTitles(mangaId, updatedAltTitles)
-            getLibraryManga.applyMangaDetailUpdate(mangaId) {
-                it.copy(title = newMainTitle, alternativeTitles = updatedAltTitles)
-            }
-            // Quotes/translations are stored under directories keyed on the title, so move them
-            // to follow the rename or they'd be orphaned under the old title.
+            // Downloads/quotes/translations all live under directories keyed on the title. Relocate
+            // them BEFORE committing the new title to the DB so a failure can't leave the DB pointing
+            // at a title with no files behind it (the same ordering the source-migration path uses).
+            // Each move is best-effort like DownloadManager.renameManga and is serialized against
+            // concurrent writes by the per-novel lock inside the quote/translation repositories.
             if (current != null && oldTitle != null && oldTitle != newMainTitle) {
                 val sourceName = sourceManager.getOrStub(current.source).toString()
+                runCatching { downloadManager.renameManga(current, newMainTitle) }
+                    .onFailure { logcat(LogPriority.ERROR, it) { "Failed to move downloads on title swap" } }
                 runCatching { quoteManager.renameNovel(sourceName, oldTitle, newMainTitle) }
                     .onFailure { logcat(LogPriority.ERROR, it) { "Failed to move quotes on title swap" } }
                 runCatching { translatedChapterRepository.renameNovel(sourceName, oldTitle, newMainTitle) }
                     .onFailure { logcat(LogPriority.ERROR, it) { "Failed to move translations on title swap" } }
+            }
+            updateManga.awaitUpdateTitle(mangaId, newMainTitle)
+            updateManga.awaitUpdateAlternativeTitles(mangaId, updatedAltTitles)
+            getLibraryManga.applyMangaDetailUpdate(mangaId) {
+                it.copy(title = newMainTitle, alternativeTitles = updatedAltTitles)
             }
         }
     }
