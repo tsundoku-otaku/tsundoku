@@ -148,13 +148,15 @@ internal class NovelWebViewStyler(
         val format = if (isOtf) "opentype" else "truetype"
         // Version by the uri so switching fonts busts the WebView's cached face for the same URL.
         val url = "$FONT_URL_PREFIX?v=${fontFamily.hashCode()}"
-        val declaration = "@font-face { font-family: 'CustomFont'; src: url('$url') format('$format'); font-display: swap; }"
+        val declaration =
+            "@font-face { font-family: 'CustomFont'; src: url('$url') format('$format'); font-display: swap; }"
         return declaration to "'CustomFont', sans-serif"
     }
 
     // Written on the UI thread (style injection), read on the WebView worker thread (interceptFont);
     // @Volatile so the worker sees the latest value instead of a stale cached one.
     @Volatile private var fontUriString: String? = null
+
     @Volatile private var cachedFontBytes: Pair<String, ByteArray>? = null
 
     /**
