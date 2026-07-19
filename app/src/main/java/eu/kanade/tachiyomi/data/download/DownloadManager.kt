@@ -457,9 +457,10 @@ class DownloadManager(
             return false
         }
         if (!copyContentsRecursive(oldFolder, destFolder)) {
-            // Deleting the source after a partial copy would lose the un-copied chapters. Keep it so
-            // the move can be retried; the non-empty-destination guard above blocks a re-copy.
-            logcat(LogPriority.ERROR) { "Copy incomplete moving downloads for ${manga.title}; keeping source" }
+            // Keep the source (it still holds every chapter) but drop the half-copied destination,
+            // otherwise the non-empty-destination guard above would block every future retry.
+            logcat(LogPriority.ERROR) { "Copy incomplete moving downloads for ${manga.title}; reverting" }
+            deleteRecursive(destFolder)
             cache.invalidateCache()
             return false
         }

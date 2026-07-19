@@ -151,8 +151,21 @@ class MigrateMangaScreenModel(
                         // while the DB already points at the new one (orphaned data). Only preserves
                         // data for same-URL migrations (e.g. JS->KT); different-site moves change
                         // chapter URLs and won't line up.
-                        runCatching { downloadManager.moveMangaToNewSource(manga, oldSource, newSource) }
-                            .onFailure { logcat(LogPriority.ERROR, it) { "Failed to move downloads on quick migrate" } }
+                        // moveMangaToNewSource reports non-crash failures (destination collision,
+                        // partial copy) via a false return, not an exception, so branch on the value:
+                        // leave the manga on its old source rather than flipping the DB onto downloads
+                        // that never moved. It can be retried once the conflict is resolved.
+                        val downloadsMoved = runCatching {
+                            downloadManager.moveMangaToNewSource(manga, oldSource, newSource)
+                        }.onFailure {
+                            logcat(LogPriority.ERROR, it) { "Failed to move downloads on quick migrate" }
+                        }.getOrDefault(false)
+                        if (!downloadsMoved) {
+                            logcat(LogPriority.WARN) {
+                                "Skipping quick migrate for ${manga.title}: download relocation did not complete"
+                            }
+                            continue
+                        }
                         runCatching {
                             translatedChapterRepository.moveNovel(
                                 oldSource.toString(),
