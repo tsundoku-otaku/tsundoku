@@ -133,6 +133,29 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
         }
     }
 
+    /**
+     * Drops all tracked per-host pacing state. A manual escape hatch (exposed as a debug button
+     * in Advanced settings) - safe to call any time since state is rebuilt lazily on the next
+     * request to each host; it just means that next request doesn't have to wait out a window
+     * built up from now-irrelevant history.
+     */
+    fun clearState() {
+        dispatchWindows.clear()
+        hostLocks.clear()
+    }
+
+    /**
+     * Drops tracked pacing state for any host not in [keepHosts]. Called automatically whenever
+     * the installed source set changes, so [dispatchWindows]/[hostLocks] - otherwise unbounded
+     * for the app's whole process lifetime - stay roughly bounded by "hosts with a currently
+     * installed source," not "every host ever contacted."
+     */
+    fun pruneToHosts(keepHosts: Set<String>) {
+        val normalizedKeep = keepHosts.mapTo(mutableSetOf()) { it.normalizedRateLimitHost() }
+        dispatchWindows.keys.retainAll(normalizedKeep)
+        hostLocks.keys.retainAll(normalizedKeep)
+    }
+
     companion object {
         private const val POLL_INTERVAL_MILLIS = 200L
     }

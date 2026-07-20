@@ -4,6 +4,7 @@ import android.content.Context
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
+import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.source.RateLimited
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.custom.CustomSourceManager
@@ -45,6 +46,7 @@ class AndroidSourceManager(
     private val downloadManager: DownloadManager by injectLazy()
     private val customSourceManager: CustomSourceManager by injectLazy()
     private val jsPluginManager: JsPluginManager by injectLazy()
+    private val networkHelper: NetworkHelper by injectLazy()
 
     private val scope = CoroutineScope(Job() + Dispatchers.IO)
 
@@ -92,6 +94,13 @@ class AndroidSourceManager(
                 mutableMap
             }.collectLatest { sources ->
                 sourcesMapFlow.value = sources
+                // Keeps PerHostDynamicRateLimitInterceptor's per-host state bounded by "hosts
+                // with a currently installed source" instead of growing for the app's whole
+                // process lifetime - fires on every source-set change (extension install/
+                // uninstall/enable/disable, custom sources, JS plugins), not just uninstalls.
+                networkHelper.rateLimitInterceptor.pruneToHosts(
+                    sources.values.mapNotNullTo(mutableSetOf()) { it.rateLimitHost() },
+                )
                 if (!_isInitialized.value) {
                     extensionManager.isInitialized.first { it }
                     jsPluginManager.isInitialized.first { it }

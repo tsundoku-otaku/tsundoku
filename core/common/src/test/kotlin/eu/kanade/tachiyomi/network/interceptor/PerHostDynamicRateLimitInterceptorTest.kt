@@ -105,6 +105,40 @@ class PerHostDynamicRateLimitInterceptorTest {
     }
 
     @Test
+    fun `clearState drops tracked windows so a previously-paced host goes through immediately`() {
+        val interceptor = PerHostDynamicRateLimitInterceptor()
+        specs["example.com"] = RateLimitSpec(delayMillis = 200L)
+
+        // Fill the single default permit's window so a normal call here would have to wait.
+        interceptor.intercept(fakeChain("https://example.com/a"))
+
+        interceptor.clearState()
+
+        val elapsed = measureMillis { interceptor.intercept(fakeChain("https://example.com/b")) }
+
+        (elapsed < 100L) shouldBe true
+    }
+
+    @Test
+    fun `pruneToHosts drops state for hosts not kept but leaves kept hosts paced`() {
+        val interceptor = PerHostDynamicRateLimitInterceptor()
+        specs["kept.com"] = RateLimitSpec(delayMillis = 200L)
+        specs["dropped.com"] = RateLimitSpec(delayMillis = 200L)
+
+        // Fill both hosts' single default permit so a normal second call to either would wait.
+        interceptor.intercept(fakeChain("https://kept.com/a"))
+        interceptor.intercept(fakeChain("https://dropped.com/a"))
+
+        interceptor.pruneToHosts(setOf("kept.com"))
+
+        val droppedElapsed = measureMillis { interceptor.intercept(fakeChain("https://dropped.com/b")) }
+        val keptElapsed = measureMillis { interceptor.intercept(fakeChain("https://kept.com/b")) }
+
+        (droppedElapsed < 100L) shouldBe true
+        (keptElapsed >= 100L) shouldBe true
+    }
+
+    @Test
     fun `an interactively bypassed host skips throttling even with a full window`() = runBlocking<Unit> {
         val host = "example.com"
         specs[host] = RateLimitSpec(delayMillis = 200L)

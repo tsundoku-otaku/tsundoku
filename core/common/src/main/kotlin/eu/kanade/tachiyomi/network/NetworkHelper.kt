@@ -18,6 +18,8 @@ class NetworkHelper(
 
     val cookieJar = AndroidCookieJar()
 
+    val rateLimitInterceptor = PerHostDynamicRateLimitInterceptor()
+
     private val clientBuilder: OkHttpClient.Builder = run {
         val builder = OkHttpClient.Builder()
             .cookieJar(cookieJar)
@@ -32,7 +34,7 @@ class NetworkHelper(
             )
             .addInterceptor(UncaughtExceptionInterceptor())
             .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
-            .addInterceptor(PerHostDynamicRateLimitInterceptor())
+            .addInterceptor(rateLimitInterceptor)
 
         if (preferences.verboseLogging.get()) {
             val httpLoggingInterceptor = HttpLoggingInterceptor().apply {
