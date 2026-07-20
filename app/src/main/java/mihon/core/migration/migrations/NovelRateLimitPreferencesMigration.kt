@@ -17,6 +17,9 @@ import tachiyomi.domain.download.service.NovelDownloadPreferences.Companion.Sour
  * [NovelDownloadPreferences] keys:
  * - novel_download_throttling_enabled -> novel_request_throttling_enabled
  * - novel_download_delay_ms -> novel_request_delay_ms
+ * - novel_download_random_delay_ms -> novel_request_jitter_ms (novel_download_random_delay_min_ms
+ *   has no equivalent in the new model and is dropped, matching how per-source overrides already
+ *   only ever carried a single random-delay-range field, never a floor)
  * - novel_source_overrides -> novel_source_overrides_v2 (shape changed too)
  *
  * Without this migration those old values are silently abandoned and every upgrading user's
@@ -39,6 +42,11 @@ class NovelRateLimitPreferencesMigration : Migration {
         val oldDelay = preferenceStore.getInt("novel_download_delay_ms", 3000)
         if (oldDelay.isSet()) {
             novelDownloadPreferences.requestDelay().set(oldDelay.get())
+        }
+
+        val oldJitter = preferenceStore.getInt("novel_download_random_delay_ms", 1000)
+        if (oldJitter.isSet()) {
+            novelDownloadPreferences.requestJitter().set(oldJitter.get())
         }
 
         val oldOverridesJson = preferenceStore.getString("novel_source_overrides", "{}")
