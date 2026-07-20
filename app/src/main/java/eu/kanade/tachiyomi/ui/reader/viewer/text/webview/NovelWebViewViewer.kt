@@ -191,7 +191,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var isEditingMode = false
 
     private var isAutoScrolling = false
-    private var autoScrollJob: Job? = null
 
     // The error page is a fresh document that drops the autoscroll rAF loop; re-arm it once its
     // onPageFinished lands, since that load bypasses the isLoadingRealChapter re-arm path.
@@ -912,6 +911,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ThemeUtils.getThemeColors(activity, preferences, theme)
 
     override fun destroy() {
+        if (isDestroyed) return
         // Only persist if real progress exists. lastSavedProgress starts at 0 and stays 0
         // until onPageFinished restores or the user scrolls. Saving 0 here on an early
         // teardown (orientation lock recreates the activity before restore runs) would
@@ -2117,19 +2117,22 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             if (isDestroyed) return@withContext
 
             if (isAppendOrPrepend && preferences.novelInfiniteScroll.get()) {
+                // Queue add and DOM insert share one guard: a redundant append for the same
+                // chapter would otherwise skip the queue add but still re-insert the DOM copy,
+                // corrupting chapterBoundaries.
                 if (!loadedChapterIds.contains(chapterId)) {
                     if (isPrepend) {
                         return@withContext
                     }
                     chapterQueue.append(chapter)
+                    appendHtmlContent(
+                        processed,
+                        chapterId,
+                        chapter.chapter.name,
+                        chapter.chapter.chapter_number,
+                        chapter.chapter.url,
+                    )
                 }
-                appendHtmlContent(
-                    processed,
-                    chapterId,
-                    chapter.chapter.name,
-                    chapter.chapter.chapter_number,
-                    chapter.chapter.url,
-                )
             } else {
                 loadHtmlContent(processed, chapter)
                 chapterQueue.reset(chapter)
@@ -2371,8 +2374,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     fun stopAutoScroll() {
         isAutoScrolling = false
-        autoScrollJob?.cancel()
-        autoScrollJob = null
         evaluateJavascriptSafe(
             """
             (function() {
