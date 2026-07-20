@@ -606,7 +606,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     Slider(
                         value = effectiveDelay.toFloat(),
                         onValueChange = { delayMillis = it.toInt().coerceAtLeast(declaredMinimum) },
-                        valueRange = declaredMinimum.toFloat()..30000f,
+                        valueRange = declaredMinimum.toFloat()..maxOf(declaredMinimum, 30000).toFloat(),
                         steps = 29,
                     )
 
