@@ -125,6 +125,24 @@ class NovelAssetRewriterTest {
     }
 
     @Test
+    fun `query string is stripped before resolving the asset`() {
+        val out = NovelAssetRewriter.rewrite(
+            """<img src="cover.png?v=2">""",
+            "html",
+            NovelAssetRewriter::relativeScheme,
+        )
+        assertEquals("""<img src="${scheme("cover.png")}">""", out)
+    }
+
+    @Test
+    fun `archive scheme strips query string`() {
+        val out = NovelAssetRewriter.rewrite("""<img src="../img/x.png?cache=1">""", "html") {
+            NovelAssetRewriter.archiveScheme("OEBPS/text", it)
+        }
+        assertEquals("""<img src="${scheme("OEBPS/img/x.png")}">""", out)
+    }
+
+    @Test
     fun `pre-encoded refs are decoded before re-encoding`() {
         // Browser "Save as complete" writes percent-encoded paths with spaces and parens.
         val html = """<img src="Saved%20Page%20(Complete)_files/x.png">"""

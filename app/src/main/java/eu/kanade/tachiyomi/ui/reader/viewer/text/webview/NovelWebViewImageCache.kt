@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import logcat.LogPriority
 import logcat.logcat
+import mihon.core.archive.NOVEL_IMAGE_SCHEME
 import java.io.File
 import java.net.URLDecoder
 import java.util.concurrent.ConcurrentHashMap
@@ -26,23 +27,24 @@ internal class NovelWebViewImageCache(
 
     fun intercept(url: String, fallbackChapterId: Long?, fallbackLoader: PageLoader?): WebResourceResponse? {
         if (!url.startsWith(URL_SCHEME_NOVEL_IMAGE)) return null
-        val rawPath = URLDecoder.decode(url.removePrefix(URL_SCHEME_NOVEL_IMAGE), "UTF-8")
+        val encodedSuffix = url.removePrefix(URL_SCHEME_NOVEL_IMAGE)
 
-        // Only the infinite-scroll append path prefixes the URL with "<chapterId>/". Treat the first
-        // segment as a chapter id only when it is a registered loader, so a relative asset folder that
-        // happens to be all-digits (e.g. "2020/cover.jpg") on the unprefixed initial load isn't
-        // mistaken for a chapter id and dropped.
-        val slashIdx = rawPath.indexOf('/')
-        val (chapterId, imagePath) = if (slashIdx > 0) {
-            val possibleId = rawPath.substring(0, slashIdx).toLongOrNull()
-            if (possibleId != null && chapterLoaderMap.containsKey(possibleId)) {
-                possibleId to rawPath.substring(slashIdx + 1)
+        // The infinite-scroll append path is the only producer of a literal "/" here: it prefixes the
+        // scheme with "<chapterId>/". Real asset paths are URL-encoded whole, so their own slashes are
+        // "%2F" and never appear as a literal slash. A leading numeric segment before a literal slash is
+        // therefore always that append prefix, not an all-digits relative folder like "2020/cover.jpg".
+        val slashIdx = encodedSuffix.indexOf('/')
+        val (chapterId, encodedImagePath) = if (slashIdx > 0) {
+            val possibleId = encodedSuffix.substring(0, slashIdx).toLongOrNull()
+            if (possibleId != null) {
+                possibleId to encodedSuffix.substring(slashIdx + 1)
             } else {
-                fallbackChapterId to rawPath
+                fallbackChapterId to encodedSuffix
             }
         } else {
-            fallbackChapterId to rawPath
+            fallbackChapterId to encodedSuffix
         }
+        val imagePath = URLDecoder.decode(encodedImagePath, "UTF-8")
 
         val loader = chapterId?.let { chapterLoaderMap[it] } ?: fallbackLoader
         val cacheKey = buildCacheKey(chapterId, imagePath)
@@ -78,14 +80,18 @@ internal class NovelWebViewImageCache(
         if (chapterId == null || loader == null) return
         chapterLoaderMap[chapterId] = loader
         IMAGE_URL_PATTERN.findAll(content)
-            .mapNotNull { match -> runCatching { URLDecoder.decode(match.groupValues[1], "UTF-8") }.getOrNull() }
+            .map { it.groupValues[1] }
             .distinct()
-            .forEach { rawPath ->
-                val imagePath = if (rawPath.startsWith("$chapterId/")) {
-                    rawPath.removePrefix("$chapterId/")
-                } else {
-                    rawPath
-                }
+            .forEach { encodedRef ->
+                val slashIdx = encodedRef.indexOf('/')
+                val encodedImagePath =
+                    if (slashIdx > 0 && encodedRef.substring(0, slashIdx).toLongOrNull() == chapterId) {
+                        encodedRef.substring(slashIdx + 1)
+                    } else {
+                        encodedRef
+                    }
+                val imagePath = runCatching { URLDecoder.decode(encodedImagePath, "UTF-8") }.getOrNull()
+                    ?: return@forEach
                 prefetch(chapterId, imagePath, loader)
             }
     }
@@ -163,7 +169,7 @@ internal class NovelWebViewImageCache(
         }
 
     companion object {
-        const val URL_SCHEME_NOVEL_IMAGE = "tsundoku-novel-image://"
+        const val URL_SCHEME_NOVEL_IMAGE = NOVEL_IMAGE_SCHEME
         private val IMAGE_URL_PATTERN = Regex("${Regex.escape(URL_SCHEME_NOVEL_IMAGE)}([^\"'<>\\s]+)")
     }
 }

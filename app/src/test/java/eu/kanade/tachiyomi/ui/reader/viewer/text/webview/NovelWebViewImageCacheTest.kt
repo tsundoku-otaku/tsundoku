@@ -156,6 +156,30 @@ class NovelWebViewImageCacheTest {
     }
 
     @Test
+    fun `unprefixed relative folder matching a registered chapter id is not treated as a prefix`(
+        @TempDir tempDir: Path,
+    ) {
+        val folderBytes = byteArrayOf(0x11.toByte())
+        val baseLoader = fakeLoader("3/cover.jpg" to folderBytes)
+        val otherLoader = fakeLoader("cover.jpg" to byteArrayOf(0x22.toByte()))
+        val cache = makeCache(tempDir.toFile())
+        cache.schedulePrefetch(content = "", chapterId = 3L, loader = otherLoader)
+
+        // Real asset slashes are %2F-encoded, so the unprefixed ref carries no literal slash and the
+        // leading "3" must resolve as a relative folder, not the registered chapter id 3.
+        val response = cache.intercept(
+            url = "tsundoku-novel-image://3%2Fcover.jpg",
+            fallbackChapterId = 7L,
+            fallbackLoader = baseLoader,
+        )
+
+        assertNotNull(response)
+        val cachedFiles = tempDir.toFile().listFiles { f -> f.extension == "jpg" }
+        assertNotNull(cachedFiles)
+        assertArrayEquals(folderBytes, cachedFiles!!.first().readBytes())
+    }
+
+    @Test
     fun `schedulePrefetch populates cache so intercept is a hit`(@TempDir tempDir: Path) = runBlocking {
         val imageBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
         val loader = fakeLoader("hero.jpg" to imageBytes)

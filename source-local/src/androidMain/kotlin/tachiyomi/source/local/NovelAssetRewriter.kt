@@ -1,8 +1,10 @@
 package tachiyomi.source.local
 
+import mihon.core.archive.NOVEL_IMAGE_SCHEME
+
 internal object NovelAssetRewriter {
 
-    const val SCHEME = "tsundoku-novel-image://"
+    const val SCHEME = NOVEL_IMAGE_SCHEME
 
     private val RESOURCE_TAG_REGEX = Regex(
         "<(?:img|source|video|audio|track|embed|object|image|link|script)\\b[^>]*>",
@@ -99,7 +101,7 @@ internal object NovelAssetRewriter {
     fun relativeScheme(ref: String): String? {
         val v = ref.trim()
         if (!isResolvableRef(v)) return null
-        val path = decodePath(v.substringBefore('#')).removePrefix("./").removePrefix("/")
+        val path = decodePath(v.substringBefore('?').substringBefore('#')).removePrefix("./").removePrefix("/")
         if (path.isBlank()) return null
         return "$SCHEME${java.net.URLEncoder.encode(path, "UTF-8")}"
     }
@@ -107,7 +109,7 @@ internal object NovelAssetRewriter {
     fun archiveScheme(baseDir: String, ref: String): String? {
         val v = ref.trim()
         if (!isResolvableRef(v)) return null
-        val decoded = decodePath(v.substringBefore('#'))
+        val decoded = decodePath(v.substringBefore('?').substringBefore('#'))
         val effectiveBase = if (decoded.startsWith("/")) "" else baseDir
         val path = resolveArchivePath(effectiveBase, decoded)
         if (path.isBlank()) return null
