@@ -244,6 +244,9 @@
     <string name="pref_novel_request_delay_summary">Base delay between requests to the same source (ms). Applies once per request, so a novel needing many chapters naturally takes longer than one needing few.</string>
     <string name="pref_novel_request_jitter">Random jitter</string>
     <string name="pref_novel_request_jitter_summary">Random amount added on top of the base delay (ms), so requests look like a natural user rather than a bot waiting an exact interval</string>
+    <string name="pref_clear_rate_limit_history">Clear rate limit history</string>
+    <string name="pref_clear_rate_limit_history_summary">Resets tracked per-host request pacing state. Safe to use any time; the next request to each host just won\'t have to wait out a window built from now-stale history.</string>
+    <string name="rate_limit_history_cleared">Rate limit history cleared</string>
     <string name="pref_novel_update_stagger">Update staggering</string>
     <string name="pref_novel_update_staggersummary">Add 3-8 minute delays every 5 novels during library updates</string>
     <string name="pref_novel_low_delay_warning">\n⚠ Low delay values may cause sources to rate-limit or block your IP. A minimum of 3 seconds is recommended.</string>

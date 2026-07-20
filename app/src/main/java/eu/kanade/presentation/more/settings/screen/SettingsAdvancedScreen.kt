@@ -1473,6 +1473,14 @@ object SettingsAdvancedScreen : SearchableSettings {
                         context.toast(MR.strings.requires_app_restart)
                     },
                 ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(TDMR.strings.pref_clear_rate_limit_history),
+                    subtitle = stringResource(TDMR.strings.pref_clear_rate_limit_history_summary),
+                    onClick = {
+                        networkHelper.rateLimitInterceptor.clearState()
+                        context.toast(TDMR.strings.rate_limit_history_cleared)
+                    },
+                ),
             ),
         )
     }
