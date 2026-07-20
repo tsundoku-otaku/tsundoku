@@ -1,7 +1,5 @@
 package eu.kanade.tachiyomi.network.interceptor
 
-import java.util.concurrent.ConcurrentHashMap
-
 /**
  * Tracks which hosts a background job (library update, mass import, chapter download) is
  * currently doing work against, so [PerHostDynamicRateLimitInterceptor] can refuse to honor an
@@ -20,17 +18,9 @@ import java.util.concurrent.ConcurrentHashMap
  * exchange for never letting a background job's traffic escape pacing.
  */
 object BackgroundRateLimitGuard {
-    private val activeHosts = ConcurrentHashMap<String, Int>()
+    private val refCounter = HostRefCounter()
 
-    fun isActive(host: String): Boolean = activeHosts.containsKey(host.normalizedRateLimitHost())
+    fun isActive(host: String): Boolean = refCounter.isActive(host)
 
-    suspend fun <T> active(host: String?, block: suspend () -> T): T {
-        val normalized = host?.normalizedRateLimitHost() ?: return block()
-        activeHosts.merge(normalized, 1, Int::plus)
-        try {
-            return block()
-        } finally {
-            activeHosts.computeIfPresent(normalized) { _, count -> (count - 1).takeIf { it > 0 } }
-        }
-    }
+    suspend fun <T> active(host: String?, block: suspend () -> T): T = refCounter.track(host, block)
 }

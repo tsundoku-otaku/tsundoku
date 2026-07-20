@@ -1,7 +1,5 @@
 package eu.kanade.tachiyomi.network.interceptor
 
-import java.util.concurrent.ConcurrentHashMap
-
 /**
  * Lets an interactive, user-initiated fetch (e.g. opening a novel that's never been loaded, or
  * tapping refresh) skip [PerHostDynamicRateLimitInterceptor]'s pacing for the duration of that
@@ -16,17 +14,9 @@ import java.util.concurrent.ConcurrentHashMap
  * ends up executing the request.
  */
 object InteractiveRateLimitBypass {
-    private val bypassedHosts = ConcurrentHashMap<String, Int>()
+    private val refCounter = HostRefCounter()
 
-    fun isBypassed(host: String): Boolean = bypassedHosts.containsKey(host.normalizedRateLimitHost())
+    fun isBypassed(host: String): Boolean = refCounter.isActive(host)
 
-    suspend fun <T> bypassing(host: String?, block: suspend () -> T): T {
-        val normalized = host?.normalizedRateLimitHost() ?: return block()
-        bypassedHosts.merge(normalized, 1, Int::plus)
-        try {
-            return block()
-        } finally {
-            bypassedHosts.computeIfPresent(normalized) { _, count -> (count - 1).takeIf { it > 0 } }
-        }
-    }
+    suspend fun <T> bypassing(host: String?, block: suspend () -> T): T = refCounter.track(host, block)
 }
