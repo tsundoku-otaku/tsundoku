@@ -11,11 +11,14 @@ import eu.kanade.tachiyomi.data.notification.NotificationHandler
 import eu.kanade.tachiyomi.data.translation.TranslationJob
 import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.tachiyomi.network.interceptor.BackgroundRateLimitGuard
+import eu.kanade.tachiyomi.network.interceptor.InteractiveRateLimitBypass
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.source.rateLimitHost
 import eu.kanade.tachiyomi.util.chapter.ChapterImageEmbedder
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.DiskUtil.NOMEDIA_FILE
@@ -71,7 +74,6 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.random.Random
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -325,77 +327,19 @@ class Downloader(
         }
     }
 
-    /**
-     * Track the last download time per source for throttling
-     */
-    private val lastDownloadTimePerSource = mutableMapOf<Long, Long>()
-
-    /**
-     * Get the throttle delay for a novel download based on preferences
-     */
-    private fun getThrottleDelay(sourceId: Long): Long {
-        if (!novelDownloadPreferences.enableThrottling().get()) {
-            return 0L
-        }
-
-        // Check for source-specific override
-        val override = novelDownloadPreferences.getSourceOverride(sourceId)
-        if (override != null && override.enabled) {
-            val baseDelay = override.downloadDelay?.toLong() ?: novelDownloadPreferences.downloadDelay().get().toLong()
-            val randomRange = override.randomDelayRange ?: novelDownloadPreferences.randomDelayRange().get()
-            val randomMin = novelDownloadPreferences.randomDelayMin().get().toLong()
-            val randomDelay = if (randomRange >
-                0
-            ) {
-                Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1))
-            } else {
-                0L
-            }
-            return baseDelay + randomDelay
-        }
-
-        // Use default settings
-        val baseDelay = novelDownloadPreferences.downloadDelay().get().toLong()
-        val randomRange = novelDownloadPreferences.randomDelayRange().get()
-        val randomMin = novelDownloadPreferences.randomDelayMin().get().toLong()
-        val randomDelay = if (randomRange > 0) {
-            Random.nextLong(randomMin.coerceAtLeast(0), randomRange.toLong().coerceAtLeast(randomMin + 1))
-        } else {
-            0L
-        }
-
-        return baseDelay + randomDelay
-    }
-
-    /**
-     * Wait for throttle delay if needed for novel sources
-     */
-    private suspend fun waitForThrottle(download: Download) {
-        if (!download.source.isNovelSource()) return
-
-        val sourceId = download.source.id
-        val now = System.currentTimeMillis()
-        val lastTime = lastDownloadTimePerSource[sourceId] ?: 0L
-        val throttleDelay = getThrottleDelay(sourceId)
-
-        val timeSinceLastDownload = now - lastTime
-        if (timeSinceLastDownload < throttleDelay) {
-            val waitTime = throttleDelay - timeSinceLastDownload
-            logcat(LogPriority.DEBUG) {
-                "Throttling novel download for ${waitTime}ms (source: ${download.source.name})"
-            }
-            delay(waitTime)
-        }
-
-        lastDownloadTimePerSource[sourceId] = System.currentTimeMillis()
-    }
-
     private fun CoroutineScope.launchDownloadJob(download: Download) = launchIO {
         try {
-            // Apply throttling for novel sources
-            waitForThrottle(download)
-
-            downloadChapter(download)
+            // Per-request pacing now happens in the shared OkHttp client
+            // (see PerHostDynamicRateLimitInterceptor), not here.
+            val host = download.source.rateLimitHost()
+            if (download.bypassRateLimit) {
+                InteractiveRateLimitBypass.bypassing(host) { downloadChapter(download) }
+            } else {
+                // Marks this host as having active background work so an unrelated interactive
+                // bypass (e.g. the user browsing the same source) can't let this download's own
+                // requests skip pacing too.
+                BackgroundRateLimitGuard.active(host) { downloadChapter(download) }
+            }
 
             // Remove successful download from queue
             if (download.status == Download.State.DOWNLOADED) {
@@ -441,7 +385,12 @@ class Downloader(
      * @param chapters the list of chapters to download.
      * @param autoStart whether to start the downloader after enqueing the chapters.
      */
-    fun queueChapters(manga: Manga, chapters: List<Chapter>, autoStart: Boolean) {
+    fun queueChapters(
+        manga: Manga,
+        chapters: List<Chapter>,
+        autoStart: Boolean,
+        bypassRateLimitChapterIds: Set<Long> = emptySet(),
+    ) {
         logcat { "queueChapters called: manga=${manga.title}, chapters=${chapters.size}, autoStart=$autoStart" }
         if (chapters.isEmpty()) {
             logcat { "queueChapters: No chapters to queue" }
@@ -468,6 +417,17 @@ class Downloader(
             val queuedChapterIds = HashSet<Long>(queueState.value.size)
             for (queued in queueState.value) {
                 queuedChapterIds.add(queued.chapterId)
+                // bypassRateLimit is set on new Download objects below, but a chapter already
+                // sitting in the queue never reaches that Download.from() call - set it here
+                // instead, or the common case (e.g. the reader re-requesting bypass for the same
+                // next chapter on every page turn, while it's still downloading from the
+                // previous request) silently never applies. Only ever sets it, never clears it:
+                // an unrelated queueChapters() call with no bypass intent of its own (the default
+                // empty bypassRateLimitChapterIds) must not wipe out a bypass a different caller
+                // is still relying on for this same chapter.
+                if (queued.chapterId in bypassRateLimitChapterIds) {
+                    queued.bypassRateLimit = true
+                }
             }
 
             val chaptersToQueue = chapters.asSequence()
@@ -479,7 +439,12 @@ class Downloader(
                 .filter { chapter -> chapter.id !in queuedChapterIds }
                 // Create a download for each one.
                 .map { chapter ->
-                    Download.from(manga = manga, chapter = chapter, source = source)
+                    Download.from(
+                        manga = manga,
+                        chapter = chapter,
+                        source = source,
+                        bypassRateLimit = chapter.id in bypassRateLimitChapterIds,
+                    )
                 }
                 .toList()
 

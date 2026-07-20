@@ -219,7 +219,7 @@ object SettingsMainScreen : Screen() {
         ),
         Item(
             titleRes = TDMR.strings.pref_category_novel_downloads,
-            subtitleRes = TDMR.strings.pref_novel_download_throttling_summary,
+            subtitleRes = TDMR.strings.pref_novel_request_throttling_summary,
             icon = Icons.Outlined.GetApp,
             screen = SettingsNovelDownloadScreen,
         ),

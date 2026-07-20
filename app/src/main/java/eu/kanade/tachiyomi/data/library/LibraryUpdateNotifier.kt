@@ -87,8 +87,10 @@ class LibraryUpdateNotifier(
      * @param manga the manga that are being updated.
      * @param current the current progress.
      * @param total the total progress.
+     * @param waitingMessage when non-null, an extra line shown above the manga list - surfaces
+     * an otherwise-invisible rate-limit wait so the notification doesn't look stalled.
      */
-    fun showProgressNotification(manga: List<Manga>, current: Int, total: Int) {
+    fun showProgressNotification(manga: List<Manga>, current: Int, total: Int, waitingMessage: String? = null) {
         progressNotificationBuilder
             .setContentTitle(
                 context.stringResource(
@@ -98,8 +100,11 @@ class LibraryUpdateNotifier(
             )
 
         if (!securityPreferences.hideNotificationContent.get()) {
-            val updatingText = manga.joinToString("\n") { it.title.chop(40) }
-            progressNotificationBuilder.setStyle(NotificationCompat.BigTextStyle().bigText(updatingText))
+            val lines = buildList {
+                waitingMessage?.let { add(it) }
+                manga.mapTo(this) { it.title.chop(40) }
+            }
+            progressNotificationBuilder.setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
         }
 
         context.notify(

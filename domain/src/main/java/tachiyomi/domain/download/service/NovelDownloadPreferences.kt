@@ -10,36 +10,42 @@ class NovelDownloadPreferences(
     private val preferenceStore: PreferenceStore,
 ) {
     /**
-     * Enable download throttling for novel sources
+     * Enable per-request delay throttling for novel sources.
+     * Applies once per outgoing HTTP request (via the app's shared network client),
+     * regardless of which job (download, library update, mass import) triggered it.
      */
-    fun enableThrottling() = preferenceStore.getBoolean(
-        "novel_download_throttling_enabled",
+    fun enableRequestThrottling() = preferenceStore.getBoolean(
+        "novel_request_throttling_enabled",
         true,
     )
 
     /**
-     * Base delay between chapter downloads from the same source (in milliseconds)
+     * Base delay between requests to the same source (in milliseconds)
      */
-    fun downloadDelay() = preferenceStore.getInt(
-        "novel_download_delay_ms",
+    fun requestDelay() = preferenceStore.getInt(
+        "novel_request_delay_ms",
         3000, // Default 3 seconds
     )
 
     /**
-     * Minimum random delay to add to base delay (in milliseconds)
+     * Random jitter added on top of the base delay (in milliseconds).
+     * Actual delay = requestDelay + random(0, requestJitter). This exists so requests
+     * look like a human's natural pacing rather than a bot waiting an exact interval.
      */
-    fun randomDelayMin() = preferenceStore.getInt(
-        "novel_download_random_delay_min_ms",
-        0,
+    fun requestJitter() = preferenceStore.getInt(
+        "novel_request_jitter_ms",
+        1000, // Default 0-1 second random
     )
 
     /**
-     * Maximum random delay range to add to base delay (in milliseconds)
-     * Actual delay = baseDelay + random(randomDelayMin, randomDelayRange)
+     * How many requests to a source are allowed through in a quick burst before requestDelay
+     * needs to be enforced. E.g. 3 lets 3 requests fire immediately, then the 4th waits out the
+     * delay window - useful since a few requests per novel (one per chapter) is often fine even
+     * where a long unbroken stream isn't.
      */
-    fun randomDelayRange() = preferenceStore.getInt(
-        "novel_download_random_delay_ms",
-        1000, // Default 0-1 second random
+    fun requestPermits() = preferenceStore.getInt(
+        "novel_request_permits",
+        1, // Default: every request is paced individually, matching pre-burst behavior
     )
 
     /**
@@ -52,14 +58,6 @@ class NovelDownloadPreferences(
     )
 
     /**
-     * Enable delay between library updates for novel sources
-     */
-    fun enableUpdateThrottling() = preferenceStore.getBoolean(
-        "novel_update_throttling_enabled",
-        true,
-    )
-
-    /**
      * Enable additional delay every 5 library updates for novel sources
      */
     fun enableUpdateStaggering() = preferenceStore.getBoolean(
@@ -68,35 +66,11 @@ class NovelDownloadPreferences(
     )
 
     /**
-     * Delay between checking novels during library update (in milliseconds)
-     */
-    fun updateDelay() = preferenceStore.getInt(
-        "novel_update_delay_ms",
-        3000, // Default 3 seconds
-    )
-
-    /**
      * Maximum parallel library updates for novel sources (per extension)
      */
     fun parallelNovelUpdates() = preferenceStore.getInt(
         "novel_parallel_updates",
         2, // Default to 2 concurrent novel sources
-    )
-
-    /**
-     * Enable delay for mass import operations
-     */
-    fun enableMassImportThrottling() = preferenceStore.getBoolean(
-        "novel_mass_import_throttling_enabled",
-        true,
-    )
-
-    /**
-     * Delay between imports during mass import (in milliseconds)
-     */
-    fun massImportDelay() = preferenceStore.getInt(
-        "novel_mass_import_delay_ms",
-        3000, // Default 3 seconds
     )
 
     /**
@@ -128,9 +102,13 @@ class NovelDownloadPreferences(
     /**
      * Stored source-specific overrides as JSON string
      * Format: Map<sourceId: Long, SourceOverride>
+     *
+     * Uses a new key (v2) because the shape of [SourceOverride] changed from four
+     * per-job delay fields to a single delay+jitter pair, and decoding isn't configured
+     * to tolerate unknown/missing fields from the old format.
      */
     fun sourceOverrides() = preferenceStore.getString(
-        "novel_source_overrides",
+        "novel_source_overrides_v2",
         "{}",
     )
 
@@ -184,33 +162,52 @@ class NovelDownloadPreferences(
         0, // Default to store for backwards compatibility
     )
 
+    @Volatile
+    private var cachedOverridesJson: String? = null
+
+    @Volatile
+    private var cachedOverrides: Map<String, SourceOverride> = emptyMap()
+
+    /**
+     * [sourceOverrides] is read (and, before this cache, fully JSON-decoded) on every single
+     * request that flows through the rate-limit interceptor via [RateLimitResolver.resolve] -
+     * wasteful when redone on every HTTP request for a value that only changes when the user
+     * edits an override. Cached by raw JSON string so a write is picked up on the very next read.
+     */
+    private fun decodedOverrides(): Map<String, SourceOverride> {
+        val json = sourceOverrides().get()
+        cachedOverridesJson?.let { cached -> if (cached == json) return cachedOverrides }
+
+        synchronized(this) {
+            val recheckJson = sourceOverrides().get()
+            cachedOverridesJson?.let { cached -> if (cached == recheckJson) return cachedOverrides }
+
+            val decoded = if (recheckJson.isEmpty() || recheckJson == "{}") {
+                emptyMap()
+            } else {
+                try {
+                    kotlinx.serialization.json.Json.decodeFromString<Map<String, SourceOverride>>(recheckJson)
+                } catch (_: Exception) {
+                    emptyMap()
+                }
+            }
+            cachedOverridesJson = recheckJson
+            cachedOverrides = decoded
+            return decoded
+        }
+    }
+
     /**
      * Get source override for a specific source ID
      */
-    fun getSourceOverride(sourceId: Long): SourceOverride? {
-        return try {
-            val json = sourceOverrides().get()
-            if (json.isEmpty() || json == "{}") return null
-
-            val overrides = kotlinx.serialization.json.Json.decodeFromString<Map<String, SourceOverride>>(json)
-            overrides[sourceId.toString()]
-        } catch (_: Exception) {
-            null
-        }
-    }
+    fun getSourceOverride(sourceId: Long): SourceOverride? = decodedOverrides()[sourceId.toString()]
 
     /**
      * Set source override for a specific source
      */
     fun setSourceOverride(override: SourceOverride) {
         try {
-            val currentJson = sourceOverrides().get()
-            val overrides = if (currentJson.isEmpty() || currentJson == "{}") {
-                mutableMapOf()
-            } else {
-                kotlinx.serialization.json.Json.decodeFromString<MutableMap<String, SourceOverride>>(currentJson)
-            }
-
+            val overrides = decodedOverrides().toMutableMap()
             overrides[override.sourceId.toString()] = override
             val newJson = kotlinx.serialization.json.Json.encodeToString(overrides)
             sourceOverrides().set(newJson)
@@ -224,12 +221,8 @@ class NovelDownloadPreferences(
      */
     fun removeSourceOverride(sourceId: Long) {
         try {
-            val currentJson = sourceOverrides().get()
-            if (currentJson.isEmpty() || currentJson == "{}") return
-
-            val overrides = kotlinx.serialization.json.Json.decodeFromString<MutableMap<String, SourceOverride>>(
-                currentJson,
-            )
+            val overrides = decodedOverrides().toMutableMap()
+            if (overrides.isEmpty()) return
             overrides.remove(sourceId.toString())
 
             val newJson = if (overrides.isEmpty()) {
@@ -246,17 +239,7 @@ class NovelDownloadPreferences(
     /**
      * Get all source overrides
      */
-    fun getAllSourceOverrides(): List<SourceOverride> {
-        return try {
-            val json = sourceOverrides().get()
-            if (json.isEmpty() || json == "{}") return emptyList()
-
-            val overrides = kotlinx.serialization.json.Json.decodeFromString<Map<String, SourceOverride>>(json)
-            overrides.values.toList()
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
+    fun getAllSourceOverrides(): List<SourceOverride> = decodedOverrides().values.toList()
 
     companion object {
         /**
@@ -265,10 +248,9 @@ class NovelDownloadPreferences(
         @kotlinx.serialization.Serializable
         data class SourceOverride(
             val sourceId: Long,
-            val downloadDelay: Int? = null,
-            val randomDelayRange: Int? = null,
-            val updateDelay: Int? = null,
-            val massImportDelay: Int? = null,
+            val delayMillis: Int? = null,
+            val jitterMillis: Int? = null,
+            val permits: Int? = null,
             val enabled: Boolean = true,
         )
     }

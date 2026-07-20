@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.source.CatalogueSource
+import eu.kanade.tachiyomi.source.RateLimited
 import eu.kanade.tachiyomi.source.isNovelSource
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences
@@ -48,7 +49,6 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import kotlin.random.Random
 
 object SettingsNovelDownloadScreen : SearchableSettings {
 
@@ -63,14 +63,13 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     override fun getAdditionalResetPreferences(): List<tachiyomi.core.common.preference.Preference<*>> {
         val prefs = remember { Injekt.get<NovelDownloadPreferences>() }
         return listOf(
-            prefs.downloadDelay(),
-            prefs.randomDelayRange(),
+            prefs.requestDelay(),
+            prefs.requestJitter(),
+            prefs.requestPermits(),
             prefs.parallelNovelDownloads(),
             prefs.maxImageSizeKb(),
             prefs.imageCompressionQuality(),
-            prefs.updateDelay(),
             prefs.parallelNovelUpdates(),
-            prefs.massImportDelay(),
             prefs.parallelMassImport(),
         )
     }
@@ -122,81 +121,83 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         }
 
         return listOf(
-            getDownloadThrottlingGroup(novelDownloadPreferences),
+            getRequestThrottlingGroup(novelDownloadPreferences),
+            getDownloadSettingsGroup(novelDownloadPreferences),
             getImageEmbeddingGroup(novelDownloadPreferences),
-            getUpdateThrottlingGroup(novelDownloadPreferences),
-            getMassImportThrottlingGroup(novelDownloadPreferences),
+            getUpdateSettingsGroup(novelDownloadPreferences),
+            getMassImportSettingsGroup(novelDownloadPreferences),
             getPerExtensionGroup(novelDownloadPreferences) { showOverridesDialog = true },
         )
     }
 
     @Composable
-    private fun getDownloadThrottlingGroup(
+    private fun getRequestThrottlingGroup(
         prefs: NovelDownloadPreferences,
     ): Preference.PreferenceGroup {
-        val downloadPreferences = Injekt.get<DownloadPreferences>()
-        val enabled = prefs.enableThrottling().collectAsState().value
-        val downloadDelay = prefs.downloadDelay().collectAsState().value
-        val randomDelayMin = prefs.randomDelayMin().collectAsState().value
-        val randomDelay = prefs.randomDelayRange().collectAsState().value
-        val parallelDownloads = prefs.parallelNovelDownloads().collectAsState().value
-        val compressionLevel = prefs.zipCompressionLevel().collectAsState().value
-        val epubCompressionLevel = downloadPreferences.epubCompressionLevel.collectAsState().value
+        val enabled = prefs.enableRequestThrottling().collectAsState().value
+        val requestDelay = prefs.requestDelay().collectAsState().value
+        val requestJitter = prefs.requestJitter().collectAsState().value
+        val requestPermits = prefs.requestPermits().collectAsState().value
 
-        val lowDelayWarning = if (downloadDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
+        val lowDelayWarning = if (requestDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
             stringResource(TDMR.strings.pref_novel_low_delay_warning)
         } else {
             ""
         }
 
         return Preference.PreferenceGroup(
-            title = stringResource(MR.strings.pref_category_downloads),
+            title = stringResource(TDMR.strings.pref_novel_request_throttling_category),
             preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = prefs.enableThrottling(),
-                    title = stringResource(TDMR.strings.pref_novel_download_throttling),
-                    subtitle = stringResource(TDMR.strings.pref_novel_download_throttling_summary),
+                    preference = prefs.enableRequestThrottling(),
+                    title = stringResource(TDMR.strings.pref_novel_request_throttling),
+                    subtitle = stringResource(TDMR.strings.pref_novel_request_throttling_summary),
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = downloadDelay,
+                    value = requestPermits,
+                    valueRange = 1..20,
+                    title = stringResource(TDMR.strings.pref_novel_request_permits),
+                    subtitle = stringResource(TDMR.strings.pref_novel_request_permits_summary),
+                    valueString = "$requestPermits",
+                    onValueChanged = { prefs.requestPermits().set(it) },
+                    enabled = enabled,
+                ),
+                Preference.PreferenceItem.SliderPreference(
+                    value = requestDelay,
                     valueRange = 0..120000,
                     steps = 1000,
-                    title = stringResource(TDMR.strings.pref_novel_download_delay),
-                    subtitle = stringResource(TDMR.strings.pref_novel_download_delay_summary) + lowDelayWarning,
-                    valueString = "${downloadDelay}ms",
-                    onValueChanged = { prefs.downloadDelay().set(it + Random.nextInt(0, 999)) },
+                    title = stringResource(TDMR.strings.pref_novel_request_delay),
+                    subtitle = stringResource(TDMR.strings.pref_novel_request_delay_summary) + lowDelayWarning,
+                    valueString = "${requestDelay}ms",
+                    onValueChanged = { prefs.requestDelay().set(it) },
                     enabled = enabled,
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = randomDelayMin,
+                    value = requestJitter,
                     valueRange = 0..10000,
                     steps = 1000,
-                    title = stringResource(TDMR.strings.pref_novel_random_delay_min),
-                    subtitle = stringResource(TDMR.strings.pref_novel_random_delay_min_summary),
-                    valueString = "${randomDelayMin}ms",
-                    onValueChanged = {
-                        prefs.randomDelayMin().set(it + Random.nextInt(0, 999))
-                        if (it > prefs.randomDelayRange().get()) {
-                            prefs.randomDelayRange().set(it)
-                        }
-                    },
+                    title = stringResource(TDMR.strings.pref_novel_request_jitter),
+                    subtitle = stringResource(TDMR.strings.pref_novel_request_jitter_summary),
+                    valueString = "0-${requestJitter}ms",
+                    onValueChanged = { prefs.requestJitter().set(it) },
                     enabled = enabled,
                 ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = randomDelay,
-                    valueRange = 0..60000,
-                    steps = 1000,
-                    title = stringResource(TDMR.strings.pref_novel_random_delay),
-                    subtitle = stringResource(TDMR.strings.pref_novel_random_delay_summary),
-                    valueString = "$randomDelayMin-${randomDelay}ms",
-                    onValueChanged = {
-                        prefs.randomDelayRange().set(it + Random.nextInt(0, 999))
-                        if (it < prefs.randomDelayMin().get()) {
-                            prefs.randomDelayMin().set(it)
-                        }
-                    },
-                    enabled = enabled,
-                ),
+            ),
+        )
+    }
+
+    @Composable
+    private fun getDownloadSettingsGroup(
+        prefs: NovelDownloadPreferences,
+    ): Preference.PreferenceGroup {
+        val downloadPreferences = Injekt.get<DownloadPreferences>()
+        val parallelDownloads = prefs.parallelNovelDownloads().collectAsState().value
+        val compressionLevel = prefs.zipCompressionLevel().collectAsState().value
+        val epubCompressionLevel = downloadPreferences.epubCompressionLevel.collectAsState().value
+
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_category_downloads),
+            preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
                     value = parallelDownloads,
                     valueRange = 1..50,
@@ -282,37 +283,14 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     }
 
     @Composable
-    private fun getUpdateThrottlingGroup(
+    private fun getUpdateSettingsGroup(
         prefs: NovelDownloadPreferences,
     ): Preference.PreferenceGroup {
-        val enabled = prefs.enableUpdateThrottling().collectAsState().value
-        val updateDelay = prefs.updateDelay().collectAsState().value
         val parallelUpdates = prefs.parallelNovelUpdates().collectAsState().value
-
-        val lowDelayWarning = if (updateDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
-            stringResource(TDMR.strings.pref_novel_low_delay_warning)
-        } else {
-            ""
-        }
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_category_library_update),
             preferenceItems = listOf(
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = prefs.enableUpdateThrottling(),
-                    title = stringResource(TDMR.strings.pref_novel_update_throttling),
-                    subtitle = stringResource(TDMR.strings.pref_novel_update_throttling_summary),
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = updateDelay,
-                    valueRange = 0..120000,
-                    steps = 1000,
-                    title = stringResource(TDMR.strings.pref_novel_update_delay),
-                    subtitle = stringResource(TDMR.strings.pref_novel_update_delay_subtitle) + lowDelayWarning,
-                    valueString = "${updateDelay}ms",
-                    onValueChanged = { prefs.updateDelay().set(it + Random.nextInt(0, 999)) },
-                    enabled = enabled,
-                ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = prefs.enableUpdateStaggering(),
                     title = stringResource(TDMR.strings.pref_novel_update_stagger),
@@ -331,36 +309,12 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     }
 
     @Composable
-    private fun getMassImportThrottlingGroup(
+    private fun getMassImportSettingsGroup(
         prefs: NovelDownloadPreferences,
     ): Preference.PreferenceGroup {
-        val enabled = prefs.enableMassImportThrottling().collectAsState().value
-        val massImportDelay = prefs.massImportDelay().collectAsState().value
-
-        val lowDelayWarning = if (massImportDelay < LOW_DELAY_THRESHOLD_MS && enabled) {
-            stringResource(TDMR.strings.pref_novel_low_delay_warning)
-        } else {
-            ""
-        }
-
         return Preference.PreferenceGroup(
             title = stringResource(TDMR.strings.pref_novel_mass_import_category),
             preferenceItems = listOf(
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = prefs.enableMassImportThrottling(),
-                    title = stringResource(TDMR.strings.pref_novel_mass_import_throttling),
-                    subtitle = stringResource(TDMR.strings.pref_novel_mass_import_throttling_subtitle),
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = massImportDelay,
-                    valueRange = 0..120000,
-                    steps = 1000,
-                    title = stringResource(TDMR.strings.pref_novel_mass_import_delay),
-                    subtitle = stringResource(TDMR.strings.pref_novel_mass_import_delay_subtitle) + lowDelayWarning,
-                    valueString = "${massImportDelay}ms",
-                    onValueChanged = { prefs.massImportDelay().set(it + Random.nextInt(0, 999)) },
-                    enabled = enabled,
-                ),
                 Preference.PreferenceItem.SliderPreference(
                     value = prefs.parallelMassImport().collectAsState().value,
                     valueRange = 1..30,
@@ -411,6 +365,14 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         )
     }
 
+    /**
+     * A row in the overrides list: either a real saved [override], or a synthetic placeholder
+     * (never persisted, [isSaved] = false) for a source that declares [RateLimited] but has no
+     * saved override yet - shown so the user can see it's a 1.6-lib source using its own
+     * declared defaults, before they've customized anything.
+     */
+    private data class OverrideRow(val override: SourceOverride, val isSaved: Boolean)
+
     @Composable
     private fun PerExtensionOverridesDialog(
         prefs: NovelDownloadPreferences,
@@ -419,10 +381,24 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         onEdit: (SourceOverride) -> Unit,
     ) {
         val sourceManager = remember { Injekt.get<SourceManager>() }
-        val overrides = remember(prefs.sourceOverrides().collectAsState().value) {
-            prefs.getAllSourceOverrides()
-                .sortedBy { override ->
-                    sourceManager.get(override.sourceId)?.name?.lowercase() ?: "zzz_${override.sourceId}"
+        val rows = remember(prefs.sourceOverrides().collectAsState().value) {
+            val savedOverrides = prefs.getAllSourceOverrides()
+            val savedSourceIds = savedOverrides.map { it.sourceId }.toSet()
+
+            // Every installed novel source declaring RateLimited (a 1.6-lib source) shows up
+            // here even without a saved override, so it's visible that it's using its own
+            // declared defaults rather than looking like it's not throttled at all.
+            val unconfiguredRateLimited = sourceManager.getAll()
+                .filterIsInstance<CatalogueSource>()
+                .filter { it.isNovelSource() && it is RateLimited && it.id !in savedSourceIds }
+                .map { source -> SourceOverride(sourceId = source.id, enabled = true) }
+
+            (
+                savedOverrides.map { OverrideRow(it, isSaved = true) } +
+                    unconfiguredRateLimited.map { OverrideRow(it, isSaved = false) }
+                )
+                .sortedBy { row ->
+                    sourceManager.get(row.override.sourceId)?.name?.lowercase() ?: "zzz_${row.override.sourceId}"
                 }
         }
 
@@ -434,7 +410,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (overrides.isEmpty()) {
+                    if (rows.isEmpty()) {
                         Text(
                             "No overrides configured. Tap + to add one.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -448,24 +424,34 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                                 .heightIn(max = 400.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            items(overrides, key = { it.sourceId }) { override ->
-                                val sourceName = sourceManager.get(override.sourceId)?.name
-                                    ?: "Unknown (#${override.sourceId})"
+                            items(rows, key = { it.override.sourceId }) { row ->
+                                val override = row.override
+                                val source = sourceManager.get(override.sourceId)
+                                val sourceName = source?.name ?: "Unknown (#${override.sourceId})"
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            sourceName,
+                                            if (row.isSaved) sourceName else "$sourceName (1.6, not overridden)",
                                             style = MaterialTheme.typography.bodyMedium,
                                         )
-                                        val details = buildList {
-                                            override.downloadDelay?.let { add("DL: ${it}ms") }
-                                            override.randomDelayRange?.let { add("Rand: ${it}ms") }
-                                            override.updateDelay?.let { add("Upd: ${it}ms") }
-                                            override.massImportDelay?.let { add("MI: ${it}ms") }
-                                        }.joinToString(", ")
+                                        val details = if (row.isSaved) {
+                                            buildList {
+                                                override.permits?.let { add("Permits: $it") }
+                                                override.delayMillis?.let { add("Delay: ${it}ms") }
+                                                override.jitterMillis?.let { add("Jitter: 0-${it}ms") }
+                                            }.joinToString(", ")
+                                        } else {
+                                            val rateLimited = source as? RateLimited
+                                            buildList {
+                                                rateLimited?.recommendedPermits?.let { add("Declared permits: $it") }
+                                                rateLimited?.recommendedDelayMillis?.let {
+                                                    add("Declared delay: ${it}ms")
+                                                }
+                                            }.joinToString(", ")
+                                        }
                                         if (details.isNotEmpty()) {
                                             Text(
                                                 details,
@@ -481,14 +467,16 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                                             tint = MaterialTheme.colorScheme.primary,
                                         )
                                     }
-                                    IconButton(onClick = {
-                                        prefs.removeSourceOverride(override.sourceId)
-                                    }) {
-                                        Icon(
-                                            Icons.Outlined.Delete,
-                                            contentDescription = stringResource(MR.strings.action_delete),
-                                            tint = MaterialTheme.colorScheme.error,
-                                        )
+                                    if (row.isSaved) {
+                                        IconButton(onClick = {
+                                            prefs.removeSourceOverride(override.sourceId)
+                                        }) {
+                                            Icon(
+                                                Icons.Outlined.Delete,
+                                                contentDescription = stringResource(MR.strings.action_delete),
+                                                tint = MaterialTheme.colorScheme.error,
+                                            )
+                                        }
                                     }
                                 }
                                 HorizontalDivider()
@@ -527,14 +515,19 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         }
 
         var selectedSourceId by remember { mutableStateOf(existing?.sourceId ?: 0L) }
-        var downloadDelay by remember { mutableIntStateOf(existing?.downloadDelay ?: 2000) }
-        var randomDelay by remember { mutableIntStateOf(existing?.randomDelayRange ?: 1000) }
-        var updateDelay by remember { mutableIntStateOf(existing?.updateDelay ?: 1500) }
-        var massImportDelay by remember { mutableIntStateOf(existing?.massImportDelay ?: 1000) }
+        var delayMillis by remember { mutableIntStateOf(existing?.delayMillis ?: 3000) }
+        var jitterMillis by remember { mutableIntStateOf(existing?.jitterMillis ?: 1000) }
+        var permits by remember { mutableIntStateOf(existing?.permits ?: 1) }
         var sourceExpanded by remember { mutableStateOf(false) }
 
-        val selectedSourceName = novelSources.find { it.id == selectedSourceId }?.name
+        val selectedSource = novelSources.find { it.id == selectedSourceId }
+        val selectedSourceName = selectedSource?.name
             ?: if (selectedSourceId != 0L) "Source #$selectedSourceId" else "Select source..."
+        // An extension can declare its own floor via RateLimited; the user can't configure
+        // less delay than that, no matter what they drag the slider to.
+        val declaredMinimum = (selectedSource as? RateLimited)?.minimumDelayMillis?.toInt() ?: 0
+        val recommendedPermits = (selectedSource as? RateLimited)?.recommendedPermits
+        val effectiveDelay = delayMillis.coerceAtLeast(declaredMinimum)
 
         AlertDialog(
             onDismissRequest = onDismissRequest,
@@ -576,54 +569,57 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                         }
                     }
 
+                    if (declaredMinimum > 0) {
+                        Text(
+                            "Extension declared minimum: ${declaredMinimum}ms",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (recommendedPermits != null) {
+                        Text(
+                            "Extension recommends: $recommendedPermits requests before delay",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
                     HorizontalDivider()
 
-                    // Download delay
+                    // Requests before delay
                     Text(
-                        "Download delay: ${downloadDelay}ms",
+                        "Requests before delay: $permits",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Slider(
-                        value = downloadDelay.toFloat(),
-                        onValueChange = { downloadDelay = it.toInt() },
-                        valueRange = 0f..30000f,
+                        value = permits.toFloat(),
+                        onValueChange = { permits = it.toInt() },
+                        valueRange = 1f..20f,
+                        steps = 18,
+                    )
+
+                    // Base delay
+                    Text(
+                        "Request delay: ${effectiveDelay}ms",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Slider(
+                        value = effectiveDelay.toFloat(),
+                        onValueChange = { delayMillis = it.toInt().coerceAtLeast(declaredMinimum) },
+                        valueRange = declaredMinimum.toFloat()..maxOf(declaredMinimum, 30000).toFloat(),
                         steps = 29,
                     )
 
-                    // Random delay
+                    // Random jitter
                     Text(
-                        "Random range: 0-${randomDelay}ms",
+                        "Random jitter: 0-${jitterMillis}ms",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Slider(
-                        value = randomDelay.toFloat(),
-                        onValueChange = { randomDelay = it.toInt() },
+                        value = jitterMillis.toFloat(),
+                        onValueChange = { jitterMillis = it.toInt() },
                         valueRange = 0f..5000f,
                         steps = 9,
-                    )
-
-                    // Update delay
-                    Text(
-                        "Update delay: ${updateDelay}ms",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Slider(
-                        value = updateDelay.toFloat(),
-                        onValueChange = { updateDelay = it.toInt() },
-                        valueRange = 0f..15000f,
-                        steps = 14,
-                    )
-
-                    // Mass import delay
-                    Text(
-                        "Mass import delay: ${massImportDelay}ms",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Slider(
-                        value = massImportDelay.toFloat(),
-                        onValueChange = { massImportDelay = it.toInt() },
-                        valueRange = 0f..15000f,
-                        steps = 14,
                     )
                 }
             },
@@ -634,10 +630,9 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                         prefs.setSourceOverride(
                             SourceOverride(
                                 sourceId = selectedSourceId,
-                                downloadDelay = downloadDelay,
-                                randomDelayRange = randomDelay,
-                                updateDelay = updateDelay,
-                                massImportDelay = massImportDelay,
+                                delayMillis = effectiveDelay,
+                                jitterMillis = jitterMillis,
+                                permits = permits,
                                 enabled = true,
                             ),
                         )

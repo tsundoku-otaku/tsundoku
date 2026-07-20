@@ -38,6 +38,8 @@ data class NetworkExtensionStore(
         @ProtoNumber(6) val versionName: String,
         @ProtoNumber(7) val contentWarning: ContentWarning,
         @ProtoNumber(8) val sources: List<Source>,
+        // Fork field, reserved 8000+ block so it never collides with new upstream fields.
+        @ProtoNumber(8000) val isNovel: Boolean = false,
     )
 
     @Serializable
@@ -105,8 +107,9 @@ fun ExtensionList.toAvailableExtensions(store: ExtensionStore): List<TachiyomiEx
             versionName = extension.versionName,
             lang = if (lang.size == 1) lang.first() else "all",
             isNsfw = extension.contentWarning >= ContentWarning.MIXED,
-            // Index format carries no novel flag; novel extensions use the novelextension package prefix.
-            isNovel = extension.packageName.startsWith("eu.kanade.tachiyomi.novelextension"),
+            // The real isNovel field is authoritative; the package-prefix check is only a
+            // fallback for stores whose index predates it (or don't bother setting it at all).
+            isNovel = extension.isNovel || extension.packageName.startsWith("eu.kanade.tachiyomi.novelextension"),
             sources = extension.sources.map { source ->
                 TachiyomiExtension.Available.Source(
                     id = source.id,

@@ -15,10 +15,12 @@ import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.cache.CoverCache
 import eu.kanade.tachiyomi.data.coil.MangaCoverFetcher.Companion.USE_CUSTOM_COVER_KEY
 import eu.kanade.tachiyomi.network.await
+import eu.kanade.tachiyomi.network.interceptor.InteractiveRateLimitBypass
 import eu.kanade.tachiyomi.source.online.HttpSource
 import logcat.LogPriority
 import okhttp3.CacheControl
 import okhttp3.Call
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import okhttp3.Response
 import okio.FileSystem
@@ -177,7 +179,13 @@ class MangaCoverFetcher(
 
     private suspend fun executeNetworkRequest(): Response {
         val client = sourceLazy.value?.client ?: callFactoryLazy.value
-        val response = client.newCall(newRequest()).await()
+        // Cover thumbnails only ever load while some screen is actually showing them (Browse,
+        // Library, Updates, etc.) - background jobs never render Compose UI, so they never reach
+        // this fetcher. Bypassing rate limiting here matches the same interactive-vs-background
+        // reasoning as MangaScreenModel's fetches, just applied to a shared, screen-agnostic
+        // fetcher instead of a single call site.
+        val host = sourceLazy.value?.baseUrl?.toHttpUrlOrNull()?.host
+        val response = InteractiveRateLimitBypass.bypassing(host) { client.newCall(newRequest()).await() }
         if (!response.isSuccessful && response.code != HTTP_NOT_MODIFIED) {
             response.close()
             throw IOException(response.message)

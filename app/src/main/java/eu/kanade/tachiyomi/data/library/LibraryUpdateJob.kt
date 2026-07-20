@@ -24,8 +24,12 @@ import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.network.interceptor.BackgroundRateLimitGuard
+import eu.kanade.tachiyomi.network.interceptor.withRateLimitWaitUpdates
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import eu.kanade.tachiyomi.source.rateLimitHost
+import eu.kanade.tachiyomi.util.lang.chop
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.createFileInCacheDir
@@ -326,29 +330,21 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         val hasDownloads = AtomicBoolean(false)
         val fetchWindow = fetchInterval.getWindow(ZonedDateTime.now())
         val globalUpdateThrottlingMs = libraryPreferences.autoUpdateThrottle.get().toLong()
-        val novelThrottleEnabled = novelDownloadPreferences.enableUpdateThrottling().get()
         val updateStagger = novelDownloadPreferences.enableUpdateStaggering().get()
-        val novelUpdateThrottlingMs = novelDownloadPreferences.updateDelay().get().toLong()
 
         coroutineScope {
             mangaToUpdate.groupBy { it.manga.source }.values
                 .map { mangaInSource ->
                     async {
                         val source = sourceManager.get(mangaInSource.first().manga.source)
+                        val host = source.rateLimitHost()
                         val semaphore = if (source?.isNovelSource == true) novelSemaphore else defaultSemaphore
 
-                        // Determine update throttling based on source type and overrides
-                        Log.d("LibraryUpdate", "Source ${source?.name} novel: ${(source?.isNovelSource)}")
-                        val updateThrottlingMs = if (source?.isNovelSource == true &&
-                            novelThrottleEnabled
-                        ) {
-                            val sourceId = source.id
-                            val override = novelDownloadPreferences.getSourceOverride(sourceId)
-                            if (override != null && override.enabled) {
-                                override.updateDelay?.toLong() ?: novelUpdateThrottlingMs
-                            } else {
-                                novelUpdateThrottlingMs
-                            }
+                        // Novel sources are paced per-request by the shared OkHttp client's
+                        // rate-limit interceptor now, not here. Non-novel sources keep the
+                        // existing global library-update throttle.
+                        val updateThrottlingMs = if (source?.isNovelSource == true) {
+                            0L
                         } else {
                             globalUpdateThrottlingMs
                         }
@@ -386,36 +382,46 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
                                     currentlyUpdatingManga,
                                     progressCount,
                                     manga,
+                                    host,
                                 ) {
-                                    try {
-                                        val newChapters = updateManga(manga, fetchWindow)
-                                            .sortedByDescending { it.sourceOrder }
+                                    // Scoped to just the actual network-triggering work, not the
+                                    // surrounding staggering delays/notification bookkeeping - an
+                                    // interactive fetch on this host between manga (e.g. during a
+                                    // multi-minute staggering pause) should still get the fast
+                                    // path, not pay for a background job that isn't even making
+                                    // requests right now.
+                                    BackgroundRateLimitGuard.active(host) {
+                                        try {
+                                            val newChapters = updateManga(manga, fetchWindow)
+                                                .sortedByDescending { it.sourceOrder }
 
-                                        if (newChapters.isNotEmpty()) {
-                                            val chaptersToDownload = filterChaptersForDownload.await(manga, newChapters)
+                                            if (newChapters.isNotEmpty()) {
+                                                val chaptersToDownload =
+                                                    filterChaptersForDownload.await(manga, newChapters)
 
-                                            if (chaptersToDownload.isNotEmpty()) {
-                                                downloadChapters(manga, chaptersToDownload)
-                                                hasDownloads.store(true)
+                                                if (chaptersToDownload.isNotEmpty()) {
+                                                    downloadChapters(manga, chaptersToDownload)
+                                                    hasDownloads.store(true)
+                                                }
+
+                                                libraryPreferences.newUpdatesCount.getAndSet { it + newChapters.size }
+
+                                                // Convert to the manga that contains new chapters
+                                                newUpdates.add(manga to newChapters.toTypedArray())
                                             }
-
-                                            libraryPreferences.newUpdatesCount.getAndSet { it + newChapters.size }
-
-                                            // Convert to the manga that contains new chapters
-                                            newUpdates.add(manga to newChapters.toTypedArray())
+                                        } catch (e: Throwable) {
+                                            val errorMessage = when (e) {
+                                                is NoChaptersException -> context.stringResource(
+                                                    MR.strings.no_chapters_error,
+                                                )
+                                                // failedUpdates will already have the source, don't need to copy it into the message
+                                                is SourceNotInstalledException -> context.stringResource(
+                                                    MR.strings.loader_not_implemented_error,
+                                                )
+                                                else -> e.message
+                                            }
+                                            failedUpdates.add(manga to errorMessage)
                                         }
-                                    } catch (e: Throwable) {
-                                        val errorMessage = when (e) {
-                                            is NoChaptersException -> context.stringResource(
-                                                MR.strings.no_chapters_error,
-                                            )
-                                            // failedUpdates will already have the source, don't need to copy it into the message
-                                            is SourceNotInstalledException -> context.stringResource(
-                                                MR.strings.loader_not_implemented_error,
-                                            )
-                                            else -> e.message
-                                        }
-                                        failedUpdates.add(manga to errorMessage)
                                     }
                                 }
                             }
@@ -497,6 +503,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
         updatingManga: CopyOnWriteArrayList<Manga>,
         completed: AtomicInt,
         manga: Manga,
+        host: String?,
         block: suspend () -> Unit,
     ) = coroutineScope {
         ensureActive()
@@ -508,7 +515,22 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             mangaToUpdate.size,
         )
 
-        block()
+        withRateLimitWaitUpdates(
+            host = host,
+            onWaitChanged = { remainingMillis ->
+                val waitingMessage = remainingMillis?.let {
+                    "Waiting %.1fs for rate limit (${manga.title.chop(30)})".format(it / 1000.0)
+                }
+                notifier.showProgressNotification(
+                    updatingManga,
+                    completed.load(),
+                    mangaToUpdate.size,
+                    waitingMessage,
+                )
+            },
+        ) {
+            block()
+        }
 
         ensureActive()
 

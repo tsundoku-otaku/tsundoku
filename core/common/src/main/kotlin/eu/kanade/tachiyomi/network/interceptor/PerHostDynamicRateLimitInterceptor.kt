@@ -1,0 +1,162 @@
+package eu.kanade.tachiyomi.network.interceptor
+
+import android.os.SystemClock
+import okhttp3.Call
+import okhttp3.Interceptor
+import okhttp3.Response
+import uy.kohesive.injekt.injectLazy
+import java.io.IOException
+import java.util.ArrayDeque
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.random.Random
+
+/**
+ * Paces outgoing requests per host using a policy that's re-queried on every request, rather
+ * than a fixed permits/period baked in at construction like [RateLimitInterceptor]. This is
+ * what gives the app real per-request throttling: a novel needing 50 requests naturally takes
+ * proportionally longer than one needing 1, since every request goes through this gate, not
+ * just once per job item.
+ *
+ * Within each host's [RateLimitSpec], up to `permits` requests are allowed through in a burst
+ * (a sliding window over the last `delayMillis`) before a request has to wait - so a source
+ * that's fine with, say, 3 requests in quick succession doesn't get penalized for it, but a
+ * long unbroken stream still gets paced.
+ *
+ * The policy is injected lazily rather than through the constructor because this interceptor
+ * is built as part of NetworkHelper's eager client construction, which happens very early in
+ * app startup - long before the domain-level policy implementation's own dependencies
+ * (SourceManager, etc.) are necessarily ready. Deferring the Injekt lookup to the first actual
+ * request avoids that construction-order issue entirely.
+ *
+ * Actual waits are published to [RateLimitWaitTracker] so foreground UI (job notifications) can
+ * show that a wait is happening, rather than it looking like the job stalled.
+ */
+class PerHostDynamicRateLimitInterceptor : Interceptor {
+
+    private val policy: RequestRateLimitPolicy by injectLazy()
+    private val dispatchWindows = ConcurrentHashMap<String, ArrayDeque<Long>>()
+    private val hostLocks = ConcurrentHashMap<String, Any>()
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val call = chain.call()
+        if (call.isCanceled()) throw IOException("Canceled")
+
+        val request = chain.request()
+        val host = request.url.host.normalizedRateLimitHost()
+
+        if (InteractiveRateLimitBypass.isBypassed(host) && !BackgroundRateLimitGuard.isActive(host)) {
+            return chain.proceed(request)
+        }
+
+        val spec = policy.specFor(host)
+
+        if (spec.delayMillis > 0) {
+            val lock = hostLocks.computeIfAbsent(host) { Any() }
+            // Compute the required wait under the lock, then sleep with the lock released so other
+            // threads can pace against their own window instead of blocking on the monitor. A slot
+            // is only ever taken under the lock while the window has room, so the permit bound holds
+            // even though several threads may be waiting concurrently.
+            var waitedOnTimestamp: Long? = null
+            while (true) {
+                var wait = 0L
+                synchronized(lock) {
+                    val window = dispatchWindows.computeIfAbsent(host) { ArrayDeque() }
+                    val now = SystemClock.elapsedRealtime()
+
+                    // Drop dispatches that have aged out of the window.
+                    while (window.isNotEmpty() && now - window.peekFirst() >= spec.delayMillis) {
+                        window.removeFirst()
+                    }
+
+                    if (window.size < spec.permits) {
+                        window.addLast(now)
+                    } else if (waitedOnTimestamp != null && window.peekFirst() == waitedOnTimestamp) {
+                        // We already paid a wait computed against this exact head entry and it's
+                        // still here - the clock hasn't moved it out of the window (e.g. frozen
+                        // under test). Evict it directly rather than spinning forever waiting for
+                        // it to age out.
+                        window.removeFirst()
+                        window.addLast(now)
+                    } else {
+                        // Either this is our first wait, or another thread's dispatch is now the
+                        // head (it claimed the slot while we were sleeping) - pace against the
+                        // *current* head instead of assuming the slot we waited for is still
+                        // free. Otherwise two concurrent waiters can each evict the other's fresh
+                        // dispatch and land back-to-back, breaking the permits-per-window bound.
+                        //
+                        // Clamp jitter to the delay so a large/misconfigured jitterMillis can't
+                        // balloon a single wait to several multiples of delayMillis.
+                        val jitterBound = minOf(spec.jitterMillis, spec.delayMillis)
+                        val jitter = if (jitterBound > 0) Random.nextLong(0, jitterBound) else 0L
+                        wait = spec.delayMillis - (now - window.peekFirst()) + jitter
+                        waitedOnTimestamp = window.peekFirst()
+                    }
+                }
+                if (wait <= 0) break
+
+                RateLimitWaitTracker.startWaiting(host, SystemClock.elapsedRealtime() + wait)
+                try {
+                    waitCancellably(wait, call)
+                } finally {
+                    RateLimitWaitTracker.stopWaiting(host)
+                }
+            }
+        }
+
+        return chain.proceed(request)
+    }
+
+    /**
+     * Waits out [waitMillis] in short chunks rather than one [Thread.sleep] call, checking
+     * [call] for cancellation between chunks. A single blind sleep can't be interrupted by
+     * cancelling the underlying OkHttp call - cancel() closes sockets/connections, but a wait
+     * that hasn't reached the network yet has nothing to close, so it would otherwise run to
+     * completion even after the caller has given up (e.g. leaving the reader, cancelling a
+     * download). Uses [System.nanoTime] rather than [SystemClock.elapsedRealtime] for the
+     * countdown so this remains real wall-clock time even in tests that freeze SystemClock to
+     * exercise the window bookkeeping above.
+     */
+    private fun waitCancellably(waitMillis: Long, call: Call) {
+        var remaining = waitMillis
+        while (remaining > 0) {
+            if (call.isCanceled()) throw IOException("Canceled")
+            val chunk = minOf(remaining, POLL_INTERVAL_MILLIS)
+            val start = System.nanoTime()
+            try {
+                Thread.sleep(chunk)
+            } catch (e: InterruptedException) {
+                // OkHttp expects interceptor failures as IOException; keep the interrupt flag set.
+                Thread.currentThread().interrupt()
+                throw IOException("Interrupted while waiting for rate limit", e)
+            }
+            remaining -= maxOf((System.nanoTime() - start) / 1_000_000, 1L)
+        }
+    }
+
+    /**
+     * Drops all tracked per-host pacing state. A manual escape hatch (exposed as a debug button
+     * in Advanced settings) - safe to call any time since state is rebuilt lazily on the next
+     * request to each host; it just means that next request doesn't have to wait out a window
+     * built up from now-irrelevant history.
+     */
+    fun clearState() {
+        dispatchWindows.clear()
+        hostLocks.clear()
+    }
+
+    /**
+     * Drops tracked pacing state for any host not in [keepHosts]. Called automatically whenever
+     * the installed source set changes, so [dispatchWindows]/[hostLocks] - otherwise unbounded
+     * for the app's whole process lifetime - stay roughly bounded by "hosts with a currently
+     * installed source," not "every host ever contacted."
+     */
+    fun pruneToHosts(keepHosts: Set<String>) {
+        val normalizedKeep = keepHosts.mapTo(mutableSetOf()) { it.normalizedRateLimitHost() }
+        dispatchWindows.keys.retainAll(normalizedKeep)
+        hostLocks.keys.retainAll(normalizedKeep)
+    }
+
+    companion object {
+        private const val POLL_INTERVAL_MILLIS = 200L
+    }
+}
