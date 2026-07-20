@@ -4,7 +4,6 @@ import android.content.Context
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
-import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.RateLimited
 import eu.kanade.tachiyomi.source.UnmeteredSource
 import eu.kanade.tachiyomi.source.custom.CustomSourceManager
@@ -128,11 +127,7 @@ class AndroidSourceManager(
 
     override fun getRateLimitCandidates(): List<RateLimitCandidate> {
         return sourcesMapFlow.value.values.mapNotNull { source ->
-            val baseUrl = when (source) {
-                is HttpSource -> source.baseUrl
-                is JsSource -> source.baseUrl
-                else -> return@mapNotNull null
-            }
+            val baseUrl = source.rateLimitBaseUrl() ?: return@mapNotNull null
             RateLimitCandidate(
                 sourceId = source.id,
                 baseUrl = baseUrl,
