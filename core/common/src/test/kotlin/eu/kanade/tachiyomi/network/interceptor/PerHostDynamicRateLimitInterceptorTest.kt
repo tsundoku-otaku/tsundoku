@@ -212,6 +212,50 @@ class PerHostDynamicRateLimitInterceptorTest {
         (elapsed < 2000L) shouldBe true
     }
 
+    @Test
+    fun `two concurrent waiters on the same host do not dispatch back-to-back`() {
+        val host = "example.com"
+        specs[host] = RateLimitSpec(delayMillis = 300L)
+        val interceptor = PerHostDynamicRateLimitInterceptor()
+
+        // Real elapsed time for this test - the race only reproduces when the clock actually
+        // advances between dispatches, unlike the frozen-clock setup the other tests use.
+        val start = System.nanoTime()
+        every { SystemClock.elapsedRealtime() } answers { (System.nanoTime() - start) / 1_000_000 }
+
+        val dispatchTimes = java.util.Collections.synchronizedList(mutableListOf<Long>())
+        fun dispatchAndRecord(path: String) {
+            val request = Request.Builder().url("https://$host/$path").build()
+            val chain = mockk<Interceptor.Chain> {
+                every { request() } returns request
+                every { call() } returns mockk { every { isCanceled() } returns false }
+                every { proceed(any()) } answers {
+                    dispatchTimes.add((System.nanoTime() - start) / 1_000_000)
+                    Response.Builder()
+                        .request(request)
+                        .protocol(Protocol.HTTP_1_1)
+                        .code(200)
+                        .message("OK")
+                        .build()
+                }
+            }
+            interceptor.intercept(chain)
+        }
+
+        dispatchAndRecord("a")
+        val waiters = listOf("b", "c").map { path -> Thread { dispatchAndRecord(path) } }
+        waiters.forEach { it.start() }
+        waiters.forEach { it.join(5000) }
+
+        dispatchTimes.sort()
+        (dispatchTimes.size) shouldBe 3
+        // permits=1 over a 300ms window - no two dispatches should land in the same window,
+        // even when two waiters raced to pay their wait at the same time.
+        for (i in 1 until dispatchTimes.size) {
+            (dispatchTimes[i] - dispatchTimes[i - 1] >= 250L) shouldBe true
+        }
+    }
+
     private inline fun measureMillis(block: () -> Unit): Long {
         val start = System.nanoTime()
         block()

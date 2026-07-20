@@ -56,7 +56,7 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
             // threads can pace against their own window instead of blocking on the monitor. A slot
             // is only ever taken under the lock while the window has room, so the permit bound holds
             // even though several threads may be waiting concurrently.
-            var hasWaited = false
+            var waitedOnTimestamp: Long? = null
             while (true) {
                 var wait = 0L
                 synchronized(lock) {
@@ -70,19 +70,26 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
 
                     if (window.size < spec.permits) {
                         window.addLast(now)
-                    } else if (hasWaited) {
-                        // This request already served its wait, so claim a slot by evicting the
-                        // oldest rather than looping until it ages out. The wait we paid is the
-                        // pacing; relying on aging would spin forever whenever the clock hasn't
-                        // advanced past the oldest entry (e.g. a frozen clock under test).
+                    } else if (waitedOnTimestamp != null && window.peekFirst() == waitedOnTimestamp) {
+                        // We already paid a wait computed against this exact head entry and it's
+                        // still here - the clock hasn't moved it out of the window (e.g. frozen
+                        // under test). Evict it directly rather than spinning forever waiting for
+                        // it to age out.
                         window.removeFirst()
                         window.addLast(now)
                     } else {
+                        // Either this is our first wait, or another thread's dispatch is now the
+                        // head (it claimed the slot while we were sleeping) - pace against the
+                        // *current* head instead of assuming the slot we waited for is still
+                        // free. Otherwise two concurrent waiters can each evict the other's fresh
+                        // dispatch and land back-to-back, breaking the permits-per-window bound.
+                        //
                         // Clamp jitter to the delay so a large/misconfigured jitterMillis can't
                         // balloon a single wait to several multiples of delayMillis.
                         val jitterBound = minOf(spec.jitterMillis, spec.delayMillis)
                         val jitter = if (jitterBound > 0) Random.nextLong(0, jitterBound) else 0L
                         wait = spec.delayMillis - (now - window.peekFirst()) + jitter
+                        waitedOnTimestamp = window.peekFirst()
                     }
                 }
                 if (wait <= 0) break
@@ -93,7 +100,6 @@ class PerHostDynamicRateLimitInterceptor : Interceptor {
                 } finally {
                     RateLimitWaitTracker.stopWaiting(host)
                 }
-                hasWaited = true
             }
         }
 
