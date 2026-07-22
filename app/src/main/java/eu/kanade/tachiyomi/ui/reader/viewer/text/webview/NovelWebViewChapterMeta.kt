@@ -24,6 +24,16 @@ internal object NovelWebViewChapterMeta {
     const val TSUNDOKU_IS_INF_SCROLL_KEY = "isInfScroll"
     const val TSUNDOKU_TEXT_SELECTION_BLOCKED_KEY = "textSelectionBlocked"
     const val TSUNDOKU_FORCED_LOWERCASE_KEY = "forcedLowercase"
+    const val TSUNDOKU_MENU_VISIBLE_KEY = "menuVisible"
+    const val TSUNDOKU_IMMERSIVE_KEY = "immersive"
+    const val TSUNDOKU_TTS_STATE_KEY = "ttsState"
+    const val TSUNDOKU_LOADING_CHAPTER_KEY = "loadingChapter"
+
+    // Event names dispatched on `window` so plugins/snippets can subscribe with addEventListener.
+    const val EVENT_MENU_VISIBILITY = "tsundoku:menuvisibilitychange"
+    const val EVENT_CHAPTER_NAVIGATE = "tsundoku:chapternavigate"
+    const val EVENT_CHAPTER_LOADING = "tsundoku:chapterloading"
+    const val EVENT_TTS_STATE = "tsundoku:ttsstatechange"
 
     fun String.jsEscape(): String =
         this.replace("\\", "\\\\")
@@ -119,6 +129,10 @@ internal object NovelWebViewChapterMeta {
         val isInfiniteScroll: Boolean,
         val textSelectionBlocked: Boolean,
         val forcedLowercase: Boolean,
+        val menuVisible: Boolean = false,
+        val immersive: Boolean = false,
+        val ttsState: String = "stopped",
+        val loadingChapter: Boolean = false,
     )
 
     fun buildTsundokuScript(context: TsundokuScriptContext): String {
@@ -135,6 +149,10 @@ internal object NovelWebViewChapterMeta {
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_IS_INF_SCROLL_KEY = ${context.isInfiniteScroll};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_TEXT_SELECTION_BLOCKED_KEY = ${context.textSelectionBlocked};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_FORCED_LOWERCASE_KEY = ${context.forcedLowercase};
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_MENU_VISIBLE_KEY = ${context.menuVisible};
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_IMMERSIVE_KEY = ${context.immersive};
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_TTS_STATE_KEY = ${quoteForJson(context.ttsState)};
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_LOADING_CHAPTER_KEY = ${context.loadingChapter};
         """.trimIndent()
     }
 }

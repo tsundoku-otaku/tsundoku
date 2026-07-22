@@ -647,6 +647,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         isLoadingRealChapter = false
                         // Real content rendered; TTS may now read the body.
                         webChapterContentReady = true
+                        dispatchLoadingChapter(false)
                         if (pendingTtsAutoStartOnLoad) {
                             pendingTtsAutoStartOnLoad = false
                             startTts()
@@ -1223,8 +1224,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             })();
         """.trimIndent()
 
+        dispatchLoadingChapter(true)
         evaluateJavascriptSafe(js) {
             styler.injectScript { buildTsundokuScript() }
+            dispatchLoadingChapter(false)
         }
 
         // A chapter was appended, so the end-of-novel verdict is stale.
@@ -1271,6 +1274,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // the loading-indicator page (which also fires onPageFinished with url="about:blank").
         isLoadingRealChapter = true
         webChapterContentReady = false
+        dispatchLoadingChapter(true)
         // New document: hold scroll callbacks and clear the baseline so a stale flush can't write
         // the previous chapter's percent here, restoreScrollPosition seeds the real value.
         isRestoringScroll = true
@@ -1299,6 +1303,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             isInfiniteScroll = preferences.novelInfiniteScroll.get(),
             textSelectionBlocked = !preferences.novelTextSelectable.get(),
             forcedLowercase = preferences.novelForceTextLowercase.get(),
+            menuVisible = activity.viewModel.state.value.menuVisible,
+            immersive = !activity.viewModel.state.value.menuVisible,
+            ttsState = currentTtsState(),
+            loadingChapter = !webChapterContentReady,
         )
         return NovelWebViewChapterMeta.buildTsundokuScript(context)
     }
@@ -1309,6 +1317,64 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private fun updateChapterMetaJs() {
         val js = buildTsundokuScript()
         evaluateJavascriptSafe("(function(){$js})();", null)
+    }
+
+    private fun currentTtsState(): String = when {
+        ttsController.isPaused() -> "paused"
+        ttsController.isTtsAutoPlay || ttsController.isSpeaking() || ttsController.isStarting() -> "playing"
+        else -> "stopped"
+    }
+
+    // Updates the runtime state via [assignments] (JS statements against `t.runtime`) and fires a
+    // CustomEvent on `window` so novel-source plugins and user snippets can react. See the EVENT_*
+    // and *_KEY constants in NovelWebViewChapterMeta. No-ops safely when the WebView isn't ready.
+    private fun dispatchTsundokuEvent(eventName: String, assignments: String, detailJson: String) {
+        val obj = NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME
+        evaluateJavascriptSafe(
+            """
+            (function(){
+              var t = window.$obj = window.$obj || {};
+              t.runtime = t.runtime || {};
+              $assignments
+              try { window.dispatchEvent(new CustomEvent('$eventName', { detail: $detailJson })); } catch (e) {}
+            })();
+            """.trimIndent(),
+            null,
+        )
+    }
+
+    fun onMenuVisibilityChanged(visible: Boolean) {
+        dispatchTsundokuEvent(
+            NovelWebViewChapterMeta.EVENT_MENU_VISIBILITY,
+            "t.runtime.${NovelWebViewChapterMeta.TSUNDOKU_MENU_VISIBLE_KEY} = $visible; " +
+                "t.runtime.${NovelWebViewChapterMeta.TSUNDOKU_IMMERSIVE_KEY} = ${!visible};",
+            "{ menuVisible: $visible, immersive: ${!visible} }",
+        )
+    }
+
+    fun onChapterNavigate(direction: String) {
+        dispatchTsundokuEvent(
+            NovelWebViewChapterMeta.EVENT_CHAPTER_NAVIGATE,
+            "",
+            "{ direction: '$direction' }",
+        )
+    }
+
+    private fun dispatchLoadingChapter(loading: Boolean) {
+        dispatchTsundokuEvent(
+            NovelWebViewChapterMeta.EVENT_CHAPTER_LOADING,
+            "t.runtime.${NovelWebViewChapterMeta.TSUNDOKU_LOADING_CHAPTER_KEY} = $loading;",
+            "{ loading: $loading }",
+        )
+    }
+
+    private fun dispatchTtsState() {
+        val state = currentTtsState()
+        dispatchTsundokuEvent(
+            NovelWebViewChapterMeta.EVENT_TTS_STATE,
+            "t.runtime.${NovelWebViewChapterMeta.TSUNDOKU_TTS_STATE_KEY} = '$state';",
+            "{ state: '$state' }",
+        )
     }
 
     private fun showLoadingIndicator(message: String = "Loading...") {
@@ -2149,6 +2215,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
+        dispatchTtsState()
         if (!webChapterContentReady) {
             // Loading indicator still up; reading the body now would speak the placeholder
             // and auto-advance. Defer; onPageFinished starts TTS once content is rendered.
@@ -2187,6 +2254,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         isLoadingRealChapter = false
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
+        dispatchTtsState()
     }
 
     fun pauseTts() {
@@ -2194,10 +2262,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             "TTS (WebView): pauseTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}, ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex}, ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex}, ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
         ttsController.pause()
+        dispatchTtsState()
     }
 
     fun resumeTts() {
         ttsController.resume()
+        dispatchTtsState()
     }
 
     fun ttsNextParagraph() {
@@ -2249,6 +2319,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
+        dispatchTtsState()
         if (!webChapterContentReady) {
             // Still loading; defer so onPageFinished re-runs the viewport start once content is in.
             ttsController.pendingStartRequest = TtsController.StartRequest.VIEWPORT

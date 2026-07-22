@@ -200,6 +200,33 @@ class NovelWebViewChapterMetaTest {
         assertTrue(script.contains(".isInfScroll"))
         assertTrue(script.contains(".textSelectionBlocked"))
         assertTrue(script.contains(".forcedLowercase"))
+        assertTrue(script.contains(".menuVisible"))
+        assertTrue(script.contains(".immersive"))
+        assertTrue(script.contains(".ttsState"))
+        assertTrue(script.contains(".loadingChapter"))
+    }
+
+    @Test
+    fun `buildTsundokuScript seeds the new runtime state`() {
+        val script = NovelWebViewChapterMeta.buildTsundokuScript(
+            NovelWebViewChapterMeta.TsundokuScriptContext(
+                novelUrl = null,
+                currentChapter = null,
+                chaptersInOrder = emptyList(),
+                isEditingMode = false,
+                isInfiniteScroll = false,
+                textSelectionBlocked = false,
+                forcedLowercase = false,
+                menuVisible = true,
+                immersive = false,
+                ttsState = "playing",
+                loadingChapter = true,
+            ),
+        )
+        assertTrue(script.contains(".menuVisible = true"))
+        assertTrue(script.contains(".immersive = false"))
+        assertTrue(script.contains(".ttsState = \"playing\""))
+        assertTrue(script.contains(".loadingChapter = true"))
     }
 
     @Test

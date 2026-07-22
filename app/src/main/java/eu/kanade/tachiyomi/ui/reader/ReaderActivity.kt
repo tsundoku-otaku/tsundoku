@@ -1207,6 +1207,7 @@ class ReaderActivity : BaseActivity() {
         } else if (readerPreferences.fullscreen.get()) {
             windowInsetsController.hide(WindowInsetsCompat.Type.systemBars())
         }
+        (viewModel.state.value.viewer as? NovelWebViewViewer)?.onMenuVisibilityChanged(visible)
     }
 
     private fun startBackgroundTtsIfEnabled() {
@@ -1505,6 +1506,7 @@ class ReaderActivity : BaseActivity() {
     private fun loadNextChapterInternal() {
         lifecycleScope.launch {
             viewModel.loadNextChapter()
+            (viewModel.state.value.viewer as? NovelWebViewViewer)?.onChapterNavigate("next")
             // Only reset to page 0 if NOT using infinite scroll for novel viewers
             val isNovelViewer = viewModel.state.value.viewer is NovelViewer ||
                 viewModel.state.value.viewer is NovelWebViewViewer
@@ -1523,6 +1525,7 @@ class ReaderActivity : BaseActivity() {
         stopNovelTtsForManualNav()
         lifecycleScope.launch {
             viewModel.loadPreviousChapter()
+            (viewModel.state.value.viewer as? NovelWebViewViewer)?.onChapterNavigate("prev")
             // Only reset to page 0 if NOT using infinite scroll for novel viewers
             val isNovelViewer = viewModel.state.value.viewer is NovelViewer ||
                 viewModel.state.value.viewer is NovelWebViewViewer
