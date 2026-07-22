@@ -7,11 +7,11 @@ internal object NovelAssetRewriter {
     const val SCHEME = NOVEL_IMAGE_SCHEME
 
     private val RESOURCE_TAG_REGEX = Regex(
-        "<(?:img|source|video|audio|track|embed|object|image|link|script)\\b[^>]*>",
+        "<(?:img|source|video|audio|track|embed|object|image|link|script)\\b(?:\"[^\"]*\"|'[^']*'|[^>])*>",
         RegexOption.IGNORE_CASE,
     )
     private val URL_ATTR_REGEX = Regex(
-        "(?<![\\w:-])(src|href|poster|data|srcset|xlink:href)(\\s*=\\s*)([\"'])(.*?)\\3",
+        "(?<![\\w:-])(src|href|poster|data|srcset|xlink:href)(\\s*=\\s*)(?:([\"'])(.*?)\\3|([^\\s\"'>]+))",
         RegexOption.IGNORE_CASE,
     )
     private val CSS_URL_REGEX = Regex(
@@ -43,7 +43,7 @@ internal object NovelAssetRewriter {
                 val name = attr.groupValues[1]
                 val eq = attr.groupValues[2]
                 val quote = attr.groupValues[3]
-                val value = attr.groupValues[4]
+                val value = if (quote.isNotEmpty()) attr.groupValues[4] else attr.groupValues[5]
                 val newValue = if (name.equals("srcset", ignoreCase = true)) {
                     rewriteSrcset(value, toScheme)
                 } else {
@@ -111,7 +111,7 @@ internal object NovelAssetRewriter {
         if (!isResolvableRef(v)) return null
         val decoded = decodePath(v.substringBefore('?').substringBefore('#'))
         val effectiveBase = if (decoded.startsWith("/")) "" else baseDir
-        val path = resolveArchivePath(effectiveBase, decoded)
+        val path = resolveArchivePath(effectiveBase, decoded) ?: return null
         if (path.isBlank()) return null
         return "$SCHEME${java.net.URLEncoder.encode(path, "UTF-8")}"
     }
@@ -122,13 +122,15 @@ internal object NovelAssetRewriter {
     private fun decodePath(path: String): String =
         runCatching { java.net.URLDecoder.decode(path.replace("+", "%2B"), "UTF-8") }.getOrDefault(path)
 
-    fun resolveArchivePath(baseDir: String, ref: String): String {
+    // Returns null when a ".." escapes the archive root, matching LocalNovelSource.resolveRelativeFile
+    // (both refuse to resolve an out-of-bounds ref rather than silently clamping to a wrong file).
+    fun resolveArchivePath(baseDir: String, ref: String): String? {
         val stack = ArrayDeque<String>()
         baseDir.split('/').filter { it.isNotEmpty() }.forEach { stack.addLast(it) }
-        ref.split('/').forEach { segment ->
+        for (segment in ref.split('/')) {
             when (segment) {
                 "", "." -> Unit
-                ".." -> if (stack.isNotEmpty()) stack.removeLast()
+                ".." -> if (stack.isEmpty()) return null else stack.removeLast()
                 else -> stack.addLast(segment)
             }
         }

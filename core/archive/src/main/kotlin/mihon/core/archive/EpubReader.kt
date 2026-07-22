@@ -229,10 +229,10 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                 document.select("img[src], image[xlink:href]").forEach { img ->
                     val src = if (img.hasAttr("src")) img.attr("src") else img.attr("xlink:href")
                     if (!src.startsWith("http") && !src.startsWith("data:") &&
-                        !src.startsWith("tsundoku-novel-image://")
+                        !src.startsWith(NOVEL_IMAGE_SCHEME)
                     ) {
                         val imagePath = resolveZipPath(imageBasePath, src)
-                        val novelUrl = "tsundoku-novel-image://${java.net.URLEncoder.encode(imagePath, "UTF-8")}"
+                        val novelUrl = "$NOVEL_IMAGE_SCHEME${java.net.URLEncoder.encode(imagePath, "UTF-8")}"
                         if (img.hasAttr("src")) {
                             img.attr("src", novelUrl)
                         } else {

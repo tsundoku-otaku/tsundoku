@@ -2,6 +2,7 @@ package tachiyomi.source.local
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.net.URLDecoder
@@ -83,6 +84,19 @@ class NovelAssetRewriterTest {
     }
 
     @Test
+    fun `rewrites unquoted attribute values`() {
+        val out = NovelAssetRewriter.rewrite("""<img src=cover.jpg>""", "html", NovelAssetRewriter::relativeScheme)
+        assertEquals("""<img src=${scheme("cover.jpg")}>""", out)
+    }
+
+    @Test
+    fun `literal gt inside a quoted attribute does not truncate the tag`() {
+        val html = """<img alt="a > b" src="x.png">"""
+        val out = NovelAssetRewriter.rewrite(html, "html", NovelAssetRewriter::relativeScheme)
+        assertEquals("""<img alt="a > b" src="${scheme("x.png")}">""", out)
+    }
+
+    @Test
     fun `rewrites srcset candidates preserving descriptors`() {
         val html = """<img srcset="a.jpg 1x, b.jpg 2x">"""
         val out = NovelAssetRewriter.rewrite(html, "html", NovelAssetRewriter::relativeScheme)
@@ -113,7 +127,9 @@ class NovelAssetRewriterTest {
         assertEquals("OEBPS/img/x.png", NovelAssetRewriter.resolveArchivePath("OEBPS/text", "../img/x.png"))
         assertEquals("OEBPS/text/x.png", NovelAssetRewriter.resolveArchivePath("OEBPS/text", "x.png"))
         assertEquals("img/x.png", NovelAssetRewriter.resolveArchivePath("", "img/x.png"))
-        assertEquals("x.png", NovelAssetRewriter.resolveArchivePath("a/b", "../../x.png"))
+        // A ".." that escapes the archive root refuses to resolve (matches resolveRelativeFile),
+        // rather than silently clamping to a wrong in-archive file.
+        assertNull(NovelAssetRewriter.resolveArchivePath("a/b", "../../../x.png"))
     }
 
     @Test
