@@ -118,6 +118,7 @@ class NovelWebViewImageCacheTest {
         val imageBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
         val loader = fakeLoader("img.jpg" to imageBytes)
         val cache = makeCache(tempDir.toFile())
+        cache.schedulePrefetch(content = "", chapterId = 42L, loader = loader)
 
         val response = cache.intercept(
             url = "tsundoku-novel-image://42/img.jpg",
@@ -138,6 +139,8 @@ class NovelWebViewImageCacheTest {
         val loader3 = fakeLoader("image_0.jpg" to ch3Bytes)
         val loader4 = fakeLoader("image_0.jpg" to ch4Bytes)
         val cache = makeCache(tempDir.toFile())
+        cache.schedulePrefetch(content = "", chapterId = 3L, loader = loader3)
+        cache.schedulePrefetch(content = "", chapterId = 4L, loader = loader4)
 
         val r3 = cache.intercept("tsundoku-novel-image://3/image_0.jpg", null, loader3)
         val r4 = cache.intercept("tsundoku-novel-image://4/image_0.jpg", null, loader4)
@@ -150,6 +153,30 @@ class NovelWebViewImageCacheTest {
         val allBytes = cachedFiles.map { it.readBytes() }.sortedWith(compareBy { it[0] })
         assertArrayEquals(ch3Bytes, allBytes[0])
         assertArrayEquals(ch4Bytes, allBytes[1])
+    }
+
+    @Test
+    fun `unprefixed relative folder matching a registered chapter id is not treated as a prefix`(
+        @TempDir tempDir: Path,
+    ) {
+        val folderBytes = byteArrayOf(0x11.toByte())
+        val baseLoader = fakeLoader("3/cover.jpg" to folderBytes)
+        val otherLoader = fakeLoader("cover.jpg" to byteArrayOf(0x22.toByte()))
+        val cache = makeCache(tempDir.toFile())
+        cache.schedulePrefetch(content = "", chapterId = 3L, loader = otherLoader)
+
+        // Real asset slashes are %2F-encoded, so the unprefixed ref carries no literal slash and the
+        // leading "3" must resolve as a relative folder, not the registered chapter id 3.
+        val response = cache.intercept(
+            url = "tsundoku-novel-image://3%2Fcover.jpg",
+            fallbackChapterId = 7L,
+            fallbackLoader = baseLoader,
+        )
+
+        assertNotNull(response)
+        val cachedFiles = tempDir.toFile().listFiles { f -> f.extension == "jpg" }
+        assertNotNull(cachedFiles)
+        assertArrayEquals(folderBytes, cachedFiles!!.first().readBytes())
     }
 
     @Test

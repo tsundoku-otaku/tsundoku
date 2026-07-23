@@ -1281,7 +1281,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun resolveWebViewBaseUrl(chapterUrl: String?): String? =
-        NovelWebViewChapterMeta.resolveWebViewBaseUrl(chapterUrl, activity.viewModel.manga?.url)
+        NovelWebViewChapterMeta.resolveWebViewBaseUrl(chapterUrl, activity.viewModel.manga?.url, sourceBaseUrl())
+
+    // Site url of the current source, so relative asset paths in chapter HTML resolve like a browser.
+    private fun sourceBaseUrl(): String? = when (val source = activity.viewModel.getSource()) {
+        is eu.kanade.tachiyomi.jsplugin.source.JsSource -> source.baseUrl.takeIf { it.isNotBlank() }
+        is eu.kanade.tachiyomi.source.online.HttpSource -> source.baseUrl.takeIf { it.isNotBlank() }
+        else -> null
+    }
 
     private fun toAbsoluteChapterUrl(chapterPath: String?): String =
         NovelWebViewChapterMeta.toAbsoluteChapterUrl(chapterPath, activity.viewModel.manga?.url)

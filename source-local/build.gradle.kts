@@ -35,7 +35,7 @@ kotlin {
             }
         }
 
-        androidUnitTest {
+        getByName("androidHostTest") {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.bundles.test)

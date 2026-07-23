@@ -431,7 +431,8 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
                     }
 
                     textFiles.joinToString("\n\n") { file ->
-                        file.openInputStream().bufferedReader().readText()
+                        val text = file.openInputStream().bufferedReader().readText()
+                        NovelAssetRewriter.rewrite(text, file.extension.orEmpty(), NovelAssetRewriter::relativeScheme)
                     }
                 }
                 chapterFile.extension.equals("epub", true) -> {
@@ -456,13 +457,17 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
                         }
 
                         textEntries.joinToString("\n\n") { entry ->
-                            reader.getInputStream(entry.name)?.bufferedReader()?.readText() ?: ""
+                            val text = reader.getInputStream(entry.name)?.bufferedReader()?.readText() ?: ""
+                            val baseDir = entry.name.substringBeforeLast('/', "")
+                            val ext = entry.name.substringAfterLast('.', "")
+                            NovelAssetRewriter.rewrite(text, ext) { NovelAssetRewriter.archiveScheme(baseDir, it) }
                         }
                     }
                 }
                 isTextFile(chapterFile) -> {
                     // Direct text file
-                    chapterFile.openInputStream().bufferedReader().readText()
+                    val raw = chapterFile.openInputStream().bufferedReader().readText()
+                    NovelAssetRewriter.rewrite(raw, chapterFile.extension.orEmpty(), NovelAssetRewriter::relativeScheme)
                 }
                 else -> {
                     throw Exception("Unsupported chapter format: ${chapterFile.extension}")
@@ -483,7 +488,7 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
 
             when {
                 chapterFile.isDirectory -> {
-                    chapterFile.findFile(imagePath)?.openInputStream()?.readBytes()?.let {
+                    resolveRelativeFile(chapterFile, imagePath)?.openInputStream()?.readBytes()?.let {
                         java.io.ByteArrayInputStream(it)
                     }
                 }
@@ -496,6 +501,10 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
                     chapterFile.archiveReader(context).use { reader ->
                         reader.getInputStream(imagePath)?.readBytes()?.let { java.io.ByteArrayInputStream(it) }
                     }
+                }
+                chapterFile.isFile -> {
+                    chapterFile.parentFile?.let { resolveRelativeFile(it, imagePath) }
+                        ?.openInputStream()?.readBytes()?.let { java.io.ByteArrayInputStream(it) }
                 }
                 else -> null
             }
@@ -583,6 +592,26 @@ actual class LocalNovelSource : CatalogueSource, UnmeteredSource {
         } else {
             resolveNovelEntry(filePath)
         }
+    }
+
+    private fun resolveRelativeFile(base: UniFile, path: String): UniFile? {
+        var current: UniFile? = base
+        var depth = 0
+        for (segment in path.split('/')) {
+            current = when (segment) {
+                "", "." -> current
+                ".." -> {
+                    if (depth == 0) return null
+                    depth--
+                    current?.parentFile
+                }
+                else -> {
+                    depth++
+                    current?.findFile(segment)
+                }
+            } ?: return null
+        }
+        return current?.takeIf { it.isFile }
     }
 }
 

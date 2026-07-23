@@ -80,14 +80,29 @@ internal object NovelWebViewChapterMeta {
         }
     }
 
-    fun resolveWebViewBaseUrl(chapterUrl: String?, novelUrl: String?): String? {
+    fun resolveWebViewBaseUrl(chapterUrl: String?, novelUrl: String?, sourceBaseUrl: String? = null): String? {
         val repaired = HtmlUtils.normalizeUrl(chapterUrl)
         val absoluteChapterUrl = repaired?.trim().takeUnless { it.isNullOrBlank() }
             ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
         if (absoluteChapterUrl != null) return absoluteChapterUrl
         val novel = HtmlUtils.normalizeUrl(novelUrl)?.trim().takeUnless { it.isNullOrBlank() }
             ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
-        return novel
+        if (novel != null) return novel
+
+        // Neither url is absolute (common: sources store relative paths). Anchor the WebView base
+        // on the source's site so the browser resolves relative asset urls (e.g. /uploads/x.webp)
+        // itself, exactly like a normal page load. Prefer the chapter path, then the novel path.
+        val base = sourceBaseUrl?.trim().takeUnless { it.isNullOrBlank() }
+            ?.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            ?: return null
+        val relative = repaired?.trim().takeUnless { it.isNullOrBlank() }
+            ?: HtmlUtils.normalizeUrl(novelUrl)?.trim().takeUnless { it.isNullOrBlank() }
+            ?: return base
+        return try {
+            URI(base.trimEnd('/') + "/").resolve(relative.trimStart('/')).toString()
+        } catch (_: Exception) {
+            base
+        }
     }
 
     fun buildChapterJson(chapter: ReaderChapter?, novelUrl: String?): String {

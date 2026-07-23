@@ -31,6 +31,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Novel download queue improvements to prevent errors [@mrissaoussama](https://github.com/mrissaoussama) [#284](https://github.com/tsundoku-otaku/tsundoku/pull/284)
 - Reader status bar reordering + more [@mrissaoussama](https://github.com/mrissaoussama) [#318](https://github.com/tsundoku-otaku/tsundoku/pull/318)
 - Some great improvements to custom sources, including {novelUrl} [@mrissaoussama](https://github.com/mrissaoussama) [#296](https://github.com/tsundoku-otaku/tsundoku/pull/296)
+- Localnovel relative path improvements [@mrissaoussama](https://github.com/mrissaoussama) [#343](https://github.com/tsundoku-otaku/tsundoku/pull/343)
 - Improve performance on library export notifications [@mrissaoussama](https://github.com/mrissaoussama) [#285](https://github.com/tsundoku-otaku/tsundoku/pull/285)
 - Per-field metadata overrides [@mrissaoussama](https://github.com/mrissaoussama) [#308](https://github.com/tsundoku-otaku/tsundoku/pull/308)
 - Edit manga now has an artist field [@mrissaoussama](https://github.com/mrissaoussama) [#278](https://github.com/tsundoku-otaku/tsundoku/pull/278)
