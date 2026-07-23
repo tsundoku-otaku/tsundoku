@@ -447,10 +447,19 @@ class JsPluginManager(
                         val nameWithoutExtension = file.name?.substringBeforeLast(".") ?: return@mapNotNull null
                         val metadataFile = jsonByName[nameWithoutExtension]
                         val plugin = if (metadataFile != null) {
-                            val metadataJson = metadataFile.openInputStream().bufferedReader().readText()
-                            if (metadataJson.isNotBlank() && metadataJson.trim().startsWith("{")) {
-                                json.decodeFromString<JsPlugin>(metadataJson)
-                            } else {
+                            // A stale SAF entry or corrupt metadata can throw on open/parse; fall back to
+                            // extracting from code rather than letting the outer catch drop the whole plugin.
+                            val parsedMetadata = try {
+                                val metadataJson = metadataFile.openInputStream().bufferedReader().readText()
+                                metadataJson.takeIf { it.isNotBlank() && it.trim().startsWith("{") }
+                                    ?.let { json.decodeFromString<JsPlugin>(it) }
+                            } catch (e: Exception) {
+                                logcat(LogPriority.WARN, e) {
+                                    "Failed to read metadata for $nameWithoutExtension, extracting from code"
+                                }
+                                null
+                            }
+                            parsedMetadata ?: run {
                                 logcat(LogPriority.DEBUG) {
                                     "Metadata file empty for $nameWithoutExtension, extracting from code"
                                 }

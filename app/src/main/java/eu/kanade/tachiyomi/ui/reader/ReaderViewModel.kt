@@ -62,6 +62,7 @@ import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -80,6 +81,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.archive.archiveReader
 import tachiyomi.core.common.preference.toggle
@@ -445,8 +447,7 @@ class ReaderViewModel @JvmOverloads constructor(
         viewModelScope.launchIO {
             logcat { "Loading ${chapter.chapter.url}" }
 
-            flushReadTimer()
-            restartReadTimer()
+            flushReadTimerAndRestart()
 
             try {
                 loadChapter(loader, chapter)
@@ -565,8 +566,7 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun setActiveChapterWithoutReload(chapter: ReaderChapter) {
         viewModelScope.launchIO {
-            flushReadTimer()
-            restartReadTimer()
+            flushReadTimerAndRestart()
 
             val chapterPos = chapterList.indexOfFirst { it.chapter.id == chapter.chapter.id }
             if (chapterPos < 0) return@launchIO
@@ -1002,12 +1002,16 @@ class ReaderViewModel @JvmOverloads constructor(
         chapterReadStartTime = Instant.now().toEpochMilli()
     }
 
-    fun flushReadTimer() {
-        getCurrentChapter()?.let {
-            viewModelScope.launchNonCancellable {
-                updateHistory(it)
-            }
-        }
+    /**
+     * Flushes the current chapter's read timer, then starts a fresh one, ordered so the flush's
+     * read+clear of [chapterReadStartTime] completes before [restartReadTimer] writes the new start.
+     * A fire-and-forget flush + [restartReadTimer] pair can't guarantee this: the async flush would
+     * observe the already-restarted timer and record a ~0 session duration, losing the chapter that
+     * was just left. The write runs [NonCancellable] to survive the load being cancelled.
+     */
+    private suspend fun flushReadTimerAndRestart() {
+        getCurrentChapter()?.let { withContext(NonCancellable) { updateHistory(it) } }
+        restartReadTimer()
     }
 
     suspend fun updateHistory() {

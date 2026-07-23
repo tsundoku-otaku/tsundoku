@@ -232,6 +232,9 @@ class ReaderPreferences(
     // 2..20 maps to speed 1.0..10.0. New key: the old "pref_novel_auto_scroll_speed" mixed a 1..10
     // level and a 5..120 sec/screen scale, so it isn't reused. Divide by 2f to get the speed level.
     val novelAutoScrollSpeed: Preference<Int> = preferenceStore.getInt("pref_novel_auto_scroll_speed_half", 6)
+
+    // Resolve the stored half-step Int to the speed level the viewers scroll at (1.0..10.0).
+    fun novelAutoScrollLevel(): Float = novelAutoScrollSpeed.get().coerceIn(2, 20) / 2f
     val novelVolumeKeysScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_volume_keys_scroll", false)
     val novelTapToScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tap_to_scroll", false)
     val novelTextSelectable: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_text_selectable", true)

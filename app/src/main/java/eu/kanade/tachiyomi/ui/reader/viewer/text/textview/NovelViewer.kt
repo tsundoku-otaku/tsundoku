@@ -1889,7 +1889,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     fun startAutoScroll() {
         // Pref is half-steps (speed x2); level is 1.0..10.0 in 0.5 increments.
-        val level = preferences.novelAutoScrollSpeed.get().coerceIn(2, 20) / 2f
+        val level = preferences.novelAutoScrollLevel()
         isAutoScrolling = true
 
         autoScrollJob?.cancel()

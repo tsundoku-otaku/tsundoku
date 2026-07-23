@@ -928,7 +928,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         attachListener?.let(container::removeOnAttachStateChangeListener)
         attachListener = null
 
-        activeJsDialog?.dismiss()
+        // cancel(), not dismiss(): dismiss() skips the OnCancelListener, so the pending
+        // JsResult/JsPromptResult would never resolve and the WebView's JS thread stays blocked.
+        try {
+            activeJsDialog?.cancel()
+        } catch (e: Throwable) {
+            logcat(LogPriority.WARN) { "Failed to cancel active JS dialog during destroy (${e.message})" }
+        }
         activeJsDialog = null
 
         container.removeView(webView)
@@ -1436,8 +1442,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         webView.loadDataWithBaseURL(resolveWebViewBaseUrl(chapterPath), html, "text/html", "UTF-8", null)
     }
 
+    // Memoized: the manga URL is fixed for the viewer's lifetime, and getMangaUrl() does a source
+    // lookup + toSManga() + getMangaUrlOrNull() that ran twice per chapter load/append otherwise.
+    private var cachedMangaUrl: String? = null
+
+    private fun resolvedMangaUrl(): String? {
+        cachedMangaUrl?.let { return it }
+        return (activity.viewModel.getMangaUrl() ?: activity.viewModel.manga?.url)
+            ?.also { cachedMangaUrl = it }
+    }
+
     private fun resolveWebViewBaseUrl(chapterUrl: String?): String? =
-        NovelWebViewChapterMeta.resolveWebViewBaseUrl(chapterUrl, activity.viewModel.manga?.url, sourceBaseUrl())
+        NovelWebViewChapterMeta.resolveWebViewBaseUrl(chapterUrl, resolvedMangaUrl(), sourceBaseUrl())
 
     // Site url of the current source, so relative asset paths in chapter HTML resolve like a browser.
     private fun sourceBaseUrl(): String? = when (val source = activity.viewModel.getSource()) {
@@ -1451,7 +1467,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private fun buildTsundokuScript(): String {
         val context = NovelWebViewChapterMeta.TsundokuScriptContext(
-            novelUrl = activity.viewModel.getMangaUrl() ?: activity.viewModel.manga?.url,
+            novelUrl = resolvedMangaUrl(),
             currentChapter = getCurrentTsundokuChapter(),
             chaptersInOrder = if (loadedChapters.isNotEmpty()) {
                 loadedChapters
@@ -1725,6 +1741,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             // ratio, restore it after focus settles, and gate onScrollProgress meanwhile.
             val restoreRatio = lastSavedProgress
             isRestoringScroll = true
+            val token = ++scrollRestoreToken
             webView.post {
                 activity.window.decorView.clearFocus()
                 webView.requestFocus()
@@ -2334,7 +2351,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private fun startAutoScroll() {
         // Pref is half-steps (speed x2); level is 1.0..10.0 in 0.5 increments.
-        val level = preferences.novelAutoScrollSpeed.get().coerceIn(2, 20) / 2f
+        val level = preferences.novelAutoScrollLevel()
         isAutoScrolling = true
 
         // Drive the scroll from a single in-page requestAnimationFrame loop instead of a Kotlin
