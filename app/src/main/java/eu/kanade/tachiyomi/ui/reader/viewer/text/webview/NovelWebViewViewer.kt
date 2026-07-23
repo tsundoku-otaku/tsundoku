@@ -92,6 +92,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
         const val ID_EDIT_MODE_STYLE = "edit-mode-style"
         const val SEEK_ECHO_SUPPRESS_MS = 350L
+        const val AUTO_SCROLL_START_VERIFY_MS = 400L
+        const val AUTO_SCROLL_MAX_START_ATTEMPTS = 3
 
         const val TTS_TEXT_EXTRACTION_JS = """
             (function() {
@@ -191,6 +193,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var isEditingMode = false
 
     private var isAutoScrolling = false
+    private var autoScrollStartAttempt = 0
 
     // The error page is a fresh document that drops the autoscroll rAF loop; re-arm it once its
     // onPageFinished lands, since that load bypasses the isLoadingRealChapter re-arm path.
@@ -2340,19 +2343,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun toggleAutoScroll() {
-        isAutoScrolling = !isAutoScrolling
-
-        if (isAutoScrolling) {
-            startAutoScroll()
-        } else {
-            stopAutoScroll()
-        }
+        if (isAutoScrolling) stopAutoScroll() else startAutoScroll()
     }
 
     private fun startAutoScroll() {
+        isAutoScrolling = true
+        autoScrollStartAttempt = 0
+        issueAutoScrollStart()
+    }
+
+    private fun issueAutoScrollStart() {
         // Pref is half-steps (speed x2); level is 1.0..10.0 in 0.5 increments.
         val level = preferences.novelAutoScrollLevel()
-        isAutoScrolling = true
 
         // Drive the scroll from a single in-page requestAnimationFrame loop instead of a Kotlin
         // timer that fires window.scrollBy over the JS bridge every 50ms: those round-trips arrive
@@ -2361,6 +2363,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // naturally pauses while the WebView is backgrounded (no frames), resuming without a jump via
         // the dt clamp. speed level (1..10) maps to CSS px/sec.
         val pxPerSec = level * 20
+        val attempt = ++autoScrollStartAttempt
         evaluateJavascriptSafe(
             """
             (function() {
@@ -2387,6 +2390,27 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             """.trimIndent(),
             null,
         )
+        // Confirm the in-page loop actually started: evaluateJavascript is silently dropped when the
+        // JS context isn't ready, which would leave isAutoScrolling stuck on with no motion. Query the
+        // loop's own flag; retry a few times, then give up and clear isAutoScrolling so the state
+        // reflects reality. s.running stays true while backgrounded (rAF paused), so this won't
+        // false-negative on a paused page.
+        webView.postDelayed({
+            if (!isAutoScrolling || attempt != autoScrollStartAttempt) return@postDelayed
+            evaluateJavascriptSafe(
+                "(function(){ return !!(window.__tdAutoScroll && window.__tdAutoScroll.running); })();",
+            ) { running ->
+                if (!isAutoScrolling || attempt != autoScrollStartAttempt) return@evaluateJavascriptSafe
+                if (running != "true") {
+                    if (autoScrollStartAttempt < AUTO_SCROLL_MAX_START_ATTEMPTS) {
+                        issueAutoScrollStart()
+                    } else {
+                        isAutoScrolling = false
+                        logcat(LogPriority.WARN) { "NovelWebViewViewer: autoscroll failed to start, giving up" }
+                    }
+                }
+            }
+        }, AUTO_SCROLL_START_VERIFY_MS)
     }
 
     fun stopAutoScroll() {
