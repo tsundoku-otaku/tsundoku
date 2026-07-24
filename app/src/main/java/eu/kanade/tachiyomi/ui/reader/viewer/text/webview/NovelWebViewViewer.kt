@@ -195,6 +195,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var isAutoScrolling = false
     private var autoScrollStartAttempt = 0
 
+    // Never reset (unlike autoScrollStartAttempt, which restarts at 0 each session), so a verify
+    // callback from a stopped/superseded session can't collide with a same-numbered attempt from a
+    // fresh one started within the same AUTO_SCROLL_START_VERIFY_MS window.
+    private var autoScrollSession = 0
+
     // The error page is a fresh document that drops the autoscroll rAF loop; re-arm it once its
     // onPageFinished lands, since that load never enters DocState.LOADING_REAL so the re-arm path
     // in the real-chapter gate is skipped.
@@ -2405,10 +2410,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private fun startAutoScroll() {
         isAutoScrolling = true
         autoScrollStartAttempt = 0
-        issueAutoScrollStart()
+        issueAutoScrollStart(++autoScrollSession)
     }
 
-    private fun issueAutoScrollStart() {
+    private fun issueAutoScrollStart(session: Int) {
         // Pref is half-steps (speed x2); level is 1.0..10.0 in 0.5 increments.
         val level = preferences.novelAutoScrollLevel()
 
@@ -2452,14 +2457,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // reflects reality. s.running stays true while backgrounded (rAF paused), so this won't
         // false-negative on a paused page.
         webView.postDelayed({
-            if (!isAutoScrolling || attempt != autoScrollStartAttempt) return@postDelayed
+            if (!isAutoScrolling || session != autoScrollSession || attempt != autoScrollStartAttempt) {
+                return@postDelayed
+            }
             evaluateJavascriptSafe(
                 "(function(){ return !!(window.__tdAutoScroll && window.__tdAutoScroll.running); })();",
             ) { running ->
-                if (!isAutoScrolling || attempt != autoScrollStartAttempt) return@evaluateJavascriptSafe
+                if (!isAutoScrolling || session != autoScrollSession || attempt != autoScrollStartAttempt) {
+                    return@evaluateJavascriptSafe
+                }
                 if (running != "true") {
                     if (autoScrollStartAttempt < AUTO_SCROLL_MAX_START_ATTEMPTS) {
-                        issueAutoScrollStart()
+                        issueAutoScrollStart(session)
                     } else {
                         isAutoScrolling = false
                         logcat(LogPriority.WARN) { "NovelWebViewViewer: autoscroll failed to start, giving up" }
@@ -2471,6 +2480,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     fun stopAutoScroll() {
         isAutoScrolling = false
+        ++autoScrollSession
         evaluateJavascriptSafe(
             """
             (function() {
