@@ -207,7 +207,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // only with the menu) plus system bars. The novel status bar is NOT here - it gets real layout
     // space via viewer_container padding. Exposed as --tsundoku-safe-top/bottom +
     // Tsundoku.runtime.menuVisible so fixed elements clear the menu. Re-applied on each fresh-DOM load.
-    private var chromeMenuVisible = false
+    // Menu visibility itself isn't cached here -- pushReaderChrome() reads it live off the ViewModel
+    // so a DOM reload can't race a stale value against buildTsundokuScript()'s live read of the same
+    // state and clobber it back (or fire a spurious/missed menuvisibilitychange event).
     private var chromeSafeTopDp = 0f
     private var chromeSafeBottomDp = 0f
 
@@ -1581,7 +1583,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     /** Called from ReaderActivity when the menu or reader-chrome insets change. */
     fun onReaderChromeChanged(menuVisible: Boolean, safeTopDp: Float, safeBottomDp: Float) {
-        chromeMenuVisible = menuVisible
         chromeSafeTopDp = safeTopDp
         chromeSafeBottomDp = safeBottomDp
         pushReaderChrome()
@@ -1601,7 +1602,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 "SAFE_BOTTOM" to chromeSafeBottomDp.toString(),
                 "OBJECT" to NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME,
                 "MENU_KEY" to NovelWebViewChapterMeta.TSUNDOKU_MENU_VISIBLE_KEY,
-                "MENU_VISIBLE" to chromeMenuVisible.toString(),
+                "MENU_VISIBLE" to activity.viewModel.state.value.menuVisible.toString(),
                 "EVENT" to NovelWebViewChapterMeta.EVENT_MENU_VISIBILITY,
             ),
         )
