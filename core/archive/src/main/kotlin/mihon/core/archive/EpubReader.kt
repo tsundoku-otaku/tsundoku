@@ -433,14 +433,16 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                 }
 
                 val src = rawSrc.substringBefore("#").trim().urlDecoded()
-                if (src.isBlank() || src.startsWith("http") || src.startsWith("//") || src.startsWith("data:")) {
+                if (src.isBlank() || src.startsWith("http") || src.startsWith("//") || src.startsWith("data:") ||
+                    src.startsWith(NOVEL_IMAGE_SCHEME)
+                ) {
                     return@forEach
                 }
 
                 val imagePath = resolveZipPath(imageBasePath, src)
                 val replacement = when {
                     useReaderImageScheme -> {
-                        "tsundoku-novel-image://${java.net.URLEncoder.encode(imagePath, "UTF-8")}"
+                        "$NOVEL_IMAGE_SCHEME${java.net.URLEncoder.encode(imagePath, "UTF-8")}"
                     }
                     imageCollector != null -> {
                         val bytes = runCatching {
@@ -449,7 +451,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
                         if (bytes == null || bytes.isEmpty()) return@forEach
                         val id = buildExportImageId(imagePath)
                         imageCollector.putIfAbsent(id, bytes)
-                        "tsundoku-novel-image://$id"
+                        "$NOVEL_IMAGE_SCHEME$id"
                     }
                     else -> inlineAssetAsDataUri(imagePath) ?: return@forEach
                 }
