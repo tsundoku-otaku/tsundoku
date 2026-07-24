@@ -44,7 +44,7 @@ internal class NovelWebViewImageCache(
         } else {
             fallbackChapterId to encodedSuffix
         }
-        val imagePath = URLDecoder.decode(encodedImagePath, "UTF-8")
+        val imagePath = runCatching { URLDecoder.decode(encodedImagePath, "UTF-8") }.getOrNull() ?: return null
 
         val loader = chapterId?.let { chapterLoaderMap[it] } ?: fallbackLoader
         val cacheKey = buildCacheKey(chapterId, imagePath)
@@ -134,7 +134,11 @@ internal class NovelWebViewImageCache(
         "${chapterId ?: -1L}:$imagePath"
 
     private fun makeCachedFile(cacheKey: String, imagePath: String): File {
-        val fileSuffix = imagePath.substringAfterLast('.', "bin").ifBlank { "bin" }
+        // substringAfterLast('.') alone would scan the whole path, not just the filename -- a '.' in
+        // a directory segment (e.g. "v1.2/cover.png") would put a "/" into the suffix and point the
+        // cache file at a nonexistent subdirectory.
+        val fileName = imagePath.substringAfterLast('/')
+        val fileSuffix = fileName.substringAfterLast('.', "bin").ifBlank { "bin" }
         val keyHash = java.security.MessageDigest.getInstance("SHA-256")
             .digest(cacheKey.toByteArray())
             .take(16)
