@@ -687,7 +687,13 @@ class Downloader(
             }
         }
 
-        if (page.text != null) {
+        if (download.source.isNovelSource() && page.text.isNullOrBlank() && page.imageUrl.isNullOrEmpty()) {
+            logcat(LogPriority.ERROR) { "  -> Novel page ${page.number} returned no text; failing download" }
+            page.status = Page.State.Error(Exception("Chapter is empty - the source returned no text"))
+            return
+        }
+
+        if (!page.text.isNullOrBlank()) {
             val digitCount = (download.pages?.size ?: 0).toString().length.coerceAtLeast(3)
             val filename = "%0${digitCount}d.html".format(Locale.ENGLISH, page.number)
             logcat { "  -> Saving text to $filename" }
