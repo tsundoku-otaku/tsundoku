@@ -54,7 +54,6 @@ import tachiyomi.domain.chapter.interactor.SetMangaDefaultChapterFlags
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetDuplicateLibraryManga
 import tachiyomi.domain.manga.interactor.GetFavorites
-import tachiyomi.domain.manga.interactor.GetFavoritesEntry
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
@@ -85,7 +84,6 @@ class BrowseSourceScreenModel(
     private val setMangaDefaultChapterFlags: SetMangaDefaultChapterFlags = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
     private val getFavorites: GetFavorites = Injekt.get(),
-    private val getFavoritesEntry: GetFavoritesEntry = Injekt.get(),
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
@@ -228,13 +226,6 @@ class BrowseSourceScreenModel(
     private fun normalizeUrlForLookup(url: String): String =
         normalizeUrl(eu.kanade.tachiyomi.util.source.normalizeSourcePath(source, url))
 
-    // Cached library manga for this source - single subscription instead of per-item
-    private val libraryMangaForSource: StateFlow<Map<String, Manga>> = getFavoritesEntry.subscribe(sourceId)
-        .map { favorites ->
-            favorites.associateBy { normalizeUrlForLookup(it.url) }
-        }
-        .stateIn(ioCoroutineScope, SharingStarted.Eagerly, emptyMap())
-
     val mangaPagerFlowFlow = kotlinx.coroutines.flow.combine(
         state.map { Triple(it.listing.query, it.filters, it.filters.hashCode()) }
             .distinctUntilChanged { old, new -> old.first == new.first && old.third == new.third },
@@ -260,12 +251,9 @@ class BrowseSourceScreenModel(
                 } else {
                     manga
                 }
-                // Use cached library lookup instead of individual DB subscription
-                libraryMangaForSource
-                    .map { libraryMap ->
-                        libraryMap[normalizedUrl] ?: normalizedManga
-                    }
-                    .stateIn(ioCoroutineScope)
+                getManga.subscribe(normalizedUrl, sourceId)
+                    .map { it ?: normalizedManga }
+                    .stateIn(ioCoroutineScope, SharingStarted.Eagerly, normalizedManga)
             }
                 .filter { !hideInLibraryItems || !it.value.favorite }
         }
