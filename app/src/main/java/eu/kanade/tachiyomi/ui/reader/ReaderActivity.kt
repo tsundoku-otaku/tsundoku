@@ -684,7 +684,7 @@ class ReaderActivity : BaseActivity() {
      */
     override fun onResume() {
         super.onResume()
-        viewModel.restartReadTimer()
+        lifecycleScope.launch { viewModel.restartReadTimerSynced() }
         setMenuVisibility(viewModel.state.value.menuVisible)
         if (readerPreferences.novelTtsBackgroundPlayback.get() &&
             currentNovelTtsState()?.active == true

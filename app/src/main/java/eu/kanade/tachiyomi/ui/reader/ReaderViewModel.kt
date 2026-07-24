@@ -1003,6 +1003,15 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     /**
+     * [restartReadTimer], but serialized against [historyMutex] so a resume-triggered restart can't
+     * race an in-flight pause flush from [ReaderActivity.onPause] -- without this, a fast
+     * pause/resume can let the restart overwrite [chapterReadStartTime] before the flush reads it.
+     */
+    suspend fun restartReadTimerSynced() = historyMutex.withLock {
+        restartReadTimer()
+    }
+
+    /**
      * Flushes the current chapter's read timer, then starts a fresh one, ordered so the flush's
      * read+clear of [chapterReadStartTime] completes before [restartReadTimer] writes the new start.
      * A fire-and-forget flush + [restartReadTimer] pair can't guarantee this: the async flush would
