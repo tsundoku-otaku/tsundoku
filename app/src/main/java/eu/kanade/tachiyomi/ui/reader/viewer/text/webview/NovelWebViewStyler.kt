@@ -232,7 +232,10 @@ internal class NovelWebViewStyler(
         val js = NovelWebViewJsAssets.loadWith(
             activity,
             "next-chapter-button.js",
-            mapOf("BTN_CONTAINER_ID" to ID_NEXT_CHAPTER_BTN_CONTAINER),
+            mapOf(
+                "BTN_CONTAINER_ID" to ID_NEXT_CHAPTER_BTN_CONTAINER,
+                "SAFE_BOTTOM_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_BOTTOM,
+            ),
         )
         evaluateJs(js)
     }

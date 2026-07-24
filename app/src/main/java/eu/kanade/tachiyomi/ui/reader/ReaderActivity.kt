@@ -44,6 +44,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -405,6 +406,39 @@ class ReaderActivity : BaseActivity() {
             )
         }
 
+        val isNovelViewer = state.viewer is NovelViewer || state.viewer is NovelWebViewViewer
+        val statusBarAtBottomEdge = novelStatusBarPosition != "top"
+
+        // Pad viewer_container by the status bar's height on its docked edge so content never renders
+        // under it. Reserved while enabled (not on menu visibility) so menu toggles don't resize the
+        // WebView and jump its scroll.
+        val statusBarReservePx = if (isNovelViewer && novelStatusBarEnabled) statusBarHeightPx else 0
+        LaunchedEffect(statusBarReservePx, statusBarAtBottomEdge) {
+            val top = if (statusBarAtBottomEdge) 0 else statusBarReservePx
+            val bottom = if (statusBarAtBottomEdge) statusBarReservePx else 0
+            val vc = binding.viewerContainer
+            if (vc.paddingTop != top || vc.paddingBottom != bottom) vc.setPadding(0, top, 0, bottom)
+        }
+
+        // Reader menu bars are transient overlays, so reserving layout for them would churn the
+        // WebView size on every toggle. Report their measured heights (system bars included) to the
+        // page as --tsundoku-safe-top/bottom + menuVisible. Read only inside snapshotFlow with
+        // remembered callbacks so scroll-driven recompositions stay off the per-frame path.
+        val menuTopBarPx = remember { mutableIntStateOf(0) }
+        val menuBottomBarPx = remember { mutableIntStateOf(0) }
+        val onTopBarHeight = remember { { px: Int -> menuTopBarPx.intValue = px } }
+        val onBottomBarHeight = remember { { px: Int -> menuBottomBarPx.intValue = px } }
+        val webViewer = state.viewer as? NovelWebViewViewer
+        val menuVisible = state.menuVisible
+        LaunchedEffect(webViewer, menuVisible, density) {
+            val viewer = webViewer ?: return@LaunchedEffect
+            snapshotFlow {
+                with(density) { menuTopBarPx.intValue.toDp().value to menuBottomBarPx.intValue.toDp().value }
+            }
+                .distinctUntilChanged()
+                .collect { (top, bottom) -> viewer.onReaderChromeChanged(menuVisible, top, bottom) }
+        }
+
         Box(modifier = Modifier.fillMaxSize()) {
             val isNovelMode = state.viewer is NovelViewer || state.viewer is NovelWebViewViewer
             if (!state.menuVisible && showPageNumber && !isNovelMode) {
@@ -428,7 +462,12 @@ class ReaderActivity : BaseActivity() {
                 0.dp
             }
 
-            AppBars(state = state, ttsOverlayBottomPadding = ttsOverlayBottomPadding)
+            AppBars(
+                state = state,
+                ttsOverlayBottomPadding = ttsOverlayBottomPadding,
+                onTopBarHeight = onTopBarHeight,
+                onBottomBarHeight = onBottomBarHeight,
+            )
 
             if (isNovelMode && !state.menuVisible && novelStatusBarEnabled) {
                 val chapter = state.novelVisibleChapter ?: state.currentChapter?.chapter
@@ -762,7 +801,12 @@ class ReaderActivity : BaseActivity() {
     }
 
     @Composable
-    fun AppBars(state: ReaderViewModel.State, ttsOverlayBottomPadding: Dp = 0.dp) {
+    fun AppBars(
+        state: ReaderViewModel.State,
+        ttsOverlayBottomPadding: Dp = 0.dp,
+        onTopBarHeight: (Int) -> Unit = {},
+        onBottomBarHeight: (Int) -> Unit = {},
+    ) {
         if (!ifSourcesLoaded()) {
             return
         }
@@ -1125,6 +1169,8 @@ class ReaderActivity : BaseActivity() {
                 bottomBarItems = bottomBarItems,
                 onQuotes = ::onQuotesClicked,
                 ttsOverlayBottomPadding = ttsOverlayBottomPadding,
+                onTopBarHeight = onTopBarHeight,
+                onBottomBarHeight = onBottomBarHeight,
             )
 
             androidx.activity.compose.BackHandler(enabled = isEditing && state.hasUnsavedChanges) {

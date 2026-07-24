@@ -203,6 +203,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // Tracked so a JS dialog still on screen at teardown is dismissed instead of leaking the window.
     private var activeJsDialog: AlertDialog? = null
 
+    // Reader-chrome obstruction pushed from ReaderActivity: the transient reader menu bars (shown
+    // only with the menu) plus system bars. The novel status bar is NOT here - it gets real layout
+    // space via viewer_container padding. Exposed as --tsundoku-safe-top/bottom +
+    // Tsundoku.runtime.menuVisible so fixed elements clear the menu. Re-applied on each fresh-DOM load.
+    private var chromeMenuVisible = false
+    private var chromeSafeTopDp = 0f
+    private var chromeSafeBottomDp = 0f
+
     private val config = NovelConfig(scope)
     private val navigator get() = config.navigator
 
@@ -678,6 +686,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
                     styler.injectScript { buildTsundokuScript() }
                     styler.injectScrollTracking()
+                    // Fresh DOM lost the --tsundoku-safe-* vars and menuVisible flag; re-apply them.
+                    pushReaderChrome()
                     restoreScrollPosition()
                     syncShortChapterProgressIfNeeded()
                     if (!preferences.novelInfiniteScroll.get()) {
@@ -1556,6 +1566,35 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             "t.runtime.${NovelWebViewChapterMeta.TSUNDOKU_TTS_STATE_KEY} = '$state';",
             "{ state: '$state' }",
         )
+    }
+
+    /** Called from ReaderActivity when the menu or reader-chrome insets change. */
+    fun onReaderChromeChanged(menuVisible: Boolean, safeTopDp: Float, safeBottomDp: Float) {
+        chromeMenuVisible = menuVisible
+        chromeSafeTopDp = safeTopDp
+        chromeSafeBottomDp = safeBottomDp
+        pushReaderChrome()
+    }
+
+    // Sets the safe-area CSS vars and Tsundoku.runtime.menuVisible via the reader-chrome.js asset
+    // (same token-substitution path as the other injected scripts), firing the menu-visibility event
+    // only when the flag actually flips so a load/inset re-apply is silent.
+    private fun pushReaderChrome() {
+        val js = NovelWebViewJsAssets.loadWith(
+            activity,
+            "reader-chrome.js",
+            mapOf(
+                "SAFE_TOP_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_TOP,
+                "SAFE_BOTTOM_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_BOTTOM,
+                "SAFE_TOP" to chromeSafeTopDp.toString(),
+                "SAFE_BOTTOM" to chromeSafeBottomDp.toString(),
+                "OBJECT" to NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME,
+                "MENU_KEY" to NovelWebViewChapterMeta.TSUNDOKU_MENU_VISIBLE_KEY,
+                "MENU_VISIBLE" to chromeMenuVisible.toString(),
+                "EVENT" to NovelWebViewChapterMeta.EVENT_MENU_VISIBILITY,
+            ),
+        )
+        evaluateJavascriptSafe(js, null)
     }
 
     private fun showLoadingIndicator(message: String = "Loading...") {

@@ -35,6 +35,11 @@ internal object NovelWebViewChapterMeta {
     const val EVENT_CHAPTER_LOADING = "tsundoku:chapterloading"
     const val EVENT_TTS_STATE = "tsundoku:ttsstatechange"
 
+    // Safe-area CSS custom properties: the reader menu bar heights the page must clear (0 while the
+    // menu is hidden). Single source of truth for both the injector and the CSS that reads them.
+    const val CSS_VAR_SAFE_TOP = "--tsundoku-safe-top"
+    const val CSS_VAR_SAFE_BOTTOM = "--tsundoku-safe-bottom"
+
     fun String.jsEscape(): String =
         this.replace("\\", "\\\\")
             .replace("\"", "\\\"")

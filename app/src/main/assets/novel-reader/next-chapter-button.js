@@ -1,7 +1,8 @@
 // Inject a "Next Chapter →" button at the bottom of the WebView content.
 //
 // Replaces:
-//   __BTN_CONTAINER_ID__ — DOM id of the wrapping div
+//   __BTN_CONTAINER_ID__ - DOM id of the wrapping div
+//   __SAFE_BOTTOM_VAR__  - safe-area bottom CSS custom property name
 
 (function () {
     var existing = document.getElementById('__BTN_CONTAINER_ID__');
@@ -9,7 +10,8 @@
 
     var container = document.createElement('div');
     container.id = '__BTN_CONTAINER_ID__';
-    container.style.cssText = 'padding: 32px 16px; text-align: center;';
+    // Bottom padding clears the reader menu / nav bar so the button isn't hidden at chapter end.
+    container.style.cssText = 'padding: 32px 16px calc(32px + var(__SAFE_BOTTOM_VAR__, 0px)); text-align: center;';
 
     var bg = getComputedStyle(document.body).backgroundColor || 'transparent';
     var fg = getComputedStyle(document.body).color || '#000000';
