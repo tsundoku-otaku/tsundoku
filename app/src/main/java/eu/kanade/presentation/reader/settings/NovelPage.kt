@@ -94,6 +94,10 @@ data class CodeSnippet(
     val enabled: Boolean = true,
     // JS only. Default off so one-shot snippets don't re-run on every infinite-scroll append.
     val runOnAppend: Boolean = false,
+    // Stable identity for edit/delete so a list reorder between opening a dialog and confirming it
+    // can't target the wrong entry. Absent from JSON saved before this field existed, in which case
+    // decoding assigns a fresh one -- harmless since those entries had no addressable identity before.
+    val id: String = java.util.UUID.randomUUID().toString(),
 )
 
 @Serializable
@@ -105,6 +109,7 @@ data class RegexReplacement(
     val isRegex: Boolean = true,
     val matchWholeWord: Boolean = false,
     val caseSensitive: Boolean = false,
+    val id: String = java.util.UUID.randomUUID().toString(),
 )
 
 private val novelThemes = listOf(
@@ -829,8 +834,8 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
 
     var showCssDialog by remember { mutableStateOf(false) }
     var showJsDialog by remember { mutableStateOf(false) }
-    var editingCssSnippet by remember { mutableStateOf<Pair<Int, CodeSnippet>?>(null) }
-    var editingJsSnippet by remember { mutableStateOf<Pair<Int, CodeSnippet>?>(null) }
+    var editingCssSnippet by remember { mutableStateOf<CodeSnippet?>(null) }
+    var editingJsSnippet by remember { mutableStateOf<CodeSnippet?>(null) }
 
     val cssSnippets = remember(cssSnippetsJson) {
         try {
@@ -853,9 +858,9 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
         title = stringResource(TDMR.strings.pref_novel_css_snippets),
         snippets = cssSnippets,
         onAddClick = { showCssDialog = true },
-        onEditClick = { index, snippet -> editingCssSnippet = index to snippet },
-        onDeleteClick = { index ->
-            val updated = cssSnippets.toMutableList().apply { removeAt(index) }
+        onEditClick = { snippet -> editingCssSnippet = snippet },
+        onDeleteClick = { id ->
+            val updated = cssSnippets.filterNot { it.id == id }
             screenModel.preferences.novelCustomCssSnippets.set(Json.encodeToString(updated))
         },
         onToggleClick = { index ->
@@ -879,9 +884,9 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
         title = stringResource(TDMR.strings.pref_novel_js_snippets),
         snippets = jsSnippets,
         onAddClick = { showJsDialog = true },
-        onEditClick = { index, snippet -> editingJsSnippet = index to snippet },
-        onDeleteClick = { index ->
-            val updated = jsSnippets.toMutableList().apply { removeAt(index) }
+        onEditClick = { snippet -> editingJsSnippet = snippet },
+        onDeleteClick = { id ->
+            val updated = jsSnippets.filterNot { it.id == id }
             screenModel.preferences.novelCustomJsSnippets.set(Json.encodeToString(updated))
         },
         onToggleClick = { index ->
@@ -908,7 +913,7 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
             } else {
                 stringResource(TDMR.strings.novel_add_css_snippet)
             },
-            initialSnippet = editingCssSnippet?.second,
+            initialSnippet = editingCssSnippet,
             focusCodeFieldByDefault = editingCssSnippet != null,
             showRunOnAppend = false,
             onDismiss = {
@@ -916,11 +921,11 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
                 editingCssSnippet = null
             },
             onConfirm = { snippet ->
-                val updated = cssSnippets.toMutableList()
-                if (editingCssSnippet != null) {
-                    updated[editingCssSnippet!!.first] = snippet
+                val editingId = editingCssSnippet?.id
+                val updated = if (editingId != null) {
+                    cssSnippets.map { if (it.id == editingId) snippet else it }
                 } else {
-                    updated.add(snippet)
+                    cssSnippets + snippet
                 }
                 screenModel.preferences.novelCustomCssSnippets.set(Json.encodeToString(updated))
                 showCssDialog = false
@@ -937,7 +942,7 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
             } else {
                 stringResource(TDMR.strings.novel_add_js_snippet)
             },
-            initialSnippet = editingJsSnippet?.second,
+            initialSnippet = editingJsSnippet,
             focusCodeFieldByDefault = editingJsSnippet != null,
             showRunOnAppend = true,
             onDismiss = {
@@ -945,11 +950,11 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
                 editingJsSnippet = null
             },
             onConfirm = { snippet ->
-                val updated = jsSnippets.toMutableList()
-                if (editingJsSnippet != null) {
-                    updated[editingJsSnippet!!.first] = snippet
+                val editingId = editingJsSnippet?.id
+                val updated = if (editingId != null) {
+                    jsSnippets.map { if (it.id == editingId) snippet else it }
                 } else {
-                    updated.add(snippet)
+                    jsSnippets + snippet
                 }
                 screenModel.preferences.novelCustomJsSnippets.set(Json.encodeToString(updated))
                 showJsDialog = false
@@ -964,13 +969,13 @@ private fun SnippetSection(
     title: String,
     snippets: List<CodeSnippet>,
     onAddClick: () -> Unit,
-    onEditClick: (Int, CodeSnippet) -> Unit,
-    onDeleteClick: (Int) -> Unit,
+    onEditClick: (CodeSnippet) -> Unit,
+    onDeleteClick: (String) -> Unit,
     onToggleClick: (Int) -> Unit,
     onMove: (Int, Int) -> Unit,
     onSortEnabledFirst: () -> Unit,
 ) {
-    var pendingDelete by remember { mutableStateOf<Int?>(null) }
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(
@@ -1049,13 +1054,13 @@ private fun SnippetSection(
                                 contentDescription = stringResource(TDMR.strings.novel_snippet_move_down),
                             )
                         }
-                        IconButton(onClick = { onEditClick(index, snippet) }) {
+                        IconButton(onClick = { onEditClick(snippet) }) {
                             Icon(
                                 Icons.Outlined.Edit,
                                 contentDescription = stringResource(TDMR.strings.novel_edit_snippet),
                             )
                         }
-                        IconButton(onClick = { pendingDelete = index }) {
+                        IconButton(onClick = { pendingDelete = snippet.id }) {
                             Icon(
                                 Icons.Outlined.Delete,
                                 contentDescription = stringResource(TDMR.strings.novel_delete_snippet),
@@ -1076,7 +1081,7 @@ private fun SnippetSection(
         }
     }
 
-    pendingDelete?.let { index ->
+    pendingDelete?.let { id ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text(stringResource(TDMR.strings.novel_delete_snippet)) },
@@ -1084,7 +1089,7 @@ private fun SnippetSection(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onDeleteClick(index)
+                        onDeleteClick(id)
                         pendingDelete = null
                     },
                 ) {
@@ -1174,6 +1179,7 @@ private fun SnippetEditDialog(
                                 code = snippetCode,
                                 enabled = initialSnippet?.enabled ?: true,
                                 runOnAppend = runOnAppend,
+                                id = initialSnippet?.id ?: java.util.UUID.randomUUID().toString(),
                             ),
                         )
                     }
@@ -1199,8 +1205,8 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
     val regexJson by screenModel.preferences.novelRegexReplacements.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
-    var editingRule by remember { mutableStateOf<Pair<Int, RegexReplacement>?>(null) }
-    var pendingDelete by remember { mutableStateOf<Int?>(null) }
+    var editingRule by remember { mutableStateOf<RegexReplacement?>(null) }
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
 
     val rules = remember(regexJson) {
         try {
@@ -1285,10 +1291,10 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                         )
                     }
                     Row {
-                        IconButton(onClick = { editingRule = index to rule }) {
+                        IconButton(onClick = { editingRule = rule }) {
                             Icon(Icons.Outlined.Edit, contentDescription = stringResource(MR.strings.action_edit))
                         }
-                        IconButton(onClick = { pendingDelete = index }) {
+                        IconButton(onClick = { pendingDelete = rule.id }) {
                             Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.strings.action_delete))
                         }
                     }
@@ -1308,17 +1314,17 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
 
     if (showAddDialog || editingRule != null) {
         RegexEditDialog(
-            initialRule = editingRule?.second,
+            initialRule = editingRule,
             onDismiss = {
                 showAddDialog = false
                 editingRule = null
             },
             onConfirm = { rule ->
-                val updated = rules.toMutableList()
-                if (editingRule != null) {
-                    updated[editingRule!!.first] = rule
+                val editingId = editingRule?.id
+                val updated = if (editingId != null) {
+                    rules.map { if (it.id == editingId) rule else it }
                 } else {
-                    updated.add(rule)
+                    rules + rule
                 }
                 screenModel.preferences.novelRegexReplacements.set(Json.encodeToString(updated))
                 showAddDialog = false
@@ -1327,7 +1333,7 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
         )
     }
 
-    pendingDelete?.let { index ->
+    pendingDelete?.let { id ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text(stringResource(MR.strings.action_delete)) },
@@ -1335,7 +1341,7 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
             confirmButton = {
                 TextButton(
                     onClick = {
-                        val updated = rules.toMutableList().apply { removeAt(index) }
+                        val updated = rules.filterNot { it.id == id }
                         screenModel.preferences.novelRegexReplacements.set(Json.encodeToString(updated))
                         pendingDelete = null
                     },
@@ -1583,6 +1589,7 @@ private fun RegexEditDialog(
                                 isRegex = isRegex,
                                 matchWholeWord = if (isRegex) false else matchWholeWord,
                                 caseSensitive = if (isRegex) false else caseSensitive,
+                                id = initialRule?.id ?: java.util.UUID.randomUUID().toString(),
                             ),
                         )
                     }
