@@ -1806,6 +1806,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 }, 120)
             }
             webView.postDelayed({
+                if (token != scrollRestoreToken) return@postDelayed
                 evaluateJavascriptSafe(
                     """
                     (function() {
@@ -1823,6 +1824,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 isRestoringScroll = false
             }, 220)
         } else {
+            // Invalidate a pending entry-side restore callback so it can't fire after we've
+            // already left edit mode.
+            ++scrollRestoreToken
+            isRestoringScroll = false
             webView.evaluateJavascript(
                 "(function() { window.getSelection().removeAllRanges(); document.activeElement.blur(); })();",
                 null,
