@@ -39,7 +39,6 @@ import nl.adaptivity.xmlutil.XmlDeclMode
 import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
 import tachiyomi.core.common.storage.AndroidStorageFolderProvider
-import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.data.AlternativeTitlesColumnAdapter
 import tachiyomi.data.Chapters
 import tachiyomi.data.Database
@@ -176,18 +175,5 @@ class AppModule(val app: Application) : InjektModule {
 
         // Font management
         addSingletonFactory { eu.kanade.tachiyomi.data.font.FontManager(app, get(), get()) }
-
-        // Asynchronously init expensive components for a faster cold start. Must run off the main
-        // thread: getMainExecutor() posts back to main, so constructing SourceManager/Database/
-        // DownloadManager there stalled startup (frozen splash, SystemJobService bind timeouts).
-        get<CoroutineScope>().launchIO {
-            get<NetworkHelper>()
-
-            get<SourceManager>()
-
-            get<Database>()
-
-            get<DownloadManager>()
-        }
     }
 }
