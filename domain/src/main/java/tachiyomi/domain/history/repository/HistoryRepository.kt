@@ -24,4 +24,7 @@ interface HistoryRepository {
     suspend fun deleteAllHistory(): Boolean
 
     suspend fun upsertHistory(historyUpdate: HistoryUpdate)
+
+    /** Adds read duration without moving last_read on an existing row (novel readers). */
+    suspend fun upsertHistoryTimeRead(historyUpdate: HistoryUpdate)
 }

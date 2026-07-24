@@ -14,6 +14,7 @@ import eu.kanade.domain.chapter.model.toDbChapter
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
 import eu.kanade.domain.manga.model.readerOrientation
 import eu.kanade.domain.manga.model.readingMode
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.track.interactor.TrackChapter
 import eu.kanade.domain.track.service.TrackPreferences
@@ -55,11 +56,13 @@ import eu.kanade.tachiyomi.util.chapter.removeDuplicates
 import eu.kanade.tachiyomi.util.editCover
 import eu.kanade.tachiyomi.util.lang.byteSize
 import eu.kanade.tachiyomi.util.source.getChapterUrlOrNull
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -78,6 +81,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.archive.archiveReader
 import tachiyomi.core.common.preference.toggle
@@ -285,6 +289,13 @@ class ReaderViewModel @JvmOverloads constructor(
     /** Serializes novel progress saves to prevent concurrent saves racing each other. */
     private val novelProgressMutex = Mutex()
 
+    /**
+     * Serializes history writes so the read+clear of [chapterReadStartTime] is atomic. A pause flush
+     * and a chapter-change flush can fire concurrently; without this both read the same start time
+     * before either clears it, double-counting the session's read duration.
+     */
+    private val historyMutex = Mutex()
+
     init {
         // To save state
         state.map { it.viewerChapters?.currChapter }
@@ -436,8 +447,7 @@ class ReaderViewModel @JvmOverloads constructor(
         viewModelScope.launchIO {
             logcat { "Loading ${chapter.chapter.url}" }
 
-            flushReadTimer()
-            restartReadTimer()
+            flushReadTimerAndRestart()
 
             try {
                 loadChapter(loader, chapter)
@@ -556,8 +566,7 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun setActiveChapterWithoutReload(chapter: ReaderChapter) {
         viewModelScope.launchIO {
-            flushReadTimer()
-            restartReadTimer()
+            flushReadTimerAndRestart()
 
             val chapterPos = chapterList.indexOfFirst { it.chapter.id == chapter.chapter.id }
             if (chapterPos < 0) return@launchIO
@@ -993,12 +1002,16 @@ class ReaderViewModel @JvmOverloads constructor(
         chapterReadStartTime = Instant.now().toEpochMilli()
     }
 
-    fun flushReadTimer() {
-        getCurrentChapter()?.let {
-            viewModelScope.launchNonCancellable {
-                updateHistory(it)
-            }
-        }
+    /**
+     * Flushes the current chapter's read timer, then starts a fresh one, ordered so the flush's
+     * read+clear of [chapterReadStartTime] completes before [restartReadTimer] writes the new start.
+     * A fire-and-forget flush + [restartReadTimer] pair can't guarantee this: the async flush would
+     * observe the already-restarted timer and record a ~0 session duration, losing the chapter that
+     * was just left. The write runs [NonCancellable] to survive the load being cancelled.
+     */
+    private suspend fun flushReadTimerAndRestart() {
+        getCurrentChapter()?.let { withContext(NonCancellable) { updateHistory(it) } }
+        restartReadTimer()
     }
 
     suspend fun updateHistory() {
@@ -1008,14 +1021,22 @@ class ReaderViewModel @JvmOverloads constructor(
     /**
      * Saves the chapter last read history if incognito mode isn't on.
      */
-    private suspend fun updateHistory(readerChapter: ReaderChapter) {
-        if (incognitoMode) return
+    private suspend fun updateHistory(readerChapter: ReaderChapter) = historyMutex.withLock {
+        if (incognitoMode) return@withLock
 
         val chapterId = readerChapter.chapter.id!!
         val endTime = Date()
         val sessionReadDuration = chapterReadStartTime?.let { endTime.time - it } ?: 0
 
-        upsertHistory.await(HistoryUpdate(chapterId, endTime, sessionReadDuration))
+        // Novels stamp last_read on chapter entry via setNovelVisibleChapter, which owns recency.
+        // Re-stamping it here (on a chapter switch or pause flush) can push the just-left chapter's
+        // last_read past the one being read, so on a hard kill the wrong chapter tops history. Only
+        // accumulate duration for novels; manga keeps the entry-less last_read = now behavior.
+        if (manga?.isNovel == true) {
+            upsertHistory.awaitTimeReadOnly(HistoryUpdate(chapterId, endTime, sessionReadDuration))
+        } else {
+            upsertHistory.await(HistoryUpdate(chapterId, endTime, sessionReadDuration))
+        }
         chapterReadStartTime = null
     }
 
@@ -1043,6 +1064,21 @@ class ReaderViewModel @JvmOverloads constructor(
     }
 
     fun getSource() = manga?.source?.let { sourceManager.getOrStub(it) }
+
+    fun getMangaUrl(): String? {
+        val manga = manga ?: return null
+        val source = getSource() ?: return null
+
+        return try {
+            when (source) {
+                is HttpSource, is JsSource -> source.getMangaUrlOrNull(manga.toSManga())
+                else -> manga.url.takeIf { it.startsWith("http://") || it.startsWith("https://") }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e)
+            null
+        }
+    }
 
     fun getChapterUrl(): String? {
         val sChapter = getCurrentChapter()?.chapter ?: return null

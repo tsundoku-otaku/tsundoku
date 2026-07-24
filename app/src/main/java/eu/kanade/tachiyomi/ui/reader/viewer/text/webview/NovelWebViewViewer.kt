@@ -3,7 +3,9 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Context
+import android.net.Uri
 import android.view.ActionMode
 import android.view.GestureDetector
 import android.view.KeyEvent
@@ -13,12 +15,19 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
+import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.EditText
 import android.widget.FrameLayout
 import androidx.annotation.Keep
+import androidx.lifecycle.Lifecycle
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
@@ -83,6 +92,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
         const val ID_EDIT_MODE_STYLE = "edit-mode-style"
         const val SEEK_ECHO_SUPPRESS_MS = 350L
+        const val AUTO_SCROLL_START_VERIFY_MS = 400L
+        const val AUTO_SCROLL_MAX_START_ATTEMPTS = 3
 
         const val TTS_TEXT_EXTRACTION_JS = """
             (function() {
@@ -127,6 +138,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var loadJob: Job? = null
+    private var contentJob: Job? = null
+    private var appendJob: Job? = null
+    private var attachListener: View.OnAttachStateChangeListener? = null
     private var currentPage: ReaderPage? = null
     private var currentChapters: ViewerChapters? = null
     private val imageCache = NovelWebViewImageCache(activity.cacheDir, scope)
@@ -179,7 +193,23 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var isEditingMode = false
 
     private var isAutoScrolling = false
-    private var autoScrollJob: Job? = null
+    private var autoScrollStartAttempt = 0
+
+    // The error page is a fresh document that drops the autoscroll rAF loop; re-arm it once its
+    // onPageFinished lands, since that load never enters DocState.LOADING_REAL so the re-arm path
+    // in the real-chapter gate is skipped.
+    private var rearmAutoScrollOnErrorPage = false
+
+    // Tracked so a JS dialog still on screen at teardown is dismissed instead of leaking the window.
+    private var activeJsDialog: AlertDialog? = null
+
+    // Reader-chrome obstruction pushed from ReaderActivity: the transient reader menu bars (shown
+    // only with the menu) plus system bars. The novel status bar is NOT here - it gets real layout
+    // space via viewer_container padding. Exposed as --tsundoku-safe-top/bottom +
+    // Tsundoku.runtime.menuVisible so fixed elements clear the menu. Re-applied on each fresh-DOM load.
+    private var chromeMenuVisible = false
+    private var chromeSafeTopDp = 0f
+    private var chromeSafeBottomDp = 0f
 
     private val config = NovelConfig(scope)
     private val navigator get() = config.navigator
@@ -191,13 +221,23 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // Survives ttsController.stop() - set when TTS triggers a non-inf-scroll chapter load.
     private var pendingTtsAutoStartOnLoad = false
 
-    // True only while loadHtmlContent() has called loadDataWithBaseURL for real chapter content
-    // (not the loading-indicator page). Lets onPageFinished distinguish real vs loading loads.
-    private var isLoadingRealChapter = false
+    // Single source of truth for the loaded document's lifecycle, replacing three hand-synced
+    // booleans (isLoadingRealChapter/webChapterContentReady/webChapterIsError) that had to be flipped
+    // together on every load/error/finish. Only these four combinations were ever legal; the enum
+    // makes the illegal ones unrepresentable.
+    //   LOADING       loading-indicator page up, or a base load queued but not yet issued
+    //   LOADING_REAL  real-chapter loadDataWithBaseURL issued, awaiting its onPageFinished
+    //   READY         real content committed; TTS may read the body and appends may splice onto it
+    //   ERROR         error placeholder committed; body counts as ready but has no DOM to append onto
+    private enum class DocState { LOADING, LOADING_REAL, READY, ERROR }
+    private var docState = DocState.LOADING
 
-    // False while the loading indicator is up or real content is still loading; true once real
-    // chapter content has finished rendering. Guards TTS from reading the loading placeholder.
-    private var webChapterContentReady = false
+    // Real content or an error placeholder is committed. Error counts as ready so a failed load
+    // can't block infinite-scroll appends forever; webChapterIsError then suppresses the append.
+    private val webChapterContentReady get() = docState == DocState.READY || docState == DocState.ERROR
+
+    // Current DOM is an error placeholder, so there is no valid base to append the next chapter onto.
+    private val webChapterIsError get() = docState == DocState.ERROR
 
     private val ttsController: TtsController
 
@@ -267,12 +307,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.NEXT,
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.RIGHT,
                     -> {
-                        webView.evaluateJavascript("window.scrollBy(0, ${(container.height * 0.8).toInt()});", null)
+                        pageScrollBy(1)
                     }
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.PREV,
                     eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion.LEFT,
                     -> {
-                        webView.evaluateJavascript("window.scrollBy(0, -${(container.height * 0.8).toInt()});", null)
+                        pageScrollBy(-1)
                     }
                 }
 
@@ -521,14 +561,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
     private fun initWebView() {
-        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        attachListener = object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
                 // Remove blocksDescendants from reader_activity.xml's viewer_container parent
                 // so the WebView can actually receive text input focus.
                 (container.parent as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             }
             override fun onViewDetachedFromWindow(v: View) {}
-        })
+        }.also(container::addOnAttachStateChangeListener)
 
         webView = object : WebView(activity) {
             override fun startActionMode(callback: ActionMode.Callback?, type: Int): ActionMode? {
@@ -630,8 +670,24 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     hideLoadingIndicator()
+
+                    // The error page is a fresh document; re-arm autoscroll before the real-chapter
+                    // gate below, which the error load (docState=ERROR, not LOADING_REAL) would skip.
+                    if (rearmAutoScrollOnErrorPage) {
+                        rearmAutoScrollOnErrorPage = false
+                        if (isAutoScrolling) startAutoScroll()
+                    }
+
+                    // Loading/error loads also fire onPageFinished(about:blank), and some WebView
+                    // builds fire twice per navigation; gate the whole body so scripts/snippets
+                    // inject only on the first genuine chapter load.
+                    if (docState != DocState.LOADING_REAL) return
+                    docState = DocState.READY
+
                     styler.injectScript { buildTsundokuScript() }
                     styler.injectScrollTracking()
+                    // Fresh DOM lost the --tsundoku-safe-* vars and menuVisible flag; re-apply them.
+                    pushReaderChrome()
                     restoreScrollPosition()
                     syncShortChapterProgressIfNeeded()
                     if (!preferences.novelInfiniteScroll.get()) {
@@ -640,25 +696,97 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     if (isEditingMode) {
                         toggleEditMode(true)
                     }
-                    // isLoadingRealChapter distinguishes real chapter loads from
-                    // showLoadingIndicator() loads - both fire onPageFinished(about:blank)
-                    // when the chapter URL is relative, making the URL useless as a guard.
-                    if (isLoadingRealChapter) {
-                        isLoadingRealChapter = false
-                        // Real content rendered; TTS may now read the body.
-                        webChapterContentReady = true
-                        dispatchLoadingChapter(false)
-                        if (pendingTtsAutoStartOnLoad) {
-                            pendingTtsAutoStartOnLoad = false
-                            startTts()
+                    // Real content rendered (docState = READY above); TTS may now read the body.
+                    dispatchLoadingChapter(false)
+                    if (pendingTtsAutoStartOnLoad) {
+                        pendingTtsAutoStartOnLoad = false
+                        startTts()
+                    }
+                    ttsController.pendingStartRequest?.let { request ->
+                        ttsController.pendingStartRequest = null
+                        when (request) {
+                            TtsController.StartRequest.NORMAL -> startTts()
+                            TtsController.StartRequest.VIEWPORT -> startTtsFromViewport()
                         }
-                        ttsController.pendingStartRequest?.let { request ->
-                            ttsController.pendingStartRequest = null
-                            when (request) {
-                                TtsController.StartRequest.NORMAL -> startTts()
-                                TtsController.StartRequest.VIEWPORT -> startTtsFromViewport()
-                            }
+                    }
+                    // A full reload replaces window, dropping the autoscroll rAF loop; re-arm it
+                    // on the new document so autoscroll survives a non-inf-scroll chapter change.
+                    if (isAutoScrolling) startAutoScroll()
+                }
+            }
+
+            if (preferences.novelWebViewDevTools.get()) {
+                webChromeClient = object : WebChromeClient() {
+                    override fun onConsoleMessage(consoleMessage: ConsoleMessage): Boolean {
+                        val level = consoleMessage.messageLevel()
+                        val shouldToast = level == ConsoleMessage.MessageLevel.LOG ||
+                            level == ConsoleMessage.MessageLevel.WARNING ||
+                            level == ConsoleMessage.MessageLevel.ERROR
+                        if (shouldToast && preferences.novelConsoleErrorToast.get()) {
+                            activity.toast(consoleMessage.message().take(120))
                         }
+                        return true
+                    }
+
+                    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult): Boolean {
+                        if (activity.isFinishing || activity.isDestroyed) {
+                            result.cancel()
+                            return true
+                        }
+                        activeJsDialog = AlertDialog.Builder(activity)
+                            .setMessage(message)
+                            .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
+                            .setOnCancelListener { result.cancel() }
+                            .setOnDismissListener { activeJsDialog = null }
+                            .show()
+                        return true
+                    }
+
+                    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult): Boolean {
+                        if (activity.isFinishing || activity.isDestroyed) {
+                            result.cancel()
+                            return true
+                        }
+                        activeJsDialog = AlertDialog.Builder(activity)
+                            .setMessage(message)
+                            .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm() }
+                            .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
+                            .setOnCancelListener { result.cancel() }
+                            .setOnDismissListener { activeJsDialog = null }
+                            .show()
+                        return true
+                    }
+
+                    override fun onJsPrompt(
+                        view: WebView?,
+                        url: String?,
+                        message: String?,
+                        defaultValue: String?,
+                        result: JsPromptResult,
+                    ): Boolean {
+                        if (activity.isFinishing || activity.isDestroyed) {
+                            result.cancel()
+                            return true
+                        }
+                        val input = EditText(activity).apply { setText(defaultValue.orEmpty()) }
+                        activeJsDialog = AlertDialog.Builder(activity)
+                            .setMessage(message)
+                            .setView(input)
+                            .setPositiveButton(android.R.string.ok) { _, _ -> result.confirm(input.text.toString()) }
+                            .setNegativeButton(android.R.string.cancel) { _, _ -> result.cancel() }
+                            .setOnCancelListener { result.cancel() }
+                            .setOnDismissListener { activeJsDialog = null }
+                            .show()
+                        return true
+                    }
+
+                    override fun onShowFileChooser(
+                        webView: WebView?,
+                        filePathCallback: ValueCallback<Array<Uri>>?,
+                        fileChooserParams: FileChooserParams?,
+                    ): Boolean {
+                        if (filePathCallback == null || fileChooserParams == null) return false
+                        return activity.launchWebViewFileChooser(filePathCallback, fileChooserParams)
                     }
                 }
             }
@@ -800,6 +928,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ThemeUtils.getThemeColors(activity, preferences, theme)
 
     override fun destroy() {
+        if (isDestroyed) return
         // Only persist if real progress exists. lastSavedProgress starts at 0 and stays 0
         // until onPageFinished restores or the user scrolls. Saving 0 here on an early
         // teardown (orientation lock recreates the activity before restore runs) would
@@ -812,6 +941,25 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         isDestroyed = true
 
         scope.cancel()
+
+        attachListener?.let(container::removeOnAttachStateChangeListener)
+        attachListener = null
+
+        // cancel(), not dismiss(): dismiss() skips the OnCancelListener, so the pending
+        // JsResult/JsPromptResult would never resolve and the WebView's JS thread stays blocked.
+        try {
+            activeJsDialog?.cancel()
+        } catch (e: Throwable) {
+            logcat(LogPriority.WARN) { "Failed to cancel active JS dialog during destroy (${e.message})" }
+        }
+        activeJsDialog = null
+
+        container.removeView(webView)
+        webView.stopLoading()
+        webView.loadUrl("about:blank")
+        webView.removeJavascriptInterface("Android")
+        webView.webViewClient = WebViewClient()
+        webView.webChromeClient = null
         webView.destroy()
     }
 
@@ -858,6 +1006,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      */
     private var lastSavedTtsChunkIndex: Int = -1
     private fun saveTtsProgressForChunk(chunkIndex: Int) {
+        // Foreground: the per-chapter scroll bridge (onScrollProgress) owns progress and the slider.
+        // WebView TTS extracts the whole loaded (multi-chapter) body, so its chunk% is document-wide,
+        // not per-chapter, it would misattribute the visible chapter's position. Persist from TTS
+        // only when backgrounded, where the JS scroll bridge is paused and this is the sole source.
+        if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
         if (chunkIndex == lastSavedTtsChunkIndex) return
         lastSavedTtsChunkIndex = chunkIndex
         val total = ttsController.ttsChunks.size
@@ -926,7 +1079,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             chapter.chapter.name,
         )
 
-        if (activity.isTranslationEnabled()) {
+        contentJob?.cancel()
+        contentJob = if (activity.isTranslationEnabled()) {
             loadingIndicator?.show()
             scope.launch {
                 val processed = withContext(Dispatchers.Default) {
@@ -1004,8 +1158,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         if (!isPrepend) activity.viewModel.setNovelVisibleChapter(page.chapter.chapter)
                     }
                     is Page.State.Error -> {
-                        if (!isPrepend) hideLoadingIndicator()
-                        displayError(state.error)
+                        if (isPrepend) {
+                            // A prepend fetch failing must not replace the whole multi-chapter DOM
+                            // (and scroll position) with a full-page error; surface it inline and
+                            // leave the document (and docState) intact.
+                            inlineFeedback.hideInlineLoading(isPrepend = true)
+                            inlineFeedback.showInlineError(
+                                ErrorFormatter.format(state.error).summary,
+                                isPrepend = true,
+                            )
+                        } else {
+                            hideLoadingIndicator()
+                            displayError(state.error)
+                        }
                     }
                     else -> {}
                 }
@@ -1036,7 +1201,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             chapter.chapter.name,
         )
 
-        scope.launch {
+        if (!isAppendOrPrepend) {
+            contentJob?.cancel()
+            // An in-flight append targets the DOM this base load is about to replace; cancelling it
+            // avoids splicing a stale chapter's content onto the newly loaded one when it resumes.
+            appendJob?.cancel()
+            // Gate infinite-scroll appends until this base chapter's DOM is committed (onPageFinished
+            // sets READY). Otherwise an early append (JS scroll threshold) is wiped by the
+            // clear()+loadHtmlContent this job runs, which re-appends and duplicates the chapter.
+            docState = DocState.LOADING
+        }
+        val job = scope.launch {
             if (!isAppendOrPrepend && translator != null) {
                 val labelRes = if (activity.hasCachedTranslation(chapterId)) {
                     TDMR.strings.novel_chapter_translating_from_cache
@@ -1070,29 +1245,29 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
             withContext(Dispatchers.Main) {
                 if (isAppendOrPrepend && preferences.novelInfiniteScroll.get()) {
+                    // Queue add and DOM insert share one guard: a redundant displayContent() for the
+                    // same chapter would otherwise skip the queue add but still re-insert the DOM copy,
+                    // corrupting chapterBoundaries.
                     if (!loadedChapterIds.contains(chapterId)) {
                         if (isPrepend) {
                             chapterQueue.prepend(chapter)
+                            prependHtmlContent(
+                                finalProcessed,
+                                chapterId,
+                                chapter.chapter.name,
+                                chapter.chapter.chapter_number,
+                                chapter.chapter.url,
+                            )
                         } else {
                             chapterQueue.append(chapter)
+                            appendHtmlContent(
+                                finalProcessed,
+                                chapterId,
+                                chapter.chapter.name,
+                                chapter.chapter.chapter_number,
+                                chapter.chapter.url,
+                            )
                         }
-                    }
-                    if (isPrepend) {
-                        prependHtmlContent(
-                            finalProcessed,
-                            chapterId,
-                            chapter.chapter.name,
-                            chapter.chapter.chapter_number,
-                            chapter.chapter.url,
-                        )
-                    } else {
-                        appendHtmlContent(
-                            finalProcessed,
-                            chapterId,
-                            chapter.chapter.name,
-                            chapter.chapter.chapter_number,
-                            chapter.chapter.url,
-                        )
                     }
                 } else {
                     loadHtmlContent(finalProcessed, chapter)
@@ -1103,6 +1278,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 }
             }
         }
+        if (!isAppendOrPrepend) contentJob = job
     }
 
     /**
@@ -1168,7 +1344,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // Guard scroll callbacks while the prepend shifts every startOffset, JS lifts it when done.
         isRestoringScroll = true
         evaluateJavascriptSafe(js) {
-            styler.injectScript { buildTsundokuScript() }
+            styler.injectScript(isAppend = true) { buildTsundokuScript() }
         }
         // JS lift runs in rAF (paused while backgrounded); fallback so the guard can't stick forever.
         webView.postDelayed({ liftRestoreGuard(token) }, 3000)
@@ -1213,6 +1389,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 ${if (plainTextMode) "chapterElement.textContent = $escapedContent;" else "chapterElement.innerHTML = $escapedContent;"}
                 chaptersContainer.appendChild(chapterElement);
 
+                // Rebuild boundaries synchronously (getBoundingClientRect forces layout) BEFORE the
+                // browser can fire a scroll frame. Otherwise the DOM has the new chapter (doubled
+                // scrollHeight) while chapterBoundaries still has one entry, so computeState falls into
+                // the whole-document branch and reports the current chapter's position as a fraction of
+                // both chapters (e.g. 70% -> 50%) until the rAF rebuild catches up. The rAF rebuild
+                // below still runs to pick up late reflow (image/font load).
+                if (typeof window.updateChapterBoundaries === 'function') {
+                    window.updateChapterBoundaries();
+                }
+
                 requestAnimationFrame(function() {
                     if (typeof window.updateChapterBoundaries === 'function') {
                         window.updateChapterBoundaries();
@@ -1226,7 +1412,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         dispatchLoadingChapter(true)
         evaluateJavascriptSafe(js) {
-            styler.injectScript { buildTsundokuScript() }
+            styler.injectScript(isAppend = true) { buildTsundokuScript() }
             dispatchLoadingChapter(false)
         }
 
@@ -1272,8 +1458,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         // Signal to onPageFinished that the next callback is for real chapter content, not
         // the loading-indicator page (which also fires onPageFinished with url="about:blank").
-        isLoadingRealChapter = true
-        webChapterContentReady = false
+        docState = DocState.LOADING_REAL
         dispatchLoadingChapter(true)
         // New document: hold scroll callbacks and clear the baseline so a stale flush can't write
         // the previous chapter's percent here, restoreScrollPosition seeds the real value.
@@ -1284,8 +1469,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         webView.loadDataWithBaseURL(resolveWebViewBaseUrl(chapterPath), html, "text/html", "UTF-8", null)
     }
 
+    // Memoized: the manga URL is fixed for the viewer's lifetime, and getMangaUrl() does a source
+    // lookup + toSManga() + getMangaUrlOrNull() that ran twice per chapter load/append otherwise.
+    private var cachedMangaUrl: String? = null
+
+    private fun resolvedMangaUrl(): String? {
+        cachedMangaUrl?.let { return it }
+        return (activity.viewModel.getMangaUrl() ?: activity.viewModel.manga?.url)
+            ?.also { cachedMangaUrl = it }
+    }
+
     private fun resolveWebViewBaseUrl(chapterUrl: String?): String? =
-        NovelWebViewChapterMeta.resolveWebViewBaseUrl(chapterUrl, activity.viewModel.manga?.url, sourceBaseUrl())
+        NovelWebViewChapterMeta.resolveWebViewBaseUrl(chapterUrl, resolvedMangaUrl(), sourceBaseUrl())
 
     // Site url of the current source, so relative asset paths in chapter HTML resolve like a browser.
     private fun sourceBaseUrl(): String? = when (val source = activity.viewModel.getSource()) {
@@ -1299,7 +1494,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private fun buildTsundokuScript(): String {
         val context = NovelWebViewChapterMeta.TsundokuScriptContext(
-            novelUrl = activity.viewModel.manga?.url,
+            novelUrl = resolvedMangaUrl(),
             currentChapter = getCurrentTsundokuChapter(),
             chaptersInOrder = if (loadedChapters.isNotEmpty()) {
                 loadedChapters
@@ -1384,6 +1579,35 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         )
     }
 
+    /** Called from ReaderActivity when the menu or reader-chrome insets change. */
+    fun onReaderChromeChanged(menuVisible: Boolean, safeTopDp: Float, safeBottomDp: Float) {
+        chromeMenuVisible = menuVisible
+        chromeSafeTopDp = safeTopDp
+        chromeSafeBottomDp = safeBottomDp
+        pushReaderChrome()
+    }
+
+    // Sets the safe-area CSS vars and Tsundoku.runtime.menuVisible via the reader-chrome.js asset
+    // (same token-substitution path as the other injected scripts), firing the menu-visibility event
+    // only when the flag actually flips so a load/inset re-apply is silent.
+    private fun pushReaderChrome() {
+        val js = NovelWebViewJsAssets.loadWith(
+            activity,
+            "reader-chrome.js",
+            mapOf(
+                "SAFE_TOP_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_TOP,
+                "SAFE_BOTTOM_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_BOTTOM,
+                "SAFE_TOP" to chromeSafeTopDp.toString(),
+                "SAFE_BOTTOM" to chromeSafeBottomDp.toString(),
+                "OBJECT" to NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME,
+                "MENU_KEY" to NovelWebViewChapterMeta.TSUNDOKU_MENU_VISIBLE_KEY,
+                "MENU_VISIBLE" to chromeMenuVisible.toString(),
+                "EVENT" to NovelWebViewChapterMeta.EVENT_MENU_VISIBILITY,
+            ),
+        )
+        evaluateJavascriptSafe(js, null)
+    }
+
     private fun showLoadingIndicator(message: String = "Loading...") {
         val theme = preferences.novelTheme.get()
         val backgroundColor = preferences.novelBackgroundColor.get()
@@ -1421,8 +1645,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             </html>
         """.trimIndent()
 
-        isLoadingRealChapter = false
-        webChapterContentReady = false
+        docState = DocState.LOADING
         webView.loadDataWithBaseURL(null, loadingHtml, "text/html", "UTF-8", null)
     }
 
@@ -1432,6 +1655,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private fun displayError(error: Throwable) {
         val fmt = ErrorFormatter.format(error)
         logcat(LogPriority.ERROR) { "NovelWebViewViewer: Chapter load failed\n${fmt.stackTrace}" }
+
+        // No real chapter DOM is coming for this load, so onPageFinished won't reach the READY
+        // transition. ERROR keeps webChapterContentReady true (so a failed load can't block
+        // infinite-scroll appends forever) while marking the body un-appendable.
+        docState = DocState.ERROR
 
         val theme = preferences.novelTheme.get()
         val backgroundColor = preferences.novelBackgroundColor.get()
@@ -1489,6 +1717,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             </html>
         """.trimIndent()
 
+        rearmAutoScrollOnErrorPage = isAutoScrolling
         webView.loadDataWithBaseURL(null, errorHtml, "text/html", "UTF-8", null)
     }
 
@@ -1497,7 +1726,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     override fun handleKeyEvent(event: KeyEvent): Boolean {
         val isUp = event.action == KeyEvent.ACTION_UP
-        val scrollAmount = (container.height * 0.30).toInt()
 
         when (event.keyCode) {
             KeyEvent.KEYCODE_MENU -> {
@@ -1506,14 +1734,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             }
             KeyEvent.KEYCODE_VOLUME_DOWN -> {
                 if (preferences.novelVolumeKeysScroll.get() && !activity.viewModel.state.value.menuVisible) {
-                    if (!isUp) webView.evaluateJavascript("window.scrollBy(0, $scrollAmount);", null)
+                    if (!isUp) pageScrollBy(1, 0.3)
                     return true
                 }
                 return false
             }
             KeyEvent.KEYCODE_VOLUME_UP -> {
                 if (preferences.novelVolumeKeysScroll.get() && !activity.viewModel.state.value.menuVisible) {
-                    if (!isUp) webView.evaluateJavascript("window.scrollBy(0, -$scrollAmount);", null)
+                    if (!isUp) pageScrollBy(-1, 0.3)
                     return true
                 }
                 return false
@@ -1562,6 +1790,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         updateChapterMetaJs()
 
         if (isEditing) {
+            // Focusing a contenteditable for the keyboard scrolls Chromium to the top; snapshot the
+            // ratio, restore it after focus settles, and gate onScrollProgress meanwhile.
+            val restoreRatio = lastSavedProgress
+            isRestoringScroll = true
+            val token = ++scrollRestoreToken
             webView.post {
                 activity.window.decorView.clearFocus()
                 webView.requestFocus()
@@ -1572,6 +1805,23 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     imm?.showSoftInput(webView, 0)
                 }, 120)
             }
+            webView.postDelayed({
+                evaluateJavascriptSafe(
+                    """
+                    (function() {
+                        var target = $restoreRatio;
+                        var docHeight = Math.max(
+                            document.documentElement.scrollHeight,
+                            document.body ? document.body.scrollHeight : 0
+                        );
+                        var viewport = window.innerHeight || document.documentElement.clientHeight;
+                        var range = docHeight - viewport;
+                        if (range > 0) window.scrollTo(0, range * target);
+                    })();
+                    """.trimIndent(),
+                )
+                isRestoringScroll = false
+            }, 220)
         } else {
             webView.evaluateJavascript(
                 "(function() { window.getSelection().removeAllRanges(); document.activeElement.blur(); })();",
@@ -1773,6 +2023,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 logcat(LogPriority.DEBUG) {
                     "NovelWebViewViewer: loadNextChapter triggered, infiniteScroll=${preferences.novelInfiniteScroll.get()}, isLoadingNext=$isLoadingNext, loadedCount=${loadedChapterIds.size}"
                 }
+                if (preferences.novelInfiniteScroll.get() && !webChapterContentReady) {
+                    // Base chapter DOM not committed yet. Appending now races the base load's
+                    // loadHtmlContent (replaces the body) and its chapterQueue.clear(), which would
+                    // wipe the just-appended chapter and cause a duplicate re-append. Release the JS
+                    // latch so the page retries once the base chapter has finished rendering.
+                    setJsLoadingNext()
+                    return@runOnUiThread
+                }
+                if (preferences.novelInfiniteScroll.get() && webChapterIsError) {
+                    // Current DOM is an error placeholder, not a real chapter; appending the next
+                    // chapter onto it would stack content below the error and race a reload. Release
+                    // the latch and wait for a successful reload to clear webChapterIsError.
+                    setJsLoadingNext()
+                    return@runOnUiThread
+                }
                 if (!preferences.novelInfiniteScroll.get()) {
                     activity.loadNextChapter()
                 } else if (reachedNovelEnd) {
@@ -1801,7 +2066,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     logcat(LogPriority.DEBUG) { "NovelWebViewViewer: loadNextChapter ignored, in failure cooldown" }
                 } else if (!isLoadingNext) {
                     isLoadingNext = true
-                    scope.launch {
+                    appendJob = scope.launch {
                         try {
                             val ok = appendNextChapterIfAvailable()
                             lastNextLoadFailedAt = if (ok) 0L else System.currentTimeMillis()
@@ -1828,9 +2093,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
                 // Chapter fits in viewport → no scroll events fire → threshold never reached.
                 // Trigger infinite scroll append manually.
-                if (preferences.novelInfiniteScroll.get() && !isLoadingNext && !ttsController.isTtsAutoPlay) {
+                if (preferences.novelInfiniteScroll.get() && !isLoadingNext && !ttsController.isTtsAutoPlay &&
+                    !webChapterIsError
+                ) {
                     isLoadingNext = true
-                    scope.launch {
+                    appendJob = scope.launch {
                         try {
                             appendNextChapterIfAvailable()
                         } finally {
@@ -1920,19 +2187,22 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             if (isDestroyed) return@withContext
 
             if (isAppendOrPrepend && preferences.novelInfiniteScroll.get()) {
+                // Queue add and DOM insert share one guard: a redundant append for the same
+                // chapter would otherwise skip the queue add but still re-insert the DOM copy,
+                // corrupting chapterBoundaries.
                 if (!loadedChapterIds.contains(chapterId)) {
                     if (isPrepend) {
                         return@withContext
                     }
                     chapterQueue.append(chapter)
+                    appendHtmlContent(
+                        processed,
+                        chapterId,
+                        chapter.chapter.name,
+                        chapter.chapter.chapter_number,
+                        chapter.chapter.url,
+                    )
                 }
-                appendHtmlContent(
-                    processed,
-                    chapterId,
-                    chapter.chapter.name,
-                    chapter.chapter.chapter_number,
-                    chapter.chapter.url,
-                )
             } else {
                 loadHtmlContent(processed, chapter)
                 chapterQueue.reset(chapter)
@@ -2112,41 +2382,98 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         webView.scrollTo(0, 0)
     }
 
-    fun toggleAutoScroll() {
-        isAutoScrolling = !isAutoScrolling
+    /**
+     * Scroll by [fraction] of the viewport in [direction] (+1 down, -1 up). Uses window.innerHeight
+     * (CSS pixels) rather than container.height (device pixels): window.scrollBy expects CSS pixels,
+     * so passing device pixels overshoots by devicePixelRatio and skips content between taps.
+     */
+    private fun pageScrollBy(direction: Int, fraction: Double = 0.9) {
+        val sign = if (direction < 0) "-" else ""
+        evaluateJavascriptSafe("window.scrollBy(0, $sign(window.innerHeight * $fraction));")
+    }
 
-        if (isAutoScrolling) {
-            startAutoScroll()
-        } else {
-            stopAutoScroll()
-        }
+    fun toggleAutoScroll() {
+        if (isAutoScrolling) stopAutoScroll() else startAutoScroll()
     }
 
     private fun startAutoScroll() {
-        val speed = preferences.novelAutoScrollSpeed.get().coerceIn(1, 10)
         isAutoScrolling = true
-
-        autoScrollJob?.cancel()
-        autoScrollJob = scope.launch {
-            while (isActive && isAutoScrolling) {
-                val scrollAmount = speed
-                evaluateJavascriptSafe(
-                    """
-                    (function() {
-                        window.scrollBy(0, $scrollAmount);
-                    })();
-                    """.trimIndent(),
-                    null,
-                )
-                delay(50L)
-            }
-        }
+        autoScrollStartAttempt = 0
+        issueAutoScrollStart()
     }
 
-    private fun stopAutoScroll() {
+    private fun issueAutoScrollStart() {
+        // Pref is half-steps (speed x2); level is 1.0..10.0 in 0.5 increments.
+        val level = preferences.novelAutoScrollLevel()
+
+        // Drive the scroll from a single in-page requestAnimationFrame loop instead of a Kotlin
+        // timer that fires window.scrollBy over the JS bridge every 50ms: those round-trips arrive
+        // with jittery timing and each moves a fixed integer step, which reads as stutter. The rAF
+        // loop advances by (px/sec * frame delta) with sub-pixel accumulation for smooth motion, and
+        // naturally pauses while the WebView is backgrounded (no frames), resuming without a jump via
+        // the dt clamp. speed level (1..10) maps to CSS px/sec.
+        val pxPerSec = level * 20
+        val attempt = ++autoScrollStartAttempt
+        evaluateJavascriptSafe(
+            """
+            (function() {
+                var s = window.__tdAutoScroll || (window.__tdAutoScroll = {});
+                s.pxPerSec = $pxPerSec;
+                if (s.running) return;
+                s.running = true;
+                s.last = null;
+                s.acc = 0;
+                function step(ts) {
+                    if (!s.running) return;
+                    if (s.last === null) s.last = ts;
+                    var dt = (ts - s.last) / 1000;
+                    s.last = ts;
+                    // Clamp so a long background gap (or first frame) can't jump the page.
+                    if (dt > 0.05) dt = 0.05;
+                    s.acc += s.pxPerSec * dt;
+                    var whole = Math.floor(s.acc);
+                    if (whole > 0) { window.scrollBy(0, whole); s.acc -= whole; }
+                    s.raf = requestAnimationFrame(step);
+                }
+                s.raf = requestAnimationFrame(step);
+            })();
+            """.trimIndent(),
+            null,
+        )
+        // Confirm the in-page loop actually started: evaluateJavascript is silently dropped when the
+        // JS context isn't ready, which would leave isAutoScrolling stuck on with no motion. Query the
+        // loop's own flag; retry a few times, then give up and clear isAutoScrolling so the state
+        // reflects reality. s.running stays true while backgrounded (rAF paused), so this won't
+        // false-negative on a paused page.
+        webView.postDelayed({
+            if (!isAutoScrolling || attempt != autoScrollStartAttempt) return@postDelayed
+            evaluateJavascriptSafe(
+                "(function(){ return !!(window.__tdAutoScroll && window.__tdAutoScroll.running); })();",
+            ) { running ->
+                if (!isAutoScrolling || attempt != autoScrollStartAttempt) return@evaluateJavascriptSafe
+                if (running != "true") {
+                    if (autoScrollStartAttempt < AUTO_SCROLL_MAX_START_ATTEMPTS) {
+                        issueAutoScrollStart()
+                    } else {
+                        isAutoScrolling = false
+                        logcat(LogPriority.WARN) { "NovelWebViewViewer: autoscroll failed to start, giving up" }
+                    }
+                }
+            }
+        }, AUTO_SCROLL_START_VERIFY_MS)
+    }
+
+    fun stopAutoScroll() {
         isAutoScrolling = false
-        autoScrollJob?.cancel()
-        autoScrollJob = null
+        evaluateJavascriptSafe(
+            """
+            (function() {
+                var s = window.__tdAutoScroll;
+                if (s) { s.running = false; if (s.raf) cancelAnimationFrame(s.raf); }
+            })();
+            """.trimIndent(),
+            null,
+        )
     }
 
     fun isAutoScrollActive(): Boolean = isAutoScrolling
@@ -2258,10 +2585,28 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             "TTS (WebView): stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}, ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex}, ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex}, ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
         pendingTtsAutoStartOnLoad = false
-        isLoadingRealChapter = false
+        // Drop a pending real-load signal so a stale onPageFinished after stop can't inject; leave a
+        // committed READY/ERROR document intact.
+        if (docState == DocState.LOADING_REAL) docState = DocState.LOADING
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
         dispatchTtsState()
+        // The loadNextChapter TTS branch skips the JS-latch release, so after a threshold hit during
+        // playback runtime.loadingNext stays true and scroll-driven appending never re-fires. Clear
+        // it so infinite scroll resumes once TTS is off, but not while a real append is in flight:
+        // that append still owns the latch and will release it, and clobbering it here would let a
+        // second scroll launch a duplicate append.
+        if (appendJob?.isActive != true) {
+            isLoadingNext = false
+            setJsLoadingNext()
+        }
+        // Don't clear the end-of-novel latch if it's already set: loadNextChapterForTts() calls
+        // stopTts() right after appendNextChapterIfAvailable() sets reachedNovelEnd on a genuine
+        // "no next chapter" result, and resetting it here would let the next scroll event re-fetch
+        // and re-show the "No next chapter available" error a second time.
+        if (!reachedNovelEnd) {
+            setJsNoMoreChapters(false)
+        }
     }
 
     fun pauseTts() {

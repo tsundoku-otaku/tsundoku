@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test
 
 class NovelWebViewChapterMetaTest {
 
-    // â”€â”€ jsEscape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // jsEscape
 
     @Test
     fun `jsEscape escapes backslashes`() {
@@ -41,7 +41,7 @@ class NovelWebViewChapterMetaTest {
         assertEquals("hello world", "hello world".jsEscape())
     }
 
-    // â”€â”€ htmlAttributeEscape â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // htmlAttributeEscape
 
     @Test
     fun `htmlAttributeEscape escapes ampersand first to avoid double-escape`() {
@@ -53,7 +53,7 @@ class NovelWebViewChapterMetaTest {
         assertEquals("&quot;&#39;&lt;&gt;", "\"'<>".htmlAttributeEscape())
     }
 
-    // â”€â”€ quoteForJson â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // quoteForJson
 
     @Test
     fun `quoteForJson wraps in double quotes`() {
@@ -95,7 +95,7 @@ class NovelWebViewChapterMetaTest {
         assertEquals("\"Hello, world!\"", result)
     }
 
-    // â”€â”€ toAbsoluteChapterUrl â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // toAbsoluteChapterUrl
 
     @Test
     fun `toAbsoluteChapterUrl passes absolute http urls through`() {
@@ -134,7 +134,23 @@ class NovelWebViewChapterMetaTest {
         )
     }
 
-    // â”€â”€ resolveWebViewBaseUrl â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    @Test
+    fun `toAbsoluteChapterUrl resolves root-relative path against novel origin`() {
+        assertEquals(
+            "https://example.com/dir/img.webp",
+            toAbsoluteChapterUrl("/dir/img.webp", "https://example.com/dir/"),
+        )
+    }
+
+    @Test
+    fun `toAbsoluteChapterUrl resolves document-relative path against novel directory`() {
+        assertEquals(
+            "https://example.com/dir/img.webp",
+            toAbsoluteChapterUrl("img.webp", "https://example.com/dir/"),
+        )
+    }
+
+    // resolveWebViewBaseUrl
 
     @Test
     fun `resolveWebViewBaseUrl prefers absolute chapter url`() {
@@ -158,7 +174,7 @@ class NovelWebViewChapterMetaTest {
         assertEquals(null, resolveWebViewBaseUrl(null, null))
     }
 
-    // â”€â”€ buildChapterJson â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // buildChapterJson
 
     @Test
     fun `buildChapterJson returns null sentinels for null chapter`() {
@@ -169,14 +185,14 @@ class NovelWebViewChapterMetaTest {
         assertTrue(json.contains("\"path\": \"\""))
     }
 
-    // â”€â”€ buildChaptersJson â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // buildChaptersJson
 
     @Test
     fun `buildChaptersJson empty list returns empty array literal`() {
         assertEquals("[]", NovelWebViewChapterMeta.buildChaptersJson(emptyList(), "https://n.com"))
     }
 
-    // â”€â”€ buildTsundokuScript: assembled script contains all keys â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // buildTsundokuScript: assembled script contains all keys
 
     @Test
     fun `buildTsundokuScript includes the required Tsundoku keys`() {

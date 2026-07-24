@@ -205,16 +205,21 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
-    fun injectScript(buildTsundokuScript: () -> String) {
+    fun injectScript(isAppend: Boolean = false, buildTsundokuScript: () -> String) {
         evaluateJs(buildTsundokuScript())
 
-        val customJs = preferences.novelCustomJs.get()
-        if (customJs.isNotBlank()) evaluateJs(customJs)
+        // Appends re-run only runOnAppend snippets; one-shot code stays on the initial load so it
+        // doesn't fire again on every appended chapter.
+        if (!isAppend) {
+            val customJs = preferences.novelCustomJs.get()
+            if (customJs.isNotBlank()) evaluateJs(customJs)
+        }
 
         val jsSnippetsJson = preferences.novelCustomJsSnippets.get()
         val enabledSnippetsJs = try {
             val snippets = Json.decodeFromString<List<CodeSnippet>>(jsSnippetsJson)
-            snippets.filter { it.enabled }.joinToString("\n") { it.code }
+            snippets.filter { it.enabled && (!isAppend || it.runOnAppend) }
+                .joinToString("\n") { it.code }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Failed to parse JS snippets: ${e.message}" }
             ""
@@ -227,7 +232,10 @@ internal class NovelWebViewStyler(
         val js = NovelWebViewJsAssets.loadWith(
             activity,
             "next-chapter-button.js",
-            mapOf("BTN_CONTAINER_ID" to ID_NEXT_CHAPTER_BTN_CONTAINER),
+            mapOf(
+                "BTN_CONTAINER_ID" to ID_NEXT_CHAPTER_BTN_CONTAINER,
+                "SAFE_BOTTOM_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_BOTTOM,
+            ),
         )
         evaluateJs(js)
     }
@@ -245,6 +253,7 @@ internal class NovelWebViewStyler(
                 "INFINITE_SCROLL_ENABLED" to preferences.novelInfiniteScroll.get().toString(),
                 "LOAD_THRESHOLD" to effectiveThreshold.toString(),
                 "DONE_THRESHOLD" to NovelProgress.DONE_THRESHOLD.toString(),
+                "PROGRESS_EVENT" to NovelWebViewChapterMeta.EVENT_PROGRESS,
             ),
         )
         evaluateJs(js)

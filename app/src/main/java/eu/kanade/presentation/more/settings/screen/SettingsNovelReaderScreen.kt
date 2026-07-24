@@ -280,9 +280,9 @@ object SettingsNovelReaderScreen : SearchableSettings {
             preferenceItems = listOf(
                 Preference.PreferenceItem.SliderPreference(
                     value = autoScrollSpeed,
-                    valueRange = 5..120,
+                    valueRange = 2..20,
                     title = stringResource(TDMR.strings.pref_novel_auto_scroll_speed),
-                    valueString = "${autoScrollSpeed}s per screen",
+                    valueString = "${autoScrollSpeed / 2f}",
                     onValueChanged = {
                         readerPreferences.novelAutoScrollSpeed.set(it)
                     },

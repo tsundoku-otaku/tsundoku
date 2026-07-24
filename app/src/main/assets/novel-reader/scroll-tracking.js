@@ -1,13 +1,18 @@
 // Page-side scroll listener for the novel WebView reader.
 // Installed once per load via NovelWebViewStyler.injectScrollTracking(), which substitutes the
 // __TSUNDOKU_OBJECT_NAME__ / __CHAPTER_DIVIDER_CLASS__ / __CHAPTER_ID_ATTR__ /
-// __INFINITE_SCROLL_ENABLED__ / __LOAD_THRESHOLD__ / __DONE_THRESHOLD__ tokens.
+// __INFINITE_SCROLL_ENABLED__ / __LOAD_THRESHOLD__ / __DONE_THRESHOLD__ / __PROGRESS_EVENT__ tokens.
 //
 // Reports to the Android JS interface:
 //   onChapterScrollUpdate(chapterId, progress)  visible chapter changed
 //   onScrollUpdate(progress)                     live slider position
 //   onScrollProgress(progress)                   persist point (scroll settled / 100%)
 //   loadNextChapter()
+//
+// Publishes for snippets/plugins:
+//   runtime.progress / runtime.chapterProgress / runtime.currentChapterId  (updated every frame)
+//   window event __PROGRESS_EVENT__  { progress, chapterProgress, chapterId, isLast }
+//     dispatched JS-side (no Kotlin bridge hop), throttled with the slider bridge.
 
 (function () {
     window.__TSUNDOKU_OBJECT_NAME__ = window.__TSUNDOKU_OBJECT_NAME__ || {};
@@ -23,6 +28,10 @@
     var loadThreshold = __LOAD_THRESHOLD__;
     var lastSliderProgress = -1;
     var lastScrollUpdateTime = 0;
+    // Late reflow (images/fonts) triggers scroll anchoring that fires scrollend off a
+    // still-settling docHeight; persistCurrent waits this out before saving.
+    var lastBodyResizeAt = 0;
+    var SETTLE_MS = 400;
 
     runtime.loadingNext = runtime.loadingNext || false;
     runtime.setLoadingNext = function (v) { runtime.loadingNext = !!v; };
@@ -80,11 +89,35 @@
         return { progress: progress, chapterProgress: chapterProgress, idx: idx, chapterId: chapterId, isLast: isLast };
     }
 
+    var PROGRESS_EVENT = '__PROGRESS_EVENT__';
+    // Dispatched page-side (no Kotlin bridge). Constructing + dispatching a CustomEvent with no
+    // listeners is cheap, so gating on subscriber count isn't worth the bookkeeping; the 50ms/0.01
+    // slider throttle already bounds how often this fires.
+    function dispatchProgress(s) {
+        try {
+            window.dispatchEvent(new CustomEvent(PROGRESS_EVENT, {
+                detail: {
+                    progress: s.progress,
+                    chapterProgress: s.chapterProgress,
+                    chapterId: s.chapterId,
+                    isLast: s.isLast,
+                },
+            }));
+        } catch (e) {}
+    }
+
+    function publishProgress(s) {
+        runtime.progress = s.progress;
+        runtime.chapterProgress = s.chapterProgress;
+        runtime.currentChapterId = s.chapterId;
+    }
+
     var framePending = false;
 
     function onFrame() {
         framePending = false;
         var s = computeState();
+        publishProgress(s);
 
         if (infiniteScrollEnabled && s.idx !== runtime.lastChapterIdxSeen && s.chapterId != null) {
             runtime.lastChapterIdxSeen = s.idx;
@@ -98,6 +131,7 @@
                 lastScrollUpdateTime = now;
                 lastSliderProgress = s.chapterProgress;
                 Android.onScrollUpdate(s.chapterProgress);
+                dispatchProgress(s);
             }
         }
         // Only the last chapter flashes to 100% and self-persists; a middle chapter momentarily
@@ -107,6 +141,7 @@
             lastSliderProgress = 1.0;
             Android.onScrollUpdate(1.0);
             Android.onScrollProgress(1.0);
+            dispatchProgress(s);
         }
 
         if (!runtime.loadingNext && infiniteScrollEnabled && !runtime.noMoreChapters) {
@@ -132,17 +167,30 @@
     window.addEventListener('scroll', onScroll, { passive: true });
 
     // computeState() is re-read here so a chapter switch mid-scroll can't persist a stale value.
-    function persistCurrent() {
+    function persistCurrent(retriesLeft) {
+        if (retriesLeft === undefined) retriesLeft = 3;
+        if (retriesLeft > 0 && Date.now() - lastBodyResizeAt < SETTLE_MS) {
+            setTimeout(function () { persistCurrent(retriesLeft - 1); }, SETTLE_MS);
+            return;
+        }
         Android.onScrollProgress(computeState().chapterProgress);
     }
     if ('onscrollend' in window) {
-        window.addEventListener('scrollend', persistCurrent, { passive: true });
+        window.addEventListener('scrollend', function () { persistCurrent(); }, { passive: true });
     } else {
         var settleTimer = null;
         window.addEventListener('scroll', function () {
             clearTimeout(settleTimer);
             settleTimer = setTimeout(persistCurrent, 250);
         }, { passive: true });
+    }
+
+    // Marks in-flight reflow so persistCurrent can wait it out before saving.
+    if (typeof ResizeObserver === 'function' && document.body) {
+        var bodyResizeObserver = new ResizeObserver(function () {
+            lastBodyResizeAt = Date.now();
+        });
+        bodyResizeObserver.observe(document.body);
     }
 
     window.addChapterBoundary = function (chapterId, startOffset, height) {
@@ -203,5 +251,8 @@
 
     requestAnimationFrame(function () {
         if (typeof window.updateChapterBoundaries === 'function') window.updateChapterBoundaries();
+        var s0 = computeState();
+        publishProgress(s0);
+        dispatchProgress(s0);
     });
 })();

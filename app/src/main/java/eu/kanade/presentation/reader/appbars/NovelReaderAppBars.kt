@@ -153,10 +153,24 @@ fun NovelReaderAppBars(
 
     // Extra bottom offset for the floating TTS overlay so it clears the status bar
     ttsOverlayBottomPadding: Dp = 0.dp,
+
+    // Measured bar heights in px (0 while hidden), so the page can inset fixed elements clear of the
+    // transient reader menu bars.
+    onTopBarHeight: (Int) -> Unit = {},
+    onBottomBarHeight: (Int) -> Unit = {},
 ) {
     val backgroundColor = MaterialTheme.colorScheme
         .surfaceColorAtElevation(3.dp)
         .copy(alpha = if (isSystemInDarkTheme()) 0.9f else 0.95f)
+
+    // onSizeChanged doesn't fire a final 0 when AnimatedVisibility removes the bars, so clear the
+    // reported heights here when the menu hides.
+    LaunchedEffect(visible) {
+        if (!visible) {
+            onTopBarHeight(0)
+            onBottomBarHeight(0)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxHeight()) {
         Column(modifier = Modifier.fillMaxHeight()) {
@@ -169,6 +183,7 @@ fun NovelReaderAppBars(
             ) {
                 NovelReaderTopBar(
                     modifier = Modifier
+                        .onSizeChanged { onTopBarHeight(it.height) }
                         .background(backgroundColor)
                         .clickable(onClick = onClickTopAppBar),
                     novelTitle = novelTitle,
@@ -243,6 +258,7 @@ fun NovelReaderAppBars(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .onSizeChanged { onBottomBarHeight(it.height) }
                         .background(backgroundColor)
                         .windowInsetsPadding(WindowInsets.navigationBars),
                 ) {

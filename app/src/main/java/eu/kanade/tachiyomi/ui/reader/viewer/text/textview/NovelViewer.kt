@@ -88,6 +88,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private val navigator get() = config.navigator
 
     private var loadJob: Job? = null
+    private var attachListener: View.OnAttachStateChangeListener? = null
     private var currentPage: ReaderPage? = null
     private var currentChapters: ViewerChapters? = null
     private var renderGeneration = 0L
@@ -284,13 +285,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         // Allow descendants to receive focus so TextView text selection works.
         // The reader container typically sets FOCUS_BLOCK_DESCENDANTS which prevents
         // the TextView's Editor from initializing properly for selection.
-        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        attachListener = object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
                 (container.parent as? ViewGroup)?.descendantFocusability =
                     ViewGroup.FOCUS_AFTER_DESCENDANTS
             }
             override fun onViewDetachedFromWindow(v: View) {}
-        })
+        }.also(container::addOnAttachStateChangeListener)
     }
 
     private fun setupScrollListener() {
@@ -316,7 +317,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
             val chapterProgress = calculateCurrentChapterProgress(scrollY)
 
-            if (!inGracePeriod) {
+            // While TTS is reading the visible chapter it owns progress for that chapter (chunk-based,
+            // persisted by saveTtsProgressForChunk and mirrored to the slider). Letting the scroll path
+            // also write would race the same page's last_page_read with a different percent.
+            if (!inGracePeriod && !isTtsDrivingVisibleChapter()) {
                 scheduleProgressSave(chapterProgress)
                 activity.onNovelProgressChanged(chapterProgress)
             }
@@ -431,6 +435,14 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
      * hook runs on every chunk advance and is independent of scroll.
      */
     private var lastSavedTtsChunkIndex: Int = -1
+
+    /** True when TTS autoplay is speaking the chapter currently on screen. */
+    private fun isTtsDrivingVisibleChapter(): Boolean =
+        ttsController.isTtsAutoPlay &&
+            !ttsController.ttsPaused &&
+            ttsController.ttsPlaybackChapterId != null &&
+            loadedChapters.getOrNull(currentChapterIndex)?.chapter?.chapter?.id == ttsController.ttsPlaybackChapterId
+
     private fun saveTtsProgressForChunk(chunkIndex: Int) {
         if (chunkIndex == lastSavedTtsChunkIndex) return
         lastSavedTtsChunkIndex = chunkIndex
@@ -446,6 +458,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val page = loaded.chapter.pages?.firstOrNull() ?: return
         val percent = (((chunkIndex + 1) * 100f) / total).roundToInt().coerceIn(0, 100)
         activity.saveNovelProgress(page, percent)
+        // Keep the slider in sync with TTS when the spoken chapter is on screen, since the scroll
+        // path is suppressed for it (see isTtsDrivingVisibleChapter).
+        if (isTtsDrivingVisibleChapter()) activity.onNovelProgressChanged(percent / 100f)
     }
 
     private fun shouldAutoMarkShortChapter(page: ReaderPage?): Boolean {
@@ -1320,6 +1335,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         ttsController.destroy()
         scope.cancel() // cancels loadJob and all other child coroutines
         chapterQueue.clear()
+        attachListener?.let(container::removeOnAttachStateChangeListener)
+        attachListener = null
     }
 
     override fun getView(): View {
@@ -1871,14 +1888,23 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun startAutoScroll() {
-        val speed = preferences.novelAutoScrollSpeed.get().coerceIn(1, 10)
+        // Pref is half-steps (speed x2); level is 1.0..10.0 in 0.5 increments.
+        val level = preferences.novelAutoScrollLevel()
         isAutoScrolling = true
 
         autoScrollJob?.cancel()
         autoScrollJob = scope.launch {
+            // Accumulate the fractional per-tick amount so half-step speeds (and levels below 1px per
+            // tick) still scroll smoothly instead of truncating to 0. Instant per-tick scroll matches
+            // the WebView path; smoothScrollBy re-arms a ~250ms animation every 50ms and juddered.
+            var acc = 0f
             while (isActive && isAutoScrolling) {
-                val scrollAmount = speed
-                scrollView.smoothScrollBy(0, scrollAmount)
+                acc += level
+                val step = acc.toInt()
+                if (step > 0) {
+                    scrollView.scrollBy(0, step)
+                    acc -= step
+                }
                 delay(50L)
             }
         }

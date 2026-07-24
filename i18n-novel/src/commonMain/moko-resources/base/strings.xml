@@ -420,9 +420,13 @@
     <string name="novel_split_word_count">Split word count (×50)</string>
     <string name="novel_force_lowercase">Force text to lowercase</string>
     <string name="novel_engine_format">Engine #%d</string>
-    <string name="novel_enabled">Enabled</string>
-    <string name="novel_disabled">Disabled</string>
     <string name="novel_no_snippets">No snippets added</string>
+    <string name="novel_delete_snippet_confirm">Delete this snippet?</string>
+    <string name="novel_delete_rule_confirm">Delete this rule?</string>
+    <string name="novel_snippet_run_on_append">Re-run on infinite-scroll append</string>
+    <string name="novel_snippets_enabled_first">Move enabled snippets first</string>
+    <string name="novel_snippet_move_up">Move up</string>
+    <string name="novel_snippet_move_down">Move down</string>
     <string name="novel_regex_find_replace">Regex Find &amp; Replace</string>
     <string name="novel_add_rule">Add rule</string>
     <string name="novel_tag_regex">regex</string>
@@ -555,6 +559,13 @@
     <string name="pref_category_novel_downloads">Novel Downloads</string>
     <string name="pref_novel_source_overrides">Source-specific overrides</string>
     <string name="pref_novel_source_overrides_summary">Configure delays for specific sources</string>
+
+    <!-- Novel WebView (advanced) -->
+    <string name="pref_category_novel_webview">Novel WebView</string>
+    <string name="pref_novel_webview_devtools">WebView console client</string>
+    <string name="pref_novel_webview_devtools_summary">Attach a Chrome WebView client so JS alert/confirm/prompt dialogs and file pickers work, and console messages can be surfaced</string>
+    <string name="pref_novel_console_error_toast">Toast on console messages</string>
+    <string name="pref_novel_console_error_toast_summary">Show a toast for console log, warning and error messages from the novel WebView</string>
 
     <!-- Novel Image Embedding (category header only) -->
     <string name="pref_category_novel_images">Chapter Images</string>

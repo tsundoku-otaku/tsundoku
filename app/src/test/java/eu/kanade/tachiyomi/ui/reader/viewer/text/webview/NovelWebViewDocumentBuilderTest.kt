@@ -124,8 +124,8 @@ class NovelWebViewDocumentBuilderTest {
         assertTrue(html.contains("Hello"))
         // Raw unescaped angle brackets must NOT appear outside the script
         val bodySection = html.substringAfter("<body>")
-        // The pre element is empty; content is set via JS
-        assertTrue(bodySection.contains("<pre "))
+        // The plain-text container is empty; paragraphs are appended via JS
+        assertTrue(bodySection.contains("<div class=\"${NovelWebViewDocumentBuilder.PLAIN_TEXT_CLASS}\""))
     }
 
     @Test

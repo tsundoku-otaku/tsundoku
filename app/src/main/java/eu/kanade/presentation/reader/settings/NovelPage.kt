@@ -21,7 +21,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
+import androidx.compose.material.icons.automirrored.outlined.Sort
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -65,6 +68,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.data.font.FontManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
@@ -88,6 +92,8 @@ data class CodeSnippet(
     val title: String,
     val code: String,
     val enabled: Boolean = true,
+    // JS only. Default off so one-shot snippets don't re-run on every infinite-scroll append.
+    val runOnAppend: Boolean = false,
 )
 
 @Serializable
@@ -533,11 +539,11 @@ internal fun ColumnScope.NovelAppearanceTab(screenModel: ReaderSettingsScreenMod
 internal fun ColumnScope.NovelControlsTab(screenModel: ReaderSettingsScreenModel, renderingMode: String) {
     val autoScrollSpeed by screenModel.preferences.novelAutoScrollSpeed.collectAsState()
 
-    // Auto Scroll Speed
     SliderItem(
         label = stringResource(TDMR.strings.pref_novel_auto_scroll_speed),
         value = autoScrollSpeed,
-        valueRange = 1..10,
+        valueRange = 2..20,
+        valueString = "${autoScrollSpeed / 2f}",
         onChange = { screenModel.preferences.novelAutoScrollSpeed.set(it) },
     )
 
@@ -858,6 +864,14 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
             }
             screenModel.preferences.novelCustomCssSnippets.set(Json.encodeToString(updated))
         },
+        onMove = { from, to ->
+            val updated = cssSnippets.toMutableList().apply { add(to, removeAt(from)) }
+            screenModel.preferences.novelCustomCssSnippets.set(Json.encodeToString(updated))
+        },
+        onSortEnabledFirst = {
+            val updated = cssSnippets.sortedByDescending { it.enabled }
+            screenModel.preferences.novelCustomCssSnippets.set(Json.encodeToString(updated))
+        },
     )
 
     // JS Snippets Section
@@ -876,6 +890,14 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
             }
             screenModel.preferences.novelCustomJsSnippets.set(Json.encodeToString(updated))
         },
+        onMove = { from, to ->
+            val updated = jsSnippets.toMutableList().apply { add(to, removeAt(from)) }
+            screenModel.preferences.novelCustomJsSnippets.set(Json.encodeToString(updated))
+        },
+        onSortEnabledFirst = {
+            val updated = jsSnippets.sortedByDescending { it.enabled }
+            screenModel.preferences.novelCustomJsSnippets.set(Json.encodeToString(updated))
+        },
     )
 
     // CSS Add/Edit Dialog
@@ -888,6 +910,7 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
             },
             initialSnippet = editingCssSnippet?.second,
             focusCodeFieldByDefault = editingCssSnippet != null,
+            showRunOnAppend = false,
             onDismiss = {
                 showCssDialog = false
                 editingCssSnippet = null
@@ -916,6 +939,7 @@ internal fun ColumnScope.NovelAdvancedTab(screenModel: ReaderSettingsScreenModel
             },
             initialSnippet = editingJsSnippet?.second,
             focusCodeFieldByDefault = editingJsSnippet != null,
+            showRunOnAppend = true,
             onDismiss = {
                 showJsDialog = false
                 editingJsSnippet = null
@@ -943,7 +967,11 @@ private fun SnippetSection(
     onEditClick: (Int, CodeSnippet) -> Unit,
     onDeleteClick: (Int) -> Unit,
     onToggleClick: (Int) -> Unit,
+    onMove: (Int, Int) -> Unit,
+    onSortEnabledFirst: () -> Unit,
 ) {
+    var pendingDelete by remember { mutableStateOf<Int?>(null) }
+
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -961,8 +989,18 @@ private fun SnippetSection(
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
-            IconButton(onClick = onAddClick) {
-                Icon(Icons.Outlined.Add, contentDescription = stringResource(TDMR.strings.novel_add_snippet))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (snippets.size > 1) {
+                    IconButton(onClick = onSortEnabledFirst) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.Sort,
+                            contentDescription = stringResource(TDMR.strings.novel_snippets_enabled_first),
+                        )
+                    }
+                }
+                IconButton(onClick = onAddClick) {
+                    Icon(Icons.Outlined.Add, contentDescription = stringResource(TDMR.strings.novel_add_snippet))
+                }
             }
         }
 
@@ -976,44 +1014,48 @@ private fun SnippetSection(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
+                        .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = snippet.title,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = if (snippet.enabled) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            },
-                        )
-                        Text(
-                            text = if (snippet.enabled) {
-                                stringResource(
-                                    TDMR.strings.novel_enabled,
-                                )
-                            } else {
-                                stringResource(TDMR.strings.novel_disabled)
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (snippet.enabled) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            },
-                        )
-                    }
+                    Text(
+                        text = snippet.title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f),
+                        color = if (snippet.enabled) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                        },
+                    )
                     Row {
+                        IconButton(
+                            onClick = { onMove(index, index - 1) },
+                            enabled = index > 0,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                Icons.Outlined.ArrowUpward,
+                                contentDescription = stringResource(TDMR.strings.novel_snippet_move_up),
+                            )
+                        }
+                        IconButton(
+                            onClick = { onMove(index, index + 1) },
+                            enabled = index < snippets.lastIndex,
+                            modifier = Modifier.size(36.dp),
+                        ) {
+                            Icon(
+                                Icons.Outlined.ArrowDownward,
+                                contentDescription = stringResource(TDMR.strings.novel_snippet_move_down),
+                            )
+                        }
                         IconButton(onClick = { onEditClick(index, snippet) }) {
                             Icon(
                                 Icons.Outlined.Edit,
                                 contentDescription = stringResource(TDMR.strings.novel_edit_snippet),
                             )
                         }
-                        IconButton(onClick = { onDeleteClick(index) }) {
+                        IconButton(onClick = { pendingDelete = index }) {
                             Icon(
                                 Icons.Outlined.Delete,
                                 contentDescription = stringResource(TDMR.strings.novel_delete_snippet),
@@ -1033,6 +1075,29 @@ private fun SnippetSection(
             )
         }
     }
+
+    pendingDelete?.let { index ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(stringResource(TDMR.strings.novel_delete_snippet)) },
+            text = { Text(stringResource(TDMR.strings.novel_delete_snippet_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteClick(index)
+                        pendingDelete = null
+                    },
+                ) {
+                    Text(stringResource(MR.strings.action_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(stringResource(MR.strings.action_cancel))
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -1040,11 +1105,13 @@ private fun SnippetEditDialog(
     title: String,
     initialSnippet: CodeSnippet?,
     focusCodeFieldByDefault: Boolean,
+    showRunOnAppend: Boolean,
     onDismiss: () -> Unit,
     onConfirm: (CodeSnippet) -> Unit,
 ) {
     var snippetTitle by remember { mutableStateOf(initialSnippet?.title ?: "") }
     var snippetCode by remember { mutableStateOf(initialSnippet?.code ?: "") }
+    var runOnAppend by remember { mutableStateOf(initialSnippet?.runOnAppend ?: false) }
     val codeFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(focusCodeFieldByDefault) {
@@ -1076,13 +1143,39 @@ private fun SnippetEditDialog(
                         .padding(top = 8.dp)
                         .focusRequester(codeFocusRequester),
                 )
+                if (showRunOnAppend) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { runOnAppend = !runOnAppend }
+                            .padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = runOnAppend,
+                            onCheckedChange = { runOnAppend = it },
+                        )
+                        Text(
+                            text = stringResource(TDMR.strings.novel_snippet_run_on_append),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
+                }
             }
         },
         confirmButton = {
             TextButton(
                 onClick = {
                     if (snippetTitle.isNotBlank() && snippetCode.isNotBlank()) {
-                        onConfirm(CodeSnippet(snippetTitle.trim(), snippetCode, initialSnippet?.enabled ?: true))
+                        onConfirm(
+                            CodeSnippet(
+                                title = snippetTitle.trim(),
+                                code = snippetCode,
+                                enabled = initialSnippet?.enabled ?: true,
+                                runOnAppend = runOnAppend,
+                            ),
+                        )
                     }
                 },
             ) {
@@ -1107,6 +1200,7 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<Pair<Int, RegexReplacement>?>(null) }
+    var pendingDelete by remember { mutableStateOf<Int?>(null) }
 
     val rules = remember(regexJson) {
         try {
@@ -1174,8 +1268,6 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                                     if (rule.matchWholeWord) append(" • whole-word")
                                     if (rule.caseSensitive) append(" • case-sensitive")
                                 }
-                                append(" • ")
-                                append(if (rule.enabled) "Enabled" else "Disabled")
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = if (rule.enabled) {
@@ -1188,7 +1280,7 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                             text = "/${rule.pattern}/ → ${rule.replacement.ifEmpty { "(remove)" }}",
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Ellipsis,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         )
                     }
@@ -1196,10 +1288,7 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                         IconButton(onClick = { editingRule = index to rule }) {
                             Icon(Icons.Outlined.Edit, contentDescription = stringResource(MR.strings.action_edit))
                         }
-                        IconButton(onClick = {
-                            val updated = rules.toMutableList().apply { removeAt(index) }
-                            screenModel.preferences.novelRegexReplacements.set(Json.encodeToString(updated))
-                        }) {
+                        IconButton(onClick = { pendingDelete = index }) {
                             Icon(Icons.Outlined.Delete, contentDescription = stringResource(MR.strings.action_delete))
                         }
                     }
@@ -1234,6 +1323,30 @@ private fun ColumnScope.RegexReplacementSection(screenModel: ReaderSettingsScree
                 screenModel.preferences.novelRegexReplacements.set(Json.encodeToString(updated))
                 showAddDialog = false
                 editingRule = null
+            },
+        )
+    }
+
+    pendingDelete?.let { index ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(stringResource(MR.strings.action_delete)) },
+            text = { Text(stringResource(TDMR.strings.novel_delete_rule_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val updated = rules.toMutableList().apply { removeAt(index) }
+                        screenModel.preferences.novelRegexReplacements.set(Json.encodeToString(updated))
+                        pendingDelete = null
+                    },
+                ) {
+                    Text(stringResource(MR.strings.action_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(stringResource(MR.strings.action_cancel))
+                }
             },
         )
     }

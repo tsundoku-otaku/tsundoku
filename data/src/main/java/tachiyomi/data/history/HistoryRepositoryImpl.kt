@@ -122,4 +122,16 @@ class HistoryRepositoryImpl(
             logcat(LogPriority.ERROR, throwable = e)
         }
     }
+
+    override suspend fun upsertHistoryTimeRead(historyUpdate: HistoryUpdate) {
+        try {
+            database.historyQueries.upsertTimeRead(
+                historyUpdate.chapterId,
+                historyUpdate.readAt,
+                historyUpdate.sessionReadDuration,
+            )
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, throwable = e)
+        }
+    }
 }

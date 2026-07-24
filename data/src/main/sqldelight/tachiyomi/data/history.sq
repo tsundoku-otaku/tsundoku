@@ -145,6 +145,17 @@ SET
     time_read = time_read + :time_read
 WHERE chapter_id = :chapterId;
 
+-- Accumulate read duration without moving last_read on an existing row. Used by novel readers,
+-- where the visible-chapter entry stamp owns recency; a leaving/pause flush that re-stamped
+-- last_read=now could outrank the chapter actually being read (e.g. after a hard kill).
+upsertTimeRead:
+INSERT INTO history(chapter_id, last_read, time_read)
+VALUES (:chapterId, :readAt, :time_read)
+ON CONFLICT(chapter_id)
+DO UPDATE
+SET time_read = time_read + :time_read
+WHERE chapter_id = :chapterId;
+
 getReadDuration:
 SELECT coalesce(sum(time_read), 0)
 FROM history;

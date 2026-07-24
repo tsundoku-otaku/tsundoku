@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.library
 
+import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
@@ -33,17 +35,7 @@ data class LibraryItem(
      */
     val fullUrl: String by lazy {
         val source = sourceManager.getOrStub(libraryManga.manga.source)
-        val baseUrl = (source as? eu.kanade.tachiyomi.source.online.HttpSource)?.baseUrl ?: ""
-        val mangaUrl = libraryManga.manga.url
-        if (baseUrl.isNotEmpty() && mangaUrl.isNotEmpty()) {
-            if (mangaUrl.startsWith("http://") || mangaUrl.startsWith("https://")) {
-                mangaUrl // Already a full URL
-            } else {
-                baseUrl.trimEnd('/') + (if (mangaUrl.startsWith("/")) mangaUrl else "/$mangaUrl")
-            }
-        } else {
-            mangaUrl
-        }
+        source.getMangaUrlOrNull(libraryManga.manga.toSManga()) ?: libraryManga.manga.url
     }
 
     /**

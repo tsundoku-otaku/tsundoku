@@ -88,5 +88,5 @@
 -keepclassmembers class * {
     @android.webkit.JavascriptInterface <methods>;
 }
--keep class eu.kanade.tachiyomi.ui.reader.viewer.text.NovelWebViewViewer$WebViewInterface { *; }
+-keep class eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewViewer$WebViewInterface { *; }
 -keep class eu.kanade.tachiyomi.ui.customsource.ElementSelectorJSInterface { *; }
