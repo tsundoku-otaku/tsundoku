@@ -203,6 +203,16 @@ class DownloadCache(
     }
 
     /**
+     * Suspends until the cache has been populated at least once. [renewCache] only schedules the
+     * scan, so a caller that treats a zero count as "nothing downloaded" has to wait for it -
+     * otherwise it reads an empty cache and concludes there is nothing on disk.
+     */
+    suspend fun awaitReady() {
+        renewCache()
+        renewalJob?.join()
+    }
+
+    /**
      * Returns downloaded chapter counts for multiple manga with a single cache refresh.
      */
     fun getDownloadCounts(mangaList: List<Manga>): Map<Long, Int> {

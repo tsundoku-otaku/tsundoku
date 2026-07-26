@@ -593,6 +593,19 @@ class TranslatedChapterRepositoryImpl(
         Unit
     }
 
+    override suspend fun filterNovelsWithTranslations(
+        sourceName: String,
+        novelTitles: Collection<String>,
+    ): Set<String> = withContext(Dispatchers.IO) {
+        if (novelTitles.isEmpty()) return@withContext emptySet()
+        val existing = translationsDir.findFile(sourceDirName(sourceName))
+            ?.takeIf { it.isDirectory }
+            ?.listFiles()
+            ?.mapNotNullTo(mutableSetOf()) { it.name }
+            ?: return@withContext emptySet()
+        novelTitles.filterTo(mutableSetOf()) { novelDirName(it) in existing }
+    }
+
     // SAF renameTo only renames within the same parent, so a cross-source move is copy-then-delete.
     // Returns true only if every child copied; a false result must prevent deleting the source.
     private fun copyContentsRecursive(src: UniFile, dest: UniFile): Boolean {

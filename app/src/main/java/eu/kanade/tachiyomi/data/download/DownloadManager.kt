@@ -286,6 +286,11 @@ class DownloadManager(
         return cache.getDownloadCounts(mangaList)
     }
 
+    /** Waits for the download cache's first scan, for callers that act on a count of zero. */
+    suspend fun awaitDownloadCacheReady() {
+        cache.awaitReady()
+    }
+
     fun cancelQueuedDownloads(downloads: List<Download>) {
         removeFromDownloadQueue(downloads.map { it.toDomainChapter() })
     }
