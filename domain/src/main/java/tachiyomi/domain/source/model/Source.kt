@@ -7,6 +7,7 @@ data class Source(
     val supportsLatest: Boolean,
     val isStub: Boolean,
     val isNovelSource: Boolean = false,
+    val isJsSource: Boolean = false,
     val pin: Pins = Pins.unpinned,
     val isUsedLast: Boolean = false,
 ) {

@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -18,22 +17,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import eu.kanade.domain.source.interactor.SetMigrateSorting
 import eu.kanade.presentation.browse.components.BaseSourceItem
 import eu.kanade.presentation.browse.components.SourceIcon
-import eu.kanade.tachiyomi.jsplugin.source.JsSource
+import eu.kanade.presentation.browse.components.SourceTypeBadge
 import eu.kanade.tachiyomi.ui.browse.migration.sources.MigrateSourceScreenModel
 import eu.kanade.tachiyomi.util.system.copyToClipboard
 import tachiyomi.domain.source.model.Source
-import tachiyomi.domain.source.model.StubSource
-import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.Badge
 import tachiyomi.presentation.core.components.BadgeGroup
@@ -47,8 +41,6 @@ import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.presentation.core.theme.header
 import tachiyomi.presentation.core.util.plus
 import tachiyomi.presentation.core.util.secondaryItemAlpha
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 
 @Composable
 fun MigrateSourceScreen(
@@ -172,10 +164,6 @@ private fun MigrateSourceItem(
             }
         },
         content = { _, sourceLangString ->
-            val isJsSource = remember(source.id) {
-                val resolved = Injekt.get<SourceManager>().get(source.id)
-                resolved is JsSource || (resolved is StubSource && resolved.name.contains("(JS)"))
-            }
             Column(
                 modifier = Modifier
                     .padding(horizontal = MaterialTheme.padding.medium)
@@ -191,21 +179,7 @@ private fun MigrateSourceItem(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f, fill = false),
                     )
-                    if (isJsSource) {
-                        Text(
-                            text = "JS",
-                            modifier = Modifier
-                                .padding(start = 4.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                    shape = RoundedCornerShape(4.dp),
-                                )
-                                .padding(horizontal = 4.dp, vertical = 2.dp),
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
+                    SourceTypeBadge(source = source)
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),

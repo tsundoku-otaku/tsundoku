@@ -272,9 +272,10 @@ class MangaScreen(
                 DuplicateMangaDialog(
                     duplicates = dialog.duplicates,
                     onDismissRequest = onDismissRequest,
-                    onConfirm = { screenModel.toggleFavorite(onRemoved = {}, checkDuplicate = false) },
+                    onConfirm = { screenModel.toggleFavorite(onRemoved = {}, skipDuplicateCheck = true) },
                     onOpenManga = { navigator.push(MangaScreen(it.id)) },
                     onMigrate = { screenModel.showMigrateDialog(it) },
+                    canAddAnyway = dialog.canAddAnyway,
                 )
             }
 
@@ -292,8 +293,11 @@ class MangaScreen(
                 MigrateMangaDialog(
                     current = dialog.current,
                     target = dialog.target,
-                    // Initiated from the context of [dialog.target] so we show [dialog.current].
-                    onClickTitle = { navigator.push(MangaScreen(dialog.current.id)) },
+                    // "Show" opens the other entry, i.e. the one that isn't the manga on screen.
+                    onClickTitle = {
+                        val other = if (dialog.target.id == successState.manga.id) dialog.current else dialog.target
+                        navigator.push(MangaScreen(other.id))
+                    },
                     onDismissRequest = onDismissRequest,
                 )
             }

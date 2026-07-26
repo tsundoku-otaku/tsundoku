@@ -34,9 +34,9 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.source.service.SourcePreferences
-import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.CatalogueSource
-import eu.kanade.tachiyomi.source.custom.CustomNovelSource
+import eu.kanade.tachiyomi.source.filterUserEnabled
+import eu.kanade.tachiyomi.source.nameWithTypeTag
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -269,27 +269,16 @@ class SourcePriorityScreenModel(
     private fun loadSourceItems() {
         screenModelScope.launch {
             sourceManager.sources.map { it.filterIsInstance<CatalogueSource>() }.collect { catalogueSources ->
-                val enabledLanguages = sourcePreferences.enabledLanguages.get()
-                val disabledSources = sourcePreferences.disabledSources.get()
                 val items = catalogueSources
-                    .filter { source ->
-                        !source.isLocal() && (
-                            source is CustomNovelSource ||
-                                (source.lang in enabledLanguages && "${source.id}" !in disabledSources)
-                            )
-                    }
+                    .filterNot { it.isLocal() }
+                    .filterUserEnabled(sourcePreferences)
                     .map { source ->
-                        val suffix = when (source) {
-                            is CustomNovelSource -> " (Custom)"
-                            is JsSource -> " (JS)"
-                            else -> ""
-                        }
                         SourcePriorityItem(
                             id = source.id,
-                            displayName = "${source.name}$suffix",
+                            displayName = source.nameWithTypeTag(),
                         )
                     }
-                    .sortedBy { it.displayName.lowercase() }
+                    .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName })
                 val hasLocalSource = catalogueSources.any { it.isLocal() }
                 mutableState.update { it.copy(sourceItems = items, hasLocalSource = hasLocalSource) }
             }

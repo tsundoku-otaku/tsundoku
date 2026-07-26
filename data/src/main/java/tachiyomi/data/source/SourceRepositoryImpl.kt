@@ -11,6 +11,7 @@ import tachiyomi.data.Database
 import tachiyomi.data.subscribeToDebouncedList
 import tachiyomi.domain.source.model.SourceWithCount
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.model.hasJsMarker
 import tachiyomi.domain.source.repository.SourcePagingSource
 import tachiyomi.domain.source.repository.SourceRepository
 import tachiyomi.domain.source.service.SourceManager
@@ -98,5 +99,6 @@ class SourceRepositoryImpl(
         supportsLatest = false,
         isStub = false,
         isNovelSource = source.isNovelSource(),
+        isJsSource = source.hasJsMarker(),
     )
 }

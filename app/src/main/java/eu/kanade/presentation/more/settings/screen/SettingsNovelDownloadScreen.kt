@@ -38,7 +38,9 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.RateLimited
+import eu.kanade.tachiyomi.source.filterUserEnabled
 import eu.kanade.tachiyomi.source.isNovelSource
+import eu.kanade.tachiyomi.source.nameWithTypeTag
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences
 import tachiyomi.domain.download.service.NovelDownloadPreferences.Companion.SourceOverride
@@ -390,6 +392,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
             // declared defaults rather than looking like it's not throttled at all.
             val unconfiguredRateLimited = sourceManager.getAll()
                 .filterIsInstance<CatalogueSource>()
+                .filterUserEnabled()
                 .filter { it.isNovelSource() && it is RateLimited && it.id !in savedSourceIds }
                 .map { source -> SourceOverride(sourceId = source.id, enabled = true) }
 
@@ -397,9 +400,12 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                 savedOverrides.map { OverrideRow(it, isSaved = true) } +
                     unconfiguredRateLimited.map { OverrideRow(it, isSaved = false) }
                 )
-                .sortedBy { row ->
-                    sourceManager.get(row.override.sourceId)?.name?.lowercase() ?: "zzz_${row.override.sourceId}"
-                }
+                .sortedWith(
+                    compareBy(String.CASE_INSENSITIVE_ORDER) { row ->
+                        sourceManager.get(row.override.sourceId)?.nameWithTypeTag()
+                            ?: "zzz_${row.override.sourceId}"
+                    },
+                )
         }
 
         AlertDialog(
@@ -427,7 +433,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                             items(rows, key = { it.override.sourceId }) { row ->
                                 val override = row.override
                                 val source = sourceManager.get(override.sourceId)
-                                val sourceName = source?.name ?: "Unknown (#${override.sourceId})"
+                                val sourceName = source?.nameWithTypeTag() ?: "Unknown (#${override.sourceId})"
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -511,7 +517,9 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         val sourceManager = remember { Injekt.get<SourceManager>() }
         val novelSources = remember {
             sourceManager.getAll().filterIsInstance<CatalogueSource>()
+                .filterUserEnabled()
                 .filter { it.isNovelSource() }
+                .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.nameWithTypeTag() })
         }
 
         var selectedSourceId by remember { mutableStateOf(existing?.sourceId ?: 0L) }
@@ -521,7 +529,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
         var sourceExpanded by remember { mutableStateOf(false) }
 
         val selectedSource = novelSources.find { it.id == selectedSourceId }
-        val selectedSourceName = selectedSource?.name
+        val selectedSourceName = selectedSource?.nameWithTypeTag()
             ?: if (selectedSourceId != 0L) "Source #$selectedSourceId" else "Select source..."
         // An extension can declare its own floor via RateLimited; the user can't configure
         // less delay than that, no matter what they drag the slider to.
@@ -559,7 +567,7 @@ object SettingsNovelDownloadScreen : SearchableSettings {
                         ) {
                             novelSources.forEach { source ->
                                 DropdownMenuItem(
-                                    text = { Text(source.name) },
+                                    text = { Text(source.nameWithTypeTag()) },
                                     onClick = {
                                         selectedSourceId = source.id
                                         sourceExpanded = false

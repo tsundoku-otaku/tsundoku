@@ -156,7 +156,13 @@ class AndroidSourceManager(
         scope.launch {
             val dbSource = sourceRepository.getStubSource(source.id)
             if (dbSource == source) return@launch
-            sourceRepository.upsertStubSource(source.id, source.lang, source.name, source.isNovelSource)
+            sourceRepository.upsertStubSource(
+                source.id,
+                source.lang,
+                source.name,
+                source.isNovelSource,
+                source.isJsSource,
+            )
             if (dbSource != null) {
                 downloadManager.renameSource(dbSource, source)
             }
@@ -164,8 +170,16 @@ class AndroidSourceManager(
     }
 
     private suspend fun createStubSource(id: Long): StubSource {
-        sourceRepository.getStubSource(id)?.let {
-            return it
+        sourceRepository.getStubSource(id)?.let { dbSource ->
+            // Rows written before is_js existed inferred the JS marker from "is a novel source",
+            // which is wrong for novel sources shipped as APK extensions. An id the extension
+            // manager lists can only be an APK extension, so drop the marker and persist the fix.
+            if (dbSource.isJsSource && extensionManager.getSourceData(id) != null) {
+                val corrected = dbSource.copy(isJsSource = false)
+                registerStubSource(corrected)
+                return corrected
+            }
+            return dbSource
         }
         extensionManager.getSourceData(id)?.let {
             registerStubSource(it)

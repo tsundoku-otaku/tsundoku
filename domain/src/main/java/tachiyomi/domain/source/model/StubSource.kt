@@ -9,11 +9,12 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.model.SMangaUpdate
 
-class StubSource(
+data class StubSource(
     override val id: Long,
     override val lang: String,
     override val name: String,
     override val isNovelSource: Boolean = false,
+    val isJsSource: Boolean = false,
 ) : Source {
 
     private val isInvalid: Boolean = name.isBlank() || lang.isBlank()
@@ -39,12 +40,12 @@ class StubSource(
 
     // Must match the loaded source's toString() so quotes/translations resolve to the same on-disk
     // directory whether the source is currently loaded or only stubbed (plugin not yet loaded).
-    // Installed novel sources are JS plugins, rendering as "Name (LANG) (JS)"; the built-in local
+    // JS plugins and custom novel sources render as "Name (LANG) (JS)"; the built-in local
     // sources (ids 0/1) override toString() to their bare name with no lang/marker.
     override fun toString(): String = when {
         isInvalid -> id.toString()
         id == LOCAL_SOURCE_ID || id == LOCAL_NOVEL_SOURCE_ID -> name
-        isNovelSource -> "$name (${lang.uppercase()}) (JS)"
+        isJsSource -> "$name (${lang.uppercase()})$JS_SOURCE_MARKER"
         else -> "$name (${lang.uppercase()})"
     }
 
@@ -60,6 +61,7 @@ class StubSource(
                 lang = source.lang,
                 name = source.name,
                 isNovelSource = source.isNovelSource(),
+                isJsSource = source.hasJsMarker(),
             )
         }
     }

@@ -757,6 +757,8 @@
     <string name="custom_source_url_dialog_title">Enter Website URL</string>
     <string name="custom_source_url_label">Website URL</string>
     <string name="custom_source_start_wizard">Start Setup</string>
+    <string name="custom_source_kind_novel_count">Novel (%1$d)</string>
+    <string name="custom_source_kind_manga_count">Manga (%1$d)</string>
     <string name="custom_source_source_name">Source name</string>
     <string name="custom_source_base_url">Base URL</string>
     <string name="custom_source_pick_from_site">Pick from website</string>
@@ -863,6 +865,8 @@
     <string name="db_maintenance_started">Database maintenance started &#8212; check notifications for progress</string>
 
     <string name="action_sort_source_name">Source name</string>
+    <string name="pref_check_duplicate_on_add">Check for existing entries when adding to library</string>
+    <string name="pref_check_duplicate_on_add_summary">Warn about possible duplicates already in your library before adding</string>
     <string name="pref_show_manga_source_name">Show source name in manga details</string>
     <string name="pref_show_manga_source_name_summary">Display source name under status on manga details screen</string>
     <string name="pref_experimental_library_pagination">Experimental: paginate library (reduce memory)</string>

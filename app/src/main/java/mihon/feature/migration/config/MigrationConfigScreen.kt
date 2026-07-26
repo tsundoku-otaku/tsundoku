@@ -46,6 +46,7 @@ import eu.kanade.presentation.browse.components.SourceIcon
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.util.Screen
+import eu.kanade.tachiyomi.source.nameWithTypeTag
 import eu.kanade.tachiyomi.ui.browse.migration.search.MigrateSearchScreen
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.flow.update
@@ -56,6 +57,7 @@ import sh.calvin.reorderable.ReorderableLazyListState
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.source.model.Source
+import tachiyomi.domain.source.model.hasJsMarker
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
@@ -311,11 +313,9 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
     ) : StateScreenModel<ScreenModel.State>(State()) {
 
         private val sourcesComparator = { includedSources: List<Long> ->
-            compareBy<MigrationSource>(
-                { !it.isSelected },
-                { includedSources.indexOf(it.id) },
-                { with(it) { "$name ($shortLanguage)" } },
-            )
+            compareBy<MigrationSource> { !it.isSelected }
+                .thenBy { includedSources.indexOf(it.id) }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { with(it) { "$name ($shortLanguage)" } }
         }
 
         init {
@@ -347,9 +347,12 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                     val source = Source(
                         id = it.id,
                         lang = it.lang,
-                        name = it.name,
+                        // Tagged here: the migration target list is where a JS plugin and a Kotlin
+                        // extension of the same site sit next to each other.
+                        name = it.nameWithTypeTag(),
                         supportsLatest = false,
                         isStub = false,
+                        isJsSource = it.hasJsMarker(),
                     )
                     MigrationSource(
                         source = source,

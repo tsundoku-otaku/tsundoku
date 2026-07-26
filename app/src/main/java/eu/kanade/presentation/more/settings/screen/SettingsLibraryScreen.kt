@@ -285,6 +285,13 @@ object SettingsLibraryScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_hide_missing_chapter_indicators),
                 ),
             )
+            add(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = libraryPreferences.checkDuplicateEntryOnAdd,
+                    title = stringResource(TDMR.strings.pref_check_duplicate_on_add),
+                    subtitle = stringResource(TDMR.strings.pref_check_duplicate_on_add_summary),
+                ),
+            )
             if (!isJoined) {
                 add(
                     Preference.PreferenceItem.SwitchPreference(

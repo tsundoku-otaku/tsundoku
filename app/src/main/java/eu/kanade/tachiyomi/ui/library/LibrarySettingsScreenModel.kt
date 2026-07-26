@@ -5,9 +5,9 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.cache.LibrarySettingsCache
 import eu.kanade.tachiyomi.data.track.TrackerManager
-import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.source.isNovelSource
+import eu.kanade.tachiyomi.source.nameWithTypeTag
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -241,13 +241,7 @@ class LibrarySettingsScreenModel(
                         LibraryScreenModel.LibraryType.Novel -> isNovel
                     }
                     if (shouldInclude) {
-                        // Add suffix for special source types
-                        val displayName = when {
-                            source is JsSource -> "${source.name} (JS)"
-                            isCustom -> "${source.name} (Custom)"
-                            else -> source.name
-                        }
-                        ExtensionInfo(sourceId, displayName, isStub, isNovel, isCustom)
+                        ExtensionInfo(sourceId, source.nameWithTypeTag(), isStub, isNovel, isCustom)
                     } else {
                         null
                     }

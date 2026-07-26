@@ -402,7 +402,9 @@ class MangaScreenModel(
      */
     fun toggleFavorite(
         onRemoved: () -> Unit,
-        checkDuplicate: Boolean = true,
+        // Set by the duplicates dialog's "Add anyway": the warning has already been shown and
+        // dismissed, so re-running the check would only reopen the same dialog.
+        skipDuplicateCheck: Boolean = false,
     ) {
         val state = successState ?: return
         screenModelScope.launchIO {
@@ -419,12 +421,13 @@ class MangaScreenModel(
                 }
             } else {
                 // Add to library
-                // First, check if duplicate exists if callback is provided
-                if (checkDuplicate) {
+                if (!skipDuplicateCheck) {
                     val duplicates = getDuplicateLibraryManga(manga)
 
                     if (duplicates.isNotEmpty()) {
-                        updateSuccessState { it.copy(dialog = Dialog.DuplicateManga(manga, duplicates)) }
+                        updateSuccessState {
+                            it.copy(dialog = Dialog.DuplicateManga(manga, duplicates, canAddAnyway = true))
+                        }
                         return@launchIO
                     }
                 }
@@ -1357,7 +1360,13 @@ class MangaScreenModel(
         ) : Dialog
         data class DeleteChapters(val chapters: List<Chapter>) : Dialog
         data class RemoveChaptersFromDb(val chapters: List<Chapter>) : Dialog
-        data class DuplicateManga(val manga: Manga, val duplicates: List<MangaWithChapterCount>) : Dialog
+        data class DuplicateManga(
+            val manga: Manga,
+            val duplicates: List<MangaWithChapterCount>,
+            // "Find duplicates" opens this for an entry already in the library, where adding
+            // anyway makes no sense (and toggling favorite would remove it instead).
+            val canAddAnyway: Boolean,
+        ) : Dialog
         data class SimilarNovels(
             val similarNovels: List<MangaWithChapterCount>,
             val categories: List<Category>,
@@ -1437,7 +1446,16 @@ class MangaScreenModel(
 
     fun showMigrateDialog(duplicate: Manga) {
         val manga = successState?.manga ?: return
-        updateSuccessState { it.copy(dialog = Dialog.Migrate(target = manga, current = duplicate)) }
+        // Roles decide which entry is replaced (current) vs kept (target) on "Migrate".
+        val dialog = if (manga.favorite) {
+            // Viewing a library entry and picking another (Find duplicates / Similar novels): migrate
+            // the viewed entry into the picked one, keeping the entry the user picked.
+            Dialog.Migrate(current = manga, target = duplicate)
+        } else {
+            // Adding a new entry that duplicates a library one: keep the new, replace the existing.
+            Dialog.Migrate(current = duplicate, target = manga)
+        }
+        updateSuccessState { it.copy(dialog = dialog) }
     }
 
     /**
@@ -1447,10 +1465,12 @@ class MangaScreenModel(
     fun showFindDuplicatesDialog() {
         val manga = successState?.manga ?: return
         screenModelScope.launchIO {
-            val duplicates = getDuplicateLibraryManga(manga)
+            val duplicates = getDuplicateLibraryManga(manga, force = true)
             withUIContext {
                 if (duplicates.isNotEmpty()) {
-                    updateSuccessState { it.copy(dialog = Dialog.DuplicateManga(manga, duplicates)) }
+                    updateSuccessState {
+                        it.copy(dialog = Dialog.DuplicateManga(manga, duplicates, canAddAnyway = !manga.favorite))
+                    }
                 } else {
                     // Show a snackbar or toast instead of dialog if no duplicates found
                     snackbarHostState.showSnackbar(context.stringResource(MR.strings.duplicate_no_duplicates))

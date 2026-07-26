@@ -19,8 +19,8 @@ class StubSourceRepositoryImpl(
         return database.sourcesQueries.findOne(id, ::mapStubSource).awaitAsOneOrNull()
     }
 
-    override suspend fun upsertStubSource(id: Long, lang: String, name: String, isNovel: Boolean) {
-        database.sourcesQueries.upsert(id, lang, name, isNovel)
+    override suspend fun upsertStubSource(id: Long, lang: String, name: String, isNovel: Boolean, isJs: Boolean) {
+        database.sourcesQueries.upsert(id, lang, name, isNovel, isJs)
     }
 
     private fun mapStubSource(
@@ -28,5 +28,12 @@ class StubSourceRepositoryImpl(
         lang: String,
         name: String,
         isNovel: Boolean,
-    ): StubSource = StubSource(id = id, lang = lang, name = name, isNovelSource = isNovel)
+        isJs: Boolean,
+    ): StubSource = StubSource(
+        id = id,
+        lang = lang,
+        name = name,
+        isNovelSource = isNovel,
+        isJsSource = isJs,
+    )
 }

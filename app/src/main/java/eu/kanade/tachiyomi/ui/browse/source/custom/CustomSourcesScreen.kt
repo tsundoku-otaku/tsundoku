@@ -7,6 +7,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -70,6 +73,8 @@ import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
 import eu.kanade.tachiyomi.source.custom.CustomSourceConfig
 import eu.kanade.tachiyomi.source.custom.SourceTestResult
+import eu.kanade.tachiyomi.source.isNovelSource
+import eu.kanade.tachiyomi.source.nameWithTypeTag
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import kotlinx.coroutines.Dispatchers
@@ -2205,84 +2210,147 @@ private fun BaseSourcePickerDialog(
     data class SourceEntry(
         val sourceId: Long,
         val sourceName: String,
+        val displayName: String,
         val baseUrl: String,
-        val extensionName: String,
         val lang: String,
+        val isNovel: Boolean,
     )
 
-    val novelSources = remember(installedExtensions, jsSources) {
-        val apkSources = installedExtensions.flatMap { ext ->
-            ext.sources.mapNotNull { source ->
-                val httpSource = source as? HttpSource ?: return@mapNotNull null
+    // Built off the main thread: every extension resolves its own baseUrl, and extensions that read
+    // it from their preferences hit a separate SharedPreferences file each, so on a large install
+    // the dialog used to sit blank for seconds before its first frame.
+    val allSources by produceState<List<SourceEntry>?>(null, installedExtensions, jsSources) {
+        value = withContext(Dispatchers.IO) {
+            val apkSources = installedExtensions.flatMap { ext ->
+                ext.sources.mapNotNull { source ->
+                    val httpSource = source as? HttpSource ?: return@mapNotNull null
+                    SourceEntry(
+                        sourceId = httpSource.id,
+                        sourceName = httpSource.name,
+                        displayName = httpSource.nameWithTypeTag(),
+                        baseUrl = httpSource.baseUrl,
+                        lang = httpSource.lang,
+                        isNovel = httpSource.isNovelSource(),
+                    )
+                }
+            }
+
+            val jsEntries = jsSources.mapNotNull { source ->
+                val jsSource = source as? eu.kanade.tachiyomi.jsplugin.source.JsSource ?: return@mapNotNull null
                 SourceEntry(
-                    sourceId = httpSource.id,
-                    sourceName = httpSource.name,
-                    baseUrl = httpSource.baseUrl,
-                    extensionName = ext.name,
-                    lang = httpSource.lang,
+                    sourceId = jsSource.id,
+                    sourceName = jsSource.name,
+                    displayName = jsSource.nameWithTypeTag(),
+                    baseUrl = jsSource.baseUrl,
+                    lang = jsSource.lang,
+                    isNovel = jsSource.isNovelSource(),
                 )
             }
-        }
 
-        val jsEntries = jsSources.mapNotNull { source ->
-            val jsSource = source as? eu.kanade.tachiyomi.jsplugin.source.JsSource ?: return@mapNotNull null
-            SourceEntry(
-                sourceId = jsSource.id,
-                sourceName = jsSource.name,
-                baseUrl = jsSource.baseUrl,
-                extensionName = "[JS] ${jsSource.name}",
-                lang = jsSource.lang,
+            (apkSources + jsEntries).sortedWith(
+                compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayName },
             )
         }
-
-        (apkSources + jsEntries).sortedBy { it.extensionName }
     }
+
+    // Novel and manga extensions are listed together and often share a site name, so the list is
+    // unreadable without a split. Opens on whichever kind the install actually has.
+    var showNovel by remember { mutableStateOf<Boolean?>(null) }
+    val novelCount = allSources?.count { it.isNovel } ?: 0
+    val mangaCount = (allSources?.size ?: 0) - novelCount
+    val novelSelected = showNovel ?: (novelCount > 0 || mangaCount == 0)
+    val entries = allSources?.filter { it.isNovel == novelSelected }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(TDMR.strings.custom_source_base_on_extension)) },
         text = {
-            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                if (novelSources.isEmpty()) {
+            when {
+                entries == null -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 24.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+                novelCount == 0 && mangaCount == 0 -> {
                     Text(
                         text = stringResource(TDMR.strings.custom_source_no_extensions),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                } else {
-                    Text(
-                        text = stringResource(TDMR.strings.custom_source_pick_extension_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                else -> {
+                    Column {
+                        Text(
+                            text = stringResource(TDMR.strings.custom_source_pick_extension_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                    novelSources.forEach { entry ->
-                        val isSelected = selectedSourceId == entry.sourceId
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceVariant
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = !novelSelected,
+                                onClick = { showNovel = false },
+                                label = {
+                                    Text(
+                                        stringResource(
+                                            TDMR.strings.custom_source_kind_manga_count,
+                                            mangaCount,
+                                        ),
+                                    )
                                 },
-                            ),
-                            onClick = { onPick(entry.sourceName, entry.sourceId, entry.baseUrl, entry.lang) },
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text(
-                                    text = entry.sourceName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                                Text(
-                                    text = "${entry.extensionName} · ${entry.lang} · ${entry.baseUrl}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                            )
+                            FilterChip(
+                                selected = novelSelected,
+                                onClick = { showNovel = true },
+                                label = {
+                                    Text(
+                                        stringResource(
+                                            TDMR.strings.custom_source_kind_novel_count,
+                                            novelCount,
+                                        ),
+                                    )
+                                },
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        LazyColumn {
+                            items(entries) { entry ->
+                                val isSelected = selectedSourceId == entry.sourceId
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isSelected) {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant
+                                        },
+                                    ),
+                                    onClick = {
+                                        onPick(entry.sourceName, entry.sourceId, entry.baseUrl, entry.lang)
+                                    },
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text(
+                                            text = entry.displayName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        Text(
+                                            text = "${entry.lang} · ${entry.baseUrl}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -2290,11 +2358,6 @@ private fun BaseSourcePickerDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(MR.strings.action_cancel))
-            }
-        },
-        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(stringResource(MR.strings.action_cancel))
             }

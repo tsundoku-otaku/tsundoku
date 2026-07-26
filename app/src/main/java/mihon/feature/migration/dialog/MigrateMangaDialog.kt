@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -76,6 +77,14 @@ internal fun Screen.MigrateMangaDialog(
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
+                // Both entries can be in the library, in which case "Migrate" drops [current] -
+                // spell out the direction rather than leaving the user to guess it.
+                Text(
+                    text = "${current.title}  →  ${target.title}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = MaterialTheme.padding.small),
+                )
                 state.applicableFlags.fastForEach { flag ->
                     LabeledCheckbox(
                         label = stringResource(flag.getLabel()),

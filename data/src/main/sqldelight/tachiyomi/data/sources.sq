@@ -4,7 +4,8 @@ CREATE TABLE sources(
     _id INTEGER NOT NULL PRIMARY KEY,
     lang TEXT NOT NULL,
     name TEXT NOT NULL,
-    is_novel INTEGER AS Boolean NOT NULL DEFAULT 0
+    is_novel INTEGER AS Boolean NOT NULL DEFAULT 0,
+    is_js INTEGER AS Boolean NOT NULL DEFAULT 0
 );
 
 findAll:
@@ -17,12 +18,13 @@ FROM sources
 WHERE _id = :id;
 
 upsert:
-INSERT INTO sources(_id, lang, name, is_novel)
-VALUES (:id, :lang, :name, :isNovel)
+INSERT INTO sources(_id, lang, name, is_novel, is_js)
+VALUES (:id, :lang, :name, :isNovel, :isJs)
 ON CONFLICT(_id)
 DO UPDATE
 SET
     lang = :lang,
     name = :name,
-    is_novel = :isNovel
+    is_novel = :isNovel,
+    is_js = :isJs
 WHERE _id = :id;

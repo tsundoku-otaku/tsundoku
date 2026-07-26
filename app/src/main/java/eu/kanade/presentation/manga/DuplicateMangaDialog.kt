@@ -85,6 +85,7 @@ fun DuplicateMangaDialog(
     onOpenManga: (manga: Manga) -> Unit,
     onMigrate: (manga: Manga) -> Unit,
     modifier: Modifier = Modifier,
+    canAddAnyway: Boolean = true,
 ) {
     val sourceManager = remember { Injekt.get<SourceManager>() }
     val minHeight = LocalPreferenceMinHeight.current
@@ -135,18 +136,20 @@ fun DuplicateMangaDialog(
                 }
             }
 
-            Column(modifier = horizontalPaddingModifier) {
-                HorizontalDivider()
+            if (canAddAnyway) {
+                Column(modifier = horizontalPaddingModifier) {
+                    HorizontalDivider()
 
-                TextPreferenceWidget(
-                    title = stringResource(MR.strings.action_add_anyway),
-                    icon = Icons.Outlined.Add,
-                    onPreferenceClick = {
-                        onDismissRequest()
-                        onConfirm()
-                    },
-                    modifier = Modifier.clip(CircleShape),
-                )
+                    TextPreferenceWidget(
+                        title = stringResource(MR.strings.action_add_anyway),
+                        icon = Icons.Outlined.Add,
+                        onPreferenceClick = {
+                            onDismissRequest()
+                            onConfirm()
+                        },
+                        modifier = Modifier.clip(CircleShape),
+                    )
+                }
             }
 
             OutlinedButton(

@@ -207,6 +207,7 @@ class LNReaderBackupImporter(
                                     lang = "unknown",
                                     name = "$pluginId (Missing)",
                                     isNovel = true,
+                                    isJs = true,
                                 )
                                 pluginIdToSourceId[pluginId] = stubSourceId
                                 logcat(LogPriority.INFO) {

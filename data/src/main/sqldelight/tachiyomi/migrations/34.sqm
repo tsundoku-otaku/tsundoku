@@ -1,0 +1,8 @@
+-- Stubbed sources need to know whether they are a JS plugin, not just whether they are a novel
+-- source: novel sources also ship as Kotlin extensions, and those were rendering as "Name (EN) (JS)"
+-- in update error reports and on-disk directory names.
+ALTER TABLE sources ADD COLUMN is_js INTEGER NOT NULL DEFAULT 0;
+
+-- Existing rows keep the string they have been rendering with; sources correct themselves on the
+-- next registration, when the loaded source reports how it actually renders.
+UPDATE sources SET is_js = is_novel;

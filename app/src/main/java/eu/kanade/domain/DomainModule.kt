@@ -131,7 +131,7 @@ class DomainModule : InjektModule {
         addFactory { DeleteCategory(get(), get(), get()) }
 
         addSingletonFactory<MangaRepository> { MangaRepositoryImpl(get()) }
-        addFactory { GetDuplicateLibraryManga(get()) }
+        addFactory { GetDuplicateLibraryManga(get(), get()) }
         addFactory { FindDuplicateNovels(get()) }
         addFactory { SearchMangaMetadata(get()) }
         addFactory { GetFavorites(get()) }
