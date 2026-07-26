@@ -330,18 +330,42 @@ class DownloadManager(
      */
     fun deleteManga(manga: Manga, source: Source, removeQueued: Boolean = true) {
         launchIO {
-            if (removeQueued) {
-                downloader.removeFromQueue(manga)
-            }
-            provider.findMangaDir(manga.title, source)?.delete()
-            cache.removeManga(manga)
+            deleteMangas(listOf(manga), source, removeQueued)
+        }
+    }
 
-            // Delete source directory if empty
-            val sourceDir = provider.findSourceDir(source)
-            if (sourceDir?.listFiles()?.isEmpty() == true) {
-                sourceDir.delete()
-                cache.removeSource(source)
+    /**
+     * Deletes the directories of several downloaded manga from the same source. Manga belonging to
+     * another source are ignored.
+     */
+    suspend fun deleteMangas(mangas: List<Manga>, source: Source, removeQueued: Boolean = true) {
+        val (fromSource, otherSources) = mangas.partition { it.source == source.id }
+        if (otherSources.isNotEmpty()) {
+            logcat(LogPriority.ERROR) {
+                "Skipped ${otherSources.size} manga not belonging to source ${source.id}"
             }
+        }
+        if (fromSource.isEmpty()) return
+        if (removeQueued) {
+            downloader.removeMangasFromQueue(fromSource)
+        }
+        val sourceDir = provider.findSourceDir(source)
+        val dirsByName = sourceDir?.listFiles().orEmpty()
+            .mapNotNull { file -> file.name?.let { it to file } }
+            .toMap()
+        val deleted = fromSource.filter { manga ->
+            try {
+                dirsByName[provider.getMangaDirName(manga.title)]?.delete()
+                true
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to delete download folder for ${manga.title}" }
+                false
+            }
+        }
+        cache.removeMangas(deleted)
+        if (sourceDir?.listFiles()?.isEmpty() == true) {
+            sourceDir.delete()
+            cache.removeSource(source)
         }
     }
 

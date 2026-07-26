@@ -1028,6 +1028,11 @@ class Downloader(
         removeFromQueueIf { it.mangaId == manga.id }
     }
 
+    fun removeMangasFromQueue(mangas: List<Manga>) {
+        val mangaIds = mangas.mapTo(HashSet()) { it.id }
+        removeFromQueueIf { it.mangaId in mangaIds }
+    }
+
     private fun internalClearQueue() {
         _queueState.update {
             it.forEach { download ->

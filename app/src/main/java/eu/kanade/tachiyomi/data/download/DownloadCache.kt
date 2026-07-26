@@ -301,11 +301,21 @@ class DownloadCache(
      * @param manga the manga to remove.
      */
     suspend fun removeManga(manga: Manga) {
+        removeMangas(listOf(manga))
+    }
+
+    /**
+     * Removes several deleted manga from this cache, notifying observers once for the batch
+     */
+    suspend fun removeMangas(mangas: List<Manga>) {
+        if (mangas.isEmpty()) return
         rootDownloadsDirMutex.withLock {
-            val sourceDir = rootDownloadsDir.sourceDirs[manga.source] ?: return
-            val mangaDirName = provider.getMangaDirName(manga.title)
-            if (sourceDir.mangaDirs.containsKey(mangaDirName)) {
-                sourceDir.mangaDirs -= mangaDirName
+            mangas.forEach { manga ->
+                val sourceDir = rootDownloadsDir.sourceDirs[manga.source] ?: return@forEach
+                val mangaDirName = provider.getMangaDirName(manga.title)
+                if (sourceDir.mangaDirs.containsKey(mangaDirName)) {
+                    sourceDir.mangaDirs -= mangaDirName
+                }
             }
         }
 

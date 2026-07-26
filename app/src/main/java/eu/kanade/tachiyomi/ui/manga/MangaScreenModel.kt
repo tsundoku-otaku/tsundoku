@@ -240,6 +240,15 @@ class MangaScreenModel(
                 }
         }
 
+        screenModelScope.launchIO {
+            getCategories.subscribe(mangaId)
+                .flowWithLifecycle(lifecycle)
+                .distinctUntilChanged()
+                .collectLatest { categories ->
+                    updateSuccessState { it.copy(categories = categories) }
+                }
+        }
+
         observeDownloads()
 
         screenModelScope.launchIO {
@@ -247,6 +256,7 @@ class MangaScreenModel(
             val chaptersDeferred = async { getMangaAndChapters.awaitChapters(mangaId, applyScanlatorFilter = true) }
             val availableScanlatorsDeferred = async { getAvailableScanlators.await(mangaId) }
             val excludedScanlatorsDeferred = async { getExcludedScanlators.await(mangaId) }
+            val categoriesDeferred = async { getCategories.await(mangaId) }
 
             val manga = mangaDeferred.await()
             val chapters = chaptersDeferred.await()
@@ -270,6 +280,9 @@ class MangaScreenModel(
                     chapters = chapterListItems,
                     availableScanlators = availableScanlatorsDeferred.await(),
                     excludedScanlators = excludedScanlatorsDeferred.await(),
+                    // Read here as well as subscribed: the subscription's first emission lands
+                    // before this state exists, and updateSuccessState drops it.
+                    categories = categoriesDeferred.await(),
                     isRefreshingData = needRefreshInfo || needRefreshChapter,
                     dialog = null,
                     hideMissingChapters = libraryPreferences.hideMissingChapters.get(),
@@ -292,12 +305,6 @@ class MangaScreenModel(
 
             // Initial loading finished
             updateSuccessState { it.copy(isRefreshingData = false) }
-
-            // Load categories if in library (similarNovels loaded on demand when dialog is shown)
-            if (manga.favorite) {
-                val categories = getCategories.await(manga.id)
-                updateSuccessState { it.copy(categories = categories) }
-            }
         }
     }
 

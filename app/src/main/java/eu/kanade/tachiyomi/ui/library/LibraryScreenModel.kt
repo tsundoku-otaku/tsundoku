@@ -1028,12 +1028,7 @@ class LibraryScreenModel(
             }
 
             if (deleteChapters) {
-                mangas.forEach { manga ->
-                    val source = sourceManager.get(manga.source) as? HttpSource
-                    if (source != null) {
-                        downloadManager.deleteManga(manga, source)
-                    }
-                }
+                deleteDownloadsBySource(mangas)
             }
 
             if (deleteTranslations) {
@@ -1058,6 +1053,13 @@ class LibraryScreenModel(
             if (!deleteFromLibrary && (deleteChapters || deleteTranslations)) {
                 getLibraryManga.notifyChanged()
             }
+        }
+    }
+
+    private suspend fun deleteDownloadsBySource(mangas: List<Manga>) {
+        mangas.groupBy { it.source }.forEach { (sourceId, sourceMangas) ->
+            val source = sourceManager.get(sourceId) as? HttpSource ?: return@forEach
+            downloadManager.deleteMangas(sourceMangas, source)
         }
     }
 
@@ -1092,10 +1094,7 @@ class LibraryScreenModel(
                 }
 
                 if (deleteChapters) {
-                    mangas.forEach { manga ->
-                        val source = sourceManager.get(manga.source) as? HttpSource ?: return@forEach
-                        downloadManager.deleteManga(manga, source)
-                    }
+                    deleteDownloadsBySource(mangas)
                 }
 
                 if (deleteTranslations) {
