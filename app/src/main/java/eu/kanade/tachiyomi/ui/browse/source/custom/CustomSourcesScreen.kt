@@ -987,6 +987,9 @@ class CustomSourceEditorScreen(
         var searchNextPageSelector by remember {
             mutableStateOf(initialConfig?.selectors?.search?.nextPage ?: "")
         }
+        var popularPagedUrl by remember { mutableStateOf(initialConfig?.popularPagedUrl ?: "") }
+        var latestPagedUrl by remember { mutableStateOf(initialConfig?.latestPagedUrl ?: "") }
+        var searchPagedUrl by remember { mutableStateOf(initialConfig?.searchPagedUrl ?: "") }
         var detailsTitleSelector by remember {
             mutableStateOf(initialConfig?.selectors?.details?.title ?: "")
         }
@@ -1033,6 +1036,9 @@ class CustomSourceEditorScreen(
         }
         var chapterIndexLinkSelector by remember {
             mutableStateOf(initialConfig?.selectors?.chapters?.indexLinkSelector ?: "")
+        }
+        var chapterPagedUrlPattern by remember {
+            mutableStateOf(initialConfig?.selectors?.chapters?.pagedUrlPattern ?: "")
         }
         var chapterUrlPattern by remember {
             mutableStateOf(initialConfig?.selectors?.chapters?.urlPattern ?: "")
@@ -1479,6 +1485,17 @@ class CustomSourceEditorScreen(
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
                         )
+                        OutlinedTextField(
+                            value = popularPagedUrl,
+                            onValueChange = { popularPagedUrl = it },
+                            label = { Text(stringResource(TDMR.strings.custom_source_paged_url_popular)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text(stringResource(TDMR.strings.custom_source_paged_url_hint)) },
+                            supportingText = {
+                                Text(stringResource(TDMR.strings.custom_source_paged_url_summary))
+                            },
+                        )
                     }
                     if (features.hasLatest && features.latestPagination) {
                         OutlinedTextField(
@@ -1495,6 +1512,17 @@ class CustomSourceEditorScreen(
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
                         )
+                        OutlinedTextField(
+                            value = latestPagedUrl,
+                            onValueChange = { latestPagedUrl = it },
+                            label = { Text(stringResource(TDMR.strings.custom_source_paged_url_latest)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text(stringResource(TDMR.strings.custom_source_paged_url_hint)) },
+                            supportingText = {
+                                Text(stringResource(TDMR.strings.custom_source_paged_url_summary))
+                            },
+                        )
                     }
                     if (features.hasSearch && features.searchPagination) {
                         OutlinedTextField(
@@ -1510,6 +1538,17 @@ class CustomSourceEditorScreen(
                             },
                             modifier = Modifier.fillMaxWidth(),
                             placeholder = { Text(stringResource(TDMR.strings.custom_source_pagination_selector_hint)) },
+                        )
+                        OutlinedTextField(
+                            value = searchPagedUrl,
+                            onValueChange = { searchPagedUrl = it },
+                            label = { Text(stringResource(TDMR.strings.custom_source_paged_url_search)) },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            placeholder = { Text(stringResource(TDMR.strings.custom_source_paged_url_search_hint)) },
+                            supportingText = {
+                                Text(stringResource(TDMR.strings.custom_source_paged_url_search_summary))
+                            },
                         )
                     }
 
@@ -1743,6 +1782,19 @@ class CustomSourceEditorScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                            OutlinedTextField(
+                                value = chapterPagedUrlPattern,
+                                onValueChange = { chapterPagedUrlPattern = it },
+                                label = {
+                                    Text(stringResource(TDMR.strings.custom_source_chapter_paged_url))
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                placeholder = { Text("{novelUrl}?page={page}") },
+                                supportingText = {
+                                    Text(stringResource(TDMR.strings.custom_source_chapter_paged_url_summary))
+                                },
+                            )
                         }
                         if (features.chapterListSeparatePage) {
                             OutlinedTextField(
@@ -1858,12 +1910,31 @@ class CustomSourceEditorScreen(
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
+                val missingPageError = stringResource(TDMR.strings.custom_source_paged_url_needs_page)
+                val missingQueryError = stringResource(TDMR.strings.custom_source_paged_url_search_needs_query)
                 @Suppress("ktlint:standard:max-line-length")
                 Button(
                     onClick = {
                         scope.launch {
                             isSaving = true
                             errorMessage = null
+
+                            val pageTemplates = listOf(
+                                popularPagedUrl,
+                                latestPagedUrl,
+                                searchPagedUrl,
+                                chapterPagedUrlPattern,
+                            )
+                            if (pageTemplates.any { it.isNotBlank() && !it.contains("{page}") }) {
+                                errorMessage = missingPageError
+                                isSaving = false
+                                return@launch
+                            }
+                            if (searchPagedUrl.isNotBlank() && !searchPagedUrl.contains("{query}")) {
+                                errorMessage = missingQueryError
+                                isSaving = false
+                                return@launch
+                            }
 
                             val config = buildConfig(
                                 existing = initialConfig,
@@ -1875,6 +1946,9 @@ class CustomSourceEditorScreen(
                                 popularNextPageSelector = popularNextPageSelector,
                                 latestNextPageSelector = latestNextPageSelector,
                                 searchNextPageSelector = searchNextPageSelector,
+                                popularPagedUrl = popularPagedUrl,
+                                latestPagedUrl = latestPagedUrl,
+                                searchPagedUrl = searchPagedUrl,
                                 detailsTitleSelector = detailsTitleSelector,
                                 detailsDescriptionSelector = detailsDescriptionSelector,
                                 detailsCoverSelector = detailsCoverSelector,
@@ -1888,6 +1962,7 @@ class CustomSourceEditorScreen(
                                 chapterNameSelector = chapterNameSelector,
                                 chapterDateSelector = chapterDateSelector,
                                 chapterNextPageSelector = chapterNextPageSelector,
+                                chapterPagedUrlPattern = chapterPagedUrlPattern,
                                 chapterIndexLinkSelector = chapterIndexLinkSelector,
                                 chapterUrlPattern = chapterUrlPattern,
                                 chapterCountSelector = chapterCountSelector,
@@ -2019,6 +2094,9 @@ class CustomSourceEditorScreen(
         popularNextPageSelector: String,
         latestNextPageSelector: String,
         searchNextPageSelector: String,
+        popularPagedUrl: String,
+        latestPagedUrl: String,
+        searchPagedUrl: String,
         detailsTitleSelector: String,
         detailsDescriptionSelector: String,
         detailsCoverSelector: String,
@@ -2032,6 +2110,7 @@ class CustomSourceEditorScreen(
         chapterNameSelector: String,
         chapterDateSelector: String,
         chapterNextPageSelector: String,
+        chapterPagedUrlPattern: String,
         chapterIndexLinkSelector: String,
         chapterUrlPattern: String,
         chapterCountSelector: String,
@@ -2059,9 +2138,13 @@ class CustomSourceEditorScreen(
         val cardTitle = popularTitleSelector.ifBlank { null }
         val cardCover = popularCoverSelector.ifBlank { null }
         val generate = features.chapterGenerateFromPattern
+        // No dedicated link input: keep the one the config already has (wizard-picked or imported),
+        // and fall back to the title selector the way the wizard does for a fresh source.
+        val cardLink = existing?.selectors?.popular?.link ?: cardTitle
         val selectors = eu.kanade.tachiyomi.source.custom.SourceSelectors(
             popular = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
                 list = if (features.hasPopular) popularListSelector else "",
+                link = if (features.hasPopular) cardLink else null,
                 title = if (features.hasPopular) cardTitle else null,
                 cover = if (features.hasPopular) cardCover else null,
                 nextPage = if (features.hasPopular && features.popularPagination) {
@@ -2073,6 +2156,7 @@ class CustomSourceEditorScreen(
             latest = if (features.hasLatest) {
                 eu.kanade.tachiyomi.source.custom.MangaListSelectors(
                     list = popularListSelector,
+                    link = existing?.selectors?.latest?.link ?: cardLink,
                     title = cardTitle,
                     cover = cardCover,
                     nextPage = if (features.latestPagination) latestNextPageSelector.ifBlank { null } else null,
@@ -2083,6 +2167,7 @@ class CustomSourceEditorScreen(
             search = if (features.hasSearch) {
                 eu.kanade.tachiyomi.source.custom.MangaListSelectors(
                     list = popularListSelector,
+                    link = existing?.selectors?.search?.link ?: cardLink,
                     title = cardTitle,
                     cover = cardCover,
                     nextPage = if (features.searchPagination) searchNextPageSelector.ifBlank { null } else null,
@@ -2109,10 +2194,8 @@ class CustomSourceEditorScreen(
                 } else {
                     null
                 },
-                // No dedicated input; preserve the wizard-derived numbered-pagination template only
-                // while chapter-list pagination stays enabled.
                 pagedUrlPattern = if (!generate && features.chapterListPagination) {
-                    existing?.selectors?.chapters?.pagedUrlPattern
+                    chapterPagedUrlPattern.ifBlank { null }
                 } else {
                     null
                 },
@@ -2153,11 +2236,21 @@ class CustomSourceEditorScreen(
             popularUrl = if (features.hasPopular) popularUrl else "",
             latestUrl = if (features.hasLatest) latestUrl.ifBlank { null } else null,
             searchUrl = if (features.hasSearch) searchUrl else "",
-            // Per-section paged URLs are wizard-derived (no field here); keep them only while the
-            // matching section + pagination toggle are both on.
-            popularPagedUrl = if (features.hasPopular && features.popularPagination) base.popularPagedUrl else null,
-            latestPagedUrl = if (features.hasLatest && features.latestPagination) base.latestPagedUrl else null,
-            searchPagedUrl = if (features.hasSearch && features.searchPagination) base.searchPagedUrl else null,
+            popularPagedUrl = if (features.hasPopular && features.popularPagination) {
+                popularPagedUrl.ifBlank { null }
+            } else {
+                null
+            },
+            latestPagedUrl = if (features.hasLatest && features.latestPagination) {
+                latestPagedUrl.ifBlank { null }
+            } else {
+                null
+            },
+            searchPagedUrl = if (features.hasSearch && features.searchPagination) {
+                searchPagedUrl.ifBlank { null }
+            } else {
+                null
+            },
             statusMapping = parseStatusMapping(statusMappingText),
             dateFormat = dateFormat.ifBlank { null },
             headers = parseHeaders(headersText),

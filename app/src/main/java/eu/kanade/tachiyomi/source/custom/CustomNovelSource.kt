@@ -324,6 +324,10 @@ internal fun buildPagedUrlTemplate(template: String, baseUrl: String, page: Int)
         .trimEnd('/', '?', '&')
 }
 
+// A page-2+ template without {page} builds the same url for every page, so treating it as pageable
+// would make browse re-request page 1 until it hits the end of the list it never reaches.
+internal fun String?.isPageTemplate(): Boolean = this?.contains("{page}") == true
+
 internal fun buildPagedSearchUrlTemplate(template: String, baseUrl: String, query: String, page: Int): String {
     return template
         .replace("{baseUrl}", baseUrl)
@@ -764,7 +768,7 @@ class CustomNovelSource(
 
     override fun popularMangaParse(response: Response): MangasPage {
         val document = response.asJsoup()
-        val pageable = config.popularPagedUrl != null || config.popularUrl.contains("{page}")
+        val pageable = config.popularPagedUrl.isPageTemplate() || config.popularUrl.contains("{page}")
         return parseMangaList(document, config.selectors.popular, pageable)
     }
 
@@ -778,7 +782,7 @@ class CustomNovelSource(
 
     override fun latestUpdatesParse(response: Response): MangasPage {
         val document = response.asJsoup()
-        val pageable = config.latestPagedUrl != null || config.popularPagedUrl != null ||
+        val pageable = config.latestPagedUrl.isPageTemplate() || config.popularPagedUrl.isPageTemplate() ||
             (config.latestUrl ?: config.popularUrl).contains("{page}")
         return parseMangaList(document, config.selectors.latest ?: config.selectors.popular, pageable)
     }
@@ -801,7 +805,7 @@ class CustomNovelSource(
 
     override fun searchMangaParse(response: Response): MangasPage {
         val document = response.asJsoup()
-        val pageable = config.searchPagedUrl != null || config.searchUrl.contains("{page}")
+        val pageable = config.searchPagedUrl.isPageTemplate() || config.searchUrl.contains("{page}")
         return parseMangaList(document, config.selectors.search ?: config.selectors.popular, pageable)
     }
 

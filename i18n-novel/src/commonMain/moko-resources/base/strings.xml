@@ -652,6 +652,17 @@
     <string name="custom_source_chapter_name_selector">Chapter name selector</string>
     <string name="custom_source_chapter_date_selector">Chapter date selector</string>
     <string name="custom_source_chapter_pagination_selector">Chapter list pagination selector</string>
+    <string name="custom_source_paged_url_popular">Popular page 2+ URL</string>
+    <string name="custom_source_paged_url_latest">Latest page 2+ URL</string>
+    <string name="custom_source_paged_url_search">Search page 2+ URL</string>
+    <string name="custom_source_paged_url_hint">https://example.com/page/{page}</string>
+    <string name="custom_source_paged_url_summary">Optional, must contain {page}. For sites where page 2 onwards uses a different URL than page 1. Leave empty to follow the pagination selector instead.</string>
+    <string name="custom_source_paged_url_search_hint">https://example.com/?s={query}&amp;page={page}</string>
+    <string name="custom_source_paged_url_search_summary">Optional, must contain {page} and {query}. For sites where page 2 onwards uses a different URL than page 1. Leave empty to follow the pagination selector instead.</string>
+    <string name="custom_source_paged_url_needs_page">Page URL templates must contain {page}</string>
+    <string name="custom_source_paged_url_search_needs_query">The search page 2+ URL must contain {query}</string>
+    <string name="custom_source_chapter_paged_url">Chapter list page URL</string>
+    <string name="custom_source_chapter_paged_url_summary">Optional, use {novelUrl} and {page}. Preferred over the pagination selector when the site numbers its chapter pages.</string>
     <string name="custom_source_chapter_index_selector">Chapter list link selector (separate page)</string>
     <string name="custom_source_chapter_url_pattern">Chapter URL pattern (use {n})</string>
     <string name="custom_source_chapter_count_selector">Chapter count selector (total)</string>
