@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FileUpload
@@ -68,6 +69,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.tachiyomi.extension.ExtensionManager
 import eu.kanade.tachiyomi.jsplugin.JsPluginManager
+import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.source.custom.CustomSourceConfig
 import eu.kanade.tachiyomi.source.custom.SourceTestResult
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -101,6 +103,8 @@ class CustomSourcesScreen : Screen {
 
         var showCreateDialog by remember { mutableStateOf(false) }
         var sourceToDelete by remember { mutableStateOf<Long?>(null) }
+        var sourceToDuplicate by remember { mutableStateOf<CustomNovelSource?>(null) }
+        var duplicateError by remember { mutableStateOf<String?>(null) }
         var showImportDialog by remember { mutableStateOf(false) }
         var importJsonText by remember { mutableStateOf("") }
         var importError by remember { mutableStateOf<String?>(null) }
@@ -219,6 +223,10 @@ class CustomSourcesScreen : Screen {
                                 navigator.push(CustomSourceTestScreen(source.id))
                             },
                             onDelete = { sourceToDelete = source.id },
+                            onDuplicate = {
+                                duplicateError = null
+                                sourceToDuplicate = source
+                            },
                             onExport = {
                                 // Export and share
                                 scope.launch {
@@ -307,6 +315,31 @@ class CustomSourcesScreen : Screen {
                         ),
                     )
                     showCreateDialog = false
+                },
+            )
+        }
+
+        sourceToDuplicate?.let { source ->
+            DuplicateSourceDialog(
+                originalName = source.name,
+                originalBaseUrl = source.baseUrl,
+                error = duplicateError,
+                onDismiss = { sourceToDuplicate = null },
+                onDuplicate = { newName, newBaseUrl ->
+                    scope.launch {
+                        screenModel.duplicateSource(source.id, newName, newBaseUrl).fold(
+                            onSuccess = {
+                                sourceToDuplicate = null
+                                snackbarHostState.showSnackbar(
+                                    context.stringResource(TDMR.strings.custom_source_duplicated, newName),
+                                )
+                            },
+                            onFailure = { e ->
+                                duplicateError = e.message
+                                    ?: context.stringResource(TDMR.strings.custom_source_duplicate_failed, "")
+                            },
+                        )
+                    }
                 },
             )
         }
@@ -556,6 +589,76 @@ private fun EmptyState(
 }
 
 @Composable
+private fun DuplicateSourceDialog(
+    originalName: String,
+    originalBaseUrl: String,
+    error: String?,
+    onDismiss: () -> Unit,
+    onDuplicate: (name: String, baseUrl: String) -> Unit,
+) {
+    val defaultName = stringResource(TDMR.strings.custom_source_duplicate_name_format, originalName)
+    var name by remember { mutableStateOf(defaultName) }
+    var baseUrl by remember { mutableStateOf(originalBaseUrl) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(TDMR.strings.custom_source_duplicate_title)) },
+        text = {
+            Column {
+                Text(
+                    text = stringResource(TDMR.strings.custom_source_duplicate_message, originalName),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(TDMR.strings.custom_source_source_name)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = baseUrl,
+                    onValueChange = { baseUrl = it },
+                    label = { Text(stringResource(TDMR.strings.custom_source_base_url)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("https://example.com") },
+                )
+
+                if (error != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onDuplicate(name, baseUrl) },
+                enabled = name.isNotBlank() && baseUrl.isNotBlank(),
+            ) {
+                Text(stringResource(TDMR.strings.custom_sources_duplicate))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(MR.strings.action_cancel))
+            }
+        },
+    )
+}
+
+@Composable
 private fun CustomSourceCard(
     name: String,
     baseUrl: String,
@@ -564,6 +667,7 @@ private fun CustomSourceCard(
     onTest: () -> Unit,
     onDelete: () -> Unit,
     onExport: () -> Unit,
+    onDuplicate: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -608,6 +712,12 @@ private fun CustomSourceCard(
                 }
                 IconButton(onClick = onEdit) {
                     Icon(Icons.Outlined.Edit, contentDescription = stringResource(MR.strings.action_edit))
+                }
+                IconButton(onClick = onDuplicate) {
+                    Icon(
+                        Icons.Outlined.ContentCopy,
+                        contentDescription = stringResource(TDMR.strings.custom_sources_duplicate),
+                    )
                 }
                 IconButton(onClick = onExport) {
                     Icon(Icons.Outlined.Share, contentDescription = stringResource(TDMR.strings.custom_sources_export))

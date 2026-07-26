@@ -96,6 +96,49 @@ class CustomSourceManager(
     }
 
     /**
+     * Copies [sourceId]'s config under a new name and site. Every url in it that pointed at the old
+     * site is repointed at the new one, so cloning a source for a mirror is a two-field edit rather
+     * than a re-entry of every template. Runs through [createSource], so the duplicate name and
+     * duplicate base url checks still apply.
+     */
+    fun duplicateSource(sourceId: Long, newName: String, newBaseUrl: String): Result<CustomNovelSource> {
+        val config = _customSources.value.find { it.id == sourceId }?.config
+            ?: return Result.failure(
+                IllegalArgumentException(context.stringResource(TDMR.strings.custom_source_duplicate_missing)),
+            )
+        val oldBase = config.baseUrl.trim().trimEnd('/')
+        val newBase = newBaseUrl.trim().trimEnd('/')
+
+        fun rebase(url: String?): String? = when {
+            url.isNullOrBlank() || oldBase.isBlank() -> url
+            url.startsWith(oldBase, ignoreCase = true) -> newBase + url.substring(oldBase.length)
+            else -> url
+        }
+
+        val chapters = config.selectors.chapters
+        return createSource(
+            config.copy(
+                id = null,
+                name = newName.trim(),
+                baseUrl = newBase,
+                popularUrl = rebase(config.popularUrl).orEmpty(),
+                latestUrl = rebase(config.latestUrl),
+                searchUrl = rebase(config.searchUrl).orEmpty(),
+                popularPagedUrl = rebase(config.popularPagedUrl),
+                latestPagedUrl = rebase(config.latestPagedUrl),
+                searchPagedUrl = rebase(config.searchPagedUrl),
+                sampleNovelUrl = rebase(config.sampleNovelUrl),
+                selectors = config.selectors.copy(
+                    chapters = chapters.copy(
+                        pagedUrlPattern = rebase(chapters.pagedUrlPattern),
+                        urlPattern = rebase(chapters.urlPattern),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    /**
      * Delete a custom source
      */
     fun deleteSource(sourceId: Long): Boolean {

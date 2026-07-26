@@ -106,6 +106,16 @@ class CustomSourcesScreenModel(
     }
 
     /**
+     * Copy an existing custom source under a new name and site
+     */
+    suspend fun duplicateSource(sourceId: Long, newName: String, newBaseUrl: String): Result<Long> {
+        return withContext(Dispatchers.IO) {
+            customSourceManager.duplicateSource(sourceId, newName, newBaseUrl)
+                .map { it.id }
+        }
+    }
+
+    /**
      * Delete a custom source
      */
     fun deleteSource(sourceId: Long) {

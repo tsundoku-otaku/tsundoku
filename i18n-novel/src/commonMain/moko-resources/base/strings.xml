@@ -707,6 +707,15 @@
     <string name="custom_source_load_failed">Failed to load sources: %s</string>
     <string name="custom_source_delete_failed">Failed to delete source: %s</string>
 
+    <!-- Custom Source - Duplicate -->
+    <string name="custom_sources_duplicate">Duplicate</string>
+    <string name="custom_source_duplicate_title">Duplicate source</string>
+    <string name="custom_source_duplicate_message">Copies every setting from \"%1$s\". Urls pointing at the old site are repointed at the new one.</string>
+    <string name="custom_source_duplicate_name_format">%1$s copy</string>
+    <string name="custom_source_duplicated">Duplicated as \"%1$s\"</string>
+    <string name="custom_source_duplicate_failed">Duplicate failed: %s</string>
+    <string name="custom_source_duplicate_missing">Source no longer exists</string>
+
     <!-- Custom Source - Test screen -->
     <string name="custom_source_test_title">Test Source</string>
     <string name="custom_source_testing">Testing source…</string>
