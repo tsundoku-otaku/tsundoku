@@ -30,6 +30,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - A ton of Arabic translations [@OtakuArab](https://github.com/OtakuArab) [#327](https://github.com/tsundoku-otaku/tsundoku/pull/327)
 - Alt titles are now searchable [@mrissaoussama](https://github.com/mrissaoussama) [#337](https://github.com/tsundoku-otaku/tsundoku/pull/337)
 - Novel download queue improvements to prevent errors [@mrissaoussama](https://github.com/mrissaoussama) [#284](https://github.com/tsundoku-otaku/tsundoku/pull/284)
+- Browse performance improvements [@mrissaoussama](https://github.com/mrissaoussama) [#354](https://github.com/tsundoku-otaku/tsundoku/pull/354)
 - Reader status bar reordering + more [@mrissaoussama](https://github.com/mrissaoussama) [#318](https://github.com/tsundoku-otaku/tsundoku/pull/318)
 - Some great improvements to custom sources, including {novelUrl} [@mrissaoussama](https://github.com/mrissaoussama) [#296](https://github.com/tsundoku-otaku/tsundoku/pull/296)
 - Localnovel relative path improvements [@mrissaoussama](https://github.com/mrissaoussama) [#343](https://github.com/tsundoku-otaku/tsundoku/pull/343)
