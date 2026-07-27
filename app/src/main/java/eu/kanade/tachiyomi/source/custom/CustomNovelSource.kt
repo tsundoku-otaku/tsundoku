@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.model.SMangaUpdate
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.Serializable
@@ -560,16 +561,37 @@ class CustomNovelSource(
         return super.getSearchManga(page, query, filters)
     }
 
-    override suspend fun getMangaDetails(manga: SManga): SManga {
+    override suspend fun getMangaUpdate(
+        manga: SManga,
+        chapters: List<SChapter>,
+        fetchDetails: Boolean,
+        fetchChapters: Boolean,
+    ): SMangaUpdate {
         baseSource?.let { source ->
-            return rebaseManga(source.getMangaDetails(toBaseSourceManga(manga)))
+            val update = source.getMangaUpdate(
+                toBaseSourceManga(manga),
+                chapters.map { toBaseSourceChapter(it) },
+                fetchDetails = fetchDetails,
+                fetchChapters = fetchChapters,
+            )
+            return SMangaUpdate(
+                manga = if (fetchDetails) rebaseManga(update.manga) else manga,
+                chapters = if (fetchChapters) update.chapters.map { rebaseChapter(it) } else chapters,
+            )
+        }
+        return super.getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
+    }
+
+    override suspend fun getMangaDetails(manga: SManga): SManga {
+        if (baseSource != null) {
+            return getMangaUpdate(manga, emptyList(), fetchDetails = true, fetchChapters = false).manga
         }
         return super.getMangaDetails(manga)
     }
 
     override suspend fun getChapterList(manga: SManga): List<SChapter> {
-        baseSource?.let { source ->
-            return source.getChapterList(toBaseSourceManga(manga)).map { rebaseChapter(it) }
+        if (baseSource != null) {
+            return getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true).chapters
         }
         val chSel = config.selectors.chapters
         if (isNovelSource && !chSel.urlPattern.isNullOrBlank()) {

@@ -1029,7 +1029,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             if (fetchChapters) {
                 try {
                     val sChapters = withTimeoutOrNull(FETCH_TIMEOUT_MS) {
-                        source.getChapterList(manga.toSManga())
+                        source.getMangaUpdate(
+                            manga.toSManga(),
+                            emptyList(),
+                            fetchDetails = false,
+                            fetchChapters = true,
+                        ).chapters
                     } ?: throw java.io.IOException("Timed out fetching chapters for $url")
                     syncChaptersWithSource.await(sChapters, manga.copy(favorite = true), source)
                 } catch (e: Exception) {

@@ -59,11 +59,14 @@ class MassImport(
             resolved = runCatching { source.getManga(url) }.getOrNull()
         }
 
-        val sManga = resolved ?: source.getMangaDetails(
+        val sManga = resolved ?: source.getMangaUpdate(
             eu.kanade.tachiyomi.source.model.SManga.create().apply {
                 this.url = inputUrl
             },
-        )
+            emptyList(),
+            fetchDetails = true,
+            fetchChapters = false,
+        ).manga
 
         try {
             val resolvedUrl = runCatching { sManga.url }.getOrNull().orEmpty()

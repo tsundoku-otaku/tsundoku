@@ -55,10 +55,14 @@ class UpdateMangaFromRemote(
         fetchChapters: Boolean = false,
         manualFetch: Boolean = false,
         fetchWindow: Pair<Long, Long> = Pair(0, 0),
+        forceRefresh: Boolean = false,
     ): Result<RemoteMangaUpdate> {
         return try {
-            val chapters = chapterRepository.getChapterByMangaId(manga.id)
-                .sortedBy { it.sourceOrder }
+            val chapters = if (forceRefresh) {
+                emptyList()
+            } else {
+                chapterRepository.getChapterByMangaId(manga.id).sortedBy { it.sourceOrder }
+            }
             val update = withIOContext {
                 source.getMangaUpdate(
                     manga = manga.toSManga(),
@@ -67,14 +71,20 @@ class UpdateMangaFromRemote(
                     fetchChapters = fetchChapters,
                 )
             }
-            awaitUpdateFromSource(manga, update.manga, manualFetch)
-            val newChapters = syncChaptersWithSource.await(
-                rawSourceChapters = update.chapters,
-                manga = manga,
-                source = source,
-                manualFetch = manualFetch,
-                fetchWindow = fetchWindow,
-            )
+            if (fetchDetails) {
+                awaitUpdateFromSource(manga, update.manga, manualFetch)
+            }
+            val newChapters = if (fetchChapters) {
+                syncChaptersWithSource.await(
+                    rawSourceChapters = update.chapters,
+                    manga = manga,
+                    source = source,
+                    manualFetch = manualFetch,
+                    fetchWindow = fetchWindow,
+                )
+            } else {
+                emptyList()
+            }
             val updatedManga = mangaRepository.getMangaById(manga.id)
 
             Result.success(RemoteMangaUpdate(manga = updatedManga, newChapters = newChapters))

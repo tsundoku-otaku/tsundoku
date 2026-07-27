@@ -236,11 +236,14 @@ class ImportEpub(
                     ),
                 )
 
-                val networkManga = source.getMangaDetails(manga.toSManga())
-                updateManga.awaitUpdateFromSource(manga, networkManga, manualFetch = true)
-
-                val chapters = source.getChapterList(manga.toSManga())
-                syncChaptersWithSource.await(chapters, manga, source, manualFetch = true)
+                val update = source.getMangaUpdate(
+                    manga.toSManga(),
+                    emptyList(),
+                    fetchDetails = true,
+                    fetchChapters = true,
+                )
+                updateManga.awaitUpdateFromSource(manga, update.manga, manualFetch = true)
+                syncChaptersWithSource.await(update.chapters, manga, source, manualFetch = true)
 
                 val updatedManga = mangaRepository.getMangaById(manga.id)
                 getLibraryManga.addToLibrary(updatedManga.id)

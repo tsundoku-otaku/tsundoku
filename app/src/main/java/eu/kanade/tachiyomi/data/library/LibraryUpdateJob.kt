@@ -18,9 +18,6 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkQuery
 import androidx.work.WorkerParameters
-import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
-import eu.kanade.domain.chapter.model.toRefreshContextChapters
-import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
@@ -47,12 +44,12 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
+import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.getAndSet
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.model.Category
-import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.model.NoChaptersException
 import tachiyomi.domain.download.service.NovelDownloadPreferences
@@ -97,11 +94,9 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
     private val downloadManager: DownloadManager = Injekt.get()
     private val getLibraryManga: GetLibraryManga = Injekt.get()
     private val getManga: GetManga = Injekt.get()
-    private val updateManga: UpdateManga = Injekt.get()
-    private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get()
-    private val getChaptersByMangaId: GetChaptersByMangaId = Injekt.get()
     private val fetchInterval: FetchInterval = Injekt.get()
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get()
+    private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get()
     private val novelDownloadPreferences: NovelDownloadPreferences = Injekt.get()
 
     private val notifier = LibraryUpdateNotifier(context)
@@ -476,27 +471,17 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
     private suspend fun updateManga(manga: Manga, fetchWindow: Pair<Long, Long>): List<Chapter> {
         val source = sourceManager.getOrStub(manga.source)
 
-        // Update manga metadata if needed
-        if (forceFetchDetails || libraryPreferences.autoUpdateMetadata.get()) {
-            val networkManga = source.getMangaDetails(manga.toSManga())
-            updateManga.awaitUpdateFromSource(manga, networkManga, manualFetch = forceFetchDetails)
-        }
+        val update = updateMangaFromRemote(
+            source = source,
+            manga = manga,
+            fetchDetails = forceFetchDetails || libraryPreferences.autoUpdateMetadata.get(),
+            fetchChapters = !skipChapterFetch,
+            manualFetch = forceFetchDetails,
+            fetchWindow = fetchWindow,
+        )
+            .getOrThrow()
 
-        if (skipChapterFetch) return emptyList()
-
-        val existingChapters = getChaptersByMangaId.await(manga.id)
-        val chapters = source.getMangaUpdate(
-            manga.toSManga(),
-            existingChapters.toRefreshContextChapters(),
-            fetchDetails = false,
-            fetchChapters = true,
-        ).chapters
-
-        // Get manga from database to account for if it was removed during the update and
-        // to get latest data so it doesn't get overwritten later on
-        val dbManga = getManga.await(manga.id)?.takeIf { it.favorite } ?: return emptyList()
-
-        return syncChaptersWithSource.await(chapters, dbManga, source, false, fetchWindow)
+        return if (update.manga.favorite) update.newChapters else emptyList()
     }
 
     private suspend fun withUpdateNotification(

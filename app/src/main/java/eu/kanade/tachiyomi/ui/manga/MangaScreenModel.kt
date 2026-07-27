@@ -16,14 +16,11 @@ import eu.kanade.core.util.addOrRemove
 import eu.kanade.core.util.insertSeparators
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
-import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
-import eu.kanade.domain.chapter.model.toRefreshContextChapters
 import eu.kanade.domain.manga.interactor.GetExcludedScanlators
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
 import eu.kanade.domain.manga.interactor.UpdateManga
 import eu.kanade.domain.manga.model.chaptersFiltered
 import eu.kanade.domain.manga.model.downloadedFilter
-import eu.kanade.domain.manga.model.toSManga
 import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.TrackChapter
@@ -48,9 +45,8 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -61,6 +57,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
+import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
@@ -130,7 +127,6 @@ class MangaScreenModel(
     private val updateManga: UpdateManga = Injekt.get(),
     private val setCustomMangaInfo: tachiyomi.domain.manga.interactor.SetCustomMangaInfo = Injekt.get(),
     private val updateMangaNotes: tachiyomi.domain.manga.interactor.UpdateMangaNotes = Injekt.get(),
-    private val syncChaptersWithSource: SyncChaptersWithSource = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
     private val getTracks: GetTracks = Injekt.get(),
     private val addTracks: AddTracks = Injekt.get(),
@@ -142,6 +138,7 @@ class MangaScreenModel(
     private val translatedChapterRepository: TranslatedChapterRepository = Injekt.get(),
     private val translationService: TranslationService = Injekt.get(),
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
+    private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
 ) : StateScreenModel<MangaScreenModel.State>(State.Loading) {
 
@@ -310,10 +307,12 @@ class MangaScreenModel(
     fun fetchAllFromSource(manualFetch: Boolean = true, forceRefresh: Boolean = false) {
         screenModelScope.launch {
             updateSuccessState { it.copy(isRefreshingData = true) }
-            listOf(
-                async { fetchMangaFromSource(manualFetch) },
-                async { fetchChaptersFromSource(manualFetch, forceRefresh) },
-            ).awaitAll()
+            fetchAllFromSource(
+                manualFetch = manualFetch,
+                fetchDetails = true,
+                fetchChapters = true,
+                forceRefresh = forceRefresh,
+            )
             updateSuccessState { it.copy(isRefreshingData = false) }
         }
     }
@@ -322,32 +321,50 @@ class MangaScreenModel(
         manualFetch: Boolean,
         fetchDetails: Boolean,
         fetchChapters: Boolean,
+        forceRefresh: Boolean = false,
     ) {
-        coroutineScope {
-            val tasks = buildList {
-                if (fetchDetails) add(async { fetchMangaFromSource(manualFetch) })
-                if (fetchChapters) add(async { fetchChaptersFromSource(manualFetch) })
-            }
-            tasks.awaitAll()
-        }
-    }
-
-    private suspend fun fetchMangaFromSource(manualFetch: Boolean = false) {
         val state = successState ?: return
         try {
             withIOContext {
                 val host = state.source.rateLimitHost()
                 // The user is actively looking at this screen waiting on the result - don't
                 // make them sit through the same pacing meant for large unattended batch jobs.
-                val networkManga = InteractiveRateLimitBypass.bypassing(host) {
-                    state.source.getMangaDetails(state.manga.toSManga())
+                val update = InteractiveRateLimitBypass.bypassing(host) {
+                    updateMangaFromRemote(
+                        source = state.source,
+                        manga = state.manga,
+                        fetchDetails = fetchDetails,
+                        fetchChapters = fetchChapters,
+                        manualFetch = manualFetch,
+                        forceRefresh = forceRefresh,
+                    )
                 }
-                updateManga.awaitUpdateFromSource(state.manga, networkManga, manualFetch)
+                    .getOrThrow()
+
+                if (manualFetch) {
+                    downloadNewChapters(update.newChapters)
+                }
+
+                if (fetchChapters) {
+                    val allChapters = getMangaAndChapters.awaitChapters(state.manga.id)
+                    getLibraryManga.applyChapterUpdates(
+                        mangaId,
+                        totalChapters = allChapters.size.toLong(),
+                        readCount = allChapters.count { it.read }.toLong(),
+                        bookmarkCount = allChapters.count { it.bookmark }.toLong(),
+                    )
+                }
             }
-        } catch (e: Throwable) {
-            // Ignore errors and continue
-            logcat(LogPriority.ERROR, e)
-            val message = with(context) { e.formattedMessage }
+        } catch (_: CancellationException) {
+            // ignore
+        } catch (e: Exception) {
+            val message = if (e is NoChaptersException) {
+                context.stringResource(MR.strings.no_chapters_error)
+            } else {
+                logcat(LogPriority.ERROR, e)
+                with(context) { e.formattedMessage }
+            }
+
             screenModelScope.launch {
                 snackbarHostState.showSnackbar(message = message)
             }
@@ -775,62 +792,6 @@ class MangaScreenModel(
                 selected = chapter.id in selectedChapterIds,
                 hasTranslation = chapter.id in translatedChapterIds,
             )
-        }
-    }
-
-    /**
-     * Requests an updated list of chapters from the source.
-     */
-    private suspend fun fetchChaptersFromSource(manualFetch: Boolean = false, forceRefresh: Boolean = false) {
-        val state = successState ?: return
-        try {
-            withIOContext {
-                val existingChapters = getMangaAndChapters.awaitChapters(state.manga.id)
-                val passthroughChapters = if (forceRefresh) emptyList() else existingChapters.toRefreshContextChapters()
-                val host = state.source.rateLimitHost()
-                // Same reasoning as fetchMangaFromSource: this is a foreground fetch the user
-                // is waiting on, not a background batch job - skip the per-request pacing.
-                val chapters = InteractiveRateLimitBypass.bypassing(host) {
-                    state.source.getMangaUpdate(
-                        state.manga.toSManga(),
-                        passthroughChapters,
-                        fetchDetails = false,
-                        fetchChapters = true,
-                    )
-                }.chapters
-
-                val newChapters = syncChaptersWithSource.await(
-                    chapters,
-                    state.manga,
-                    state.source,
-                    manualFetch,
-                )
-
-                if (manualFetch) {
-                    downloadNewChapters(newChapters)
-                }
-
-                val allChapters = getMangaAndChapters.awaitChapters(state.manga.id)
-                getLibraryManga.applyChapterUpdates(
-                    mangaId,
-                    totalChapters = allChapters.size.toLong(),
-                    readCount = allChapters.count { it.read }.toLong(),
-                    bookmarkCount = allChapters.count { it.bookmark }.toLong(),
-                )
-            }
-        } catch (e: Throwable) {
-            val message = if (e is NoChaptersException) {
-                context.stringResource(MR.strings.no_chapters_error)
-            } else {
-                logcat(LogPriority.ERROR, e)
-                with(context) { e.formattedMessage }
-            }
-
-            screenModelScope.launch {
-                snackbarHostState.showSnackbar(message = message)
-            }
-            val newManga = mangaRepository.getMangaById(mangaId)
-            updateSuccessState { it.copy(manga = newManga, isRefreshingData = false) }
         }
     }
 
@@ -1497,7 +1458,7 @@ class MangaScreenModel(
         screenModelScope.launchIO {
             val restoredFromSnapshot = setCustomMangaInfo.clear(mangaId)
             if (!restoredFromSnapshot) {
-                fetchMangaFromSource(manualFetch = true)
+                fetchAllFromSource(manualFetch = true, fetchDetails = true, fetchChapters = false)
             }
         }
     }
