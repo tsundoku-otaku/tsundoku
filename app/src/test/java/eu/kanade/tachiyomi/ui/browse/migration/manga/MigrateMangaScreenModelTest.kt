@@ -43,5 +43,23 @@ class MigrateMangaScreenModelTest {
         val selected = listOf(manga(1, "a"), manga(2, "b"))
 
         assertEquals(2, quickMigrateTargets(selected, emptySet()).size)
+        assertEquals(emptyList<Manga>(), quickMigrateSkipped(selected, emptySet()))
+    }
+
+    @Test
+    fun `skipped is exactly what targets leaves out`() {
+        val selected = listOf(
+            manga(1, "series/a"),
+            manga(2, "/series/b"),
+            manga(3, "series/c"),
+        )
+        val existing = setOf("/series/b", "/series/c")
+
+        val targets = quickMigrateTargets(selected, existing)
+        val skipped = quickMigrateSkipped(selected, existing)
+
+        assertEquals(listOf(1L), targets.map { it.first.id })
+        assertEquals(listOf(2L, 3L), skipped.map { it.id })
+        assertEquals(selected.size, targets.size + skipped.size)
     }
 }

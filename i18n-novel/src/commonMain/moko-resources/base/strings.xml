@@ -862,6 +862,10 @@
     <string name="db_maintenance_already_running">Database maintenance is already running</string>
     <string name="db_maintenance_started">Database maintenance started &#8212; check notifications for progress</string>
 
+    <string name="quick_migrate_remove_skipped">Remove skipped entries</string>
+    <string name="quick_migrate_remove_skipped_summary">Their downloads, translations and quotes move to the copy that stays</string>
+    <string name="quick_migrate_complete_removed">Quick migrated %1$d entries, removed %2$d</string>
+
     <string name="action_sort_source_name">Source name</string>
     <string name="pref_show_manga_source_name">Show source name in manga details</string>
     <string name="pref_show_manga_source_name_summary">Display source name under status on manga details screen</string>

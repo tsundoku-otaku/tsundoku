@@ -490,6 +490,15 @@ class DownloadManager(
         return true
     }
 
+    /**
+     * Whether [source] holds a non-empty download folder for [mangaTitle]. Enumerates the source
+     * directory, so prefer [getDownloadCounts] where the cache can answer.
+     */
+    fun hasDownloadedChapters(mangaTitle: String, source: Source): Boolean {
+        val dir = provider.findMangaDir(mangaTitle, source) ?: return false
+        return !dir.listFiles().isNullOrEmpty()
+    }
+
     // Returns true only if every child copied; a false result must prevent deleting the source.
     private fun copyContentsRecursive(src: UniFile, dest: UniFile): Boolean {
         var ok = true

@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.source.CatalogueSource
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
@@ -115,11 +116,12 @@ fun QuickMigrateConfirmDialog(
     targetSourceName: String,
     totalCount: Int,
     skipCount: Int,
-    onConfirm: (String?) -> Unit,
+    onConfirm: (String?, Boolean) -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     var createCategory by remember { mutableStateOf(true) }
     var categoryName by remember { mutableStateOf("$sourceName - $targetSourceName") }
+    var removeSkipped by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
@@ -141,6 +143,28 @@ fun QuickMigrateConfirmDialog(
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 8.dp),
                     )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clickable { removeSkipped = !removeSkipped },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = removeSkipped,
+                            onCheckedChange = { removeSkipped = it },
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(text = stringResource(TDMR.strings.quick_migrate_remove_skipped))
+                            Text(
+                                text = stringResource(TDMR.strings.quick_migrate_remove_skipped_summary),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
 
                 Row(
@@ -172,7 +196,7 @@ fun QuickMigrateConfirmDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(if (createCategory) categoryName else null) }) {
+            TextButton(onClick = { onConfirm(if (createCategory) categoryName else null, removeSkipped) }) {
                 Text(text = stringResource(MR.strings.migrate))
             }
         },

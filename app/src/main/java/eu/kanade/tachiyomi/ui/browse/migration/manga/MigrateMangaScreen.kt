@@ -36,6 +36,7 @@ import mihon.feature.migration.config.MigrationConfigScreen
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.stringResource
@@ -160,7 +161,9 @@ data class MigrateMangaScreen(
                     targetSourceName = dialog.targetSourceName,
                     totalCount = dialog.totalCount,
                     skipCount = dialog.skipCount,
-                    onConfirm = { screenModel.executeQuickMigrate(dialog.targetSourceId, it) },
+                    onConfirm = { categoryName, removeSkipped ->
+                        screenModel.executeQuickMigrate(dialog.targetSourceId, categoryName, removeSkipped)
+                    },
                     onDismissRequest = { screenModel.dismissDialog() },
                 )
             }
@@ -175,7 +178,15 @@ data class MigrateMangaScreen(
                     }
                     is MigrationMangaEvent.QuickMigrateComplete -> {
                         context.toast(
-                            context.stringResource(MR.strings.quick_migrate_complete, event.count),
+                            if (event.removedCount > 0) {
+                                context.stringResource(
+                                    TDMR.strings.quick_migrate_complete_removed,
+                                    event.count,
+                                    event.removedCount,
+                                )
+                            } else {
+                                context.stringResource(MR.strings.quick_migrate_complete, event.count)
+                            },
                         )
                     }
                 }
