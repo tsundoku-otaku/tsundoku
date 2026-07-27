@@ -10,10 +10,7 @@ class GetDuplicateLibraryManga(
     private val libraryPreferences: LibraryPreferences,
 ) {
 
-    /**
-     * [force] runs the query even with the add-time duplicate check turned off, for the explicit
-     * "Find duplicates" action: that is a request for the check, not a guard on adding.
-     */
+    // "Find duplicates" passes force: it is a request for the check, not a guard on adding.
     suspend operator fun invoke(manga: Manga, force: Boolean = false): List<MangaWithChapterCount> {
         if (!force && !libraryPreferences.checkDuplicateEntryOnAdd.get()) return emptyList()
         return mangaRepository.getDuplicateLibraryManga(manga.id, manga.title.lowercase(), manga.alternativeTitles)

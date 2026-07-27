@@ -344,7 +344,6 @@ class LibraryPreferences(
     val mangaReadProgress100: Preference<Boolean> = preferenceStore.getBoolean("pref_manga_read_progress_100", true)
     val novelReadProgress100: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_read_progress_100", true)
 
-    /** Warn about existing library entries (possible duplicates) when adding an entry to the library. */
     val checkDuplicateEntryOnAdd: Preference<Boolean> = preferenceStore.getBoolean("pref_check_duplicate_on_add", true)
 
     /**

@@ -171,9 +171,8 @@ class AndroidSourceManager(
 
     private suspend fun createStubSource(id: Long): StubSource {
         sourceRepository.getStubSource(id)?.let { dbSource ->
-            // Rows written before is_js existed inferred the JS marker from "is a novel source",
-            // which is wrong for novel sources shipped as APK extensions. An id the extension
-            // manager lists can only be an APK extension, so drop the marker and persist the fix.
+            // Rows seeded from is_novel by migration 34 marked Kotlin novel extensions as JS. An id
+            // the extension manager lists is an APK extension, so clear the marker and persist it.
             if (dbSource.isJsSource && extensionManager.getSourceData(id) != null) {
                 val corrected = dbSource.copy(isJsSource = false)
                 registerStubSource(corrected)

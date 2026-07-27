@@ -17,10 +17,6 @@ import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
-/**
- * `JS` / `Custom` marker for a listed source, or nothing for a plain extension. Resolves the loaded
- * source when there is one and falls back to the marker persisted with the row for a stub.
- */
 @Composable
 fun SourceTypeBadge(source: Source, modifier: Modifier = Modifier) {
     val typeTag = remember(source.id) {

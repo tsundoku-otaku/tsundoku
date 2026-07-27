@@ -293,7 +293,6 @@ class MangaScreen(
                 MigrateMangaDialog(
                     current = dialog.current,
                     target = dialog.target,
-                    // "Show" opens the other entry, i.e. the one that isn't the manga on screen.
                     onClickTitle = {
                         val other = if (dialog.target.id == successState.manga.id) dialog.current else dialog.target
                         navigator.push(MangaScreen(other.id))

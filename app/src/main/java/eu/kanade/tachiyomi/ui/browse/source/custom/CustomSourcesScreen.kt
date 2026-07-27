@@ -2216,9 +2216,8 @@ private fun BaseSourcePickerDialog(
         val isNovel: Boolean,
     )
 
-    // Built off the main thread: every extension resolves its own baseUrl, and extensions that read
-    // it from their preferences hit a separate SharedPreferences file each, so on a large install
-    // the dialog used to sit blank for seconds before its first frame.
+    // Off the main thread: extensions that read baseUrl from their preferences hit a separate
+    // SharedPreferences file each, which on a large install blocks the dialog's first frame.
     val allSources by produceState<List<SourceEntry>?>(null, installedExtensions, jsSources) {
         value = withContext(Dispatchers.IO) {
             val apkSources = installedExtensions.flatMap { ext ->
@@ -2253,8 +2252,6 @@ private fun BaseSourcePickerDialog(
         }
     }
 
-    // Novel and manga extensions are listed together and often share a site name, so the list is
-    // unreadable without a split. Opens on whichever kind the install actually has.
     var showNovel by remember { mutableStateOf<Boolean?>(null) }
     val novelCount = allSources?.count { it.isNovel } ?: 0
     val mangaCount = (allSources?.size ?: 0) - novelCount

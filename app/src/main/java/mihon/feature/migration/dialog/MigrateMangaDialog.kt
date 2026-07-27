@@ -77,8 +77,7 @@ internal fun Screen.MigrateMangaDialog(
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
             ) {
-                // Both entries can be in the library, in which case "Migrate" drops [current] -
-                // spell out the direction rather than leaving the user to guess it.
+                // Both entries can be in the library, so the direction is not implied by the screen.
                 Text(
                     text = "${current.title}  →  ${target.title}",
                     style = MaterialTheme.typography.bodySmall,
