@@ -3,6 +3,7 @@ package mihon.feature.migration.config
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyItemScope
@@ -43,10 +44,10 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.browse.components.SourceIcon
+import eu.kanade.presentation.browse.components.SourceTypeBadge
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.util.Screen
-import eu.kanade.tachiyomi.source.nameWithTypeTag
 import eu.kanade.tachiyomi.ui.browse.migration.search.MigrateSearchScreen
 import eu.kanade.tachiyomi.util.system.LocaleHelper
 import kotlinx.coroutines.flow.update
@@ -57,7 +58,6 @@ import sh.calvin.reorderable.ReorderableLazyListState
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.source.model.Source
-import tachiyomi.domain.source.model.hasJsMarker
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyColumn
@@ -295,8 +295,10 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                SourceTypeBadge(source = source.source)
+                Spacer(modifier = Modifier.weight(1f))
                 if (showLanguage) {
                     Pill(
                         text = LocaleHelper.getShortDisplayName(source.shortLanguage, uppercase = true),
@@ -347,12 +349,9 @@ class MigrationConfigScreen(private val mangaIds: Collection<Long>) : Screen() {
                     val source = Source(
                         id = it.id,
                         lang = it.lang,
-                        // Tagged here: the migration target list is where a JS plugin and a Kotlin
-                        // extension of the same site sit next to each other.
-                        name = it.nameWithTypeTag(),
+                        name = it.name,
                         supportsLatest = false,
                         isStub = false,
-                        isJsSource = it.hasJsMarker(),
                     )
                     MigrationSource(
                         source = source,
