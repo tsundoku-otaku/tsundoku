@@ -516,9 +516,10 @@ object SettingsNovelDownloadScreen : SearchableSettings {
     ) {
         val sourceManager = remember { Injekt.get<SourceManager>() }
         val novelSources = remember {
-            sourceManager.getAll().filterIsInstance<CatalogueSource>()
-                .filterUserEnabled()
-                .filter { it.isNovelSource() }
+            val all = sourceManager.getAll().filterIsInstance<CatalogueSource>().filter { it.isNovelSource() }
+            val enabled = all.filterUserEnabled()
+            val existingSource = existing?.let { override -> all.find { it.id == override.sourceId } }
+            (if (existingSource != null && existingSource !in enabled) enabled + existingSource else enabled)
                 .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.nameWithTypeTag() })
         }
 
