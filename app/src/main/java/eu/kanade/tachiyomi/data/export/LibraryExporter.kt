@@ -2,8 +2,9 @@ package eu.kanade.tachiyomi.data.export
 
 import android.content.Context
 import android.net.Uri
+import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import tachiyomi.domain.category.repository.CategoryRepository
@@ -65,8 +66,8 @@ object LibraryExporter {
     ) {
         val sourceManager = Injekt.get<SourceManager>()
         val getCategories = Injekt.get<tachiyomi.domain.category.interactor.GetCategories>()
+        val sourceById = mutableMapOf<Long, Source?>()
 
-        // Lightweight lookups — avoids loading the full LibraryManga list which OOMs for large libraries
         val categoryIdToName: Map<Long, String> = if (options.includeCategory) {
             try {
                 getCategories.await().associate { it.id to it.name }
@@ -149,18 +150,9 @@ object LibraryExporter {
                 }
 
                 if (options.includeUrl) {
-                    val fullUrl = try {
-                        val source = sourceManager.get(manga.source) as? HttpSource
-                        if (source != null) {
-                            val sManga = SManga.create().apply { url = manga.url }
-                            source.getMangaUrl(sManga)
-                        } else {
-                            manga.url
-                        }
-                    } catch (_: Exception) {
-                        manga.url
-                    }
-                    row.add(fullUrl)
+                    val source = sourceById.getOrPut(manga.source) { sourceManager.get(manga.source) }
+                    val sManga = SManga.create().apply { url = manga.url }
+                    row.add(source?.getMangaUrlOrNull(sManga) ?: manga.url)
                 }
 
                 if (options.includeChapterCount) {
