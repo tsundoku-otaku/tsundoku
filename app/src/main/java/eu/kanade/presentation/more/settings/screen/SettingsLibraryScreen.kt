@@ -15,6 +15,8 @@ import androidx.core.content.ContextCompat
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.Navigator
 import cafe.adriel.voyager.navigator.currentOrThrow
+import eu.kanade.domain.source.interactor.SetMigrateSorting
+import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.presentation.category.visualName
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.widget.TriStateListDialog
@@ -54,6 +56,7 @@ object SettingsLibraryScreen : SearchableSettings {
     override fun getPreferences(): List<Preference> {
         val getCategories = remember { Injekt.get<GetCategories>() }
         val libraryPreferences = remember { Injekt.get<LibraryPreferences>() }
+        val sourcePreferences = remember { Injekt.get<SourcePreferences>() }
         val allCategories by getCategories.subscribe().collectAsState(initial = emptyList())
         val isJoined by libraryPreferences.joinedLibrary.changes().collectAsState(
             initial = libraryPreferences.joinedLibrary.get(),
@@ -62,7 +65,7 @@ object SettingsLibraryScreen : SearchableSettings {
         return listOf(
             getCategoriesGroup(LocalNavigator.currentOrThrow, allCategories, libraryPreferences),
             getGlobalUpdateGroup(allCategories, libraryPreferences),
-            getBehaviorGroup(libraryPreferences, isJoined),
+            getBehaviorGroup(libraryPreferences, sourcePreferences, isJoined),
         )
     }
 
@@ -232,6 +235,7 @@ object SettingsLibraryScreen : SearchableSettings {
     @Composable
     private fun getBehaviorGroup(
         libraryPreferences: LibraryPreferences,
+        sourcePreferences: SourcePreferences,
         isJoined: Boolean,
     ): Preference.PreferenceGroup {
         val preferenceItems = buildList {
@@ -290,6 +294,26 @@ object SettingsLibraryScreen : SearchableSettings {
                     preference = libraryPreferences.checkDuplicateEntryOnAdd,
                     title = stringResource(TDMR.strings.pref_check_duplicate_on_add),
                     subtitle = stringResource(TDMR.strings.pref_check_duplicate_on_add_summary),
+                ),
+            )
+            add(
+                Preference.PreferenceItem.ListPreference(
+                    preference = sourcePreferences.migrationSortingMode,
+                    entries = mapOf(
+                        SetMigrateSorting.Mode.ALPHABETICAL to stringResource(MR.strings.action_sort_alpha),
+                        SetMigrateSorting.Mode.TOTAL to stringResource(MR.strings.action_sort_count),
+                    ),
+                    title = stringResource(TDMR.strings.pref_migrate_source_sorting),
+                ),
+            )
+            add(
+                Preference.PreferenceItem.ListPreference(
+                    preference = sourcePreferences.migrationSortingDirection,
+                    entries = mapOf(
+                        SetMigrateSorting.Direction.ASCENDING to stringResource(MR.strings.action_asc),
+                        SetMigrateSorting.Direction.DESCENDING to stringResource(MR.strings.action_desc),
+                    ),
+                    title = stringResource(TDMR.strings.pref_migrate_source_sorting_direction),
                 ),
             )
             if (!isJoined) {
