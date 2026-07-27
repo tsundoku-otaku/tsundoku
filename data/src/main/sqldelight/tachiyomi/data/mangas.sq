@@ -301,6 +301,7 @@ AND (
                 AND instr(char(31) || lower(M.alternative_titles) || char(31), char(31) || lower(alt.entry) || char(31)) > 0
         ))
 )
+ORDER BY totalCount DESC
 LIMIT 10;
 
 -- Find all duplicate groups with exact title match (case-insensitive, trimmed)
