@@ -865,6 +865,7 @@
     <string name="db_maintenance_started">Database maintenance started &#8212; check notifications for progress</string>
 
     <string name="action_sort_source_name">Source name</string>
+    <string name="pref_duplicate_sort_mode">Duplicate list order</string>
     <string name="pref_migrate_source_sorting">Migrate source list sorting</string>
     <string name="pref_migrate_source_sorting_direction">Migrate source list order</string>
     <string name="pref_check_duplicate_on_add">Check for existing entries when adding to library</string>

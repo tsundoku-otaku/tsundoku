@@ -298,6 +298,18 @@ object SettingsLibraryScreen : SearchableSettings {
             )
             add(
                 Preference.PreferenceItem.ListPreference(
+                    preference = libraryPreferences.duplicateSortMode,
+                    entries = mapOf(
+                        LibraryPreferences.DuplicateSortMode.Alphabetical to
+                            stringResource(MR.strings.action_sort_alpha),
+                        LibraryPreferences.DuplicateSortMode.ChapterCount to
+                            stringResource(MR.strings.action_sort_total),
+                    ),
+                    title = stringResource(TDMR.strings.pref_duplicate_sort_mode),
+                ),
+            )
+            add(
+                Preference.PreferenceItem.ListPreference(
                     preference = sourcePreferences.migrationSortingMode,
                     entries = mapOf(
                         SetMigrateSorting.Mode.ALPHABETICAL to stringResource(MR.strings.action_sort_alpha),

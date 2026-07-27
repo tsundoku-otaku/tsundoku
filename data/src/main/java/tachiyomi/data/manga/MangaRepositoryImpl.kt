@@ -1234,11 +1234,12 @@ class MangaRepositoryImpl(
         id: Long,
         title: String,
         altTitles: List<String>,
+        limit: Long,
     ): List<MangaWithChapterCount> {
         val altTitlesEncoded = altTitles.takeIf {
             it.isNotEmpty()
         }?.let(AlternativeTitlesColumnAdapter::encode).orEmpty()
-        return database.mangasQueries.getDuplicateLibraryManga(id, title, altTitlesEncoded) {
+        return database.mangasQueries.getDuplicateLibraryManga(id, title, altTitlesEncoded, limit) {
                 id,
                 source,
                 url,

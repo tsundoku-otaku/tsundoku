@@ -125,6 +125,7 @@ interface MangaRepository {
         id: Long,
         title: String,
         altTitles: List<String> = emptyList(),
+        limit: Long,
     ): List<MangaWithChapterCount>
 
     suspend fun findDuplicatesExact(): List<DuplicateGroup>
