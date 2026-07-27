@@ -43,11 +43,15 @@ fun Source.nameWithTypeTag(): String = typeTag()?.let { "$name (${it.label})" } 
 
 // Custom and local sources have no language toggle of their own (local reports "other"), so they
 // are never filtered out.
-fun <T : Source> List<T>.filterUserEnabled(preferences: SourcePreferences = Injekt.get()): List<T> {
+fun <T : Source> List<T>.filterEnabledLanguages(preferences: SourcePreferences = Injekt.get()): List<T> {
     val enabledLanguages = preferences.enabledLanguages.get()
+    return filter { it is CustomNovelSource || it.isLocal() || it.lang in enabledLanguages }
+}
+
+fun <T : Source> List<T>.filterUserEnabled(preferences: SourcePreferences = Injekt.get()): List<T> {
     val disabledSources = preferences.disabledSources.get()
-    return filter { source ->
-        source is CustomNovelSource || source.isLocal() ||
-            (source.lang in enabledLanguages && "${source.id}" !in disabledSources)
+    return filterEnabledLanguages(preferences).filter {
+        it is CustomNovelSource || it.isLocal() ||
+            "${it.id}" !in disabledSources
     }
 }
