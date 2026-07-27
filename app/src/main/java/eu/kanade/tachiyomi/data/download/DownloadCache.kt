@@ -203,13 +203,15 @@ class DownloadCache(
     }
 
     /**
-     * Suspends until the cache has been populated at least once. [renewCache] only schedules the
-     * scan, so a caller that treats a zero count as "nothing downloaded" has to wait for it -
-     * otherwise it reads an empty cache and concludes there is nothing on disk.
+     * Populates the cache if needed and suspends until that scan ends. [renewCache] only schedules
+     * it, so a caller that reads a zero count as "nothing downloaded" has to wait. Returns false if
+     * the scan was cancelled or failed, i.e. the counts cannot be trusted.
      */
-    suspend fun awaitReady() {
+    suspend fun awaitReady(): Boolean {
         renewCache()
-        renewalJob?.join()
+        val job = renewalJob
+        job?.join()
+        return job?.isCancelled != true
     }
 
     /**

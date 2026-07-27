@@ -286,9 +286,11 @@ class DownloadManager(
         return cache.getDownloadCounts(mangaList)
     }
 
-    /** Waits for the download cache's first scan, for callers that act on a count of zero. */
-    suspend fun awaitDownloadCacheReady() {
-        cache.awaitReady()
+    /** Returns false if the scan did not complete, i.e. a count of zero means nothing. */
+    suspend fun awaitDownloadCacheReady(): Boolean = cache.awaitReady()
+
+    fun invalidateDownloadCache() {
+        cache.invalidateCache()
     }
 
     fun cancelQueuedDownloads(downloads: List<Download>) {
@@ -451,9 +453,16 @@ class DownloadManager(
      * only renames within the same parent, so this copies the tree then deletes the original. Denies
      * the move if the destination already holds downloads.
      *
+     * @param invalidateCache rebuild the download index after the move. Pass false when moving many
+     * manga in a row and invalidate once at the end: each rebuild restarts the full SAF scan.
      * @return true if the move succeeded or there was nothing to move.
      */
-    suspend fun moveMangaToNewSource(manga: Manga, oldSource: Source, newSource: Source): Boolean {
+    suspend fun moveMangaToNewSource(
+        manga: Manga,
+        oldSource: Source,
+        newSource: Source,
+        invalidateCache: Boolean = true,
+    ): Boolean {
         if (oldSource.id == newSource.id) return true
         val oldFolder = provider.findMangaDir(manga.title, oldSource) ?: return true
 
@@ -473,11 +482,11 @@ class DownloadManager(
             // otherwise the non-empty-destination guard above would block every future retry.
             logcat(LogPriority.ERROR) { "Copy incomplete moving downloads for ${manga.title}; reverting" }
             deleteRecursive(destFolder)
-            cache.invalidateCache()
+            if (invalidateCache) cache.invalidateCache()
             return false
         }
         deleteRecursive(oldFolder)
-        cache.invalidateCache()
+        if (invalidateCache) cache.invalidateCache()
         return true
     }
 

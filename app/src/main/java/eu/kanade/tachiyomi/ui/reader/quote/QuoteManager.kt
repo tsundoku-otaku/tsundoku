@@ -97,9 +97,8 @@ class QuoteManager(private val context: Context) {
     }
 
     /**
-     * Of [novelTitles], the ones that actually have a quotes file under [sourceName]. Lists the
-     * source directory once instead of probing per title, which matters for bulk operations:
-     * every probe is a SAF lookup that enumerates the directory again.
+     * Of [novelTitles], the ones that have a quotes file under [sourceName]. Lists the source
+     * directory once, where probing per title is a SAF enumeration of it per probe.
      */
     fun filterNovelsWithQuotes(sourceName: String, novelTitles: Collection<String>): Set<String> {
         if (novelTitles.isEmpty()) return emptySet()

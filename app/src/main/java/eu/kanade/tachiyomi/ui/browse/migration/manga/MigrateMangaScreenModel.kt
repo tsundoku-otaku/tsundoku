@@ -143,64 +143,69 @@ class MigrateMangaScreenModel(
                     .mapTo(mutableSetOf()) { it.url }
                 val targets = quickMigrateTargets(selectedManga, targetFavoriteUrls)
                 val migratedIds = mutableListOf<Long>()
-                // Nothing to move: skip the download cache scan, which is a full SAF enumeration.
                 if (targets.isEmpty()) {
                     mutableState.update { it.copy(dialog = null, selection = emptySet()) }
                     _events.send(MigrationMangaEvent.QuickMigrateComplete(0))
                     return@launchIO
                 }
-                // Every entry on this screen belongs to [sourceId], and all of them move to the same
-                // target, so the source pair and the "what actually has data on disk" lookups are
-                // hoisted out of the loop. Each one is a SAF directory enumeration; per entry they
-                // dominate the run for a large selection, and most entries have nothing to move.
+
                 val oldSource = sourceManager.getOrStub(sourceId)
                 val newSource = sourceManager.getOrStub(targetSourceId)
-                val titles = targets.map { it.first.title }
-                // A count of zero decides that an entry has nothing to move, so the cache has to be
-                // populated first; unscanned, it reports zero for everything and downloads would be
-                // left behind under the old source name with the row already flipped. The count only
-                // covers chapter directories and cbz/zip archives, which is every layout a finished
-                // download uses, so nothing but an interrupted download's _tmp directory is skipped.
-                downloadManager.awaitDownloadCacheReady()
-                val downloadCounts = downloadManager.getDownloadCounts(targets.map { it.first })
+                val targetTitles = targets.mapTo(mutableSetOf()) { it.first.title }
+
+                val countsUsable = downloadManager.awaitDownloadCacheReady()
+                val downloadCounts = if (countsUsable) {
+                    downloadManager.getDownloadCounts(targets.map { it.first })
+                } else {
+                    emptyMap()
+                }
+
+                val queuedMangaIds = downloadManager.queueState.value.mapTo(mutableSetOf()) { it.mangaId }
+
                 val withTranslations = runCatching {
-                    translatedChapterRepository.filterNovelsWithTranslations(oldSource.toString(), titles)
-                }.getOrDefault(emptySet())
+                    translatedChapterRepository.filterNovelsWithTranslations(oldSource.toString(), targetTitles)
+                }.onFailure {
+                    logcat(LogPriority.ERROR, it) { "Failed to list translations on quick migrate" }
+                }.getOrNull()
                 val withQuotes = runCatching {
-                    quoteManager.filterNovelsWithQuotes(oldSource.toString(), titles)
-                }.getOrDefault(emptySet())
-                // Written in chunks rather than one update per entry: each write is its own
-                // transaction that invalidates the library cache and wakes every query listener.
+                    quoteManager.filterNovelsWithQuotes(oldSource.toString(), targetTitles)
+                }.onFailure {
+                    logcat(LogPriority.ERROR, it) { "Failed to list quotes on quick migrate" }
+                }.getOrNull()
                 val pendingUpdates = mutableListOf<MangaUpdate>()
                 val pendingIds = mutableListOf<Long>()
                 suspend fun flushUpdates(force: Boolean) {
                     if (pendingUpdates.isEmpty() || (!force && pendingUpdates.size < UPDATE_CHUNK_SIZE)) return
-                    // awaitAll reports a failed transaction with false rather than throwing, and the
-                    // whole chunk fails together, so a failed chunk must not count as migrated: its
-                    // rows still point at the old source, files already moved or not.
-                    val written = updateManga.awaitAll(pendingUpdates.toList())
-                    if (!written) {
+                    val chunk = pendingUpdates.toList()
+                    val chunkIds = pendingIds.toList()
+                    pendingUpdates.clear()
+                    pendingIds.clear()
+
+                    if (updateManga.awaitAll(chunk)) {
+                        migratedIds.addAll(chunkIds)
+                    } else {
                         logcat(LogPriority.ERROR) {
-                            "Quick migrate: failed to write a chunk of ${pendingUpdates.size} entries"
+                            "Quick migrate: failed to write a chunk of ${chunk.size} entries"
                         }
                     }
-                    pendingUpdates.clear()
-                    if (written) migratedIds.addAll(pendingIds)
-                    pendingIds.clear()
                 }
+                var attemptedDownloadMove = false
                 for ((manga, newUrl) in targets) {
                     try {
                         // Relocate source-keyed data (downloads/translations/quotes) BEFORE flipping the
                         // DB source, so a crash in between can't leave files under the old source name
-                        // while the DB already points at the new one (orphaned data). Only preserves
-                        // data for same-URL migrations (e.g. JS->KT); different-site moves change
-                        // chapter URLs and won't line up.
+                        // while the DB already points at the new one. Only preserves data for same-URL
+                        // migrations (e.g. JS->KT); different-site moves change chapter URLs.
                         // moveMangaToNewSource reports non-crash failures (destination collision,
-                        // partial copy) via a false return, not an exception, so branch on the value:
+                        // partial copy) with false rather than an exception, so branch on the value:
                         // leave the manga on its old source rather than flipping the DB onto downloads
                         // that never moved. It can be retried once the conflict is resolved.
-                        val downloadsMoved = (downloadCounts[manga.id] ?: 0) == 0 || runCatching {
-                            downloadManager.moveMangaToNewSource(manga, oldSource, newSource)
+                        val hasDownloads = !countsUsable ||
+                            (downloadCounts[manga.id] ?: 0) > 0 ||
+                            manga.id in queuedMangaIds
+                        if (hasDownloads) attemptedDownloadMove = true
+                        val downloadsMoved = !hasDownloads || runCatching {
+                            downloadManager.moveMangaToNewSource(manga, oldSource, newSource, invalidateCache = false)
                         }.onFailure {
                             logcat(LogPriority.ERROR, it) { "Failed to move downloads on quick migrate" }
                         }.getOrDefault(false)
@@ -210,7 +215,7 @@ class MigrateMangaScreenModel(
                             }
                             continue
                         }
-                        if (manga.title in withTranslations) {
+                        if (withTranslations == null || manga.title in withTranslations) {
                             runCatching {
                                 translatedChapterRepository.moveNovel(
                                     oldSource.toString(),
@@ -222,7 +227,7 @@ class MigrateMangaScreenModel(
                                 logcat(LogPriority.ERROR, it) { "Failed to move translations on quick migrate" }
                             }
                         }
-                        if (manga.title in withQuotes) {
+                        if (withQuotes == null || manga.title in withQuotes) {
                             runCatching {
                                 quoteManager.moveNovel(
                                     oldSource.toString(),
@@ -242,6 +247,9 @@ class MigrateMangaScreenModel(
                     }
                 }
                 flushUpdates(force = true)
+                // One rebuild for the whole run instead of one per relocated entry, each of which
+                // deletes the on-disk index and restarts the full SAF scan.
+                if (attemptedDownloadMove) downloadManager.invalidateDownloadCache()
                 val migrated = migratedIds.size
 
                 if (migratedIds.isNotEmpty() && trackPreferences.migrationTriggersSourceTracker.get()) {
