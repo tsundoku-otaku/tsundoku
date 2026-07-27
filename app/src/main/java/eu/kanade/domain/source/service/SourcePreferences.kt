@@ -43,12 +43,12 @@ class SourcePreferences(
 
     val migrationSortingMode: Preference<SetMigrateSorting.Mode> = preferenceStore.getEnum(
         "pref_migration_sorting",
-        SetMigrateSorting.Mode.TOTAL,
+        SetMigrateSorting.Mode.ALPHABETICAL,
     )
 
     val migrationSortingDirection: Preference<SetMigrateSorting.Direction> = preferenceStore.getEnum(
         "pref_migration_direction",
-        SetMigrateSorting.Direction.DESCENDING,
+        SetMigrateSorting.Direction.ASCENDING,
     )
 
     val hideInLibraryItems: Preference<Boolean> = preferenceStore.getBoolean("browse_hide_in_library_items", false)

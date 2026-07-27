@@ -81,8 +81,8 @@ class MigrateSourceScreenModel(
     data class State(
         val isLoading: Boolean = true,
         val items: List<Pair<Source, Long>> = listOf(),
-        val sortingMode: SetMigrateSorting.Mode = SetMigrateSorting.Mode.TOTAL,
-        val sortingDirection: SetMigrateSorting.Direction = SetMigrateSorting.Direction.DESCENDING,
+        val sortingMode: SetMigrateSorting.Mode = SetMigrateSorting.Mode.ALPHABETICAL,
+        val sortingDirection: SetMigrateSorting.Direction = SetMigrateSorting.Direction.ASCENDING,
     ) {
         val isEmpty = items.isEmpty()
     }
