@@ -8,7 +8,6 @@ import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.track.source.SourceTrackerDispatcher
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.source.filterUserEnabled
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.nameWithTypeTag
 import kotlinx.coroutines.channels.Channel
@@ -57,7 +56,6 @@ class MigrateMangaScreenModel(
 
     fun getAvailableSources(filterNovel: Boolean): List<CatalogueSource> {
         return sourceManager.getAll().filterIsInstance<CatalogueSource>()
-            .filterUserEnabled()
             .filter { it.id != sourceId && it.isNovelSource() == filterNovel }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.nameWithTypeTag() })
     }
