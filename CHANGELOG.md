@@ -27,6 +27,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Reader Lifecycle and UX fixes [@mrissaoussama](https://github.com/mrissaoussama) [#338](https://github.com/tsundoku-otaku/tsundoku/pull/338)
 - Better batch dl delete, refresh entry categories and updates tab [@mrissaoussama](https://github.com/mrissaoussama) [#358](https://github.com/tsundoku-otaku/tsundoku/pull/358)
 - Custom Source Overhaul [@mrissaoussama](https://github.com/mrissaoussama) [#273](https://github.com/tsundoku-otaku/tsundoku/pull/273)
+- Quick migration performance [@mrissaoussama](https://github.com/mrissaoussama) [#360](https://github.com/tsundoku-otaku/tsundoku/pull/360)
 - Translations and quotes more organized/portable [@mrissaoussama](https://github.com/mrissaoussama) [#336](https://github.com/tsundoku-otaku/tsundoku/pull/336)
 - A ton of Arabic translations [@OtakuArab](https://github.com/OtakuArab) [#327](https://github.com/tsundoku-otaku/tsundoku/pull/327)
 - Alt titles are now searchable [@mrissaoussama](https://github.com/mrissaoussama) [#337](https://github.com/tsundoku-otaku/tsundoku/pull/337)
