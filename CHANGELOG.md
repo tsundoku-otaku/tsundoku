@@ -42,6 +42,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - ALt title import when tracking, case insensitive dupe check [@mrissaoussama](https://github.com/mrissaoussama) [#305](https://github.com/tsundoku-otaku/tsundoku/pull/305)
 - Mass import improvements and resume counting [@mrissaoussama](https://github.com/mrissaoussama) [#288](https://github.com/tsundoku-otaku/tsundoku/pull/288)
 - EPUBC ToC Subsection Fix [@mrissaoussama](https://github.com/mrissaoussama) [#315](https://github.com/tsundoku-otaku/tsundoku/pull/315)
+- Added option to migrate skipped quick migrate entries [@mrissaoussama](https://github.com/mrissaoussama) [#315](https://github.com/tsundoku-otaku/tsundoku/pull/362)
 - Append clipboard added in edit quotes [@Rojikku](https://github.com/Rojikku) [#301](https://github.com/tsundoku-otaku/tsundoku/pull/301)
 - Customsource improvements and url build fixes [@mrissaoussama](https://github.com/mrissaoussama) [#322](https://github.com/tsundoku-otaku/tsundoku/pull/322)
 - Prevent duplicate custom sources [@mrissaoussama](https://github.com/mrissaoussama) [#294](https://github.com/tsundoku-otaku/tsundoku/pull/294)
