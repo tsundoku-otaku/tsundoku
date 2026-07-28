@@ -56,6 +56,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Paginated library export to prevent potential OOM, added cancel to notif [@mrissaoussama](https://github.com/mrissaoussama) [#270](https://github.com/tsundoku-otaku/tsundoku/pull/270)
 - Correct import stats when app is restarted [@mrissaoussama](https://github.com/mrissaoussama) [#272](https://github.com/tsundoku-otaku/tsundoku/pull/272)
 - Fix for an Injekt related exception tied to performance improvements, should keep performance [@mrissaoussama](https://github.com/mrissaoussama) [#352](https://github.com/tsundoku-otaku/tsundoku/pull/352)
+- Properly fetch details and chapters through new getMangaUpdate [@mrissaoussama](https://github.com/mrissaoussama) [#363](https://github.com/tsundoku-otaku/tsundoku/pull/363)
 - Fix download queue restart preference [@mrissaoussama](https://github.com/mrissaoussama) [#297](https://github.com/tsundoku-otaku/tsundoku/pull/297)
 - Better handle old backups, better backup/restore performance [@mrissaoussama](https://github.com/mrissaoussama) [#297](https://github.com/tsundoku-otaku/tsundoku/pull/297)
 - Volume keys no longer scroll while menu visible [@mrissaoussama](https://github.com/mrissaoussama) [#345](https://github.com/tsundoku-otaku/tsundoku/pull/345)
