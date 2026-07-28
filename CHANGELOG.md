@@ -35,6 +35,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Some great improvements to custom sources, including {novelUrl} [@mrissaoussama](https://github.com/mrissaoussama) [#296](https://github.com/tsundoku-otaku/tsundoku/pull/296)
 - Localnovel relative path improvements [@mrissaoussama](https://github.com/mrissaoussama) [#343](https://github.com/tsundoku-otaku/tsundoku/pull/343)
 - Improve performance on library export notifications [@mrissaoussama](https://github.com/mrissaoussama) [#285](https://github.com/tsundoku-otaku/tsundoku/pull/285)
+- Custom source: Duplicate source under new name/site [@mrissaoussama](https://github.com/mrissaoussama) [#361](https://github.com/tsundoku-otaku/tsundoku/pull/361)
 - Per-field metadata overrides [@mrissaoussama](https://github.com/mrissaoussama) [#308](https://github.com/tsundoku-otaku/tsundoku/pull/308)
 - Edit manga now has an artist field [@mrissaoussama](https://github.com/mrissaoussama) [#278](https://github.com/tsundoku-otaku/tsundoku/pull/278)
 - Compatibility with previous backups [@mrissaoussama](https://github.com/mrissaoussama) [#306](https://github.com/tsundoku-otaku/tsundoku/pull/306)
