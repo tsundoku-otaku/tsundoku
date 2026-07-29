@@ -179,11 +179,21 @@ class MangaBakaApi(
         }
     }
 
-    suspend fun search(search: String): List<TrackSearch> {
+    suspend fun search(search: String): List<TrackSearch> = search(search, novelsOnly = false)
+
+    suspend fun searchNovels(search: String): List<TrackSearch> = search(search, novelsOnly = true)
+
+    private suspend fun search(search: String, novelsOnly: Boolean): List<TrackSearch> {
         return withIOContext {
             val url = "$API_BASE_URL/v1/series/search".toUri().buildUpon()
                 .appendQueryParameter("q", search)
-                .appendQueryParameter("type_not", "novel")
+                .apply {
+                    if (novelsOnly) {
+                        appendQueryParameter("type", "novel")
+                    } else {
+                        appendQueryParameter("type_not", "novel")
+                    }
+                }
                 .build()
             with(json) {
                 client.newCall(GET(url.toString()))
