@@ -27,6 +27,9 @@ data class MangaBakaItem(
     val type: String,
     val rating: Double?,
     val titles: List<MangaBakaItemTitle>?,
+    val state: String? = null,
+    @SerialName("merged_with")
+    val mergedWith: Long? = null,
 ) {
     fun chooseBestTitle(): String {
         // based on https://mangabaka.org/pages/announcements/15-titles-v2#finding-the-title-you-want
