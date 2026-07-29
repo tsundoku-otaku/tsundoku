@@ -219,11 +219,15 @@ class GetLibraryManga(
         bookmarkCount: Long? = null,
         lastRead: Long? = null,
     ) {
+        val current = _libraryState.value
+        // Entries not in the cached library (never favorited, or the cache isn't loaded) would copy
+        // the whole list only to discard it, so check before taking the lock.
+        if (current.none { it.id == mangaId }) return
         mutex.withLock {
-            val current = _libraryState.value
-            val result = ArrayList<LibraryManga>(current.size)
+            val locked = _libraryState.value
+            val result = ArrayList<LibraryManga>(locked.size)
             var changed = false
-            for (item in current) {
+            for (item in locked) {
                 if (item.id != mangaId) {
                     result.add(item)
                 } else {

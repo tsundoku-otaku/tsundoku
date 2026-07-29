@@ -109,9 +109,7 @@ interface Source {
      * @return the updated manga.
      */
     @Deprecated(
-        "Implementation hook for extensions that predate the combined API. App code must call " +
-            "getMangaUpdate, which serves every extension generation - extensions on 1.6 throw from " +
-            "the helpers this delegates to. Only CatalogueSource's getMangaUpdate default calls this.",
+        "deprecated in 1.6, Only CatalogueSource's getMangaUpdate default calls this.",
         ReplaceWith("getMangaUpdate"),
     )
     @Suppress("DEPRECATION")
@@ -127,10 +125,8 @@ interface Source {
      * @return the chapters for the manga.
      */
     @Deprecated(
-        "Implementation hook for extensions that predate the combined API. App code must call " +
-            "getMangaUpdate, which serves every extension generation - extensions on 1.6 throw from " +
-            "the helpers this delegates to. Only CatalogueSource's getMangaUpdate default calls this.",
-        ReplaceWith("getMangaUpdate"),
+        "deprecated in 1.6, Only CatalogueSource's getMangaUpdate default calls this.",
+                ReplaceWith("getMangaUpdate"),
     )
     @Suppress("DEPRECATION")
     suspend fun getChapterList(manga: SManga): List<SChapter> {

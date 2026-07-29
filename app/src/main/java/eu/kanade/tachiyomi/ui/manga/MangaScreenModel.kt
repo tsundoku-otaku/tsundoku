@@ -314,13 +314,16 @@ class MangaScreenModel(
     fun fetchAllFromSource(manualFetch: Boolean = true, forceRefresh: Boolean = false) {
         screenModelScope.launch {
             updateSuccessState { it.copy(isRefreshingData = true) }
-            fetchAllFromSource(
-                manualFetch = manualFetch,
-                fetchDetails = true,
-                fetchChapters = true,
-                forceRefresh = forceRefresh,
-            )
-            updateSuccessState { it.copy(isRefreshingData = false) }
+            try {
+                fetchAllFromSource(
+                    manualFetch = manualFetch,
+                    fetchDetails = true,
+                    fetchChapters = true,
+                    forceRefresh = forceRefresh,
+                )
+            } finally {
+                updateSuccessState { it.copy(isRefreshingData = false) }
+            }
         }
     }
 
@@ -353,13 +356,7 @@ class MangaScreenModel(
                 }
 
                 if (fetchChapters) {
-                    val allChapters = getMangaAndChapters.awaitChapters(state.manga.id)
-                    getLibraryManga.applyChapterUpdates(
-                        mangaId,
-                        totalChapters = allChapters.size.toLong(),
-                        readCount = allChapters.count { it.read }.toLong(),
-                        bookmarkCount = allChapters.count { it.bookmark }.toLong(),
-                    )
+                    updateLibraryChapterCounts()
                 }
             }
         } catch (_: CancellationException) {
@@ -1090,6 +1087,23 @@ class MangaScreenModel(
             } catch (e: Throwable) {
                 logcat(LogPriority.ERROR, e)
             }
+        }
+    }
+
+    /**
+     * Refresh the cached library counts for this entry. Detached from the fetch: it takes the
+     * library cache lock and rebuilds the cached list, so a background job holding that lock must
+     * not keep the refresh indicator spinning after the chapters are already in the database.
+     */
+    private fun updateLibraryChapterCounts() {
+        screenModelScope.launchNonCancellable {
+            val allChapters = getMangaAndChapters.awaitChapters(mangaId)
+            getLibraryManga.applyChapterUpdates(
+                mangaId,
+                totalChapters = allChapters.size.toLong(),
+                readCount = allChapters.count { it.read }.toLong(),
+                bookmarkCount = allChapters.count { it.bookmark }.toLong(),
+            )
         }
     }
 
