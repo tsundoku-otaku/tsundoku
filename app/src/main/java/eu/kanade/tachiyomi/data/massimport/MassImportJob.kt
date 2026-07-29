@@ -491,8 +491,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             if (batchId.isNotEmpty()) MassImportStore.appendSkipped(context, batchId, toFlush)
         }
 
-        // Urls no installed source can handle, kept in one cross-batch list so the missing sources
-        // can be looked up later. The skipped log drops the reason, so it can't answer this.
         val noSourceBuffer = mutableListOf<String>()
         fun recordNoSource(url: String) {
             val toFlush = synchronized(noSourceBuffer) {
