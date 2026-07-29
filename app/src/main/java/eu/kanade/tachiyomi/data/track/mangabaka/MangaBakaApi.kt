@@ -114,14 +114,8 @@ class MangaBakaApi(
                         .parseAs<MangaBakaListResult>()
                         .data
 
-                    val additionalData = authClient.newCall(GET("$API_BASE_URL/v1/series/${track.remote_id}"))
-                        .awaitSuccess()
-                        .parseAs<MangaBakaItemResult>()
-                        .data
-
                     Track.create(TrackerManager.MANGABAKA).apply {
                         remote_id = track.remote_id
-                        title = additionalData.chooseBestTitle()
                         status = userData.getStatus()
                         score = userData.rating?.toDouble() ?: 0.0
                         started_reading_date = userData.startDate?.let { Instant.parse(it).toEpochMilliseconds() } ?: 0
@@ -140,6 +134,44 @@ class MangaBakaApi(
             }
         }
     }
+
+    /**
+     * Follows `merged_with` when mangabaka.org has merged [seriesId] into another series,
+     * up to [MAX_MERGE_HOPS] hops, so callers don't keep reading/writing a dead id.
+     */
+    suspend fun resolveSeries(seriesId: Long): ResolvedSeries {
+        var currentId = seriesId
+        var lastItem: MangaBakaItem? = null
+        repeat(MAX_MERGE_HOPS) {
+            val item = fetchSeriesItem(currentId)
+                ?: return ResolvedSeries(currentId, "$BASE_URL/$currentId", lastItem)
+            lastItem = item
+            val mergedWith = item.mergedWith
+            if (item.state == "merged" && mergedWith != null && mergedWith > 0 && mergedWith != currentId) {
+                currentId = mergedWith
+            } else {
+                return ResolvedSeries(currentId, "$BASE_URL/$currentId", item)
+            }
+        }
+        return ResolvedSeries(currentId, "$BASE_URL/$currentId", lastItem)
+    }
+
+    private suspend fun fetchSeriesItem(seriesId: Long): MangaBakaItem? {
+        return withIOContext {
+            with(json) {
+                try {
+                    authClient.newCall(GET("$API_BASE_URL/v1/series/$seriesId"))
+                        .awaitSuccess()
+                        .parseAs<MangaBakaItemResult>()
+                        .data
+                } catch (e: HttpException) {
+                    if (e.code == 404) null else throw e
+                }
+            }
+        }
+    }
+
+    data class ResolvedSeries(val id: Long, val trackingUrl: String, val item: MangaBakaItem?)
 
     suspend fun updateLibManga(track: Track): Track {
         return withIOContext {
@@ -224,25 +256,7 @@ class MangaBakaApi(
     }
 
     suspend fun getMangaDetails(id: Int): TrackSearch? {
-        return withIOContext {
-            val url = "$API_BASE_URL/v1/series".toUri().buildUpon()
-                .appendPath(id.toString())
-                .build()
-            with(json) {
-                try {
-                    authClient.newCall(GET(url.toString()))
-                        .awaitSuccess()
-                        .parseAs<MangaBakaItemResult>()
-                        .data
-                        .let { parseSearchItem(it) }
-                } catch (e: HttpException) {
-                    if (e.code == 404) {
-                        return@with null
-                    }
-                    throw e
-                }
-            }
-        }
+        return fetchSeriesItem(id.toLong())?.let { parseSearchItem(it) }
     }
 
     suspend fun getCurrentUser(): MangaBakaUserProfile {
@@ -289,6 +303,8 @@ class MangaBakaApi(
         private const val REDIRECT_URI = "tsundoku://mangabaka-auth"
 
         private const val APP_JSON = "application/json"
+
+        private const val MAX_MERGE_HOPS = 3
 
         private var codeVerifier: String = ""
         private var oauthStateParam: String = ""
