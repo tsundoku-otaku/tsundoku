@@ -25,6 +25,7 @@ object MassImportStore {
     private const val LOG_SUFFIX = ".csv"
     private const val ERRORS_INFIX = "_errors"
     private const val SKIPPED_INFIX = "_skipped"
+    private const val NO_SOURCE_NAME = "no_source.txt"
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -226,6 +227,26 @@ object MassImportStore {
         entries: List<Pair<String, String>>,
     ) =
         appendLog(batchId, ::errorsName, entries, withMessage = true)
+
+    /**
+     * Append urls no installed source can handle. Cross-batch on purpose: the list answers "which
+     * sources am I missing", and the per-batch skipped log keeps no reason.
+     */
+    fun appendNoSource(urls: List<String>) {
+        if (urls.isEmpty()) return
+        val dir = dir() ?: return
+        synchronized(ioLock) {
+            runCatching {
+                val file = dir.findFile(NO_SOURCE_NAME) ?: dir.createFile(NO_SOURCE_NAME) ?: return@runCatching
+                file.openOutputStream(true).bufferedWriter().use { writer ->
+                    for (url in urls) {
+                        writer.write(url.trim())
+                        writer.write("\n")
+                    }
+                }
+            }.onFailure { logcat(LogPriority.WARN, it) { "MassImportStore: failed to append the no-source log" } }
+        }
+    }
 
     @Suppress("ktlint:standard:max-line-length")
     fun appendSkipped(
