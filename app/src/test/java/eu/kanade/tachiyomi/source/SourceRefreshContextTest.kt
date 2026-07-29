@@ -46,6 +46,8 @@ class SourceRefreshContextTest {
             fetchChapters: Boolean,
         ): SMangaUpdate = throw UnsupportedOperationException()
         override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
+
+        @Suppress("OVERRIDE_DEPRECATION")
         override suspend fun getChapterList(manga: SManga): List<SChapter> {
             legacyCallCount++
             return chapters
@@ -71,6 +73,8 @@ class SourceRefreshContextTest {
             fetchChapters: Boolean,
         ): SMangaUpdate = throw UnsupportedOperationException()
         override suspend fun getPageList(chapter: SChapter): List<Page> = throw UnsupportedOperationException()
+
+        @Suppress("OVERRIDE_DEPRECATION")
         override suspend fun getChapterList(manga: SManga): List<SChapter> =
             error("legacy path must not be used when override is present")
 

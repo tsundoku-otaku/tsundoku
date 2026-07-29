@@ -427,7 +427,12 @@ class CustomSourceManager(
     ) {
         val detailsUrl = source.getMangaUrlOrNull(testManga) ?: testManga.url
         try {
-            val details = source.getMangaDetails(testManga)
+            val details = source.getMangaUpdate(
+                testManga,
+                emptyList(),
+                fetchDetails = true,
+                fetchChapters = false,
+            ).manga
             val success = details.title.isNotBlank()
             results["details"] = TestStepResult(
                 success = success,
@@ -451,7 +456,12 @@ class CustomSourceManager(
         }
 
         try {
-            val chapters = source.getChapterList(testManga)
+            val chapters = source.getMangaUpdate(
+                testManga,
+                emptyList(),
+                fetchDetails = false,
+                fetchChapters = true,
+            ).chapters
             val paginated = !source.config.selectors.chapters.nextPage.isNullOrBlank()
             results["chapters"] = TestStepResult(
                 success = chapters.isNotEmpty(),

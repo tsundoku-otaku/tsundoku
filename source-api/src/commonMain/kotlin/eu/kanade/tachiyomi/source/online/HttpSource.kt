@@ -285,7 +285,7 @@ abstract class HttpSource : CatalogueSource {
      *
      * @param manga the manga to look for chapters.
      */
-    @Suppress("DEPRECATION")
+    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override suspend fun getChapterList(manga: SManga): List<SChapter> {
         return fetchChapterList(manga).awaitSingle()
     }

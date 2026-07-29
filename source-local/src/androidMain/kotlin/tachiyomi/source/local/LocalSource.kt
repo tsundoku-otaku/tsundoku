@@ -152,6 +152,7 @@ actual class LocalSource(
     }
 
     // Manga details related
+    @Suppress("OVERRIDE_DEPRECATION")
     override suspend fun getMangaDetails(manga: SManga): SManga = withIOContext {
         coverManager.find(manga.url)?.let {
             manga.thumbnail_url = it.uri.toString()
@@ -266,6 +267,7 @@ actual class LocalSource(
     }
 
     // Chapters
+    @Suppress("OVERRIDE_DEPRECATION")
     override suspend fun getChapterList(manga: SManga): List<SChapter> = withIOContext {
         val chapters = fileSystem.getFilesInMangaDirectory(manga.url)
             // Only keep supported formats

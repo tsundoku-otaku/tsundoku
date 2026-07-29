@@ -54,12 +54,17 @@ class SourceMangaUpdateCompatTest {
 
     /** Novel, JS and local sources: suspend methods, no RxJava, no combined API. */
     private class SuspendSource(private val chapters: List<SChapter>) : TestSource() {
+        @Suppress("OVERRIDE_DEPRECATION")
         override suspend fun getMangaDetails(manga: SManga): SManga = details("suspend")
+
+        @Suppress("OVERRIDE_DEPRECATION")
         override suspend fun getChapterList(manga: SManga): List<SChapter> = chapters
     }
 
     private class ContextSource : TestSource() {
         var receivedExisting: List<SChapter>? = null
+
+        @Suppress("OVERRIDE_DEPRECATION")
         override suspend fun getMangaDetails(manga: SManga): SManga = details("context")
 
         @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")

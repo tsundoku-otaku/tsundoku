@@ -586,6 +586,7 @@ class CustomNovelSource(
         return super.getMangaUpdate(manga, chapters, fetchDetails, fetchChapters)
     }
 
+    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override suspend fun getMangaDetails(manga: SManga): SManga {
         if (baseSource != null) {
             return getMangaUpdate(manga, emptyList(), fetchDetails = true, fetchChapters = false).manga
@@ -593,6 +594,7 @@ class CustomNovelSource(
         return super.getMangaDetails(manga)
     }
 
+    @Suppress("OVERRIDE_DEPRECATION", "DEPRECATION")
     override suspend fun getChapterList(manga: SManga): List<SChapter> {
         if (baseSource != null) {
             return getMangaUpdate(manga, emptyList(), fetchDetails = false, fetchChapters = true).chapters

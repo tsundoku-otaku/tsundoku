@@ -599,6 +599,7 @@ class JsSource(
         return JsonObject(filterEntries).toString()
     }
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override suspend fun getMangaDetails(manga: SManga): SManga = withContext(Dispatchers.IO) {
         try {
             // parseNovelCached dedupes the fetch with getChapterList; parsing the raw JSON is cheap.
@@ -609,6 +610,7 @@ class JsSource(
         }
     }
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override suspend fun getChapterList(manga: SManga): List<SChapter> = withContext(Dispatchers.IO) {
         try {
             // Check cache first
