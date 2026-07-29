@@ -109,7 +109,6 @@ class TrackerWebViewLoginActivity : BaseActivity() {
                             TrackerManager.NOVELUPDATES -> trackerManager.novelUpdates
                             TrackerManager.NOVELLIST -> trackerManager.novelList
                             TrackerManager.RANOBEDB -> trackerManager.ranobeDb
-                            TrackerManager.MANGABAKA -> trackerManager.mangaBaka
                             else -> null
                         }
                         tracker?.let {
@@ -206,8 +205,7 @@ private fun TrackerWebViewLoginScreen(
                         )
                     }
                     if (trackerId == TrackerManager.NOVELLIST ||
-                        trackerId == TrackerManager.RANOBEDB ||
-                        trackerId == TrackerManager.MANGABAKA
+                        trackerId == TrackerManager.RANOBEDB
                     ) {
                         IconButton(onClick = { showManualTokenDialog = true }) {
                             Icon(
@@ -290,7 +288,6 @@ private fun TrackerWebViewLoginScreen(
                         TrackerManager.NOVELUPDATES -> "Login to NovelUpdates, then tap the ✓ button to complete login."
                         TrackerManager.NOVELLIST -> "Login to NovelList, then tap the ✓ button to complete login. Use the edit icon to paste token/cookie manually."
                         TrackerManager.RANOBEDB -> "Login to RanobeDB, then tap the ✓ button to complete login. Use the edit icon to paste the auth_session cookie manually."
-                        TrackerManager.MANGABAKA -> "Login to MangaBaka, navigate to your API keys page, then paste the PAT (mb-...) via the edit icon. The ✓ button also tries to extract a session cookie."
                         else -> "Login, then tap the ✓ button to complete."
                     }
                 Text(
@@ -304,8 +301,7 @@ private fun TrackerWebViewLoginScreen(
             if (showManualTokenDialog &&
                 (
                     trackerId == TrackerManager.NOVELLIST ||
-                        trackerId == TrackerManager.RANOBEDB ||
-                        trackerId == TrackerManager.MANGABAKA
+                        trackerId == TrackerManager.RANOBEDB
                     )
             ) {
                 AlertDialog(
@@ -315,7 +311,6 @@ private fun TrackerWebViewLoginScreen(
                             when (trackerId) {
                                 TrackerManager.NOVELLIST -> "NovelList token/cookie"
                                 TrackerManager.RANOBEDB -> "RanobeDB cookie"
-                                TrackerManager.MANGABAKA -> "MangaBaka PAT"
                                 else -> "Token"
                             },
                         )
@@ -330,7 +325,6 @@ private fun TrackerWebViewLoginScreen(
                                 val hint = when (trackerId) {
                                     TrackerManager.NOVELLIST -> "Paste JWT, novellist cookie, or full cookie header"
                                     TrackerManager.RANOBEDB -> "Paste auth_session value or full cookie header"
-                                    TrackerManager.MANGABAKA -> "Paste your mb-... PAT from mangabaka.org account"
                                     else -> "Paste your token"
                                 }
                                 Text(hint)
@@ -345,7 +339,6 @@ private fun TrackerWebViewLoginScreen(
                                 val token = when (trackerId) {
                                     TrackerManager.NOVELLIST -> normalizeNovelListToken(manualTokenInput)
                                     TrackerManager.RANOBEDB -> normalizeRanobeDbCookie(manualTokenInput)
-                                    TrackerManager.MANGABAKA -> normalizeMangaBakaToken(manualTokenInput)
                                     else -> null
                                 }
                                 if (token != null) {
@@ -368,15 +361,6 @@ private fun TrackerWebViewLoginScreen(
             }
         }
     }
-}
-
-private fun normalizeMangaBakaToken(input: String): String? {
-    val raw = input.trim()
-    if (raw.isEmpty()) return null
-    // Accept a bare `mb-...` PAT, a `Bearer mb-...` header, or any cookie blob containing one.
-    val patMatch = Regex("mb-[A-Za-z0-9_\\-]+").find(raw)
-    if (patMatch != null) return patMatch.value
-    return raw.removePrefix("Bearer ").trim().ifBlank { null }
 }
 
 private fun normalizeRanobeDbCookie(input: String): String? {
@@ -462,32 +446,6 @@ private suspend fun extractTokenFromCookies(trackerId: Long, currentUrl: String)
                     } else {
                         logcat(LogPriority.WARN) { "NovelList cookie not found" }
                         null
-                    }
-                } else {
-                    null
-                }
-            }
-            // MangaBaka - prefer Better-Auth session cookies; fall back to PAT pattern.
-            TrackerManager.MANGABAKA -> {
-                val cookies = cookieManager.getCookie("https://mangabaka.org")
-                logcat(LogPriority.DEBUG) { "MangaBaka cookies: $cookies" }
-                if (cookies != null) {
-                    @Suppress("ktlint:standard:max-line-length")
-                    val sessionData = Regex(
-                        "__Secure-better-auth\\.session_data=([^;]+)",
-                    ).find(cookies)?.groupValues?.get(1)
-
-                    @Suppress("ktlint:standard:max-line-length")
-                    val sessionToken = Regex(
-                        "__Secure-better-auth\\.session_token=([^;]+)",
-                    ).find(cookies)?.groupValues?.get(1)
-                    when {
-                        sessionData != null || sessionToken != null -> buildString {
-                            if (sessionData != null) append("__Secure-better-auth.session_data=$sessionData")
-                            if (sessionData != null && sessionToken != null) append("; ")
-                            if (sessionToken != null) append("__Secure-better-auth.session_token=$sessionToken")
-                        }
-                        else -> Regex("mb-[A-Za-z0-9_\\-]+").find(cookies)?.value
                     }
                 } else {
                     null

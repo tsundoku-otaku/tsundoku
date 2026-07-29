@@ -197,19 +197,6 @@ object SettingsTrackingScreen : SearchableSettings {
                         login = { dialog = LoginDialog(trackerManager.mangaUpdates, MR.strings.username) },
                         logout = { dialog = LogoutDialog(trackerManager.mangaUpdates) },
                     ),
-                    Preference.PreferenceItem.TrackerPreference(
-                        tracker = trackerManager.mangaBaka,
-                        login = {
-                            val intent = TrackerWebViewLoginActivity.newIntent(
-                                context,
-                                trackerId = TrackerManager.MANGABAKA,
-                                trackerName = "MangaBaka",
-                                loginUrl = "https://mangabaka.org/login",
-                            )
-                            context.startActivity(intent)
-                        },
-                        logout = { dialog = LogoutDialog(trackerManager.mangaBaka) },
-                    ),
                     Preference.PreferenceItem.SwitchPreference(
                         preference = trackPreferences.mangaBakaMarkChaptersAsRead,
                         title = "Mark chapters as read on MangaBaka",
