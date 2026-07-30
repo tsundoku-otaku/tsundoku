@@ -837,7 +837,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             preferences = preferences,
             scope = scope,
             onStyleChanged = { styler.injectStyles() },
-            onScriptChanged = { styler.injectScript { buildTsundokuScript() } },
+            onScriptChanged = {
+                // Mid-scroll with >1 chapter loaded is no longer "the initial load", so treat as append.
+                val isAppend = preferences.novelInfiniteScroll.get() && loadedChapterIds.size > 1
+                styler.injectScript(isAppend = isAppend, reapplyChangedOnly = true) { buildTsundokuScript() }
+            },
             onChapterReloadRequested = {
                 // Force a full pipeline re-run so the new prefs take effect.
                 // Plain setChapters() would no-op on an already-loaded chapter.
@@ -2133,6 +2137,41 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("error", text))
                 activity.toast(activity.stringResource(TDMR.strings.novel_error_copied))
             }
+        }
+
+        @JavascriptInterface
+        fun requestNextChapter() {
+            activity.runOnUiThread { activity.loadNextChapter() }
+        }
+
+        @JavascriptInterface
+        fun requestPrevChapter() {
+            activity.runOnUiThread { activity.loadPreviousChapter() }
+        }
+
+        @JavascriptInterface
+        fun requestStartTts() {
+            activity.runOnUiThread { startTts() }
+        }
+
+        @JavascriptInterface
+        fun requestPauseTts() {
+            activity.runOnUiThread { pauseTts() }
+        }
+
+        @JavascriptInterface
+        fun requestResumeTts() {
+            activity.runOnUiThread { resumeTts() }
+        }
+
+        @JavascriptInterface
+        fun requestStopTts() {
+            activity.runOnUiThread { stopTts() }
+        }
+
+        @JavascriptInterface
+        fun requestSetProgress(percent: Int) {
+            activity.runOnUiThread { setProgressPercent(percent) }
         }
     }
 

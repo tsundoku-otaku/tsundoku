@@ -159,6 +159,11 @@ internal class NovelWebViewStyler(
 
     @Volatile private var cachedFontBytes: Pair<String, ByteArray>? = null
 
+    // Baseline of what's been injected, keyed by snippet id, so a settings-triggered reapply only
+    // re-runs snippets whose code actually changed.
+    private var lastAppliedSnippetCode: Map<String, String> = emptyMap()
+    private var lastAppliedCustomJs: String? = null
+
     /**
      * Serve the custom font for the sentinel URL referenced by the injected @font-face. Runs on the
      * WebView's worker thread (not the UI thread), so the disk read never stalls the UI. Fonts are
@@ -205,26 +210,62 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
-    fun injectScript(isAppend: Boolean = false, buildTsundokuScript: () -> String) {
+    // reapplyChangedOnly: true for a settings-triggered reapply on an already-loaded document, so
+    // only snippets whose code changed since lastAppliedSnippetCode actually run.
+    fun injectScript(isAppend: Boolean = false, reapplyChangedOnly: Boolean = false, buildTsundokuScript: () -> String) {
         evaluateJs(buildTsundokuScript())
 
         // Appends re-run only runOnAppend snippets; one-shot code stays on the initial load so it
         // doesn't fire again on every appended chapter.
         if (!isAppend) {
             val customJs = preferences.novelCustomJs.get()
-            if (customJs.isNotBlank()) evaluateJs(customJs)
+            val shouldRunCustomJs = !reapplyChangedOnly || lastAppliedCustomJs != customJs
+            if (customJs.isNotBlank() && shouldRunCustomJs) evaluateJs(customJs)
+            lastAppliedCustomJs = customJs
         }
 
         val jsSnippetsJson = preferences.novelCustomJsSnippets.get()
-        val enabledSnippetsJs = try {
-            val snippets = Json.decodeFromString<List<CodeSnippet>>(jsSnippetsJson)
-            snippets.filter { it.enabled && (!isAppend || it.runOnAppend) }
-                .joinToString("\n") { it.code }
+        val enabledSnippets = try {
+            Json.decodeFromString<List<CodeSnippet>>(jsSnippetsJson)
+                .filter { it.enabled && (!isAppend || it.runOnAppend) }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR) { "Failed to parse JS snippets: ${e.message}" }
-            ""
+            emptyList()
         }
-        if (enabledSnippetsJs.isNotBlank()) evaluateJs(enabledSnippetsJs)
+
+        val toRun = if (reapplyChangedOnly) {
+            enabledSnippets.filter { lastAppliedSnippetCode[it.id] != it.code }
+        } else {
+            enabledSnippets
+        }
+        if (toRun.isNotEmpty()) evaluateJs(buildSnippetRunnerJs(toRun))
+
+        if (!isAppend) {
+            lastAppliedSnippetCode = enabledSnippets.associate { it.id to it.code }
+        }
+    }
+
+    // Each snippet runs as its own real <script> element (not a new Function() call) so a broken
+    // snippet reports its own accurate file/line via sourceURL and can't stop the others from running.
+    private fun buildSnippetRunnerJs(snippets: List<CodeSnippet>): String {
+        val entries = snippets.mapIndexed { i, s ->
+            val safeName = s.title.ifBlank { "snippet-$i" }
+                .replace(Regex("[^A-Za-z0-9._-]"), "-")
+            "{ name: ${quoteForJson(safeName)}, code: ${quoteForJson(s.code)} }"
+        }.joinToString(",\n")
+        return """
+            (function(){
+                var __snippets = [$entries];
+                var __host = document.head || document.documentElement;
+                for (var __i = 0; __i < __snippets.length; __i++) {
+                    var __el = document.createElement('script');
+                    __el.textContent = __snippets[__i].code +
+                        '\n//# sourceURL=tsundoku-snippet-' + __snippets[__i].name + '.js';
+                    __host.appendChild(__el);
+                    __host.removeChild(__el);
+                }
+            })();
+        """.trimIndent()
     }
 
     fun injectNextChapterButton(hasNextChapter: Boolean) {

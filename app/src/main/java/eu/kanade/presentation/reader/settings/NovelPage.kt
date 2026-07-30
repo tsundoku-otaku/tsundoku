@@ -94,9 +94,8 @@ data class CodeSnippet(
     val enabled: Boolean = true,
     // JS only. Default off so one-shot snippets don't re-run on every infinite-scroll append.
     val runOnAppend: Boolean = false,
-    // Stable identity for edit/delete so a list reorder between opening a dialog and confirming it
-    // can't target the wrong entry. Absent from JSON saved before this field existed, in which case
-    // decoding assigns a fresh one -- harmless since those entries had no addressable identity before.
+    // Stable identity for edit/delete/reapply-diffing. Missing from pre-existing JSON, in which
+    // case decoding assigns a fresh one each time.
     val id: String = java.util.UUID.randomUUID().toString(),
 )
 
