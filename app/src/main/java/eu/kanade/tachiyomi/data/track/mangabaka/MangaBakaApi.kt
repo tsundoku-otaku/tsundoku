@@ -252,6 +252,7 @@ class MangaBakaApi(
             }
             authors = item.authors.orEmpty()
             artists = item.artists.orEmpty()
+            synonyms = item.alternativeTitles()
         }
     }
 

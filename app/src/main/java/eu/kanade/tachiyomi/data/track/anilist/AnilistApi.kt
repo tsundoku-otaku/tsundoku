@@ -156,6 +156,9 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                         |}
                         |title {
                             |userPreferred
+                            |english
+                            |native
+                            |romaji
                         |}
                         |synonyms
                         |coverImage {
@@ -219,6 +222,9 @@ class AnilistApi(val client: OkHttpClient, interceptor: AnilistInterceptor) {
                         |}
                         |title {
                             |userPreferred
+                            |english
+                            |native
+                            |romaji
                         |}
                         |synonyms
                         |coverImage {

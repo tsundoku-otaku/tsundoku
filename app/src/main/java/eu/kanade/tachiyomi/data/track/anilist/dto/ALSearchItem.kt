@@ -36,14 +36,19 @@ data class ALSearchItem(
         totalChapters = chapters ?: 0,
         averageScore = averageScore ?: -1,
         staff = staff,
-        synonyms = synonyms ?: emptyList(),
+        synonyms = (synonyms ?: emptyList()) + title.alternativeTitles(),
     )
 }
 
 @Serializable
 data class ALItemTitle(
     val userPreferred: String,
-)
+    val english: String? = null,
+    val native: String? = null,
+    val romaji: String? = null,
+) {
+    fun alternativeTitles(): List<String> = listOfNotNull(english, native, romaji)
+}
 
 @Serializable
 data class ItemCover(

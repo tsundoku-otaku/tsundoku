@@ -51,6 +51,14 @@ data class MangaBakaItem(
             ?: titles?.firstOrNull()?.title
             ?: "ID: $id - Could not find name! (report on the MangaBaka Discord)"
     }
+
+    fun alternativeTitles(): List<String> {
+        val bestTitle = chooseBestTitle()
+        return titles.orEmpty()
+            .map { it.title }
+            .filter { it.isNotBlank() && it != bestTitle }
+            .distinct()
+    }
 }
 
 @Serializable
