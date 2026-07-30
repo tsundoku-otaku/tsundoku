@@ -838,7 +838,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             scope = scope,
             onStyleChanged = { styler.injectStyles() },
             onScriptChanged = {
-                // Mid-scroll with >1 chapter loaded is no longer "the initial load", so treat as append.
                 val isAppend = preferences.novelInfiniteScroll.get() && loadedChapterIds.size > 1
                 styler.injectScript(isAppend = isAppend, reapplyChangedOnly = true) { buildTsundokuScript() }
             },

@@ -168,6 +168,7 @@
     <string name="novel_no_cssjs">No CSS or JS Snippets are available in this mode</string>
     <string name="novel_snippet_title">Snippet title</string>
     <string name="novel_snippet_code">Code</string>
+    <string name="novel_snippet_duplicate_title">A snippet with this name already exists</string>
     <string name="novel_add_snippet">Add snippet</string>
     <string name="novel_edit_snippet">Edit snippet</string>
     <string name="novel_delete_snippet">Delete snippet</string>

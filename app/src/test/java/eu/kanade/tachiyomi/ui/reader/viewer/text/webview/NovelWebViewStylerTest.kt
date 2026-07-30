@@ -1,5 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
+import eu.kanade.presentation.reader.settings.CodeSnippet
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -15,7 +17,7 @@ import org.junit.jupiter.api.Test
  */
 class NovelWebViewStylerTest {
 
-    // ── fontOverrideCss ───────────────────────────────────────────────────────
+    // fontOverrideCss
 
     @Test
     fun `reader-priority mode emits font-size inherit in star rule`() {
@@ -73,5 +75,63 @@ class NovelWebViewStylerTest {
         val (star, headings) = NovelWebViewStyler.fontOverrideCss(sourceCssPriority = true, useOriginalFonts = true)
         assertTrue(star.isEmpty())
         assertTrue(headings.isEmpty())
+    }
+
+    // snippetsToRun
+
+    @Test
+    fun `not reapplying runs every enabled snippet regardless of baseline`() {
+        val snippets = listOf(CodeSnippet(title = "a", code = "1", id = "a"))
+        val toRun = NovelWebViewStyler.snippetsToRun(
+            snippets,
+            reapplyChangedOnly = false,
+            lastAppliedSnippetCode = mapOf("a" to "1"),
+        )
+        assertEquals(snippets, toRun)
+    }
+
+    @Test
+    fun `reapply skips a snippet whose code matches the baseline`() {
+        val snippets = listOf(CodeSnippet(title = "a", code = "1", id = "a"))
+        val toRun = NovelWebViewStyler.snippetsToRun(
+            snippets,
+            reapplyChangedOnly = true,
+            lastAppliedSnippetCode = mapOf("a" to "1"),
+        )
+        assertTrue(toRun.isEmpty())
+    }
+
+    @Test
+    fun `reapply runs a snippet whose code changed since the baseline`() {
+        val snippets = listOf(CodeSnippet(title = "a", code = "2", id = "a"))
+        val toRun = NovelWebViewStyler.snippetsToRun(
+            snippets,
+            reapplyChangedOnly = true,
+            lastAppliedSnippetCode = mapOf("a" to "1"),
+        )
+        assertEquals(snippets, toRun)
+    }
+
+    @Test
+    fun `reapply runs a snippet absent from the baseline`() {
+        val snippets = listOf(CodeSnippet(title = "new", code = "1", id = "new"))
+        val toRun = NovelWebViewStyler.snippetsToRun(
+            snippets,
+            reapplyChangedOnly = true,
+            lastAppliedSnippetCode = emptyMap(),
+        )
+        assertEquals(snippets, toRun)
+    }
+
+    @Test
+    fun `reapply only runs the changed snippet among several`() {
+        val unchanged = CodeSnippet(title = "u", code = "1", id = "u")
+        val changed = CodeSnippet(title = "c", code = "2", id = "c")
+        val toRun = NovelWebViewStyler.snippetsToRun(
+            listOf(unchanged, changed),
+            reapplyChangedOnly = true,
+            lastAppliedSnippetCode = mapOf("u" to "1", "c" to "1"),
+        )
+        assertEquals(listOf(changed), toRun)
     }
 }

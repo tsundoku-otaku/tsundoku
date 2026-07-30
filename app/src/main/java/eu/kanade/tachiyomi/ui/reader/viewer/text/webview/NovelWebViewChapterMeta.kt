@@ -177,6 +177,15 @@ internal object NovelWebViewChapterMeta {
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_IMMERSIVE_KEY = ${context.immersive};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_TTS_STATE_KEY = ${quoteForJson(context.ttsState)};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_LOADING_CHAPTER_KEY = ${context.loadingChapter};
+            window.$TSUNDOKU_OBJECT_NAME.actions = window.$TSUNDOKU_OBJECT_NAME.actions || {
+                nextChapter: function() { Android.requestNextChapter(); },
+                prevChapter: function() { Android.requestPrevChapter(); },
+                startTts: function() { Android.requestStartTts(); },
+                pauseTts: function() { Android.requestPauseTts(); },
+                resumeTts: function() { Android.requestResumeTts(); },
+                stopTts: function() { Android.requestStopTts(); },
+                setProgress: function(percent) { Android.requestSetProgress(percent); },
+            };
         """.trimIndent()
     }
 }

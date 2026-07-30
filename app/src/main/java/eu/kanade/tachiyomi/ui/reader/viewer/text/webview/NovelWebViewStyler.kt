@@ -4,6 +4,7 @@ import android.view.View
 import android.webkit.WebView
 import androidx.core.net.toUri
 import eu.kanade.presentation.reader.settings.CodeSnippet
+import eu.kanade.presentation.reader.settings.safeTitle
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelProgress
@@ -159,8 +160,6 @@ internal class NovelWebViewStyler(
 
     @Volatile private var cachedFontBytes: Pair<String, ByteArray>? = null
 
-    // Baseline of what's been injected, keyed by snippet id, so a settings-triggered reapply only
-    // re-runs snippets whose code actually changed.
     private var lastAppliedSnippetCode: Map<String, String> = emptyMap()
     private var lastAppliedCustomJs: String? = null
 
@@ -210,9 +209,11 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
-    // reapplyChangedOnly: true for a settings-triggered reapply on an already-loaded document, so
-    // only snippets whose code changed since lastAppliedSnippetCode actually run.
-    fun injectScript(isAppend: Boolean = false, reapplyChangedOnly: Boolean = false, buildTsundokuScript: () -> String) {
+    fun injectScript(
+        isAppend: Boolean = false,
+        reapplyChangedOnly: Boolean = false,
+        buildTsundokuScript: () -> String,
+    ) {
         evaluateJs(buildTsundokuScript())
 
         // Appends re-run only runOnAppend snippets; one-shot code stays on the initial load so it
@@ -233,11 +234,7 @@ internal class NovelWebViewStyler(
             emptyList()
         }
 
-        val toRun = if (reapplyChangedOnly) {
-            enabledSnippets.filter { lastAppliedSnippetCode[it.id] != it.code }
-        } else {
-            enabledSnippets
-        }
+        val toRun = snippetsToRun(enabledSnippets, reapplyChangedOnly, lastAppliedSnippetCode)
         if (toRun.isNotEmpty()) evaluateJs(buildSnippetRunnerJs(toRun))
 
         if (!isAppend) {
@@ -245,12 +242,9 @@ internal class NovelWebViewStyler(
         }
     }
 
-    // Each snippet runs as its own real <script> element (not a new Function() call) so a broken
-    // snippet reports its own accurate file/line via sourceURL and can't stop the others from running.
     private fun buildSnippetRunnerJs(snippets: List<CodeSnippet>): String {
         val entries = snippets.mapIndexed { i, s ->
-            val safeName = s.title.ifBlank { "snippet-$i" }
-                .replace(Regex("[^A-Za-z0-9._-]"), "-")
+            val safeName = s.safeTitle().ifBlank { "snippet-$i" }
             "{ name: ${quoteForJson(safeName)}, code: ${quoteForJson(s.code)} }"
         }.joinToString(",\n")
         return """
@@ -319,6 +313,16 @@ internal class NovelWebViewStyler(
                 "h5 { font-size: 0.83em !important; } " +
                 "h6 { font-size: 0.67em !important; }"
             return starOverride to headings
+        }
+
+        internal fun snippetsToRun(
+            enabledSnippets: List<CodeSnippet>,
+            reapplyChangedOnly: Boolean,
+            lastAppliedSnippetCode: Map<String, String>,
+        ): List<CodeSnippet> = if (reapplyChangedOnly) {
+            enabledSnippets.filter { lastAppliedSnippetCode[it.id] != it.code }
+        } else {
+            enabledSnippets
         }
     }
 }
