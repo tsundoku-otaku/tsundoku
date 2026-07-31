@@ -113,7 +113,11 @@ internal class NovelTextRenderer(
             block.clearSelections()
             if (precomputed != null) {
                 precomputed.forEachIndexed { i, text ->
-                    TextViewCompat.setPrecomputedText(block.chunkViews[i], text)
+                    try {
+                        TextViewCompat.setPrecomputedText(block.chunkViews[i], text)
+                    } catch (_: IllegalArgumentException) {
+                        block.chunkViews[i].text = chunks[i]
+                    }
                 }
             } else {
                 chunks.forEachIndexed { i, chunk -> block.chunkViews[i].text = chunk }
