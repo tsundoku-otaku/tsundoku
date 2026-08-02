@@ -4,6 +4,7 @@ import android.os.Build
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import eu.kanade.tachiyomi.network.parseAs
 import kotlinx.serialization.json.Json
 import tachiyomi.domain.release.interactor.GetApplicationRelease
@@ -16,8 +17,10 @@ class ReleaseServiceImpl(
 ) : ReleaseService {
 
     override suspend fun latest(arguments: GetApplicationRelease.Arguments): Release? {
+        // GitHub's release API isn't a novel/manga source - exempt it same as the sibling
+        // AppUpdateDownloadJob (which downloads the APK this check points to).
         val release = with(json) {
-            networkService.client
+            networkService.client.rateLimitExempt()
                 .newCall(GET("https://api.github.com/repos/${arguments.repository}/releases/latest"))
                 .awaitSuccess()
                 .parseAs<GithubRelease>()
