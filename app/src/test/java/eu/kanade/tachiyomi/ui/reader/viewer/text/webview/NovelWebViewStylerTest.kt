@@ -134,4 +134,29 @@ class NovelWebViewStylerTest {
         )
         assertEquals(listOf(changed), toRun)
     }
+
+    // nextAppliedSnippetCode
+
+    @Test
+    fun `append-mode baseline update lets a later revert be detected as changed`() {
+        var baseline = mapOf("a" to "v1")
+
+        val editedToV2 = listOf(CodeSnippet(title = "a", code = "v2", id = "a"))
+        NovelWebViewStyler.snippetsToRun(editedToV2, reapplyChangedOnly = true, baseline)
+        baseline = NovelWebViewStyler.nextAppliedSnippetCode(baseline, editedToV2)
+
+        val revertedToV1 = listOf(CodeSnippet(title = "a", code = "v1", id = "a"))
+        val toRun = NovelWebViewStyler.snippetsToRun(revertedToV1, reapplyChangedOnly = true, baseline)
+
+        assertEquals(revertedToV1, toRun)
+    }
+
+    @Test
+    fun `nextAppliedSnippetCode preserves entries absent from the current snippet set`() {
+        val baseline = NovelWebViewStyler.nextAppliedSnippetCode(
+            mapOf("oneShot" to "code"),
+            enabledSnippets = listOf(CodeSnippet(title = "append", code = "v2", id = "append")),
+        )
+        assertEquals(mapOf("oneShot" to "code", "append" to "v2"), baseline)
+    }
 }

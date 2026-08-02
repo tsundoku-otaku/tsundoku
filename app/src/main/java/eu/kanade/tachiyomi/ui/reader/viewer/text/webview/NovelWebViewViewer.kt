@@ -2140,7 +2140,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         @JavascriptInterface
         fun requestNextChapter() {
-            activity.runOnUiThread { activity.loadNextChapter() }
+            loadNextChapter()
         }
 
         @JavascriptInterface

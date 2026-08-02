@@ -237,9 +237,7 @@ internal class NovelWebViewStyler(
         val toRun = snippetsToRun(enabledSnippets, reapplyChangedOnly, lastAppliedSnippetCode)
         if (toRun.isNotEmpty()) evaluateJs(buildSnippetRunnerJs(toRun))
 
-        if (!isAppend) {
-            lastAppliedSnippetCode = enabledSnippets.associate { it.id to it.code }
-        }
+        lastAppliedSnippetCode = nextAppliedSnippetCode(lastAppliedSnippetCode, enabledSnippets)
     }
 
     private fun buildSnippetRunnerJs(snippets: List<CodeSnippet>): String {
@@ -324,5 +322,10 @@ internal class NovelWebViewStyler(
         } else {
             enabledSnippets
         }
+
+        internal fun nextAppliedSnippetCode(
+            lastAppliedSnippetCode: Map<String, String>,
+            enabledSnippets: List<CodeSnippet>,
+        ): Map<String, String> = lastAppliedSnippetCode + enabledSnippets.associate { it.id to it.code }
     }
 }

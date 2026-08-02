@@ -97,7 +97,9 @@ data class CodeSnippet(
     val id: String = "legacy-${java.util.Objects.hash(title, code)}",
 )
 
-fun safeTitleOf(title: String): String = title.replace(Regex("[^A-Za-z0-9._-]"), "-")
+private val UNSAFE_TITLE_CHARS = Regex("[^A-Za-z0-9._-]")
+
+fun safeTitleOf(title: String): String = title.replace(UNSAFE_TITLE_CHARS, "-")
 
 fun CodeSnippet.safeTitle(): String = safeTitleOf(title)
 
@@ -1126,7 +1128,8 @@ private fun SnippetEditDialog(
     var snippetCode by remember { mutableStateOf(initialSnippet?.code ?: "") }
     var runOnAppend by remember { mutableStateOf(initialSnippet?.runOnAppend ?: false) }
     val codeFocusRequester = remember { FocusRequester() }
-    val isDuplicateTitle = existingSafeTitles.contains(safeTitleOf(snippetTitle.trim()))
+    val trimmedSafeTitle = safeTitleOf(snippetTitle.trim())
+    val isDuplicateTitle = existingSafeTitles.contains(trimmedSafeTitle)
 
     LaunchedEffect(focusCodeFieldByDefault) {
         if (focusCodeFieldByDefault) {
@@ -1146,7 +1149,7 @@ private fun SnippetEditDialog(
                     singleLine = true,
                     isError = isDuplicateTitle,
                     supportingText = if (isDuplicateTitle) {
-                        { Text(stringResource(TDMR.strings.novel_snippet_duplicate_title)) }
+                        { Text(stringResource(TDMR.strings.novel_snippet_duplicate_title, trimmedSafeTitle)) }
                     } else {
                         null
                     },
