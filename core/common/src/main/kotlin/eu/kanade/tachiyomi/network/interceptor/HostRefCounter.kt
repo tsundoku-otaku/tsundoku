@@ -22,4 +22,19 @@ internal class HostRefCounter {
             activeHosts.computeIfPresent(normalized) { _, count -> (count - 1).takeIf { it > 0 } }
         }
     }
+
+    /**
+     * Non-suspend twin of [track] for callers on a plain thread that can't call a suspend
+     * function - namely an OkHttp [okhttp3.Interceptor], which always runs synchronously on
+     * OkHttp's own dispatcher thread, never the calling coroutine's.
+     */
+    fun <T> trackBlocking(host: String?, block: () -> T): T {
+        val normalized = host?.normalizedRateLimitHost() ?: return block()
+        activeHosts.merge(normalized, 1, Int::plus)
+        try {
+            return block()
+        } finally {
+            activeHosts.computeIfPresent(normalized) { _, count -> (count - 1).takeIf { it > 0 } }
+        }
+    }
 }

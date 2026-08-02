@@ -19,4 +19,7 @@ object InteractiveRateLimitBypass {
     fun isBypassed(host: String): Boolean = refCounter.isActive(host)
 
     suspend fun <T> bypassing(host: String?, block: suspend () -> T): T = refCounter.track(host, block)
+
+    /** Non-suspend twin of [bypassing], for use from [RateLimitExemptInterceptor]. */
+    fun <T> bypassingBlocking(host: String?, block: () -> T): T = refCounter.trackBlocking(host, block)
 }
