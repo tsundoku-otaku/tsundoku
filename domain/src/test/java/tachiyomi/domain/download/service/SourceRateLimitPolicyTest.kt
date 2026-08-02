@@ -78,6 +78,23 @@ class SourceRateLimitPolicyTest {
     }
 
     @Test
+    fun `unrelated tenant of a wildcard hosting suffix is not matched to another tenant's source`() {
+        // Regression test: "alice.github.io" and "bob.github.io" share a naive last-two-labels
+        // split ("github.io") but are unrelated sites - matching them would let an unmetered
+        // tenant's spec (e.g. NONE) silently exempt a completely unrelated host.
+        val candidate = novelCandidate("alice.github.io", isUnmetered = true)
+        val result = policy(candidate).specFor("bob.github.io")
+        result shouldBe RateLimitResolver(NovelDownloadPreferences(InMemoryPreferenceStore())).resolveDefault()
+    }
+
+    @Test
+    fun `subdomain of the same wildcard hosting tenant still resolves that tenant's source`() {
+        val candidate = novelCandidate("alice.github.io")
+        val result = policy(candidate).specFor("api.alice.github.io")
+        (result.delayMillis > 0) shouldBe true
+    }
+
+    @Test
     fun `unmetered source is never throttled regardless of novel or RateLimited status`() {
         val candidate = novelCandidate("example.com", isUnmetered = true)
         val result = policy(candidate).specFor("example.com")
