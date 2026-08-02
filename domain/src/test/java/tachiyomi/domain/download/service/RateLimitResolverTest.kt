@@ -99,4 +99,36 @@ class RateLimitResolverTest {
 
         resolver.resolve(sourceId = 1L) shouldBe RateLimitSpec.NONE
     }
+
+    @Test
+    fun `resolveIgnoringToggle still returns a real spec when throttling is disabled`() {
+        // The whole point of the diagnostic-only variant: resolve() collapses to NONE with
+        // throttling off, which would hide a host that should've been exempted but wasn't.
+        val (prefs, resolver) = resolver()
+        prefs.enableRequestThrottling().set(false)
+        prefs.requestDelay().set(2000)
+        prefs.requestJitter().set(500)
+        prefs.requestPermits().set(3)
+
+        resolver.resolveIgnoringToggle(sourceId = 1L) shouldBe
+            RateLimitSpec(delayMillis = 2000L, jitterMillis = 500L, permits = 3)
+    }
+
+    @Test
+    fun `resolveDefaultIgnoringToggle still returns a real spec when throttling is disabled`() {
+        val (prefs, resolver) = resolver()
+        prefs.enableRequestThrottling().set(false)
+        prefs.requestDelay().set(2000)
+
+        resolver.resolveDefaultIgnoringToggle().delayMillis shouldBe 2000L
+    }
+
+    @Test
+    fun `isThrottlingEnabled reflects the current toggle`() {
+        val (prefs, resolver) = resolver()
+        resolver.isThrottlingEnabled() shouldBe true
+
+        prefs.enableRequestThrottling().set(false)
+        resolver.isThrottlingEnabled() shouldBe false
+    }
 }

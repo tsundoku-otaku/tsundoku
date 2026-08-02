@@ -4,7 +4,9 @@ import eu.kanade.tachiyomi.network.interceptor.RateLimitSpec
 import eu.kanade.tachiyomi.network.interceptor.RequestRateLimitPolicy
 import eu.kanade.tachiyomi.network.interceptor.normalizedRateLimitHost
 import eu.kanade.tachiyomi.network.interceptor.topPrivateDomainOrNull
+import logcat.LogPriority
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.service.SourceManager
 
 /**
@@ -41,7 +43,10 @@ class SourceRateLimitPolicy(
             // spec rather than exempting it. An unrecognized host used by an installed
             // extension (e.g. a CDN on an unrelated domain) is still a real, unknown site that
             // deserves conservative pacing by default.
-            ?: return resolver.resolveDefault()
+            ?: run {
+                logWouldThrottle(normalized, resolver.resolveDefaultIgnoringToggle())
+                return resolver.resolveDefault()
+            }
 
         // A source explicitly declaring it doesn't need traffic considerations (e.g. a
         // self-hosted server) is honored regardless of novel/RateLimited status.
@@ -51,7 +56,26 @@ class SourceRateLimitPolicy(
         // source is only paced if it opts in by declaring its own RateLimited minimum.
         if (!candidate.isNovel && candidate.declaredMinimumMillis == 0L) return RateLimitSpec.NONE
 
+        val hypothetical = resolver.resolveIgnoringToggle(candidate.sourceId, candidate.declaredMinimumMillis)
+        logWouldThrottle(normalized, hypothetical)
         return resolver.resolve(candidate.sourceId, candidate.declaredMinimumMillis)
+    }
+
+    /**
+     * Logs whether [host] would be paced if throttling were on, independent of whether it
+     * actually is - so a request that's going through this (i.e. wasn't wrapped with
+     * `rateLimitExempt()`) still leaves a trace even while someone has the throttling toggle off
+     * for testing. Without this, disabling the toggle makes every real request return
+     * [RateLimitSpec.NONE], which looks identical to a request that was properly exempted - the
+     * one case this exists to catch.
+     */
+    private fun logWouldThrottle(host: String, hypothetical: RateLimitSpec) {
+        if (hypothetical.delayMillis <= 0) return
+        logcat(LogPriority.VERBOSE) {
+            "rate-limit: $host would be throttled (delay=${hypothetical.delayMillis}ms, " +
+                "permits=${hypothetical.permits}) - throttling toggle is currently " +
+                (if (resolver.isThrottlingEnabled()) "ON" else "OFF")
+        }
     }
 
     /**
