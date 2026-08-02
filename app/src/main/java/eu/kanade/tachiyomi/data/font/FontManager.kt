@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -210,7 +211,7 @@ class FontManager(
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                 .build()
 
-            val response = networkHelper.client.newCall(request).execute()
+            val response = networkHelper.client.rateLimitExempt().newCall(request).execute()
             val css = response.use { it.body?.string() } ?: throw Exception("Empty response")
 
             // Parse font URLs from CSS
@@ -231,7 +232,7 @@ class FontManager(
                 .url(fontUrl)
                 .build()
 
-            val fontResponse = networkHelper.client.newCall(fontRequest).execute()
+            val fontResponse = networkHelper.client.rateLimitExempt().newCall(fontRequest).execute()
             val fontBytes = fontResponse.use { it.body?.bytes() }
                 ?: throw Exception("Failed to download font")
 

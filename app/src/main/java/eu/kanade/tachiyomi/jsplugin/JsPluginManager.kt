@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.jsplugin.model.JsPluginRepository
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import eu.kanade.tachiyomi.source.CatalogueSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +43,10 @@ class JsPluginManager(
     private val networkHelper: NetworkHelper = Injekt.get()
     private val sourcePreferences: SourcePreferences = Injekt.get()
     private val storageManager: StorageManager = Injekt.get()
-    private val client: OkHttpClient get() = networkHelper.client
+
+    // Plugin repo/list/icon fetches, not a source's own content requests (JsSource routes
+    // through JSLibraryProvider's fetch() instead) - not paced by novel-source throttling.
+    private val client: OkHttpClient get() = networkHelper.client.rateLimitExempt()
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true

@@ -16,6 +16,7 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.ProgressListener
 import eu.kanade.tachiyomi.network.await
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import eu.kanade.tachiyomi.network.newCachelessCallWithProgress
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.storage.saveTo
@@ -94,7 +95,7 @@ class AppUpdateDownloadJob(private val context: Context, workerParams: WorkerPar
 
         try {
             // Download the new update.
-            val response = network.client.newCachelessCallWithProgress(GET(url), progressListener)
+            val response = network.client.rateLimitExempt().newCachelessCallWithProgress(GET(url), progressListener)
                 .await()
 
             // File where the apk will be saved.

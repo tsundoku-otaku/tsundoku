@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.extension.installer.Installer
 import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.extension.model.InstallStep
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.isPackageInstalled
 import kotlinx.coroutines.CoroutineScope
@@ -41,7 +42,7 @@ internal class ExtensionInstaller(
     private val activeSteps = mutableMapOf<Long, MutableStateFlow<InstallStep>>()
     private val extensionInstaller = Injekt.get<BasePreferences>().extensionInstaller
 
-    private val httpClient: OkHttpClient = Injekt.get<NetworkHelper>().client
+    private val httpClient: OkHttpClient = Injekt.get<NetworkHelper>().client.rateLimitExempt()
 
     /**
      * Adds the given extension to the downloads queue and returns an observable containing its
