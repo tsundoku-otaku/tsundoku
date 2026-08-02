@@ -7,6 +7,7 @@ import eu.kanade.domain.track.model.toDomainTrack
 import eu.kanade.domain.track.service.TrackPreferences
 import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -31,8 +32,12 @@ abstract class BaseTracker(
     private val addTracks: AddTracks by injectLazy()
     private val insertTrack: InsertTrack by injectLazy()
 
+    // Trackers aren't novel/manga sources - they share the app's rate-limited client but were
+    // never meant to be paced by novel-source throttling settings (see RateLimitExemptInterceptor).
+    private val exemptClient: OkHttpClient by lazy { networkService.client.rateLimitExempt() }
+
     override val client: OkHttpClient
-        get() = networkService.client
+        get() = exemptClient
 
     // Application and remote support for reading dates
     override val supportsReadingDates: Boolean = false

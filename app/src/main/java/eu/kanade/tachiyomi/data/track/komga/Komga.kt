@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.data.database.models.Track
 import eu.kanade.tachiyomi.data.track.BaseTracker
 import eu.kanade.tachiyomi.data.track.EnhancedTracker
 import eu.kanade.tachiyomi.data.track.model.TrackSearch
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import eu.kanade.tachiyomi.source.Source
 import okhttp3.Dns
 import okhttp3.OkHttpClient
@@ -21,10 +22,13 @@ class Komga(id: Long) : BaseTracker(id, "Komga"), EnhancedTracker {
         const val COMPLETED = 3L
     }
 
+    // Komga is self-hosted; DNS.SYSTEM avoids DoH breaking IP-based addressing, rateLimitExempt
+    // because a self-hosted server isn't a novel/manga source and shouldn't be paced like one.
     override val client: OkHttpClient =
         networkService.client.newBuilder()
-            .dns(Dns.SYSTEM) // don't use DNS over HTTPS as it breaks IP addressing
+            .dns(Dns.SYSTEM)
             .build()
+            .rateLimitExempt()
 
     val api by lazy { KomgaApi(id, client) }
 
