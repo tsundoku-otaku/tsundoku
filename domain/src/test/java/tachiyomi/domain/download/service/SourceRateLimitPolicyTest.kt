@@ -38,9 +38,43 @@ class SourceRateLimitPolicyTest {
     )
 
     @Test
-    fun `unknown host resolves to NONE`() {
+    fun `unknown host falls back to the global default spec`() {
         val result = policy().specFor("unknown.example.com")
-        result shouldBe RateLimitSpec.NONE
+        result shouldBe RateLimitResolver(NovelDownloadPreferences(InMemoryPreferenceStore())).resolveDefault()
+    }
+
+    @Test
+    fun `unknown host resolves to NONE when throttling is disabled`() {
+        val prefs = NovelDownloadPreferences(InMemoryPreferenceStore())
+        prefs.enableRequestThrottling().set(false)
+        val sourceManager = mockk<SourceManager> {
+            every { getRateLimitCandidates() } returns emptyList()
+            every { isInitialized } returns MutableStateFlow(true)
+        }
+        val policy = SourceRateLimitPolicy(sourceManager, RateLimitResolver(prefs))
+
+        policy.specFor("unknown.example.com") shouldBe RateLimitSpec.NONE
+    }
+
+    @Test
+    fun `subdomain of a known source's baseUrl resolves that source's spec`() {
+        val candidate = novelCandidate("example.com")
+        val result = policy(candidate).specFor("api.example.com")
+        (result.delayMillis > 0) shouldBe true
+    }
+
+    @Test
+    fun `sibling subdomain of a known source's baseUrl resolves that source's spec`() {
+        val candidate = novelCandidate("cdn.example.com")
+        val result = policy(candidate).specFor("api.example.com")
+        (result.delayMillis > 0) shouldBe true
+    }
+
+    @Test
+    fun `unrelated domain is not matched by an unrelated source's baseUrl`() {
+        val candidate = novelCandidate("example.com")
+        val result = policy(candidate).specFor("totally-unrelated.org")
+        result shouldBe RateLimitResolver(NovelDownloadPreferences(InMemoryPreferenceStore())).resolveDefault()
     }
 
     @Test
