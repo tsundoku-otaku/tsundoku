@@ -231,7 +231,9 @@ class DownloadQueueScreenModel(
                                 initialTotal = initialTotal,
                             )
                         }
+                        .distinctBy { it.mangaId }
                 }
+                .debounce(80.milliseconds)
                 .flowOn(Dispatchers.Default)
                 .collect { novelItems -> _novelState.update { novelItems } }
         }
