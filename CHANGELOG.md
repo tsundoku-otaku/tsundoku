@@ -25,6 +25,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Improved
 - Reader Lifecycle and UX fixes [@mrissaoussama](https://github.com/mrissaoussama) [#338](https://github.com/tsundoku-otaku/tsundoku/pull/338)
+- Save URLs with failed import (no matching source) to a txt during mass import, instead of losing them [@mrissaoussama](https://github.com/mrissaoussama) [#367](https://github.com/tsundoku-otaku/tsundoku/pull/367)
 - Better batch dl delete, refresh entry categories and updates tab [@mrissaoussama](https://github.com/mrissaoussama) [#358](https://github.com/tsundoku-otaku/tsundoku/pull/358)
 - Custom Source Overhaul [@mrissaoussama](https://github.com/mrissaoussama) [#273](https://github.com/tsundoku-otaku/tsundoku/pull/273)
 - Translations and quotes more organized/portable [@mrissaoussama](https://github.com/mrissaoussama) [#336](https://github.com/tsundoku-otaku/tsundoku/pull/336)
