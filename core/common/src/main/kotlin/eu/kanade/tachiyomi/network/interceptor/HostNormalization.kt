@@ -27,9 +27,15 @@ private val MULTI_TENANT_SUFFIXES = setOf(
 )
 
 /**
+ * Matches a dotted-quad IPv4 literal (octet range isn't validated - "999.999.999.999" still
+ * matches - since this only needs to tell "IP-shaped" from "domain-shaped", not validate IPs).
+ */
+private val IPV4_LITERAL = Regex("""^\d{1,3}(\.\d{1,3}){3}$""")
+
+/**
  * A best-effort approximation of this host's registrable domain - e.g. "api.example.com" and
  * "cdn.example.com" both resolve to "example.com" - or null if the host doesn't have enough
- * labels to derive one (a bare TLD, localhost, etc). Deliberately not OkHttp's
+ * labels to derive one (a bare TLD, localhost, an IP literal, etc). Deliberately not OkHttp's
  * [okhttp3.HttpUrl.topPrivateDomain]: that needs its bundled PublicSuffixDatabase.list resource
  * on the classpath, which isn't reliably present in every module that ends up calling this (it
  * threw `IllegalStateException: Unable to load PublicSuffixDatabase.list resource.` in :domain's
@@ -39,9 +45,17 @@ private val MULTI_TENANT_SUFFIXES = setOf(
  * happens to share those two labels - still throttled, just maybe grouped with the wrong
  * source's window. Erring toward "still gets paced" is an acceptable tradeoff for not depending
  * on a resource file.
+ *
+ * IPv4/IPv6 literals are excluded up front rather than falling through to the label split: a
+ * dotted-quad IP's last two octets aren't a registrable domain, so two unrelated self-hosted
+ * servers whose IPs happen to share their last two octets (plausible on any home LAN - e.g.
+ * 192.168.1.50 and 10.0.1.50 both reduce to "1.50") would otherwise be wrongly grouped as the
+ * same "domain" and share a rate-limit spec that was never meant to apply to both.
  */
 fun String.topPrivateDomainOrNull(): String? {
-    val labels = lowercase().removePrefix("www.").split('.')
+    val normalized = lowercase().removePrefix("www.")
+    if (normalized.contains(':') || IPV4_LITERAL.matches(normalized)) return null
+    val labels = normalized.split('.')
     if (labels.size < 2) return null
     val lastTwo = labels.takeLast(2).joinToString(".")
     if (lastTwo !in MULTI_TENANT_SUFFIXES) return lastTwo

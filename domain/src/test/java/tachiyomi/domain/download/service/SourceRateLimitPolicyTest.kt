@@ -95,6 +95,17 @@ class SourceRateLimitPolicyTest {
     }
 
     @Test
+    fun `unrelated host sharing IP octets with a source's IP baseUrl is not matched to that source`() {
+        // Regression test: a naive last-two-labels split treats a dotted-quad IP's last two
+        // octets as if they were a registrable domain, so "192.168.1.50" and "10.0.1.50" (two
+        // unrelated self-hosted servers that happen to share their last two octets - plausible
+        // on any home LAN) would otherwise be wrongly grouped together.
+        val candidate = novelCandidate("192.168.1.50", isUnmetered = true)
+        val result = policy(candidate).specFor("10.0.1.50")
+        result shouldBe RateLimitResolver(NovelDownloadPreferences(InMemoryPreferenceStore())).resolveDefault()
+    }
+
+    @Test
     fun `unmetered source is never throttled regardless of novel or RateLimited status`() {
         val candidate = novelCandidate("example.com", isUnmetered = true)
         val result = policy(candidate).specFor("example.com")
