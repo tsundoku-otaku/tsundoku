@@ -42,6 +42,7 @@ import eu.kanade.tachiyomi.di.AppModule
 import eu.kanade.tachiyomi.di.PreferenceModule
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.NetworkPreferences
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import eu.kanade.tachiyomi.ui.base.delegate.SecureActivityDelegate
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.GLUtil
@@ -224,9 +225,15 @@ class App : Application(), DefaultLifecycleObserver, SingletonImageLoader.Factor
     override fun newImageLoader(context: Context): ImageLoader {
         return ImageLoader.Builder(this).apply {
             val callFactoryLazy = lazy { Injekt.get<NetworkHelper>().client }
+            // The default fetcher handles everything that isn't a manga/novel cover (extension
+            // icons, tracker avatars, ...) - not source traffic, so exempt it from novel-source
+            // rate limiting same as the other non-source consumers (see RateLimitExemptInterceptor).
+            // MangaCoverFactory/MangaFactory below intentionally keep the raw, paced client since
+            // covers ARE source traffic.
+            val exemptCallFactoryLazy = lazy { Injekt.get<NetworkHelper>().client.rateLimitExempt() }
             components {
                 // NetworkFetcher.Factory
-                add(OkHttpNetworkFetcherFactory(callFactoryLazy::value))
+                add(OkHttpNetworkFetcherFactory(exemptCallFactoryLazy::value))
                 // Decoder.Factory
                 add(TachiyomiImageDecoder.Factory())
                 // SVG support
