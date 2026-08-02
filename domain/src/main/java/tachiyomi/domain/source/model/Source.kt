@@ -9,6 +9,7 @@ data class Source(
     val isNovelSource: Boolean = false,
     val isJsSource: Boolean = false,
     val pin: Pins = Pins.unpinned,
+    val pinnedGroups: Set<String> = emptySet(),
     val isUsedLast: Boolean = false,
 ) {
 

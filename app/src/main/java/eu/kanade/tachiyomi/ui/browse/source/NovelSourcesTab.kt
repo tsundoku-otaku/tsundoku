@@ -13,6 +13,7 @@ import cafe.adriel.voyager.core.screen.Screen
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.browse.SourceOptionsDialog
+import eu.kanade.presentation.browse.SourcePinGroupsDialog
 import eu.kanade.presentation.browse.SourcesScreen
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
@@ -21,6 +22,7 @@ import eu.kanade.tachiyomi.ui.browse.source.custom.CustomSourcesScreen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.NovelGlobalSearchScreen
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import tachiyomi.domain.source.model.Pin
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -51,9 +53,14 @@ fun Screen.novelSourcesTab(): TabContent {
             ),
         ),
         content = { contentPadding, snackbarHostState ->
+            val mappedDialog = when (val d = state.dialog) {
+                is NovelSourcesScreenModel.Dialog.SourceOptions -> SourcesScreenModel.Dialog.SourceOptions(d.source)
+                is NovelSourcesScreenModel.Dialog.PinGroups -> SourcesScreenModel.Dialog.PinGroups(d.source)
+                null -> null
+            }
             SourcesScreen(
                 state = SourcesScreenModel.State(
-                    dialog = state.dialog?.let { SourcesScreenModel.Dialog(it.source) },
+                    dialog = mappedDialog,
                     isLoading = state.isLoading,
                     items = state.items,
                 ),
@@ -65,22 +72,48 @@ fun Screen.novelSourcesTab(): TabContent {
                     screenModel.showSourceDialog(source)
                 },
                 onClickPin = screenModel::togglePin,
+                onLongClickPin = screenModel::showPinGroupsDialog,
+                onRemoveFromGroup = screenModel::removeSourceFromGroup,
             )
 
-            state.dialog?.let { dialog ->
-                val source = dialog.source
-                SourceOptionsDialog(
-                    source = source,
-                    onClickPin = {
-                        screenModel.togglePin(source)
-                        screenModel.closeDialog()
-                    },
-                    onClickDisable = {
-                        screenModel.toggleSource(source)
-                        screenModel.closeDialog()
-                    },
-                    onDismiss = screenModel::closeDialog,
-                )
+            val currentDialog = state.dialog
+
+            if (currentDialog != null) {
+                when (currentDialog) {
+                    is NovelSourcesScreenModel.Dialog.SourceOptions -> {
+                        val source = currentDialog.source
+                        SourceOptionsDialog(
+                            source = source,
+                            onClickPin = {
+                                screenModel.togglePin(source)
+                                screenModel.closeDialog()
+                            },
+                            onClickPinGroups = {
+                                screenModel.showPinGroupsDialog(source)
+                            },
+                            onClickDisable = {
+                                screenModel.toggleSource(source)
+                                screenModel.closeDialog()
+                            },
+                            onDismiss = screenModel::closeDialog,
+                        )
+                    }
+                    is NovelSourcesScreenModel.Dialog.PinGroups -> {
+                        val source = currentDialog.source
+                        SourcePinGroupsDialog(
+                            source = source,
+                            pinGroups = screenModel.getSourcePinGroups(source),
+                            isPinned = Pin.Pinned in source.pin,
+                            onTogglePin = { screenModel.togglePin(source) },
+                            onConfirm = { selectedGroups ->
+                                screenModel.setSourcePinGroups(source, selectedGroups)
+                                screenModel.closeDialog()
+                            },
+                            onDeleteGroup = screenModel::deleteSourcePinGroup,
+                            onDismiss = screenModel::closeDialog,
+                        )
+                    }
+                }
             }
 
             val internalErrString = stringResource(MR.strings.internal_error)

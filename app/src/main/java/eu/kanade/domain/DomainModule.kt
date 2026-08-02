@@ -13,14 +13,17 @@ import eu.kanade.domain.manga.interactor.MassImport
 import eu.kanade.domain.manga.interactor.SetExcludedScanlators
 import eu.kanade.domain.manga.interactor.SetMangaViewerFlags
 import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.domain.source.interactor.DeleteSourcePinGroup
 import eu.kanade.domain.source.interactor.GetEnabledNovelSources
 import eu.kanade.domain.source.interactor.GetEnabledSources
 import eu.kanade.domain.source.interactor.GetIncognitoState
 import eu.kanade.domain.source.interactor.GetLanguagesWithSources
 import eu.kanade.domain.source.interactor.GetNovelSourcesWithFavoriteCount
+import eu.kanade.domain.source.interactor.GetSourcePinGroups
 import eu.kanade.domain.source.interactor.GetSourcesWithFavoriteCount
 import eu.kanade.domain.source.interactor.ManageFilterPresets
 import eu.kanade.domain.source.interactor.SetMigrateSorting
+import eu.kanade.domain.source.interactor.SetSourcePinGroups
 import eu.kanade.domain.source.interactor.ToggleIncognito
 import eu.kanade.domain.source.interactor.ToggleLanguage
 import eu.kanade.domain.source.interactor.ToggleSource
@@ -219,10 +222,13 @@ class DomainModule : InjektModule {
         addFactory { GetSourcesWithFavoriteCount(get(), get(), get()) }
         addFactory { GetNovelSourcesWithFavoriteCount(get(), get(), get()) }
         addFactory { GetSourcesWithNonLibraryManga(get()) }
+        addFactory { GetSourcePinGroups(get()) }
         addFactory { SetMigrateSorting(get()) }
+        addFactory { SetSourcePinGroups(get()) }
         addFactory { ToggleLanguage(get()) }
         addFactory { ToggleSource(get()) }
         addFactory { ToggleSourcePin(get()) }
+        addFactory { DeleteSourcePinGroup(get()) }
         addSingletonFactory { TrustExtension(get(), get()) } // Singleton to enable caching of trusted fingerprints
 
         addSingletonFactory { ExtensionStoreService(get(), get(), get()) }

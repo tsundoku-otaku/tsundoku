@@ -21,17 +21,25 @@ class GetEnabledNovelSources(
 ) {
 
     fun subscribe(): Flow<List<Source>> {
-        return combine(
+        val pinStateFlow = combine(
             preferences.pinnedSources.changes(),
+            preferences.groupPinnedSources.changes(),
+        ) { pinnedSourceIds, groupPinnedSources ->
+            pinnedSourceIds to groupPinnedSources
+        }
+
+        return combine(
+            pinStateFlow,
             preferences.enabledLanguages.changes(),
             preferences.disabledSources.changes(),
             preferences.lastUsedSource.changes(),
             repository.getSources(),
-        ) { pinnedSourceIds, enabledLanguages, disabledSources, lastUsedSource, sources ->
+        ) { (pinnedSourceIds, groupPinnedSources), enabledLanguages, disabledSources, lastUsedSource, sources ->
             logcat(LogPriority.DEBUG) {
                 "GetEnabledNovelSources: ${sources.size} total sources, enabledLangs=$enabledLanguages"
             }
             sources
+                .asSequence()
                 .filter { it.lang in enabledLanguages || it.isLocalNovel() }
                 .filterNot { it.id.toString() in disabledSources }
                 .filter { it.isNovelSource || it.isLocalNovel() }
@@ -43,13 +51,18 @@ class GetEnabledNovelSources(
                 )
                 .flatMap {
                     val flag = if ("${it.id}" in pinnedSourceIds) Pins.pinned else Pins.unpinned
-                    val source = it.copy(pin = flag)
+                    val sourceGroups = groupPinnedSources
+                        .filter { entry -> entry.endsWith("|${it.id}") }
+                        .map { entry -> entry.substringBeforeLast("|") }
+                        .toSet()
+                    val source = it.copy(pin = flag, pinnedGroups = sourceGroups)
                     val toFlatten = mutableListOf(source)
                     if (source.id == lastUsedSource) {
                         toFlatten.add(source.copy(isUsedLast = true, pin = source.pin - Pin.Actual))
                     }
                     toFlatten
                 }
+                .toList()
         }
             .distinctUntilChanged()
     }

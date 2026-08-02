@@ -20,9 +20,16 @@ class NovelGlobalSearchScreenModel(
     }
 
     override fun getEnabledSources(): List<CatalogueSource> {
+        val filter = state.value.sourceFilter
         return super.getEnabledSources()
             .filterIsInstance<CatalogueSource>()
             .filter { it.isNovelSource() }
-            .filter { state.value.sourceFilter != SourceFilter.PinnedOnly || "${it.id}" in pinnedSources }
+            .filter {
+                when (filter) {
+                    SourceFilter.All -> true
+                    SourceFilter.PinnedOnly -> "${it.id}" in pinnedSources
+                    is SourceFilter.Group -> "${it.id}" in sourceGroups.getOrElse(filter.name) { emptySet() }
+                }
+            }
     }
 }
