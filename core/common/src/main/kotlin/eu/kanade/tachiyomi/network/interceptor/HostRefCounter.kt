@@ -15,11 +15,11 @@ internal class HostRefCounter {
 
     suspend fun <T> track(host: String?, block: suspend () -> T): T {
         val normalized = host?.normalizedRateLimitHost() ?: return block()
-        activeHosts.merge(normalized, 1, Int::plus)
+        begin(normalized)
         try {
             return block()
         } finally {
-            activeHosts.computeIfPresent(normalized) { _, count -> (count - 1).takeIf { it > 0 } }
+            end(normalized)
         }
     }
 
@@ -30,11 +30,19 @@ internal class HostRefCounter {
      */
     fun <T> trackBlocking(host: String?, block: () -> T): T {
         val normalized = host?.normalizedRateLimitHost() ?: return block()
-        activeHosts.merge(normalized, 1, Int::plus)
+        begin(normalized)
         try {
             return block()
         } finally {
-            activeHosts.computeIfPresent(normalized) { _, count -> (count - 1).takeIf { it > 0 } }
+            end(normalized)
         }
+    }
+
+    private fun begin(normalizedHost: String) {
+        activeHosts.merge(normalizedHost, 1, Int::plus)
+    }
+
+    private fun end(normalizedHost: String) {
+        activeHosts.computeIfPresent(normalizedHost) { _, count -> (count - 1).takeIf { it > 0 } }
     }
 }
