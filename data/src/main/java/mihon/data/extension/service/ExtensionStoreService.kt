@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.extension.model.Extension
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.awaitSuccess
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.okio.decodeFromBufferedSource
@@ -25,10 +26,14 @@ class ExtensionStoreService(
     private val json: Json,
     private val protoBuf: ProtoBuf,
 ) {
+    // Extension repo hosts aren't novel/manga sources - exempt them same as the sibling
+    // ExtensionInstaller (which downloads the APK these fetches point to).
+    private val client by lazy { network.client.rateLimitExempt() }
+
     suspend fun fetch(indexUrl: String): Result<ExtensionStore> {
         var updatedIndexUrl: String = indexUrl
         return try {
-            val response = network.client.newCall(GET(updatedIndexUrl)).awaitSuccess()
+            val response = client.newCall(GET(updatedIndexUrl)).awaitSuccess()
             val store = response.body.source().decompressIfGzipped().use { source ->
                 val networkStore = when (source.peek().readByte()) {
                     // "[..."
@@ -37,7 +42,7 @@ class ExtensionStoreService(
                             throw IllegalArgumentException("Provided legacy store url is not valid")
                         }
                         updatedIndexUrl = indexUrl.replace("/index.min.json", "/repo.json")
-                        network.client.newCall(GET(updatedIndexUrl)).awaitSuccess()
+                        client.newCall(GET(updatedIndexUrl)).awaitSuccess()
                             .body.source().decompressIfGzipped().use {
                                 json.decodeFromBufferedSource<NetworkLegacyExtensionRepo>(it)
                             }
@@ -71,7 +76,7 @@ class ExtensionStoreService(
     suspend fun getExtensions(store: ExtensionStore): Result<List<Extension.Available>> {
         return try {
             val extensions = if (store.extensionListUrl != null) {
-                val response = network.client.newCall(GET(store.extensionListUrl!!)).awaitSuccess()
+                val response = client.newCall(GET(store.extensionListUrl!!)).awaitSuccess()
                 response.body.source().decompressIfGzipped().use { source ->
                     when (source.peek().readByte()) {
                         // "{..."
@@ -83,7 +88,7 @@ class ExtensionStoreService(
                         .toAvailableExtensions(store)
                 }
             } else if (!store.isLegacy) {
-                val response = network.client.newCall(GET(store.indexUrl)).awaitSuccess()
+                val response = client.newCall(GET(store.indexUrl)).awaitSuccess()
                 response.body.source().decompressIfGzipped().use { source ->
                     when (source.peek().readByte()) {
                         // "{..."
@@ -95,7 +100,7 @@ class ExtensionStoreService(
                 }
             } else {
                 val storeBaseUrl = store.indexUrl.removeSuffix("/repo.json")
-                val response = network.client.newCall(GET("$storeBaseUrl/index.min.json")).awaitSuccess()
+                val response = client.newCall(GET("$storeBaseUrl/index.min.json")).awaitSuccess()
                 response.body.source().decompressIfGzipped().use { source ->
                     json.decodeFromBufferedSource<List<NetworkLegacyExtension>>(source)
                         .map { it.toAvailableExtension(store, storeBaseUrl) }
