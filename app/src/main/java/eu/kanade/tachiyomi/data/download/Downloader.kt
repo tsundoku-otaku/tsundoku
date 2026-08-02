@@ -127,6 +127,8 @@ class Downloader(
     // Used to avoid spamming warning notifications during bulk queueing.
     private val hasShownQueueSizeWarning = AtomicBoolean(false)
 
+    private val novelChapterTotals = java.util.concurrent.ConcurrentHashMap<Long, Int>()
+
     /**
      * Whether the downloader is running.
      */
@@ -570,7 +572,11 @@ class Downloader(
             }
                 .collect {
                     // Do when page is downloaded.
-                    notifier.onProgressChange(download)
+                    if (isNovel) {
+                        notifier.onProgressChange(download, novelChapterProgress(download))
+                    } else {
+                        notifier.onProgressChange(download)
+                    }
                 }
 
             // Do after download completes
@@ -984,6 +990,15 @@ class Downloader(
      */
     private fun areAllDownloadsFinished(): Boolean {
         return queueState.value.none { it.status.value <= Download.State.DOWNLOADING.value }
+    }
+
+    private fun novelChapterProgress(download: Download): Pair<Int, Int> {
+        val outstanding = queueState.value.count {
+            it.mangaId == download.mangaId && it.source.isNovelSource()
+        }
+        val total = novelChapterTotals.merge(download.mangaId, outstanding, ::maxOf)!!
+        if (outstanding <= 1) novelChapterTotals.remove(download.mangaId)
+        return (total - outstanding + 1).coerceIn(1, total) to total
     }
 
     private fun addAllToQueue(downloads: List<Download>) {

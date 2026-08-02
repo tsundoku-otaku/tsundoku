@@ -70,7 +70,7 @@ internal class DownloadNotifier(private val context: Context) {
      *
      * @param download download object containing download information.
      */
-    fun onProgressChange(download: Download) {
+    fun onProgressChange(download: Download, chapterProgress: Pair<Int, Int>? = null) {
         with(progressNotificationBuilder) {
             if (!isDownloading) {
                 setSmallIcon(android.R.drawable.stat_sys_download)
@@ -91,10 +91,12 @@ internal class DownloadNotifier(private val context: Context) {
                 )
             }
 
+            val (current, total) = chapterProgress ?: (download.downloadedImages to download.pages!!.size)
+
             val downloadingProgressText = context.stringResource(
                 MR.strings.chapter_downloading_progress,
-                download.downloadedImages,
-                download.pages!!.size,
+                current,
+                total,
             )
 
             if (preferences.hideNotificationContent.get()) {
@@ -111,7 +113,7 @@ internal class DownloadNotifier(private val context: Context) {
                 setContentText(downloadingProgressText)
             }
 
-            setProgress(download.pages!!.size, download.downloadedImages, false)
+            setProgress(total, current, false)
             setOngoing(true)
 
             show(Notifications.ID_DOWNLOAD_CHAPTER_PROGRESS)
