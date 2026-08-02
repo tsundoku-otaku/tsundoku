@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.translation.engine
 
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -36,6 +37,7 @@ class LibreTranslateEngine(
                 .readTimeout(timeout, java.util.concurrent.TimeUnit.MILLISECONDS)
                 .writeTimeout(timeout, java.util.concurrent.TimeUnit.MILLISECONDS)
                 .build()
+                .rateLimitExempt()
         }
 
     override val id: Long = ENGINE_ID

@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.data.translation.engine
 
 import eu.kanade.tachiyomi.network.NetworkHelper
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -25,7 +26,7 @@ class SystranTranslateEngine(
     private val preferences: TranslationPreferences = Injekt.get(),
 ) : TranslationEngine {
 
-    private val client: OkHttpClient get() = networkHelper.client
+    private val client: OkHttpClient get() = networkHelper.client.rateLimitExempt()
 
     override val id: Long = ENGINE_ID
     override val name: String = "SYSTRAN"

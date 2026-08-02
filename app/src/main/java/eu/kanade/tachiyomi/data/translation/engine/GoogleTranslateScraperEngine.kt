@@ -4,6 +4,7 @@ import eu.kanade.tachiyomi.data.translation.TranslationHtmlUtils
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.POST
+import eu.kanade.tachiyomi.network.interceptor.rateLimitExempt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -132,7 +133,7 @@ class GoogleTranslateScraperEngine : TranslationEngine {
     )
 
     private val network: NetworkHelper by injectLazy()
-    private val client = network.client
+    private val client = network.client.rateLimitExempt()
     private val json = Json { ignoreUnknownKeys = true }
 
     private var tkk: String = "0"
