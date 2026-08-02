@@ -57,6 +57,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Make unread ch count update after fetching new chapters [@mrissaoussama](https://github.com/mrissaoussama) [#334](https://github.com/tsundoku-otaku/tsundoku/pull/334)
 - MangaBaka tracker fix - Remove old code, create OAuth app [@Rojikku](https://github.com/Rojikku) [#364](https://github.com/tsundoku-otaku/tsundoku/pull/364)
 - Resolve library export urls properly in jssource [@mrissaoussama](https://github.com/mrissaoussama) [#357](https://github.com/tsundoku-otaku/tsundoku/pull/357)
+- Fix rare textview crash [@mrissaoussama](https://github.com/mrissaoussama) [#371](https://github.com/tsundoku-otaku/tsundoku/pull/371)
 - Guard download cache serialization [@mrissaoussama](https://github.com/mrissaoussama) [#346](https://github.com/tsundoku-otaku/tsundoku/pull/346)
 - Paginated library export to prevent potential OOM, added cancel to notif [@mrissaoussama](https://github.com/mrissaoussama) [#270](https://github.com/tsundoku-otaku/tsundoku/pull/270)
 - Correct import stats when app is restarted [@mrissaoussama](https://github.com/mrissaoussama) [#272](https://github.com/tsundoku-otaku/tsundoku/pull/272)
