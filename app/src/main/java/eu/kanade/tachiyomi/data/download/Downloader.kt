@@ -987,12 +987,12 @@ class Downloader(
     }
 
     private fun addAllToQueue(downloads: List<Download>) {
-        _queueState.update {
-            downloads.forEach { download ->
-                download.status = Download.State.QUEUE
-            }
-            store.addAll(downloads)
-            it + downloads
+        _queueState.update { current ->
+            val alreadyQueued = current.mapTo(HashSet(current.size)) { it.chapterId }
+            val toAdd = downloads.filter { it.chapterId !in alreadyQueued }
+            toAdd.forEach { download -> download.status = Download.State.QUEUE }
+            store.addAll(toAdd)
+            current + toAdd
         }
     }
 
