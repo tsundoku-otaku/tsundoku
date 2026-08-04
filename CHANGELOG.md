@@ -70,6 +70,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Fix download queue restart preference [@mrissaoussama](https://github.com/mrissaoussama) [#297](https://github.com/tsundoku-otaku/tsundoku/pull/297)
 - Better handle old backups, better backup/restore performance [@mrissaoussama](https://github.com/mrissaoussama) [#297](https://github.com/tsundoku-otaku/tsundoku/pull/297)
 - Volume keys no longer scroll while menu visible [@mrissaoussama](https://github.com/mrissaoussama) [#345](https://github.com/tsundoku-otaku/tsundoku/pull/345)
+- Show chapter process in ddownload notification [@mrissaoussama](https://github.com/mrissaoussama) [#376](https://github.com/tsundoku-otaku/tsundoku/pull/3476)
 - Custom source: Edit paged urls, keep card link [@mrissaoussama](https://github.com/mrissaoussama) [#356](https://github.com/tsundoku-otaku/tsundoku/pull/356)
 - Pull to refresh spinner will be more patient [@mrissaoussama](https://github.com/mrissaoussama) [#321](https://github.com/tsundoku-otaku/tsundoku/pull/321)
 - Improve massimport - Notification dedupe,v erious fixes [@mrissaoussama](https://github.com/mrissaoussama) [#333](https://github.com/tsundoku-otaku/tsundoku/pull/333)
