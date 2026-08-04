@@ -369,6 +369,13 @@ class Downloader(
             if (areAllDownloadsFinished()) {
                 stop()
             }
+        } finally {
+            // Clean up unconditionally (success, error, or early throw before any progress
+            // event) so a chapter that fails before novelChapterProgress ever runs doesn't
+            // leave a stale total behind for this manga.
+            if (download.source.isNovelSource()) {
+                clearNovelChapterTotalIfDone(download.mangaId)
+            }
         }
     }
 
@@ -997,8 +1004,19 @@ class Downloader(
             it.mangaId == download.mangaId && it.source.isNovelSource()
         }
         val total = novelChapterTotals.merge(download.mangaId, outstanding, ::maxOf)!!
-        if (outstanding <= 1) novelChapterTotals.remove(download.mangaId)
         return (total - outstanding + 1).coerceIn(1, total) to total
+    }
+
+    // Called when a novel download job ends, on every path (success, error, or cancellation).
+    // Removes the manga's tracked total once no queued/downloading novel chapters remain for
+    // it, so a stale total can't leak into a later, unrelated download batch.
+    private fun clearNovelChapterTotalIfDone(mangaId: Long) {
+        val hasOutstanding = queueState.value.any {
+            it.mangaId == mangaId &&
+                it.source.isNovelSource() &&
+                it.status.value <= Download.State.DOWNLOADING.value
+        }
+        if (!hasOutstanding) novelChapterTotals.remove(mangaId)
     }
 
     private fun addAllToQueue(downloads: List<Download>) {
