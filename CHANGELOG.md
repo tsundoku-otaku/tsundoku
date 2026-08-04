@@ -81,6 +81,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Download ahead download states should no longer get stale values [@mrissaoussama](https://github.com/mrissaoussama) [#289](https://github.com/tsundoku-otaku/tsundoku/pull/289)
 - Fix per-tab extension update badge [@mrissaoussama](https://github.com/mrissaoussama) [#277](https://github.com/tsundoku-otaku/tsundoku/pull/277)
 - Prevent google translate returning literal null [@mrissaoussama](https://github.com/mrissaoussama) [#312](https://github.com/tsundoku-otaku/tsundoku/pull/312)
+- Guard novel download queue lazycolumn against duplicate keys [@mrissaoussama](https://github.com/mrissaoussama) [#377](https://github.com/tsundoku-otaku/tsundoku/pull/377)
 - EPUB: Preserve DC namespace prefix when stripping OPF prefixes [@mrissaoussama](https://github.com/mrissaoussama) [#344](https://github.com/tsundoku-otaku/tsundoku/pull/344)
 - Remove invisible characters from filenames to prevent dl index issues [@mrissaoussama](https://github.com/mrissaoussama) [#307](https://github.com/tsundoku-otaku/tsundoku/pull/307)
 - Novel reader orientation and TTS highlight fix [@mrissaoussama](https://github.com/mrissaoussama) [#310](https://github.com/tsundoku-otaku/tsundoku/pull/310)
