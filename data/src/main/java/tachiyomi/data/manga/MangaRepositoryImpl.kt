@@ -1374,10 +1374,30 @@ class MangaRepositoryImpl(
         return database.mangasQueries.getFavoriteIdsForCategory(categoryId).awaitAsList()
     }
 
-    override suspend fun getFavoriteSelectionMetrics(
-        categoryIds: List<Long>,
-        limit: Long,
-    ): List<MangaSelectionMetric> {
+    override suspend fun getFavoriteIdsMatchingLibraryFilter(
+        excludedSourceIds: List<Long>,
+        filterUnread: Long,
+        filterStarted: Long,
+        filterCompleted: Long,
+        filterNovel: Long,
+        filterChapterCount: Long,
+        chapterCountThreshold: Long,
+        includedTagsCsv: String,
+    ): List<Long> {
+        val excluded = excludedSourceIds.ifEmpty { listOf(-1L) }
+        return database.mangasQueries.getFavoriteIdsMatchingLibraryFilter(
+            excludedSourceIds = excluded,
+            filterUnread = filterUnread,
+            filterStarted = filterStarted,
+            filterCompleted = filterCompleted,
+            filterNovel = filterNovel,
+            filterChapterCount = filterChapterCount,
+            chapterCountThreshold = chapterCountThreshold,
+            includedTagsCsv = includedTagsCsv,
+        ).awaitAsList()
+    }
+
+    override suspend fun getFavoriteSelectionMetrics(categoryIds: List<Long>): List<MangaSelectionMetric> {
         val mapper = { id: Long, source: Long, title: String, totalCount: Long, readCount: Long ->
             MangaSelectionMetric(
                 id = id,
@@ -1388,9 +1408,9 @@ class MangaRepositoryImpl(
             )
         }
         return if (categoryIds.isEmpty()) {
-            database.mangasQueries.getFavoriteSelectionMetrics(limit, mapper).awaitAsList()
+            database.mangasQueries.getFavoriteSelectionMetrics(mapper).awaitAsList()
         } else {
-            database.mangasQueries.getFavoriteSelectionMetricsInCategories(categoryIds, limit, mapper).awaitAsList()
+            database.mangasQueries.getFavoriteSelectionMetricsInCategories(categoryIds, mapper).awaitAsList()
         }
     }
 
@@ -1622,6 +1642,86 @@ class MangaRepositoryImpl(
                 )
             }.awaitAsList()
         }
+    }
+
+    override suspend fun getMangaWithCountsLightWithGenre(ids: List<Long>): List<MangaWithChapterCount> {
+        if (ids.isEmpty()) return emptyList()
+        return ids.chunked(500).flatMap { chunk ->
+            database.mangasQueries.getMangaWithCountsLightWithGenre(chunk) {
+                    id,
+                    source,
+                    url,
+                    artist,
+                    author,
+                    description,
+                    genre,
+                    title,
+                    alternative_titles,
+                    status,
+                    thumbnail_url,
+                    favorite,
+                    last_update,
+                    next_update,
+                    initialized,
+                    viewer,
+                    chapter_flags,
+                    cover_last_modified,
+                    date_added,
+                    update_strategy,
+                    calculate_interval,
+                    last_modified_at,
+                    favorite_modified_at,
+                    version,
+                    is_syncing,
+                    notes,
+                    is_novel,
+                    totalCount,
+                    readCount,
+                ->
+                MangaMapper.mapMangaWithChapterCount(
+                    id = id,
+                    source = source,
+                    url = url,
+                    artist = artist,
+                    author = author,
+                    description = description,
+                    genre = genre,
+                    title = title,
+                    alternativeTitles = alternative_titles,
+                    status = status,
+                    thumbnailUrl = thumbnail_url,
+                    favorite = favorite,
+                    lastUpdate = last_update,
+                    nextUpdate = next_update,
+                    initialized = initialized,
+                    viewerFlags = viewer,
+                    chapterFlags = chapter_flags,
+                    coverLastModified = cover_last_modified,
+                    dateAdded = date_added,
+                    updateStrategy = update_strategy,
+                    calculateInterval = calculate_interval,
+                    lastModifiedAt = last_modified_at,
+                    favoriteModifiedAt = favorite_modified_at,
+                    version = version,
+                    isSyncing = is_syncing,
+                    notes = notes,
+                    isNovel = is_novel,
+                    totalCount = totalCount,
+                    readCount = readCount,
+                )
+            }.awaitAsList()
+        }
+    }
+
+    override suspend fun getGenresForIds(ids: List<Long>): Map<Long, List<String>?> {
+        if (ids.isEmpty()) return emptyMap()
+        val result = HashMap<Long, List<String>?>(ids.size)
+        ids.chunked(500).forEach { chunk ->
+            database.mangasQueries.getGenresForIds(chunk) { id, genre ->
+                result[id] = genre
+            }.awaitAsList()
+        }
+        return result
     }
 
     override suspend fun getUpcomingManga(

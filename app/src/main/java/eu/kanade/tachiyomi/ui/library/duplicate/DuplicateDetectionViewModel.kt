@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.data.library.LibraryClearJob
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import eu.kanade.tachiyomi.source.isNovelSource
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.removeCovers
 import kotlinx.coroutines.Dispatchers
@@ -17,17 +18,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
+import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.manga.interactor.DuplicateMatchMode
 import tachiyomi.domain.manga.interactor.FindDuplicateNovels
+import tachiyomi.domain.manga.model.MangaSelectionMetric
 import tachiyomi.domain.manga.model.MangaWithChapterCount
+import tachiyomi.domain.manga.model.applyFilter
 import tachiyomi.domain.manga.repository.MangaRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.source.local.isLocal
+import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -67,6 +72,24 @@ class DuplicateDetectionViewModel(
         ALL,
     }
 
+    /** Snapshot of the Library screen's active filter preferences, captured when the checkbox is enabled. */
+    data class LibraryFilterSnapshot(
+        val filterDownloaded: TriState = TriState.DISABLED,
+        val filterUnread: TriState = TriState.DISABLED,
+        val filterStarted: TriState = TriState.DISABLED,
+        val filterCompleted: TriState = TriState.DISABLED,
+        val filterNovel: TriState = TriState.DISABLED,
+        val filterChapterCount: TriState = TriState.DISABLED,
+        val filterChapterCountThreshold: Int = 0,
+        val includedTags: Set<String> = emptySet(),
+        val excludedTags: Set<String> = emptySet(),
+        val filterNoTags: TriState = TriState.DISABLED,
+        val tagIncludeModeAnd: Boolean = false,
+        val tagExcludeModeAnd: Boolean = false,
+        val tagCaseSensitive: Boolean = false,
+        val excludedExtensions: Set<Long> = emptySet(),
+    )
+
     /** Primitive per-entry data for bulk selection over the full matching set (no materialized Manga). */
     data class SelItem(
         val id: Long,
@@ -90,6 +113,8 @@ class DuplicateDetectionViewModel(
         val searchQuery: String = "",
         val excludedCategoryFilters: Set<Long> = emptySet(),
         val filterByGroupCategory: Boolean = false,
+        val applyLibraryFilters: Boolean = false,
+        val libraryFilterSnapshot: LibraryFilterSnapshot = LibraryFilterSnapshot(),
         val sortMode: SortMode = SortMode.NAME,
         val mangaCategories: Map<Long, List<Category>> = emptyMap(),
         val mangaCategoryIdSets: Map<Long, Set<Long>> = emptyMap(),
@@ -105,7 +130,10 @@ class DuplicateDetectionViewModel(
         val filteredDuplicateGroups: Map<String, List<MangaWithChapterCount>> = emptyMap(),
         val listingMode: Boolean = false,
         val listingTruncated: Boolean = false,
+        val listingTotalMatches: Int = 0,
         val selectionGroups: List<List<SelItem>> = emptyList(),
+        /** (scanned, total) while the precise tag recheck is running over a large candidate set. */
+        val precheckProgress: Pair<Int, Int>? = null,
     ) {
 
         fun computeFilteredGroups(): Map<String, List<MangaWithChapterCount>> {
@@ -165,58 +193,66 @@ class DuplicateDetectionViewModel(
                 }
             }
 
+            val libraryFiltered = if (!applyLibraryFilters) {
+                filtered
+            } else {
+                filtered.mapValues { (_, novels) ->
+                    novels.filter { matchesLibraryFilters(it, libraryFilterSnapshot, mangaDownloadCounts) }
+                }.filter { it.value.size >= minGroupSize }
+            }
+
             return when (sortMode) {
-                SortMode.NAME -> filtered.toSortedMap()
+                SortMode.NAME -> libraryFiltered.toSortedMap()
                 SortMode.LATEST_ADDED ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedByDescending { (_, novels) ->
                             novels.maxOfOrNull { it.manga.dateAdded } ?: 0L
                         }
                         .associate { it.key to it.value }
                 SortMode.CHAPTER_COUNT_DESC ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedByDescending { (_, novels) ->
                             novels.sumOf { it.chapterCount }
                         }
                         .associate { it.key to it.value }
                 SortMode.CHAPTER_COUNT_ASC ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedBy { (_, novels) ->
                             novels.sumOf { it.chapterCount }
                         }
                         .associate { it.key to it.value }
                 SortMode.DOWNLOAD_COUNT_DESC ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedByDescending { (_, novels) ->
                             novels.sumOf { mangaDownloadCounts[it.manga.id] ?: 0 }
                         }
                         .associate { it.key to it.value }
                 SortMode.DOWNLOAD_COUNT_ASC ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedBy { (_, novels) ->
                             novels.sumOf { mangaDownloadCounts[it.manga.id] ?: 0 }
                         }
                         .associate { it.key to it.value }
                 SortMode.READ_COUNT_DESC ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedByDescending { (_, novels) ->
                             novels.sumOf { mangaReadCounts[it.manga.id] ?: 0 }
                         }
                         .associate { it.key to it.value }
                 SortMode.READ_COUNT_ASC ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedBy { (_, novels) ->
                             novels.sumOf { mangaReadCounts[it.manga.id] ?: 0 }
                         }
                         .associate { it.key to it.value }
                 SortMode.PINNED_SOURCE ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedByDescending { (_, novels) ->
                             novels.count { it.manga.source in pinnedSourceIds }
                         }
                         .associate { it.key to it.value }
                 SortMode.SOURCE_PRIORITY ->
-                    filtered.entries
+                    libraryFiltered.entries
                         .sortedByDescending { (_, novels) ->
                             novels.maxOfOrNull { getSourcePriority(it.manga.source) } ?: 0
                         }
@@ -229,6 +265,44 @@ class DuplicateDetectionViewModel(
             if (specificPriority != null && specificPriority != 0) return specificPriority
             val type = sourceTypeMap[sourceId] ?: SourceType.STUB
             return sourcePriorities[type] ?: 0
+        }
+
+        /** Mirrors LibraryScreenModel.applyFilters, using the fields available on a duplicate entry. */
+        private fun matchesLibraryFilters(
+            item: MangaWithChapterCount,
+            snapshot: LibraryFilterSnapshot,
+            downloadCounts: Map<Long, Int>,
+        ): Boolean {
+            val manga = item.manga
+
+            val downloadPasses = applyFilter(snapshot.filterDownloaded) {
+                manga.isLocal() || manga.isLocalNovel() || (downloadCounts[manga.id] ?: 0) > 0
+            }
+            if (!downloadPasses) return false
+
+            val unreadPasses = applyFilter(snapshot.filterUnread) { item.chapterCount - item.readCount > 0 }
+            if (!unreadPasses) return false
+
+            val startedPasses = applyFilter(snapshot.filterStarted) { item.readCount > 0 }
+            if (!startedPasses) return false
+
+            val completedPasses = applyFilter(snapshot.filterCompleted) {
+                manga.status.toInt() == SManga.COMPLETED
+            }
+            if (!completedPasses) return false
+
+            val novelPasses = applyFilter(snapshot.filterNovel) { manga.isNovel }
+            if (!novelPasses) return false
+
+            val extensionPasses = snapshot.excludedExtensions.isEmpty() || manga.source !in snapshot.excludedExtensions
+            if (!extensionPasses) return false
+
+            val chapterCountPasses = applyFilter(snapshot.filterChapterCount) {
+                item.chapterCount >= snapshot.filterChapterCountThreshold
+            }
+            if (!chapterCountPasses) return false
+
+            return matchesTagFilter(manga.genre, snapshot)
         }
 
         // Helper to check if a manga is from a pinned source
@@ -335,17 +409,73 @@ class DuplicateDetectionViewModel(
                     mangaDownloadCounts = emptyMap(),
                     mangaReadCounts = emptyMap(),
                     selectionGroups = emptyList(),
+                    precheckProgress = null,
                 )
             }
             try {
                 var truncated = false
+                var listingTotalMatches = 0
                 var selectionGroups = emptyList<List<SelItem>>()
                 val groups = if (state.value.listingMode) {
-                    val metrics = mangaRepository.getFavoriteSelectionMetrics(
-                        listingIncludeCategories(state.value),
-                        SELECTION_MAX,
-                    )
+                    val restriction = resolveListingCategoryRestriction(state.value)
+                    val rawMetrics = mangaRepository.getFavoriteSelectionMetrics(restriction.dbCategoryIds)
+
+                    // Resolve the DB-expressible half of the filter before truncating.
+                    val libraryFilterIds = if (state.value.applyLibraryFilters) {
+                        val snapshot = state.value.libraryFilterSnapshot
+                        mangaRepository.getFavoriteIdsMatchingLibraryFilter(
+                            excludedSourceIds = snapshot.excludedExtensions.toList(),
+                            filterUnread = snapshot.filterUnread.toDbInt(),
+                            filterStarted = snapshot.filterStarted.toDbInt(),
+                            filterCompleted = snapshot.filterCompleted.toDbInt(),
+                            filterNovel = snapshot.filterNovel.toDbInt(),
+                            filterChapterCount = snapshot.filterChapterCount.toDbInt(),
+                            chapterCountThreshold = snapshot.filterChapterCountThreshold.toLong(),
+                            includedTagsCsv = buildIncludedTagsCsv(snapshot),
+                        ).toHashSet()
+                    } else {
+                        null
+                    }
+
+                    // Restrict before truncating to LISTING_MAX, not after.
+                    val restrictedMetrics = rawMetrics.filter { metric ->
+                        (restriction.includedIds == null || metric.id in restriction.includedIds) &&
+                            metric.id !in restriction.excludedIds &&
+                            (libraryFilterIds == null || metric.id in libraryFilterIds)
+                    }
+
+                    // SQL tag check is a superset only; recheck precisely before truncation.
+                    val needsTagRecheck = state.value.applyLibraryFilters &&
+                        (
+                            state.value.libraryFilterSnapshot.includedTags.isNotEmpty() ||
+                                state.value.libraryFilterSnapshot.excludedTags.isNotEmpty() ||
+                                state.value.libraryFilterSnapshot.filterNoTags != TriState.DISABLED
+                            )
+                    val metrics = if (needsTagRecheck && restrictedMetrics.size <= TAG_PRECISE_RECHECK_MAX) {
+                        val snapshot = state.value.libraryFilterSnapshot
+                        val total = restrictedMetrics.size
+                        val precise = ArrayList<MangaSelectionMetric>(total)
+                        var scanned = 0
+                        restrictedMetrics.chunked(TAG_PRECHECK_CHUNK).forEach { chunk ->
+                            val genreMap = mangaRepository.getGenresForIds(chunk.map { it.id })
+                            chunk.forEach { metric ->
+                                if (matchesTagFilter(genreMap[metric.id], snapshot)) precise.add(metric)
+                            }
+                            scanned += chunk.size
+                            mutableState.update { it.copy(precheckProgress = scanned to total) }
+                        }
+                        precise
+                    } else {
+                        if (needsTagRecheck) {
+                            logcat(LogPriority.WARN) {
+                                "loadDuplicates: skipping precise tag recheck, " +
+                                    "${restrictedMetrics.size} candidates exceeds $TAG_PRECISE_RECHECK_MAX"
+                            }
+                        }
+                        restrictedMetrics
+                    }
                     truncated = metrics.size > LISTING_MAX
+                    listingTotalMatches = metrics.size
                     selectionGroups = metrics.groupBy { it.groupKey }
                         .map { (_, items) -> items.map { SelItem(it.id, it.source, it.chapterCount, it.readCount) } }
                     findDuplicateNovels.findGroupedByIds(metrics.take(LISTING_MAX).map { it.id })
@@ -390,7 +520,9 @@ class DuplicateDetectionViewModel(
                         dismissedGroups = emptySet(),
                         isLoading = false,
                         listingTruncated = truncated,
+                        listingTotalMatches = listingTotalMatches,
                         selectionGroups = selectionGroups,
+                        precheckProgress = null,
                     )
                 }
                 recomputeFiltered()
@@ -400,7 +532,9 @@ class DuplicateDetectionViewModel(
                         duplicateGroups = emptyMap(),
                         filteredDuplicateGroups = emptyMap(),
                         isLoading = false,
+                        precheckProgress = null,
                         listingTruncated = false,
+                        listingTotalMatches = 0,
                         selectionGroups = emptyList(),
                     )
                 }
@@ -408,14 +542,40 @@ class DuplicateDetectionViewModel(
         }
     }
 
-    /**
-     * Category ids to push into the metrics query. Empty means "all favorites": the uncategorized
-     * bucket cannot be expressed as a join, so those cases load all and refine in memory.
-     */
-    private fun listingIncludeCategories(state: State): List<Long> {
+    /** Listing-mode category restriction, resolved before truncation. */
+    private data class ListingCategoryRestriction(
+        val dbCategoryIds: List<Long> = emptyList(),
+        val includedIds: Set<Long>? = null,
+        val excludedIds: Set<Long> = emptySet(),
+    )
+
+    private suspend fun resolveListingCategoryRestriction(state: State): ListingCategoryRestriction {
+        val hasInclude = state.selectedCategoryFilters.isNotEmpty()
+        val hasExclude = state.excludedCategoryFilters.isNotEmpty()
+        if (!hasInclude && !hasExclude) return ListingCategoryRestriction()
+
         val hasUncategorized = UNCATEGORIZED_ID in state.selectedCategoryFilters
-        val includeCategories = state.selectedCategoryFilters.filter { it != UNCATEGORIZED_ID }
-        return if (includeCategories.isNotEmpty() && !hasUncategorized) includeCategories else emptyList()
+        val simpleInclude = state.selectedCategoryFilters.filter { it != UNCATEGORIZED_ID }
+
+        // Fast path: the existing DB-side join already covers this exactly.
+        if (!hasUncategorized && !hasExclude && state.categoryIncludeMode == CategoryIncludeMode.ANY) {
+            return ListingCategoryRestriction(dbCategoryIds = simpleInclude)
+        }
+
+        var includedIds: Set<Long>? = null
+        if (hasInclude) {
+            val sets = state.selectedCategoryFilters.map { mangaRepository.getFavoriteIdsForCategory(it).toHashSet() }
+            includedIds = when (state.categoryIncludeMode) {
+                CategoryIncludeMode.ANY -> sets.fold(HashSet()) { acc, s -> acc.apply { addAll(s) } }
+                CategoryIncludeMode.ALL -> sets.reduceOrNull { a, b -> (a intersect b).toHashSet() } ?: emptySet()
+            }
+        }
+        val excludedIds = if (hasExclude) {
+            state.excludedCategoryFilters.flatMapTo(HashSet()) { mangaRepository.getFavoriteIdsForCategory(it) }
+        } else {
+            emptySet()
+        }
+        return ListingCategoryRestriction(includedIds = includedIds, excludedIds = excludedIds)
     }
 
     /**
@@ -424,13 +584,7 @@ class DuplicateDetectionViewModel(
      * groups. Selection therefore covers every matching entry, not just the materialized rows.
      */
     private fun selectionItemGroups(state: State): List<List<SelItem>> {
-        // The full lightweight set carries no category membership, so it can only drive selection when
-        // no category filter is active. With a category filter (include, exclude, uncategorized or ALL
-        // mode) selection must fall back to the displayed, category-filtered groups to avoid selecting
-        // entries the user filtered out.
-        val categoryFilterActive =
-            state.selectedCategoryFilters.isNotEmpty() || state.excludedCategoryFilters.isNotEmpty()
-        return if (state.listingMode && !categoryFilterActive) {
+        return if (state.listingMode) {
             val novelIds = state.novelSourceIds
             state.selectionGroups.mapNotNull { group ->
                 val filtered = when (state.contentType) {
@@ -507,6 +661,52 @@ class DuplicateDetectionViewModel(
     fun setFilterByGroupCategory(filter: Boolean) {
         mutableState.update { it.copy(filterByGroupCategory = filter) }
         refreshAfterCategoryChange()
+    }
+
+    fun setApplyLibraryFilters(enabled: Boolean) {
+        mutableState.update { state ->
+            state.copy(
+                applyLibraryFilters = enabled,
+                libraryFilterSnapshot = if (enabled) captureLibraryFilterSnapshot() else state.libraryFilterSnapshot,
+                selection = emptySet(),
+            )
+        }
+        recomputeFiltered()
+    }
+
+    private fun TriState.toDbInt(): Long = when (this) {
+        TriState.DISABLED -> 0L
+        TriState.ENABLED_IS -> 1L
+        TriState.ENABLED_NOT -> 2L
+    }
+
+    /** U+001F-joined lowercased included tags, ASCII-only, for the DB superset prefilter. */
+    private fun buildIncludedTagsCsv(snapshot: LibraryFilterSnapshot): String {
+        val incTags = snapshot.includedTags.map { it.trim() }.filter { it.isNotEmpty() }
+        val allAscii = incTags.all { tag -> tag.all { it.code < 128 } }
+        return if (incTags.isNotEmpty() && allAscii) incTags.joinToString("") { it.lowercase() } else ""
+    }
+
+    private fun captureLibraryFilterSnapshot(): LibraryFilterSnapshot {
+        val snapshot = LibraryFilterSnapshot(
+            filterDownloaded = libraryPreferences.filterDownloaded.get(),
+            filterUnread = libraryPreferences.filterUnread.get(),
+            filterStarted = libraryPreferences.filterStarted.get(),
+            filterCompleted = libraryPreferences.filterCompleted.get(),
+            filterNovel = libraryPreferences.filterNovel().get(),
+            filterChapterCount = libraryPreferences.filterChapterCount().get(),
+            filterChapterCountThreshold = libraryPreferences.filterChapterCountThreshold.get(),
+            includedTags = libraryPreferences.includedTags.get(),
+            excludedTags = libraryPreferences.excludedTags.get(),
+            filterNoTags = libraryPreferences.filterNoTags().get(),
+            tagIncludeModeAnd = libraryPreferences.tagIncludeMode.get(),
+            tagExcludeModeAnd = libraryPreferences.tagExcludeMode.get(),
+            tagCaseSensitive = libraryPreferences.tagCaseSensitive.get(),
+            excludedExtensions = libraryPreferences.excludedExtensions.get().mapNotNullTo(HashSet()) {
+                it.toLongOrNull()
+            },
+        )
+        return snapshot
     }
 
     fun setSortMode(mode: SortMode) {
@@ -831,9 +1031,53 @@ class DuplicateDetectionViewModel(
     }
 
     companion object {
-        // Rows materialized for display. Selection runs over the far larger metric set below.
         private const val LISTING_MAX = 2000
-        private const val SELECTION_MAX = 1000_000L
         private const val UNCATEGORIZED_ID = 0L
+        private const val TAG_PRECISE_RECHECK_MAX = 200_000
+        private const val TAG_PRECHECK_CHUNK = 2000
+
+        fun matchesTagFilter(genre: List<String>?, snapshot: LibraryFilterSnapshot): Boolean {
+            if (snapshot.includedTags.isEmpty() &&
+                snapshot.excludedTags.isEmpty() &&
+                snapshot.filterNoTags == TriState.DISABLED
+            ) {
+                return true
+            }
+
+            val mangaTags = genre.orEmpty()
+
+            if (snapshot.filterNoTags != TriState.DISABLED) {
+                val hasNoTags = mangaTags.none { it.isNotBlank() }
+                when (snapshot.filterNoTags) {
+                    TriState.ENABLED_IS -> if (!hasNoTags) return false
+                    TriState.ENABLED_NOT -> if (hasNoTags) return false
+                    TriState.DISABLED -> {}
+                }
+            }
+
+            fun normalize(tag: String) = tag.trim().let { if (snapshot.tagCaseSensitive) it else it.lowercase() }
+            val normalizedIncluded = snapshot.includedTags.mapTo(HashSet()) { normalize(it) }
+            val normalizedExcluded = snapshot.excludedTags.mapTo(HashSet()) { normalize(it) }
+
+            if (normalizedExcluded.isNotEmpty()) {
+                val hasExcludedTag = if (snapshot.tagExcludeModeAnd) {
+                    normalizedExcluded.all { excludedTag -> mangaTags.any { normalize(it) == excludedTag } }
+                } else {
+                    mangaTags.any { normalize(it) in normalizedExcluded }
+                }
+                if (hasExcludedTag) return false
+            }
+
+            if (normalizedIncluded.isNotEmpty()) {
+                val hasIncludedTag = if (snapshot.tagIncludeModeAnd) {
+                    normalizedIncluded.all { includedTag -> mangaTags.any { normalize(it) == includedTag } }
+                } else {
+                    mangaTags.any { normalize(it) in normalizedIncluded }
+                }
+                if (!hasIncludedTag) return false
+            }
+
+            return true
+        }
     }
 }

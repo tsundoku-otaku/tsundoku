@@ -403,6 +403,33 @@ LEFT JOIN (
 WHERE M._id IN :ids
 ORDER BY totalCount DESC;
 
+-- Same as getMangaWithCountsLight but keeps genre (still skips description). The duplicate-detection
+-- screen's library-filter tag check needs real genre data; still bounded by the same id set, so the
+-- extra column is trivial next to skipping description.
+getMangaWithCountsLightWithGenre:
+SELECT
+    M._id, M.source, M.url, M.artist, M.author, NULL AS description, M.genre, M.title, M.alternative_titles, M.status, M.thumbnail_url, M.favorite, M.last_update, M.next_update, M.initialized, M.viewer, M.chapter_flags, M.cover_last_modified, M.date_added, M.update_strategy, M.calculate_interval, M.last_modified_at, M.favorite_modified_at, M.version, M.is_syncing, '' AS notes, M.is_novel,
+    COALESCE(CC.totalCount, 0) AS totalCount,
+    COALESCE(CC.readCount, 0) AS readCount
+FROM mangas M
+LEFT JOIN (
+    SELECT manga_id,
+           COUNT(*) AS totalCount,
+           SUM(CASE WHEN read = 1 THEN 1 ELSE 0 END) AS readCount
+    FROM chapters
+    WHERE manga_id IN :ids
+    GROUP BY manga_id
+) CC ON CC.manga_id = M._id
+WHERE M._id IN :ids
+ORDER BY totalCount DESC;
+
+-- Id-only genre lookup: precise-recheck a large candidate set (e.g. a tag superset match) without
+-- materializing the heavier columns for every row.
+getGenresForIds:
+SELECT _id, genre
+FROM mangas
+WHERE _id IN :ids;
+
 getUpcomingManga:
 SELECT *
 FROM mangas
@@ -1051,18 +1078,49 @@ WHERE M.favorite = 1
 
 -- Primitive-only selection metrics (no heavy text columns) so bulk selection can run over the whole
 -- matching set while only the displayed page materializes full rows.
+-- Unbounded: capping this with a LIMIT would silently drop favorites past the cutoff before the
+-- caller's own filters (tags/category/library) ever see them, on any library past that size.
 getFavoriteSelectionMetrics:
 SELECT _id, source, title, total_count, read_count
 FROM mangas
-WHERE favorite = 1
-LIMIT :limit;
+WHERE favorite = 1;
 
 getFavoriteSelectionMetricsInCategories:
 SELECT DISTINCT M._id, M.source, M.title, M.total_count, M.read_count
 FROM mangas M
 JOIN mangas_categories MC ON MC.manga_id = M._id
-WHERE M.favorite = 1 AND MC.category_id IN :categoryIds
-LIMIT :limit;
+WHERE M.favorite = 1 AND MC.category_id IN :categoryIds;
+
+-- Ids of favorites matching the cheap/DB-expressible half of the Library screen's active filters
+-- (source exclusion, unread/started/completed/novel/chapter-count columns, and an included-tags
+-- SUPERSET prefilter using the same substring technique as libraryPageFiltered). Used to restrict a listing-mode
+-- candidate set BEFORE it gets truncated for display, so a narrow tag allowlist can't silently zero out
+-- a page whose arbitrary-order slice just didn't happen to contain a match. The caller still runs the
+-- precise in-memory tag/AND-mode/case-sensitivity/downloaded check on the (much smaller) truncated set.
+getFavoriteIdsMatchingLibraryFilter:
+SELECT _id
+FROM mangas
+WHERE favorite = 1
+  AND source NOT IN :excludedSourceIds
+  AND (:filterUnread = 0 OR (:filterUnread = 1 AND (total_count - read_count) > 0) OR (:filterUnread = 2 AND (total_count - read_count) <= 0))
+  AND (:filterStarted = 0 OR (:filterStarted = 1 AND read_count > 0) OR (:filterStarted = 2 AND read_count = 0))
+  AND (:filterCompleted = 0 OR (:filterCompleted = 1 AND status = 2) OR (:filterCompleted = 2 AND status != 2))
+  AND (:filterNovel = 0 OR (:filterNovel = 1 AND is_novel = 1) OR (:filterNovel = 2 AND is_novel = 0))
+  AND (:filterChapterCount = 0 OR (:filterChapterCount = 1 AND total_count >= :chapterCountThreshold) OR (:filterChapterCount = 2 AND total_count < :chapterCountThreshold))
+  AND (
+    :includedTagsCsv = ''
+    OR EXISTS (
+      WITH RECURSIVE inc(tag, rest) AS (
+        SELECT NULL, :includedTagsCsv || char(31)
+        UNION ALL
+        SELECT substr(rest, 1, instr(rest, char(31)) - 1), substr(rest, instr(rest, char(31)) + 1)
+        FROM inc WHERE rest <> ''
+      )
+      SELECT 1 FROM inc
+      WHERE inc.tag IS NOT NULL AND inc.tag <> ''
+        AND lower(coalesce(genre, '')) LIKE '%' || inc.tag || '%'
+    )
+  );
 
 -- Lightweight row shape for URL maintenance operations
 -- (avoids decoding heavy text/list columns for large libraries)

@@ -879,7 +879,7 @@
     <string name="duplicate_match_url">نفس الرابط</string>
     <string name="action_clear_category">مسح التصنيف…</string>
     <string name="duplicate_listing_mode">عرض الكل</string>
-    <string name="duplicate_listing_truncated">عرض أول 2000 إدخال. ضيّق باستخدام تصفيات التصنيف.</string>
+    <string name="duplicate_listing_truncated">عرض 2000 من أصل %1$d نتيجة مطابقة. ضيّق باستخدام تصفيات التصنيف، أو استخدم \"تحديد الكل\" للتعامل مع كل %1$d.</string>
     <string name="duplicate_filters_sort">التصفيات والترتيب</string>
     <string name="duplicate_type_label">النوع:</string>
     <string name="duplicate_type_all">الكل</string>

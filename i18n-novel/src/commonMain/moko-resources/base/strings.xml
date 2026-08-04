@@ -345,11 +345,14 @@
     <string name="epub_import_error_count">%d failed</string>
 
     <!-- Duplicate detection -->
-    <string name="duplicate_flexible_group_matching">Flexible group matching (allow at least one match)</string>
+    <string name="duplicate_flexible_group_matching">Flexible match</string>
     <string name="duplicate_category_include_or">OR</string>
     <string name="duplicate_category_include_and">AND</string>
     <string name="duplicate_dismiss_group">Dismiss group</string>
     <string name="duplicate_deselect_group">Deselect group</string>
+    <string name="duplicate_apply_library_filters">Library filters</string>
+    <string name="duplicate_full_urls_short">Full URLs</string>
+    <string name="duplicate_checking_progress">Checking %1$d of %2$d candidates…</string>
     <string name="epub_create_dir_failed">Failed to create directory for: %s</string>
     <string name="epub_novels_export_count">%d novel(s) will be exported.</string>
     <string name="epub_and_more">… and %d more</string>

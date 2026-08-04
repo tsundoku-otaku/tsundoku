@@ -65,11 +65,8 @@ class FindDuplicateNovels(
         return mangaRepository.getMangaWithCounts(ids)
     }
 
-    /**
-     * Lightweight version that skips genre/description to avoid OOM on large libraries.
-     */
     private suspend fun getMangaWithCountsLight(ids: List<Long>): List<MangaWithChapterCount> {
-        return mangaRepository.getMangaWithCountsLight(ids)
+        return mangaRepository.getMangaWithCountsLightWithGenre(ids)
     }
 
     /**

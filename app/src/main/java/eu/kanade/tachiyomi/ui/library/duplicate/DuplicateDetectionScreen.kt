@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -299,581 +298,635 @@ class DuplicateDetectionScreen : Screen {
                 }
             },
         ) { contentPadding ->
-            Column(
+            LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(contentPadding),
             ) {
-                // Match mode selector
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChip(
-                        selected = state.matchMode == DuplicateMatchMode.EXACT,
-                        enabled = !state.listingMode,
-                        onClick = { screenModel.setMatchMode(DuplicateMatchMode.EXACT) },
-                        label = { Text(stringResource(MR.strings.duplicate_match_exact)) },
-                        leadingIcon = if (state.matchMode == DuplicateMatchMode.EXACT) {
-                            { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                        } else {
-                            null
-                        },
-                    )
-                    FilterChip(
-                        selected = state.matchMode == DuplicateMatchMode.CONTAINS,
-                        enabled = !state.listingMode,
-                        onClick = { screenModel.setMatchMode(DuplicateMatchMode.CONTAINS) },
-                        label = { Text(stringResource(MR.strings.duplicate_match_contains)) },
-                        leadingIcon = if (state.matchMode == DuplicateMatchMode.CONTAINS) {
-                            { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                        } else {
-                            null
-                        },
-                    )
-                    FilterChip(
-                        selected = state.matchMode == DuplicateMatchMode.URL,
-                        enabled = !state.listingMode,
-                        onClick = { screenModel.setMatchMode(DuplicateMatchMode.URL) },
-                        label = { Text(stringResource(MR.strings.duplicate_match_url)) },
-                        leadingIcon = if (state.matchMode == DuplicateMatchMode.URL) {
-                            { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                        } else {
-                            null
-                        },
-                    )
-                    FilterChip(
-                        selected = state.listingMode,
-                        onClick = { screenModel.setListingMode(!state.listingMode) },
-                        label = { Text(stringResource(MR.strings.duplicate_listing_mode)) },
-                        leadingIcon = if (state.listingMode) {
-                            { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                        } else {
-                            null
-                        },
-                    )
+                item(key = "match_mode_row") {
+                    // Match mode selector
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = state.matchMode == DuplicateMatchMode.EXACT,
+                            enabled = !state.listingMode,
+                            onClick = { screenModel.setMatchMode(DuplicateMatchMode.EXACT) },
+                            label = { Text(stringResource(MR.strings.duplicate_match_exact)) },
+                            leadingIcon = if (state.matchMode == DuplicateMatchMode.EXACT) {
+                                { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                            } else {
+                                null
+                            },
+                        )
+                        FilterChip(
+                            selected = state.matchMode == DuplicateMatchMode.CONTAINS,
+                            enabled = !state.listingMode,
+                            onClick = { screenModel.setMatchMode(DuplicateMatchMode.CONTAINS) },
+                            label = { Text(stringResource(MR.strings.duplicate_match_contains)) },
+                            leadingIcon = if (state.matchMode == DuplicateMatchMode.CONTAINS) {
+                                { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                            } else {
+                                null
+                            },
+                        )
+                        FilterChip(
+                            selected = state.matchMode == DuplicateMatchMode.URL,
+                            enabled = !state.listingMode,
+                            onClick = { screenModel.setMatchMode(DuplicateMatchMode.URL) },
+                            label = { Text(stringResource(MR.strings.duplicate_match_url)) },
+                            leadingIcon = if (state.matchMode == DuplicateMatchMode.URL) {
+                                { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                            } else {
+                                null
+                            },
+                        )
+                        FilterChip(
+                            selected = state.listingMode,
+                            onClick = { screenModel.setListingMode(!state.listingMode) },
+                            label = { Text(stringResource(MR.strings.duplicate_listing_mode)) },
+                            leadingIcon = if (state.listingMode) {
+                                { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
                 }
 
                 if (state.listingMode && state.listingTruncated) {
-                    Text(
-                        text = stringResource(MR.strings.duplicate_listing_truncated),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    )
+                    item(key = "listing_truncated") {
+                        Text(
+                            text = stringResource(MR.strings.duplicate_listing_truncated, state.listingTotalMatches),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
                 }
 
                 if (state.hasStartedAnalysis && state.duplicateGroups.isNotEmpty()) {
-                    OutlinedTextField(
-                        value = state.searchQuery,
-                        onValueChange = { screenModel.setSearchQuery(it) },
+                    item(key = "search_field") {
+                        OutlinedTextField(
+                            value = state.searchQuery,
+                            onValueChange = { screenModel.setSearchQuery(it) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            placeholder = { Text(stringResource(MR.strings.action_search)) },
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                            trailingIcon = {
+                                if (state.searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { screenModel.setSearchQuery("") }) {
+                                        Icon(Icons.Filled.Close, contentDescription = null)
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                        )
+                    }
+                }
+
+                item(key = "filters_header") {
+                    // Collapsible filter section
+                    var filtersExpanded by rememberSaveable { mutableStateOf(true) }
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .clickable { filtersExpanded = !filtersExpanded }
                             .padding(horizontal = 16.dp, vertical = 4.dp),
-                        placeholder = { Text(stringResource(MR.strings.action_search)) },
-                        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                        trailingIcon = {
-                            if (state.searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { screenModel.setSearchQuery("") }) {
-                                    Icon(Icons.Filled.Close, contentDescription = null)
-                                }
-                            }
-                        },
-                        singleLine = true,
-                    )
-                }
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.FilterList,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            stringResource(MR.strings.duplicate_filters_sort),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = if (filtersExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                            contentDescription = if (filtersExpanded) {
+                                stringResource(
+                                    MR.strings.action_collapse,
+                                )
+                            } else {
+                                stringResource(MR.strings.action_expand)
+                            },
+                        )
+                    }
 
-                // Collapsible filter section
-                var filtersExpanded by rememberSaveable { mutableStateOf(true) }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { filtersExpanded = !filtersExpanded }
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.FilterList,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        stringResource(MR.strings.duplicate_filters_sort),
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        imageVector = if (filtersExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                        contentDescription = if (filtersExpanded) {
-                            stringResource(
-                                MR.strings.action_collapse,
-                            )
-                        } else {
-                            stringResource(MR.strings.action_expand)
-                        },
-                    )
-                }
-
-                @OptIn(ExperimentalLayoutApi::class)
-                AnimatedVisibility(visible = filtersExpanded) {
-                    Column {
-                        // Content type selector (Manga/Novel/Both)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                stringResource(MR.strings.duplicate_type_label),
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.align(Alignment.CenterVertically),
-                            )
-                            FilterChip(
-                                selected = state.contentType == DuplicateDetectionViewModel.ContentType.ALL,
-                                onClick = { screenModel.setContentType(DuplicateDetectionViewModel.ContentType.ALL) },
-                                label = { Text(stringResource(MR.strings.duplicate_type_all)) },
-                                leadingIcon = if (state.contentType == DuplicateDetectionViewModel.ContentType.ALL) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                            FilterChip(
-                                selected = state.contentType == DuplicateDetectionViewModel.ContentType.MANGA,
-                                onClick = {
-                                    screenModel.setContentType(DuplicateDetectionViewModel.ContentType.MANGA)
-                                },
-                                label = { Text(stringResource(MR.strings.duplicate_type_manga)) },
-                                leadingIcon = if (state.contentType ==
-                                    DuplicateDetectionViewModel.ContentType.MANGA
-                                ) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                            FilterChip(
-                                selected = state.contentType == DuplicateDetectionViewModel.ContentType.NOVEL,
-                                onClick = {
-                                    screenModel.setContentType(DuplicateDetectionViewModel.ContentType.NOVEL)
-                                },
-                                label = { Text(stringResource(MR.strings.duplicate_type_novel)) },
-                                leadingIcon = if (state.contentType ==
-                                    DuplicateDetectionViewModel.ContentType.NOVEL
-                                ) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                        }
-
-                        // Show URLs toggle
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { screenModel.toggleShowFullUrls() }
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = state.showFullUrls,
-                                onCheckedChange = { screenModel.toggleShowFullUrls() },
-                            )
-                            Text(
-                                stringResource(MR.strings.duplicate_show_full_urls),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
-                        }
-
-                        // Require Group Match toggle
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { screenModel.setFilterByGroupCategory(!state.filterByGroupCategory) }
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Checkbox(
-                                checked = state.filterByGroupCategory,
-                                onCheckedChange = { screenModel.setFilterByGroupCategory(it) },
-                            )
-                            Text(
-                                stringResource(TDMR.strings.duplicate_flexible_group_matching),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
-                        }
-                        // Sort mode selector
-                        FlowRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Text(
-                                stringResource(MR.strings.duplicate_sort_label),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
-                            FilterChip(
-                                selected = state.sortMode == DuplicateDetectionViewModel.SortMode.NAME,
-                                onClick = { screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.NAME) },
-                                label = { Text(stringResource(MR.strings.duplicate_sort_name)) },
-                                leadingIcon = if (state.sortMode == DuplicateDetectionViewModel.SortMode.NAME) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                            FilterChip(
-                                selected = state.sortMode == DuplicateDetectionViewModel.SortMode.LATEST_ADDED,
-                                onClick = {
-                                    screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.LATEST_ADDED)
-                                },
-                                label = { Text(stringResource(MR.strings.duplicate_sort_latest)) },
-                                leadingIcon = if (state.sortMode ==
-                                    DuplicateDetectionViewModel.SortMode.LATEST_ADDED
-                                ) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                            FilterChip(
-                                selected = state.sortMode == DuplicateDetectionViewModel.SortMode.CHAPTER_COUNT_DESC,
-                                onClick = {
-                                    screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.CHAPTER_COUNT_DESC)
-                                },
-                                label = { Text(stringResource(MR.strings.duplicate_sort_ch_desc)) },
-                                leadingIcon = if (state.sortMode ==
-                                    DuplicateDetectionViewModel.SortMode.CHAPTER_COUNT_DESC
-                                ) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                            FilterChip(
-                                selected = state.sortMode == DuplicateDetectionViewModel.SortMode.DOWNLOAD_COUNT_DESC,
-                                onClick = {
-                                    screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.DOWNLOAD_COUNT_DESC)
-                                },
-                                label = { Text(stringResource(MR.strings.duplicate_sort_dl_desc)) },
-                                leadingIcon = if (state.sortMode ==
-                                    DuplicateDetectionViewModel.SortMode.DOWNLOAD_COUNT_DESC
-                                ) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                            FilterChip(
-                                selected = state.sortMode == DuplicateDetectionViewModel.SortMode.READ_COUNT_DESC,
-                                onClick = {
-                                    screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.READ_COUNT_DESC)
-                                },
-                                label = { Text(stringResource(MR.strings.duplicate_sort_read_desc)) },
-                                leadingIcon = if (state.sortMode ==
-                                    DuplicateDetectionViewModel.SortMode.READ_COUNT_DESC
-                                ) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                            FilterChip(
-                                selected = state.sortMode == DuplicateDetectionViewModel.SortMode.PINNED_SOURCE,
-                                onClick = {
-                                    screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.PINNED_SOURCE)
-                                },
-                                label = {
-                                    Icon(
-                                        imageVector = Icons.Filled.PushPin,
-                                        contentDescription = stringResource(MR.strings.duplicate_select_pinned),
-                                        modifier = Modifier.size(18.dp),
-                                    )
-                                },
-                                leadingIcon = if (state.sortMode ==
-                                    DuplicateDetectionViewModel.SortMode.PINNED_SOURCE
-                                ) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                            FilterChip(
-                                selected = state.sortMode == DuplicateDetectionViewModel.SortMode.SOURCE_PRIORITY,
-                                onClick = {
-                                    screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.SOURCE_PRIORITY)
-                                },
-                                label = { Text(stringResource(MR.strings.duplicate_sort_priority)) },
-                                leadingIcon = if (state.sortMode ==
-                                    DuplicateDetectionViewModel.SortMode.SOURCE_PRIORITY
-                                ) {
-                                    { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else {
-                                    null
-                                },
-                            )
-                        }
-
-                        // Tristate Category filters
-                        if (state.categories.isNotEmpty()) {
-                            val relevantCategories = state.categories.filter { category ->
-                                when (state.contentType) {
-                                    DuplicateDetectionViewModel.ContentType.ALL -> true
-                                    DuplicateDetectionViewModel.ContentType.NOVEL ->
-                                        category.contentType == CategoryModel.CONTENT_TYPE_ALL ||
-                                            category.contentType == CategoryModel.CONTENT_TYPE_NOVEL
-                                    DuplicateDetectionViewModel.ContentType.MANGA ->
-                                        category.contentType == CategoryModel.CONTENT_TYPE_ALL ||
-                                            category.contentType == CategoryModel.CONTENT_TYPE_MANGA
-                                }
-                            }
-
-                            Column(
+                    @OptIn(ExperimentalLayoutApi::class)
+                    AnimatedVisibility(visible = filtersExpanded) {
+                        Column {
+                            // Content type selector (Manga/Novel/Both)
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        stringResource(MR.strings.duplicate_category_label),
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    FilterChip(
-                                        selected = state.categoryIncludeMode ==
-                                            DuplicateDetectionViewModel.CategoryIncludeMode.ANY,
-                                        onClick = {
-                                            screenModel.setCategoryIncludeMode(
-                                                DuplicateDetectionViewModel.CategoryIncludeMode.ANY,
-                                            )
-                                        },
-                                        label = { Text(stringResource(TDMR.strings.duplicate_category_include_or)) },
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    FilterChip(
-                                        selected = state.categoryIncludeMode ==
-                                            DuplicateDetectionViewModel.CategoryIncludeMode.ALL,
-                                        onClick = {
-                                            screenModel.setCategoryIncludeMode(
-                                                DuplicateDetectionViewModel.CategoryIncludeMode.ALL,
-                                            )
-                                        },
-                                        label = { Text(stringResource(TDMR.strings.duplicate_category_include_and)) },
-                                    )
-                                    if (state.selectedCategoryFilters.isNotEmpty() ||
-                                        state.excludedCategoryFilters.isNotEmpty()
+                                Text(
+                                    stringResource(MR.strings.duplicate_type_label),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.align(Alignment.CenterVertically),
+                                )
+                                FilterChip(
+                                    selected = state.contentType == DuplicateDetectionViewModel.ContentType.ALL,
+                                    onClick = {
+                                        screenModel.setContentType(DuplicateDetectionViewModel.ContentType.ALL)
+                                    },
+                                    label = { Text(stringResource(MR.strings.duplicate_type_all)) },
+                                    leadingIcon = if (state.contentType ==
+                                        DuplicateDetectionViewModel.ContentType.ALL
                                     ) {
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        FilterChip(
-                                            selected = true,
-                                            onClick = { screenModel.clearCategoryFilters() },
-                                            label = { Text(stringResource(MR.strings.duplicate_category_clear)) },
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.contentType == DuplicateDetectionViewModel.ContentType.MANGA,
+                                    onClick = {
+                                        screenModel.setContentType(DuplicateDetectionViewModel.ContentType.MANGA)
+                                    },
+                                    label = { Text(stringResource(MR.strings.duplicate_type_manga)) },
+                                    leadingIcon = if (state.contentType ==
+                                        DuplicateDetectionViewModel.ContentType.MANGA
+                                    ) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.contentType == DuplicateDetectionViewModel.ContentType.NOVEL,
+                                    onClick = {
+                                        screenModel.setContentType(DuplicateDetectionViewModel.ContentType.NOVEL)
+                                    },
+                                    label = { Text(stringResource(MR.strings.duplicate_type_novel)) },
+                                    leadingIcon = if (state.contentType ==
+                                        DuplicateDetectionViewModel.ContentType.NOVEL
+                                    ) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                            }
+
+                            // Compact toggle pills: full URLs, flexible group matching, library filters
+                            FlowRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                FilterChip(
+                                    selected = state.showFullUrls,
+                                    onClick = { screenModel.toggleShowFullUrls() },
+                                    label = { Text(stringResource(TDMR.strings.duplicate_full_urls_short)) },
+                                    leadingIcon = if (state.showFullUrls) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.filterByGroupCategory,
+                                    onClick = { screenModel.setFilterByGroupCategory(!state.filterByGroupCategory) },
+                                    label = { Text(stringResource(TDMR.strings.duplicate_flexible_group_matching)) },
+                                    leadingIcon = if (state.filterByGroupCategory) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.applyLibraryFilters,
+                                    onClick = { screenModel.setApplyLibraryFilters(!state.applyLibraryFilters) },
+                                    label = { Text(stringResource(TDMR.strings.duplicate_apply_library_filters)) },
+                                    leadingIcon = if (state.applyLibraryFilters) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                            }
+                            // Sort mode selector
+                            FlowRow(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Text(
+                                    stringResource(MR.strings.duplicate_sort_label),
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                                FilterChip(
+                                    selected = state.sortMode == DuplicateDetectionViewModel.SortMode.NAME,
+                                    onClick = { screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.NAME) },
+                                    label = { Text(stringResource(MR.strings.duplicate_sort_name)) },
+                                    leadingIcon = if (state.sortMode == DuplicateDetectionViewModel.SortMode.NAME) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.sortMode == DuplicateDetectionViewModel.SortMode.LATEST_ADDED,
+                                    onClick = {
+                                        screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.LATEST_ADDED)
+                                    },
+                                    label = { Text(stringResource(MR.strings.duplicate_sort_latest)) },
+                                    leadingIcon = if (state.sortMode ==
+                                        DuplicateDetectionViewModel.SortMode.LATEST_ADDED
+                                    ) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.sortMode ==
+                                        DuplicateDetectionViewModel.SortMode.CHAPTER_COUNT_DESC,
+                                    onClick = {
+                                        screenModel.setSortMode(
+                                            DuplicateDetectionViewModel.SortMode.CHAPTER_COUNT_DESC,
                                         )
+                                    },
+                                    label = { Text(stringResource(MR.strings.duplicate_sort_ch_desc)) },
+                                    leadingIcon = if (state.sortMode ==
+                                        DuplicateDetectionViewModel.SortMode.CHAPTER_COUNT_DESC
+                                    ) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.sortMode ==
+                                        DuplicateDetectionViewModel.SortMode.DOWNLOAD_COUNT_DESC,
+                                    onClick = {
+                                        screenModel.setSortMode(
+                                            DuplicateDetectionViewModel.SortMode.DOWNLOAD_COUNT_DESC,
+                                        )
+                                    },
+                                    label = { Text(stringResource(MR.strings.duplicate_sort_dl_desc)) },
+                                    leadingIcon = if (state.sortMode ==
+                                        DuplicateDetectionViewModel.SortMode.DOWNLOAD_COUNT_DESC
+                                    ) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.sortMode == DuplicateDetectionViewModel.SortMode.READ_COUNT_DESC,
+                                    onClick = {
+                                        screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.READ_COUNT_DESC)
+                                    },
+                                    label = { Text(stringResource(MR.strings.duplicate_sort_read_desc)) },
+                                    leadingIcon = if (state.sortMode ==
+                                        DuplicateDetectionViewModel.SortMode.READ_COUNT_DESC
+                                    ) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.sortMode == DuplicateDetectionViewModel.SortMode.PINNED_SOURCE,
+                                    onClick = {
+                                        screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.PINNED_SOURCE)
+                                    },
+                                    label = {
+                                        Icon(
+                                            imageVector = Icons.Filled.PushPin,
+                                            contentDescription = stringResource(MR.strings.duplicate_select_pinned),
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    },
+                                    leadingIcon = if (state.sortMode ==
+                                        DuplicateDetectionViewModel.SortMode.PINNED_SOURCE
+                                    ) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                                FilterChip(
+                                    selected = state.sortMode == DuplicateDetectionViewModel.SortMode.SOURCE_PRIORITY,
+                                    onClick = {
+                                        screenModel.setSortMode(DuplicateDetectionViewModel.SortMode.SOURCE_PRIORITY)
+                                    },
+                                    label = { Text(stringResource(MR.strings.duplicate_sort_priority)) },
+                                    leadingIcon = if (state.sortMode ==
+                                        DuplicateDetectionViewModel.SortMode.SOURCE_PRIORITY
+                                    ) {
+                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
+                                    } else {
+                                        null
+                                    },
+                                )
+                            }
+
+                            // Tristate Category filters
+                            if (state.categories.isNotEmpty()) {
+                                val relevantCategories = state.categories.filter { category ->
+                                    when (state.contentType) {
+                                        DuplicateDetectionViewModel.ContentType.ALL -> true
+                                        DuplicateDetectionViewModel.ContentType.NOVEL ->
+                                            category.contentType == CategoryModel.CONTENT_TYPE_ALL ||
+                                                category.contentType == CategoryModel.CONTENT_TYPE_NOVEL
+                                        DuplicateDetectionViewModel.ContentType.MANGA ->
+                                            category.contentType == CategoryModel.CONTENT_TYPE_ALL ||
+                                                category.contentType == CategoryModel.CONTENT_TYPE_MANGA
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 4.dp),
                                 ) {
-                                    relevantCategories.forEach { category ->
-                                        val isIncluded = category.id in state.selectedCategoryFilters
-                                        val isExcluded = category.id in state.excludedCategoryFilters
-                                        val displayName = category.name.ifBlank {
-                                            stringResource(MR.strings.label_default)
-                                        }
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            stringResource(MR.strings.duplicate_category_label),
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
                                         FilterChip(
-                                            selected = isIncluded || isExcluded,
-                                            onClick = { screenModel.toggleCategoryFilter(category.id) },
-                                            label = { Text(displayName) },
-                                            leadingIcon = if (isIncluded) {
-                                                {
-                                                    Icon(
-                                                        Icons.Filled.Check,
-                                                        contentDescription = null,
-                                                        Modifier.size(18.dp),
-                                                    )
-                                                }
-                                            } else if (isExcluded) {
-                                                {
-                                                    Icon(
-                                                        Icons.Filled.Close,
-                                                        contentDescription = null,
-                                                        Modifier.size(18.dp),
-                                                    )
-                                                }
-                                            } else {
-                                                null
-                                            },
-                                            colors = if (isExcluded) {
-                                                FilterChipDefaults.filterChipColors(
-                                                    selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
-                                                    selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer,
+                                            selected = state.categoryIncludeMode ==
+                                                DuplicateDetectionViewModel.CategoryIncludeMode.ANY,
+                                            onClick = {
+                                                screenModel.setCategoryIncludeMode(
+                                                    DuplicateDetectionViewModel.CategoryIncludeMode.ANY,
                                                 )
-                                            } else {
-                                                FilterChipDefaults.filterChipColors()
+                                            },
+                                            label = {
+                                                Text(stringResource(TDMR.strings.duplicate_category_include_or))
                                             },
                                         )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        FilterChip(
+                                            selected = state.categoryIncludeMode ==
+                                                DuplicateDetectionViewModel.CategoryIncludeMode.ALL,
+                                            onClick = {
+                                                screenModel.setCategoryIncludeMode(
+                                                    DuplicateDetectionViewModel.CategoryIncludeMode.ALL,
+                                                )
+                                            },
+                                            label = {
+                                                Text(stringResource(TDMR.strings.duplicate_category_include_and))
+                                            },
+                                        )
+                                        if (state.selectedCategoryFilters.isNotEmpty() ||
+                                            state.excludedCategoryFilters.isNotEmpty()
+                                        ) {
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            FilterChip(
+                                                selected = true,
+                                                onClick = { screenModel.clearCategoryFilters() },
+                                                label = { Text(stringResource(MR.strings.duplicate_category_clear)) },
+                                            )
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    FlowRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    ) {
+                                        relevantCategories.forEach { category ->
+                                            val isIncluded = category.id in state.selectedCategoryFilters
+                                            val isExcluded = category.id in state.excludedCategoryFilters
+                                            val displayName = category.name.ifBlank {
+                                                stringResource(MR.strings.label_default)
+                                            }
+                                            FilterChip(
+                                                selected = isIncluded || isExcluded,
+                                                onClick = { screenModel.toggleCategoryFilter(category.id) },
+                                                label = { Text(displayName) },
+                                                leadingIcon = if (isIncluded) {
+                                                    {
+                                                        Icon(
+                                                            Icons.Filled.Check,
+                                                            contentDescription = null,
+                                                            Modifier.size(18.dp),
+                                                        )
+                                                    }
+                                                } else if (isExcluded) {
+                                                    {
+                                                        Icon(
+                                                            Icons.Filled.Close,
+                                                            contentDescription = null,
+                                                            Modifier.size(18.dp),
+                                                        )
+                                                    }
+                                                } else {
+                                                    null
+                                                },
+                                                colors = if (isExcluded) {
+                                                    FilterChipDefaults.filterChipColors(
+                                                        selectedContainerColor =
+                                                        MaterialTheme.colorScheme.errorContainer,
+                                                        selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer,
+                                                    )
+                                                } else {
+                                                    FilterChipDefaults.filterChipColors()
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { navigator.push(SourcePriorityScreen) }
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.FilterList,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                stringResource(MR.strings.duplicate_source_priority),
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
-                                contentDescription = null,
-                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { navigator.push(SourcePriorityScreen) }
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.FilterList,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    stringResource(MR.strings.duplicate_source_priority),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                                    contentDescription = null,
+                                )
+                            }
                         }
                     }
                 }
 
                 when {
                     !state.hasStartedAnalysis -> {
-                        // Initial state - show start analysis button
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                        item(key = "initial_state") {
+                            // Initial state - show start analysis button
+                            Box(
+                                modifier = Modifier.fillParentMaxSize(),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Search,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(64.dp),
-                                    tint = MaterialTheme.colorScheme.primary,
-                                )
-                                Text(
-                                    text = stringResource(MR.strings.duplicate_initial_title),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                )
-                                Text(
-                                    text = stringResource(MR.strings.duplicate_initial_description),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Button(
-                                    onClick = { screenModel.loadDuplicates() },
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(16.dp),
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.PlayArrow,
+                                        imageVector = Icons.Filled.Search,
                                         contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
+                                        modifier = Modifier.size(64.dp),
+                                        tint = MaterialTheme.colorScheme.primary,
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(MR.strings.duplicate_start_analysis))
+                                    Text(
+                                        text = stringResource(MR.strings.duplicate_initial_title),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                    )
+                                    Text(
+                                        text = stringResource(MR.strings.duplicate_initial_description),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Button(
+                                        onClick = { screenModel.loadDuplicates() },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.PlayArrow,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(stringResource(MR.strings.duplicate_start_analysis))
+                                    }
                                 }
                             }
                         }
                     }
                     state.isLoading -> {
-                        LoadingScreen()
+                        item(key = "loading_state") {
+                            val progress = state.precheckProgress
+                            if (progress != null) {
+                                Box(
+                                    modifier = Modifier.fillParentMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        androidx.compose.material3.CircularProgressIndicator()
+                                        Text(
+                                            text = stringResource(
+                                                TDMR.strings.duplicate_checking_progress,
+                                                progress.first,
+                                                progress.second,
+                                            ),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                            } else {
+                                LoadingScreen(modifier = Modifier.fillParentMaxSize())
+                            }
+                        }
                     }
                     state.filteredDuplicateGroups.isEmpty() -> {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                        item(key = "empty_state") {
+                            Box(
+                                modifier = Modifier.fillParentMaxSize(),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                Text(
-                                    if (state.duplicateGroups.isEmpty()) {
-                                        stringResource(
-                                            MR.strings.duplicate_no_duplicates,
-                                        )
-                                    } else {
-                                        stringResource(MR.strings.duplicate_no_matches_filter)
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                Button(
-                                    onClick = { screenModel.loadDuplicates() },
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(16.dp),
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.PlayArrow,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(20.dp),
+                                    Text(
+                                        if (state.duplicateGroups.isEmpty()) {
+                                            stringResource(
+                                                MR.strings.duplicate_no_duplicates,
+                                            )
+                                        } else {
+                                            stringResource(MR.strings.duplicate_no_matches_filter)
+                                        },
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(MR.strings.duplicate_reanalyze))
+                                    Button(
+                                        onClick = { screenModel.loadDuplicates() },
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.PlayArrow,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(stringResource(MR.strings.duplicate_reanalyze))
+                                    }
                                 }
                             }
                         }
                     }
                     else -> {
-                        // Results summary
-                        Text(
-                            text =
-                            stringResource(
-                                MR.strings.duplicate_results_summary,
-                                state.filteredDuplicateGroups.size,
-                                state.filteredDuplicateGroups.values.sumOf {
-                                    it.size
-                                },
-                            ) +
-                                if (state.selectedCategoryFilters.isNotEmpty() ||
-                                    state.excludedCategoryFilters.isNotEmpty()
-                                ) {
-                                    stringResource(MR.strings.duplicate_results_filtered)
-                                } else {
-                                    ""
-                                },
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
+                        item(key = "results_summary") {
+                            // Results summary
+                            Text(
+                                text =
+                                stringResource(
+                                    MR.strings.duplicate_results_summary,
+                                    state.filteredDuplicateGroups.size,
+                                    state.filteredDuplicateGroups.values.sumOf {
+                                        it.size
+                                    },
+                                ) +
+                                    if (state.selectedCategoryFilters.isNotEmpty() ||
+                                        state.excludedCategoryFilters.isNotEmpty()
+                                    ) {
+                                        stringResource(MR.strings.duplicate_results_filtered)
+                                    } else {
+                                        ""
+                                    },
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            )
+                        }
 
-                        LazyColumn(
-                            state = listState,
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(state.filteredDuplicateGroups.toList()) { (title, mangaList) ->
-                                DuplicateGroupCard(
-                                    groupTitle = title,
-                                    mangaList = mangaList,
-                                    selection = state.selection,
-                                    mangaCategories = state.mangaCategories,
-                                    showFullUrls = state.showFullUrls,
-                                    onToggleSelection = { screenModel.toggleSelection(it) },
-                                    onSelectGroup = { screenModel.selectGroup(title) },
-                                    onDismissGroup = { screenModel.dismissGroup(title) },
-                                    onClickManga = { navigator.push(MangaScreen(it)) },
-                                )
-                            }
+                        items(
+                            state.filteredDuplicateGroups.toList(),
+                            key = { it.first },
+                        ) { (title, mangaList) ->
+                            DuplicateGroupCard(
+                                groupTitle = title,
+                                mangaList = mangaList,
+                                selection = state.selection,
+                                mangaCategories = state.mangaCategories,
+                                showFullUrls = state.showFullUrls,
+                                onToggleSelection = { screenModel.toggleSelection(it) },
+                                onSelectGroup = { screenModel.selectGroup(title) },
+                                onDismissGroup = { screenModel.dismissGroup(title) },
+                                onClickManga = { navigator.push(MangaScreen(it)) },
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
                         }
                     }
                 }
@@ -943,12 +996,13 @@ private fun DuplicateGroupCard(
     onSelectGroup: () -> Unit,
     onDismissGroup: () -> Unit,
     onClickManga: (Long) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(true) }
     val allSelected = mangaList.isNotEmpty() && mangaList.all { it.manga.id in selection }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {

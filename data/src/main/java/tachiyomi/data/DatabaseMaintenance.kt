@@ -5,9 +5,7 @@ import app.cash.sqldelight.db.SqlDriver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * Database maintenance operations that run raw PRAGMA/VACUUM statements directly on the driver.
- */
+// Every SqlDriver call here must be followed by .await(), or it's a silent no-op.
 class DatabaseMaintenance(
     private val driver: SqlDriver,
 ) {
@@ -15,22 +13,22 @@ class DatabaseMaintenance(
     /** Rebuild the database file, reclaiming unused space. Truncates WAL afterwards. */
     suspend fun vacuum() {
         withContext(Dispatchers.IO) {
-            driver.execute(null, "VACUUM", 0, null)
-            driver.execute(null, "PRAGMA wal_checkpoint(TRUNCATE)", 0, null)
+            driver.execute(null, "VACUUM", 0, null).await()
+            driver.execute(null, "PRAGMA wal_checkpoint(TRUNCATE)", 0, null).await()
         }
     }
 
     /** Rebuild all indexes. */
     suspend fun reindex() {
         withContext(Dispatchers.IO) {
-            driver.execute(null, "REINDEX", 0, null)
+            driver.execute(null, "REINDEX", 0, null).await()
         }
     }
 
     /** Update query-planner statistics. */
     suspend fun analyze() {
         withContext(Dispatchers.IO) {
-            driver.execute(null, "ANALYZE", 0, null)
+            driver.execute(null, "ANALYZE", 0, null).await()
         }
     }
 
@@ -42,17 +40,17 @@ class DatabaseMaintenance(
             driver.executeQuery(null, "PRAGMA page_size", { cursor ->
                 if (cursor.next().value) stats["page_size"] = cursor.getLong(0) ?: 4096L
                 QueryResult.Unit
-            }, 0, null)
+            }, 0, null).await()
 
             driver.executeQuery(null, "PRAGMA page_count", { cursor ->
                 if (cursor.next().value) stats["page_count"] = cursor.getLong(0) ?: 0L
                 QueryResult.Unit
-            }, 0, null)
+            }, 0, null).await()
 
             driver.executeQuery(null, "PRAGMA freelist_count", { cursor ->
                 if (cursor.next().value) stats["freelist_count"] = cursor.getLong(0) ?: 0L
                 QueryResult.Unit
-            }, 0, null)
+            }, 0, null).await()
 
             val pageSize = stats["page_size"] ?: 4096L
             val pageCount = stats["page_count"] ?: 0L
@@ -73,7 +71,7 @@ class DatabaseMaintenance(
                     result["page_size"] = actualPageSize
                 }
                 QueryResult.Unit
-            }, 0, null)
+            }, 0, null).await()
 
             driver.executeQuery(null, "PRAGMA page_count", { cursor ->
                 if (cursor.next().value) {
@@ -82,7 +80,7 @@ class DatabaseMaintenance(
                     result["total_size_bytes"] = actualPageSize * count
                 }
                 QueryResult.Unit
-            }, 0, null)
+            }, 0, null).await()
 
             driver.executeQuery(null, "PRAGMA freelist_count", { cursor ->
                 if (cursor.next().value) {
@@ -91,7 +89,7 @@ class DatabaseMaintenance(
                     result["freelist_size_bytes"] = actualPageSize * count
                 }
                 QueryResult.Unit
-            }, 0, null)
+            }, 0, null).await()
 
             val tableCounts = mutableMapOf<String, Long>()
             listOf(
@@ -108,7 +106,7 @@ class DatabaseMaintenance(
                     driver.executeQuery(null, "SELECT count(*) FROM $table", { cursor ->
                         if (cursor.next().value) tableCounts[table] = cursor.getLong(0) ?: 0L
                         QueryResult.Unit
-                    }, 0, null)
+                    }, 0, null).await()
                 } catch (e: Exception) {
                     tableCounts[table] = -1L
                 }
@@ -135,7 +133,7 @@ class DatabaseMaintenance(
                     },
                     0,
                     null,
-                )
+                ).await()
                 result["table_sizes_bytes"] = tableSizes
                 result["index_sizes_bytes"] = indexSizes
             } catch (e: Exception) {
@@ -148,7 +146,7 @@ class DatabaseMaintenance(
                     result["wal_frames_checkpointed"] = cursor.getLong(2) ?: 0L
                 }
                 QueryResult.Unit
-            }, 0, null)
+            }, 0, null).await()
 
             val chapterCount = tableCounts["chapters"] ?: 0L
             if (chapterCount > 0) {
@@ -161,7 +159,7 @@ class DatabaseMaintenance(
                     },
                     0,
                     null,
-                )
+                ).await()
             }
 
             val mangaCount = tableCounts["mangas"] ?: 0L
@@ -175,7 +173,7 @@ class DatabaseMaintenance(
                     },
                     0,
                     null,
-                )
+                ).await()
             }
 
             result

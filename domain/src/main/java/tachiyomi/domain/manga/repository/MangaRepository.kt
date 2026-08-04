@@ -151,19 +151,25 @@ interface MangaRepository {
      */
     suspend fun getFavoriteIdAndTitle(): List<Pair<Long, String>>
 
-    /**
-     * Get up to [limit] lightweight selection metrics for favorites, optionally restricted to any of
-     * [categoryIds] (empty means all favorites).
-     */
-    suspend fun getFavoriteSelectionMetrics(
-        categoryIds: List<Long>,
-        limit: Long,
-    ): List<MangaSelectionMetric>
+    /** Unbounded selection metrics for favorites, optionally restricted to [categoryIds]. */
+    suspend fun getFavoriteSelectionMetrics(categoryIds: List<Long>): List<MangaSelectionMetric>
 
     /**
      * Get all favorite manga ids in [categoryId] (0 = uncategorized). Id-only for bulk category actions.
      */
     suspend fun getFavoriteIdsForCategory(categoryId: Long): List<Long>
+
+    /** Ids of favorites matching the DB-expressible half of the Library screen's active filters. */
+    suspend fun getFavoriteIdsMatchingLibraryFilter(
+        excludedSourceIds: List<Long>,
+        filterUnread: Long,
+        filterStarted: Long,
+        filterCompleted: Long,
+        filterNovel: Long,
+        filterChapterCount: Long,
+        chapterCountThreshold: Long,
+        includedTagsCsv: String,
+    ): List<Long>
 
     /**
      * Find duplicates by URL within the same source.
@@ -212,6 +218,12 @@ interface MangaRepository {
     suspend fun getMangaWithCounts(ids: List<Long>): List<MangaWithChapterCount>
 
     suspend fun getMangaWithCountsLight(ids: List<Long>): List<MangaWithChapterCount>
+
+    /** Same as [getMangaWithCountsLight] but keeps real genre data (still skips description). */
+    suspend fun getMangaWithCountsLightWithGenre(ids: List<Long>): List<MangaWithChapterCount>
+
+    /** Id-only genre lookup, cheap enough to run over a large candidate set before display truncation. */
+    suspend fun getGenresForIds(ids: List<Long>): Map<Long, List<String>?>
 
     suspend fun getUpcomingManga(
         statuses: Set<Long>,
