@@ -785,7 +785,12 @@ class JsPluginManager(
                 createFile(name)?.let { return it }
             }
             attempts++
-            if (attempts >= 5) return createFile(name)
+            if (attempts >= 5) {
+                logcat(LogPriority.WARN) {
+                    "replaceFile: $name still contested after $attempts retries, creating anyway"
+                }
+                return createFile(name)
+            }
             Thread.sleep(delayMs)
             delayMs *= 2
         }
