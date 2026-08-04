@@ -11,6 +11,7 @@ class GetSourcePinGroups(
         val allPinGroups = preferences.groupPinnedSources.get()
             .map { it.substringBeforeLast("|") }
             .distinct()
+            .sorted()
 
         val sourcePinnedGroups = preferences.groupPinnedSources.get()
             .filter { it.endsWith("|${source.id}") }
