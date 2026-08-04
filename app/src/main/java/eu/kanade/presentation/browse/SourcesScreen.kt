@@ -46,6 +46,7 @@ import eu.kanade.tachiyomi.util.system.LocaleHelper
 import tachiyomi.domain.source.model.Pin
 import tachiyomi.domain.source.model.Source
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.ScrollbarLazyColumn
 import tachiyomi.presentation.core.components.material.SECONDARY_ALPHA
 import tachiyomi.presentation.core.components.material.padding
@@ -205,7 +206,7 @@ private fun SourcePinButton(
     }
     val description = when {
         groupSection != null -> MR.strings.action_remove
-        showGroupIcon -> MR.strings.action_pin_groups
+        showGroupIcon -> TDMR.strings.action_pin_groups
         isPinned -> MR.strings.action_unpin
         else -> MR.strings.action_pin
     }
@@ -265,7 +266,7 @@ fun SourceOptionsDialog(
                         .padding(vertical = 16.dp),
                 )
                 Text(
-                    text = stringResource(MR.strings.action_pin_groups),
+                    text = stringResource(TDMR.strings.action_pin_groups),
                     modifier = Modifier
                         .clickable(onClick = onClickPinGroups)
                         .fillMaxWidth()
@@ -307,13 +308,46 @@ fun SourcePinGroupsDialog(
     var pinned by remember { mutableStateOf(isPinned) }
     var newGroupName by remember { mutableStateOf("") }
     var createNewGroup by remember { mutableStateOf(false) }
+    var groupPendingDelete by remember { mutableStateOf<String?>(null) }
+
+    groupPendingDelete?.let { group ->
+        AlertDialog(
+            onDismissRequest = { groupPendingDelete = null },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteGroup(group)
+                        val index = groups.indexOf(group)
+                        if (index != -1) {
+                            groups.removeAt(index)
+                            selectedIndices.removeAt(index)
+                        }
+                        groupPendingDelete = null
+                    },
+                ) {
+                    Text(text = stringResource(MR.strings.action_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { groupPendingDelete = null }) {
+                    Text(text = stringResource(MR.strings.action_cancel))
+                }
+            },
+            title = {
+                Text(text = stringResource(TDMR.strings.delete_pin_group))
+            },
+            text = {
+                Text(text = stringResource(TDMR.strings.delete_pin_group_confirmation, group))
+            },
+        )
+    }
 
     AlertDialog(
         title = {
             Column {
                 Text(text = source.visualName)
                 Text(
-                    text = stringResource(MR.strings.action_pin_groups),
+                    text = stringResource(TDMR.strings.action_pin_groups),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -368,11 +402,7 @@ fun SourcePinGroupsDialog(
                                 .padding(start = 12.dp),
                         )
                         IconButton(
-                            onClick = {
-                                onDeleteGroup(group)
-                                groups.removeAt(index)
-                                selectedIndices.removeAt(index)
-                            },
+                            onClick = { groupPendingDelete = group },
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
@@ -403,7 +433,7 @@ fun SourcePinGroupsDialog(
                         modifier = Modifier
                             .padding(start = 12.dp)
                             .fillMaxWidth(),
-                        placeholder = { Text(text = stringResource(MR.strings.action_add_pin_group)) },
+                        placeholder = { Text(text = stringResource(TDMR.strings.action_add_pin_group)) },
                         singleLine = true,
                     )
                 }
