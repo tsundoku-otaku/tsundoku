@@ -8,6 +8,7 @@ import eu.kanade.tachiyomi.network.NetworkHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
+import mihon.core.archive.HtmlAssetRewriter
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import tachiyomi.core.common.util.system.logcat
@@ -16,7 +17,6 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.ByteArrayOutputStream
 import java.net.URL
-import java.util.regex.Pattern
 
 /**
  * Utility class for extracting image URLs from HTML and embedding them as base64.
@@ -26,24 +26,6 @@ class ChapterImageEmbedder(
     private val novelDownloadPreferences: NovelDownloadPreferences = Injekt.get(),
 ) {
     private val client: OkHttpClient get() = networkHelper.client
-
-    // Regex patterns for finding image URLs in HTML
-    // Pattern requires whitespace between img and src, handles various attribute orderings
-    private val imgSrcPattern = Pattern.compile(
-        """<img\s+[^>]*?src\s*=\s*["']([^"']+)["'][^>]*>""",
-        Pattern.CASE_INSENSITIVE,
-    )
-
-    private val imgSrcsetPattern = Pattern.compile(
-        """<img\s+[^>]*?srcset\s*=\s*["']([^"']+)["'][^>]*>""",
-        Pattern.CASE_INSENSITIVE,
-    )
-
-    // Pattern for background-image CSS
-    private val bgImagePattern = Pattern.compile(
-        """background-image\s*:\s*url\s*\(\s*["']?([^"')]+)["']?\s*\)""",
-        Pattern.CASE_INSENSITIVE,
-    )
 
     /**
      * Process HTML content and embed images as base64 if enabled.
@@ -61,19 +43,13 @@ class ChapterImageEmbedder(
             return@withContext html
         }
 
-        var processedHtml = html
-        val imageUrls = extractImageUrls(html)
+        val imageUrls = HtmlAssetRewriter.extractImageUrls(html).filterNot(::isAlreadyLocal)
 
         logcat { "ChapterImageEmbedder: Found ${imageUrls.size} images to process" }
 
         var imageCounter = 0
+        val replacements = mutableMapOf<String, String>()
         for (imageUrl in imageUrls) {
-            // Already local or data URI, do not process
-            if (imageUrl.startsWith("tsundoku-novel-image://") || imageUrl.startsWith("file://") ||
-                imageUrl.startsWith("data:")
-            ) {
-                continue
-            }
             try {
                 val absoluteUrl = resolveUrl(imageUrl, baseUrl)
                 val imageResponse = downloadAndEncodeImage(absoluteUrl)
@@ -96,15 +72,14 @@ class ChapterImageEmbedder(
                         } while (tmpDir.findFile(filename) != null)
 
                         tmpDir.createFile(filename)?.openOutputStream()?.use { it.write(imageBytes) }
-                        "tsundoku-novel-image://$filename"
+                        filename
                     } else {
                         // Fallback to base64 if not actively zipping
                         val base64 = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
                         "data:$mimeType;base64,$base64"
                     }
 
-                    // Replace the URL with local path or base64
-                    processedHtml = processedHtml.replace(imageUrl, finalUrl)
+                    replacements[imageUrl] = finalUrl
                     logcat { "ChapterImageEmbedder: Embedded image $imageUrl" }
                 }
             } catch (e: Exception) {
@@ -112,54 +87,17 @@ class ChapterImageEmbedder(
             }
         }
 
-        processedHtml
+        // Attribute-aware rewrite; a plain string replace would corrupt shared-prefix srcset candidates.
+        HtmlAssetRewriter.rewriteImageUrls(html) { replacements[it] }
     }
 
-    /**
-     * Extract all image URLs from HTML content.
-     */
-    private fun extractImageUrls(html: String): Set<String> {
-        val urls = mutableSetOf<String>()
-
-        // Find img src attributes
-        val imgMatcher = imgSrcPattern.matcher(html)
-        while (imgMatcher.find()) {
-            imgMatcher.group(1)?.let { url ->
-                if (!url.startsWith("data:")) {
-                    urls.add(url)
-                }
-            }
-        }
-
-        // Find img srcset attributes (take first URL from srcset)
-        val srcsetMatcher = imgSrcsetPattern.matcher(html)
-        while (srcsetMatcher.find()) {
-            srcsetMatcher.group(1)?.let { srcset ->
-                // srcset format: "url1 1x, url2 2x, ..." - take the first URL
-                val firstUrl = srcset.split(",").firstOrNull()?.trim()?.split(" ")?.firstOrNull()
-                if (firstUrl != null && !firstUrl.startsWith("data:")) {
-                    urls.add(firstUrl)
-                }
-            }
-        }
-
-        // Find background-image URLs
-        val bgMatcher = bgImagePattern.matcher(html)
-        while (bgMatcher.find()) {
-            bgMatcher.group(1)?.let { url ->
-                if (!url.startsWith("data:")) {
-                    urls.add(url)
-                }
-            }
-        }
-
-        return urls
-    }
+    private fun isAlreadyLocal(url: String): Boolean =
+        url.startsWith("tsundoku-novel-image://") || url.startsWith("file://") || url.startsWith("data:")
 
     /**
      * Resolve a potentially relative URL against a base URL.
      */
-    private fun resolveUrl(url: String, baseUrl: String?): String {
+    internal fun resolveUrl(url: String, baseUrl: String?): String {
         return when {
             url.startsWith("http://") || url.startsWith("https://") -> url
             url.startsWith("//") -> "https:$url"

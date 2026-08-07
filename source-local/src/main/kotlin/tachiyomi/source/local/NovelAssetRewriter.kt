@@ -1,74 +1,22 @@
 package tachiyomi.source.local
 
+import mihon.core.archive.HtmlAssetRewriter
 import mihon.core.archive.NOVEL_IMAGE_SCHEME
+import mihon.core.archive.isResolvableAssetRef
+import mihon.core.archive.relativeAssetScheme
 
 internal object NovelAssetRewriter {
 
     const val SCHEME = NOVEL_IMAGE_SCHEME
 
-    private val RESOURCE_TAG_REGEX = Regex(
-        "<(?:img|source|video|audio|track|embed|object|image|link|script)\\b(?:\"[^\"]*\"|'[^']*'|[^>])*>",
-        RegexOption.IGNORE_CASE,
-    )
-    private val URL_ATTR_REGEX = Regex(
-        "(?<![\\w:-])(src|href|poster|data|srcset|xlink:href)(\\s*=\\s*)(?:([\"'])(.*?)\\3|([^\\s\"'>]+))",
-        RegexOption.IGNORE_CASE,
-    )
-    private val CSS_URL_REGEX = Regex(
-        "url\\(\\s*([\"']?)([^\"')]+)\\1\\s*\\)",
-        RegexOption.IGNORE_CASE,
-    )
-    private val STYLE_BLOCK_REGEX = Regex(
-        "(<style\\b[^>]*>)(.*?)(</style>)",
-        setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
-    )
-    private val STYLE_ATTR_REGEX = Regex(
-        "(style\\s*=\\s*)([\"'])(.*?)\\2",
-        RegexOption.IGNORE_CASE,
-    )
     private val MD_IMAGE_REGEX = Regex("""(!\[[^\]]*]\()([^)\s]+)""")
-    private val ABSOLUTE_SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:|^//")
 
     fun rewrite(content: String, ext: String, toScheme: (String) -> String?): String {
         return when (ext.lowercase()) {
-            "html", "htm", "xhtml" -> rewriteHtml(content, toScheme)
-            "md", "markdown" -> rewriteHtml(rewriteMarkdownImages(content, toScheme), toScheme)
+            "html", "htm", "xhtml" -> HtmlAssetRewriter.rewriteHtml(content, toScheme)
+            "md", "markdown" ->
+                HtmlAssetRewriter.rewriteHtml(rewriteMarkdownImages(content, toScheme), toScheme)
             else -> content
-        }
-    }
-
-    private fun rewriteHtml(content: String, toScheme: (String) -> String?): String {
-        val withTags = RESOURCE_TAG_REGEX.replace(content) { tagMatch ->
-            URL_ATTR_REGEX.replace(tagMatch.value) { attr ->
-                val name = attr.groupValues[1]
-                val eq = attr.groupValues[2]
-                val quote = attr.groupValues[3]
-                val value = if (quote.isNotEmpty()) attr.groupValues[4] else attr.groupValues[5]
-                val newValue = if (name.equals("srcset", ignoreCase = true)) {
-                    rewriteSrcset(value, toScheme)
-                } else {
-                    toScheme(value) ?: value
-                }
-                "$name$eq$quote$newValue$quote"
-            }
-        }
-        // Scope url() rewriting to actual CSS (<style> blocks and inline style attributes) so a
-        // relative-looking url(...) token inside a <script> body or text node isn't corrupted.
-        val withStyleBlocks = STYLE_BLOCK_REGEX.replace(withTags) { m ->
-            "${m.groupValues[1]}${rewriteCssUrls(m.groupValues[2], toScheme)}${m.groupValues[3]}"
-        }
-        return STYLE_ATTR_REGEX.replace(withStyleBlocks) { m ->
-            val eqAndQuote = m.groupValues[1]
-            val quote = m.groupValues[2]
-            "$eqAndQuote$quote${rewriteCssUrls(m.groupValues[3], toScheme)}$quote"
-        }
-    }
-
-    private fun rewriteCssUrls(css: String, toScheme: (String) -> String?): String {
-        return CSS_URL_REGEX.replace(css) { m ->
-            val quote = m.groupValues[1]
-            val url = m.groupValues[2]
-            "url($quote${toScheme(url) ?: url}$quote)"
         }
     }
 
@@ -78,33 +26,11 @@ internal object NovelAssetRewriter {
         }
     }
 
-    private fun rewriteSrcset(srcset: String, toScheme: (String) -> String?): String {
-        return srcset.split(',').joinToString(", ") { candidate ->
-            val trimmed = candidate.trim()
-            if (trimmed.isEmpty()) return@joinToString candidate
-            val spaceIdx = trimmed.indexOf(' ')
-            val url = if (spaceIdx >= 0) trimmed.substring(0, spaceIdx) else trimmed
-            val descriptor = if (spaceIdx >= 0) trimmed.substring(spaceIdx) else ""
-            "${toScheme(url) ?: url}$descriptor"
-        }
-    }
-
     // Root-absolute refs in a saved site point at the site root, which for a local novel is the
     // chapter's own base directory, so they resolve like relative refs once the leading slash is dropped.
-    fun isResolvableRef(ref: String): Boolean {
-        val v = ref.trim()
-        if (v.isEmpty()) return false
-        if (v.startsWith("#") || v.startsWith("//")) return false
-        return !ABSOLUTE_SCHEME_REGEX.containsMatchIn(v)
-    }
+    fun isResolvableRef(ref: String): Boolean = isResolvableAssetRef(ref)
 
-    fun relativeScheme(ref: String): String? {
-        val v = ref.trim()
-        if (!isResolvableRef(v)) return null
-        val path = decodePath(v.substringBefore('?').substringBefore('#')).removePrefix("./").removePrefix("/")
-        if (path.isBlank()) return null
-        return "$SCHEME${java.net.URLEncoder.encode(path, "UTF-8")}"
-    }
+    fun relativeScheme(ref: String): String? = relativeAssetScheme(ref)
 
     fun archiveScheme(baseDir: String, ref: String): String? {
         val v = ref.trim()

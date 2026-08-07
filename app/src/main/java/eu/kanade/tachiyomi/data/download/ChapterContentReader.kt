@@ -4,6 +4,8 @@ import android.content.Context
 import com.hippo.unifile.UniFile
 import logcat.LogPriority
 import mihon.core.archive.ArchiveReader
+import mihon.core.archive.HtmlAssetRewriter
+import mihon.core.archive.relativeAssetScheme
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
@@ -213,6 +215,8 @@ class ChapterContentReader(
         }
     }
 
+    private fun rewriteAssetRefs(text: String): String = HtmlAssetRewriter.rewriteHtml(text, ::relativeAssetScheme)
+
     companion object {
         private val IMAGE_EXTENSIONS = listOf(".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif")
     }
@@ -244,7 +248,7 @@ class ChapterContentReader(
             if (i < files.size - 1) sb.append("\n\n")
         }
         val content = sb.toString()
-        return content.ifBlank { null }
+        return content.ifBlank { null }?.let(::rewriteAssetRefs)
     }
 
     /**
@@ -293,6 +297,7 @@ class ChapterContentReader(
                     entries.sortedBy { it.first }
                         .joinToString("\n\n") { it.second }
                         .ifEmpty { null }
+                        ?.let(::rewriteAssetRefs)
                 }
             }
         } catch (e: Exception) {
