@@ -239,8 +239,12 @@ class BrowseSourceViewModel(
      */
     private val hideInLibraryItems = sourcePreferences.hideInLibraryItems.get()
     private fun normalizeUrl(url: String): String = url.trimEnd('/').substringBefore('#')
-    private fun normalizeUrlForLookup(url: String): String =
-        normalizeUrl(eu.kanade.tachiyomi.util.source.normalizeSourcePath(source, url))
+    private fun normalizeUrlForLookup(url: String): String = when (source) {
+        is eu.kanade.tachiyomi.jsplugin.source.JsSource,
+        is eu.kanade.tachiyomi.source.custom.CustomNovelSource,
+        -> normalizeUrl(eu.kanade.tachiyomi.util.source.normalizeSourcePath(source, url))
+        else -> normalizeUrl(url)
+    }
 
     val mangaPagerFlowFlow = kotlinx.coroutines.flow.combine(
         state.map { Triple(it.listing.query, it.filters, it.filters.hashCode()) }
