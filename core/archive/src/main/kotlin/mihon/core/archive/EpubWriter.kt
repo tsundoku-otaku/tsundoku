@@ -191,8 +191,9 @@ class EpubWriter(
         val hasPictures = content.contains("<picture")
         if (images.isEmpty() && !hasTsundokuPaths && !hasPictures) return content
 
+        // Encode img.id the same way the read-time rewrite encoded the src attribute, or it won't match.
         val imageMap = images.associate { img ->
-            "tsundoku-novel-image://${img.id}" to "images/${chapterImageFileName(chapterPrefix, img)}"
+            novelImageUrl(img.id) to "images/${chapterImageFileName(chapterPrefix, img)}"
         }
 
         val doc = Jsoup.parseBodyFragment(content)

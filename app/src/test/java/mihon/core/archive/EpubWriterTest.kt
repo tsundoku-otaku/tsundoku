@@ -210,6 +210,25 @@ class EpubWriterTest {
     }
 
     @Test
+    fun `an image id containing a space still matches the percent-encoded src`() {
+        val imgBytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 0, 0)
+        val img = EpubWriter.EmbeddedImage(
+            id = "cover art.jpg",
+            bytes = imgBytes,
+            mimeType = "image/jpeg",
+            extension = "jpg",
+        )
+        val chapter = EpubWriter.Chapter(
+            title = "Ch 1",
+            content = """<img src="tsundoku-novel-image://cover%20art.jpg"/>""",
+            images = listOf(img),
+        )
+        val chapterXhtml = buildEpub(chapters = listOf(chapter)).text("OEBPS/chapter0000.xhtml")
+        assertFalse(chapterXhtml.contains("tsundoku-novel-image://"), "tsundoku-novel-image:// must be rewritten")
+        assertTrue(chapterXhtml.contains("images/chapter0000_cover art.jpg"), "Image must not be dropped as an orphan")
+    }
+
+    @Test
     fun `orphan tsundoku-novel-image img tags are removed`() {
         // Image referenced in HTML but NOT provided in images list
         val chapter = EpubWriter.Chapter(

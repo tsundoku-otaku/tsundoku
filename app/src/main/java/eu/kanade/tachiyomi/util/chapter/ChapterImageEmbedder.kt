@@ -88,7 +88,7 @@ class ChapterImageEmbedder(
         }
 
         // Attribute-aware rewrite; a plain string replace would corrupt shared-prefix srcset candidates.
-        HtmlAssetRewriter.rewriteImageUrls(html) { replacements[it] }
+        HtmlAssetRewriter.rewriteImageUrls(html, replacements::get)
     }
 
     private fun isAlreadyLocal(url: String): Boolean =

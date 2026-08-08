@@ -4,8 +4,7 @@ import android.content.Context
 import com.hippo.unifile.UniFile
 import logcat.LogPriority
 import mihon.core.archive.ArchiveReader
-import mihon.core.archive.HtmlAssetRewriter
-import mihon.core.archive.relativeAssetScheme
+import mihon.core.archive.rewriteResolvedAssetRefs
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
@@ -215,7 +214,8 @@ class ChapterContentReader(
         }
     }
 
-    private fun rewriteAssetRefs(text: String): String = HtmlAssetRewriter.rewriteHtml(text, ::relativeAssetScheme)
+    private fun rewriteAssetRefs(text: String, fileExists: (String) -> Boolean): String =
+        rewriteResolvedAssetRefs(text, fileExists)
 
     companion object {
         private val IMAGE_EXTENSIONS = listOf(".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif")
@@ -248,7 +248,7 @@ class ChapterContentReader(
             if (i < files.size - 1) sb.append("\n\n")
         }
         val content = sb.toString()
-        return content.ifBlank { null }?.let(::rewriteAssetRefs)
+        return content.ifBlank { null }?.let { rewriteAssetRefs(it) { name -> dir.findFile(name) != null } }
     }
 
     /**
@@ -264,17 +264,18 @@ class ChapterContentReader(
             val pfd = context.contentResolver.openFileDescriptor(uri, "r") ?: return null
             pfd.use { descriptor ->
                 ArchiveReader(descriptor).use { reader ->
-                    // First pass: collect content file names
+                    // First pass: collect content file names and entry base names.
                     val contentFileNames = mutableListOf<String>()
+                    val entryBaseNames = mutableSetOf<String>()
                     reader.useEntries { seq ->
                         seq.forEach { entry ->
+                            if (!entry.isFile) return@forEach
+                            entryBaseNames.add(entry.name.substringAfterLast('/'))
                             val name = entry.name.lowercase()
-                            if (entry.isFile && (
-                                    name.endsWith(".html") ||
-                                        name.endsWith(".htm") ||
-                                        name.endsWith(".xhtml") ||
-                                        name.endsWith(".txt")
-                                    )
+                            if (name.endsWith(".html") ||
+                                name.endsWith(".htm") ||
+                                name.endsWith(".xhtml") ||
+                                name.endsWith(".txt")
                             ) {
                                 contentFileNames.add(entry.name)
                             }
@@ -297,7 +298,7 @@ class ChapterContentReader(
                     entries.sortedBy { it.first }
                         .joinToString("\n\n") { it.second }
                         .ifEmpty { null }
-                        ?.let(::rewriteAssetRefs)
+                        ?.let { rewriteAssetRefs(it, entryBaseNames::contains) }
                 }
             }
         } catch (e: Exception) {

@@ -475,11 +475,9 @@ class MangaViewModel(
                 }
                 // Normalize URL to ensure leading slash for JsSource/CustomNovelSource path convention
                 state.source?.let { src ->
-                    if (src is eu.kanade.tachiyomi.jsplugin.source.JsSource || src is eu.kanade.tachiyomi.source.custom.CustomNovelSource) {
-                        val normalizedUrl = eu.kanade.tachiyomi.util.source.normalizeSourcePath(src, manga.url)
-                        if (normalizedUrl != manga.url) {
-                            updateManga.awaitUpdateUrl(manga.id, normalizedUrl)
-                        }
+                    val normalizedUrl = eu.kanade.tachiyomi.util.source.normalizeSourcePath(src, manga.url)
+                    if (normalizedUrl != manga.url) {
+                        updateManga.awaitUpdateUrl(manga.id, normalizedUrl)
                     }
                 }
 

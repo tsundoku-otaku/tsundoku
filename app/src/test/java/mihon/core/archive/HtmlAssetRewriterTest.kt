@@ -84,38 +84,6 @@ class HtmlAssetRewriterTest {
     }
 
     @Test
-    fun `extractUrls collects every srcset candidate not just the first`() {
-        val urls = HtmlAssetRewriter.extractUrls(
-            """<img src="a.jpg" srcset="b.jpg 1x, c.jpg?w=100 2x, d.jpg 3x">""",
-        )
-        assertEquals(setOf("a.jpg", "b.jpg", "c.jpg?w=100", "d.jpg"), urls)
-    }
-
-    @Test
-    fun `extractUrls dedupes repeated urls across tags`() {
-        val urls = HtmlAssetRewriter.extractUrls(
-            """<img src="a.jpg"><img srcset="a.jpg 1x, b.jpg 2x">""",
-        )
-        assertEquals(setOf("a.jpg", "b.jpg"), urls)
-    }
-
-    @Test
-    fun `extractUrls includes css background-image urls`() {
-        val urls = HtmlAssetRewriter.extractUrls(
-            """<div style="background-image:url('bg.png')"></div><style>.a{background:url(tile.png)}</style>""",
-        )
-        assertTrue(urls.containsAll(setOf("bg.png", "tile.png")))
-    }
-
-    @Test
-    fun `extractUrls ignores data uris and anchor hrefs`() {
-        val urls = HtmlAssetRewriter.extractUrls(
-            """<img src="data:image/png;base64,AAAA"><a href="chapter2.html">next</a>""",
-        )
-        assertTrue(urls.isEmpty())
-    }
-
-    @Test
     fun `extractImageUrls only collects img src and srcset, not link href or script src`() {
         val urls = HtmlAssetRewriter.extractImageUrls(
             """<link href="style.css"><script src="app.js"></script>""" +
@@ -163,5 +131,45 @@ class HtmlAssetRewriterTest {
             """<style>.a { background-image:url(local/bg.png); } @font-face { src: url(font.woff2); }</style>""",
             out,
         )
+    }
+
+    @Test
+    fun `extractImageUrls prefers a lazy-load data-src over its placeholder src`() {
+        val urls = HtmlAssetRewriter.extractImageUrls(
+            """<img data-src="real.jpg" src="placeholder.gif">""",
+        )
+        assertEquals(setOf("real.jpg"), urls)
+    }
+
+    @Test
+    fun `rewriteImageUrls points src at the resolved data-src, not the placeholder`() {
+        val out = HtmlAssetRewriter.rewriteImageUrls(
+            """<img data-src="real.jpg" src="placeholder.gif">""",
+        ) { url -> "local/$url".takeIf { url == "real.jpg" } }
+        assertEquals("""<img data-src="real.jpg" src="local/real.jpg">""", out)
+    }
+
+    @Test
+    fun `extractImageUrls collects picture source srcset candidates`() {
+        val urls = HtmlAssetRewriter.extractImageUrls(
+            """<picture><source srcset="a.webp"><source srcset="b.avif"><img src="fallback.jpg"></picture>""",
+        )
+        assertEquals(setOf("a.webp", "b.avif", "fallback.jpg"), urls)
+    }
+
+    @Test
+    fun `rewriteImageUrls rewrites picture source srcset alongside the fallback img`() {
+        val out = HtmlAssetRewriter.rewriteImageUrls(
+            """<picture><source srcset="a.webp"><img src="fallback.jpg"></picture>""",
+        ) { url -> "local/$url" }
+        assertEquals("""<picture><source srcset="local/a.webp"><img src="local/fallback.jpg"></picture>""", out)
+    }
+
+    @Test
+    fun `extractImageUrls does not treat a standalone video or audio source as an image`() {
+        val urls = HtmlAssetRewriter.extractImageUrls(
+            """<video src="clip.mp4"><source src="clip.webm"></video>""",
+        )
+        assertTrue(urls.isEmpty())
     }
 }

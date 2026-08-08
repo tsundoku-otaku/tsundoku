@@ -1,7 +1,6 @@
 package mihon.core.archive
 
 import java.net.URLDecoder
-import java.net.URLEncoder
 
 private val ABSOLUTE_SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:|^//")
 
@@ -13,15 +12,20 @@ fun isResolvableAssetRef(ref: String): Boolean {
     return !ABSOLUTE_SCHEME_REGEX.containsMatchIn(v)
 }
 
-/** Maps a flat/relative asset reference to a [NOVEL_IMAGE_SCHEME] URI, or null if already absolute. */
-fun relativeAssetScheme(ref: String): String? {
+fun relativeAssetPath(ref: String): String? {
     val v = ref.trim()
     if (!isResolvableAssetRef(v)) return null
     val decoded = decodeAssetPath(v.substringBefore('?').substringBefore('#'))
         .removePrefix("./").removePrefix("/")
-    if (decoded.isBlank()) return null
-    return NOVEL_IMAGE_SCHEME + URLEncoder.encode(decoded, "UTF-8")
+    return decoded.ifBlank { null }
 }
 
 private fun decodeAssetPath(path: String): String =
     runCatching { URLDecoder.decode(path.replace("+", "%2B"), "UTF-8") }.getOrDefault(path)
+
+/** Maps a flat/relative asset reference to a [NOVEL_IMAGE_SCHEME] URI, or null if already absolute. */
+fun relativeAssetScheme(ref: String): String? = relativeAssetPath(ref)?.let(::novelImageUrl)
+
+/** Rewrites resolvable asset refs to [NOVEL_IMAGE_SCHEME] URIs, only when [fileExists] confirms the file. */
+fun rewriteResolvedAssetRefs(text: String, fileExists: (String) -> Boolean): String =
+    HtmlAssetRewriter.rewriteHtml(text) { ref -> relativeAssetPath(ref)?.takeIf(fileExists)?.let(::novelImageUrl) }
