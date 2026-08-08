@@ -971,10 +971,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             if (resolvedManga != null) {
                 try {
                     if (resolvedManga.url.isNotEmpty()) {
-                        finalUrl = resolvedManga.url
-                        if (!finalUrl.startsWith("/") && !finalUrl.startsWith("http")) {
-                            finalUrl = "/$finalUrl"
-                        }
+                        finalUrl = eu.kanade.tachiyomi.util.source.normalizeSourcePath(source, resolvedManga.url)
                     }
                 } catch (_: UninitializedPropertyAccessException) {
                 }

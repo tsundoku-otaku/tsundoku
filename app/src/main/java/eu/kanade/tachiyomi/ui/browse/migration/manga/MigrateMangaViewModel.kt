@@ -132,15 +132,17 @@ class MigrateMangaViewModel(
         viewModelScope.launchIO {
             try {
                 val selectedManga = state.value.titles.filter { it.id in state.value.selection }
+                val targetSource = sourceManager.getOrStub(targetSourceId)
                 val targetFavoriteUrls = getFavorites.subscribe(targetSourceId).first()
                     .mapTo(mutableSetOf()) { it.url }
-                val skipCount = selectedManga.size - quickMigrateTargets(selectedManga, targetFavoriteUrls).size
+                val skipCount = selectedManga.size -
+                    quickMigrateTargets(selectedManga, targetFavoriteUrls, targetSource).size
                 mutableState.update {
                     it.copy(
                         dialog = Dialog.QuickMigrateConfirm(
                             targetSourceId = targetSourceId,
                             sourceName = sourceManager.getOrStub(sourceId).nameWithTypeTag(),
-                            targetSourceName = sourceManager.getOrStub(targetSourceId).nameWithTypeTag(),
+                            targetSourceName = targetSource.nameWithTypeTag(),
                             totalCount = selectedManga.size,
                             skipCount = skipCount,
                         ),
@@ -157,11 +159,12 @@ class MigrateMangaViewModel(
         viewModelScope.launchIO {
             try {
                 val selectedManga = state.value.titles.filter { it.id in state.value.selection }
+                val newSource = sourceManager.getOrStub(targetSourceId)
                 val targetFavorites = getFavorites.subscribe(targetSourceId).first()
                 val targetFavoriteUrls = targetFavorites.mapTo(mutableSetOf()) { it.url }
-                val targets = quickMigrateTargets(selectedManga, targetFavoriteUrls)
+                val targets = quickMigrateTargets(selectedManga, targetFavoriteUrls, newSource)
                 val skipped = if (removeSkipped) {
-                    quickMigrateSkipped(selectedManga, targetFavoriteUrls)
+                    quickMigrateSkipped(selectedManga, targetFavoriteUrls, newSource)
                 } else {
                     emptyList()
                 }
@@ -173,12 +176,13 @@ class MigrateMangaViewModel(
                 }
 
                 val oldSource = sourceManager.getOrStub(sourceId)
-                val newSource = sourceManager.getOrStub(targetSourceId)
                 val targetTitles = targets.mapTo(mutableSetOf()) { it.first.title }
                 // The entry that stays behind for a skipped one, matched the same way the skip was:
                 // on the normalized url, not the title, which the two can disagree on.
                 val keptByUrl = targetFavorites.associateBy { it.url }
-                val keptForSkipped = skipped.associate { it.id to keptByUrl[normalizeQuickMigrateUrl(it.url)] }
+                val keptForSkipped = skipped.associate {
+                    it.id to keptByUrl[normalizeQuickMigrateUrl(it.url, newSource)]
+                }
 
                 val countsUsable = downloadManager.awaitDownloadCacheReady()
                 val downloadCounts = if (countsUsable) {
@@ -470,8 +474,9 @@ sealed interface MigrationMangaEvent {
 // but their row not yet flipped, large enough to keep the transaction count down on a bulk migrate.
 private const val UPDATE_CHUNK_SIZE = 200
 
-/** Leading-slash normalization matching how source urls are stored. */
-internal fun normalizeQuickMigrateUrl(url: String): String = if (url.startsWith("/")) url else "/$url"
+/** Leading-slash normalization matching how source urls are stored, for [targetSource]'s convention. */
+internal fun normalizeQuickMigrateUrl(url: String, targetSource: Source): String =
+    eu.kanade.tachiyomi.util.source.normalizeSourcePath(targetSource, url)
 
 /**
  * Pairs each selectable manga with its normalized target url, dropping the ones already favorited on
@@ -481,9 +486,10 @@ internal fun normalizeQuickMigrateUrl(url: String): String = if (url.startsWith(
 internal fun quickMigrateTargets(
     selected: List<Manga>,
     existingFavoriteUrls: Set<String>,
+    targetSource: Source,
 ): List<Pair<Manga, String>> =
     selected.mapNotNull { manga ->
-        val newUrl = normalizeQuickMigrateUrl(manga.url)
+        val newUrl = normalizeQuickMigrateUrl(manga.url, targetSource)
         if (newUrl in existingFavoriteUrls) null else manga to newUrl
     }
 
@@ -491,4 +497,5 @@ internal fun quickMigrateTargets(
 internal fun quickMigrateSkipped(
     selected: List<Manga>,
     existingFavoriteUrls: Set<String>,
-): List<Manga> = selected.filter { normalizeQuickMigrateUrl(it.url) in existingFavoriteUrls }
+    targetSource: Source,
+): List<Manga> = selected.filter { normalizeQuickMigrateUrl(it.url, targetSource) in existingFavoriteUrls }

@@ -65,7 +65,7 @@ fun normalizeSourcePath(source: Source, pathOrUrl: String): String {
         return trimmed
     }
     return when (source) {
-        is JsSource, is HttpSource -> if (trimmed.startsWith("/")) trimmed else "/$trimmed"
+        is JsSource, is CustomNovelSource -> if (trimmed.startsWith("/")) trimmed else "/$trimmed"
         else -> trimmed
     }
 }
