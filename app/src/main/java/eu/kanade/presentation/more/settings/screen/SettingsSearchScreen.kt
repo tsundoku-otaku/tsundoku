@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.paddingFromBaseline
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -235,10 +235,10 @@ private fun SearchResult(
                     contentPadding = contentPadding,
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    items(
+                    itemsIndexed(
                         items = it,
-                        key = { i -> i.hashCode() },
-                    ) { item ->
+                        key = { index, _ -> index },
+                    ) { _, item ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
