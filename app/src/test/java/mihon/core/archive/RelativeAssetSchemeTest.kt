@@ -60,4 +60,25 @@ class RelativeAssetSchemeTest {
         val encoded = out.removePrefix(NOVEL_IMAGE_SCHEME)
         assertEquals("image one.jpg", java.net.URLDecoder.decode(encoded, "UTF-8"))
     }
+
+    @Test
+    fun `rewriteResolvedAssetRefs only rewrites a ref whose file actually exists`() {
+        val html = """<img src="a.jpg"><img src="b.jpg">"""
+        val out = rewriteResolvedAssetRefs(html) { it == "a.jpg" }
+        assertEquals("""<img src="${scheme("a.jpg")}"><img src="b.jpg">""", out)
+    }
+
+    @Test
+    fun `rewriteResolvedAssetRefsOnce skips the scan when the marker is present`() {
+        val marked = markAssetsResolved("""<img src="never-checked.jpg">""")
+        val out = rewriteResolvedAssetRefsOnce(marked) { error("fileExists must not be called for marked content") }
+        assertEquals("""<img src="never-checked.jpg">""", out)
+    }
+
+    @Test
+    fun `rewriteResolvedAssetRefsOnce falls back to a full scan for unmarked content`() {
+        val html = """<img src="a.jpg">"""
+        val out = rewriteResolvedAssetRefsOnce(html) { it == "a.jpg" }
+        assertEquals("""<img src="${scheme("a.jpg")}">""", out)
+    }
 }

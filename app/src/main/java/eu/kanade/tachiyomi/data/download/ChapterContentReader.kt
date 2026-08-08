@@ -4,7 +4,7 @@ import android.content.Context
 import com.hippo.unifile.UniFile
 import logcat.LogPriority
 import mihon.core.archive.ArchiveReader
-import mihon.core.archive.rewriteResolvedAssetRefs
+import mihon.core.archive.rewriteResolvedAssetRefsOnce
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
@@ -215,7 +215,7 @@ class ChapterContentReader(
     }
 
     private fun rewriteAssetRefs(text: String, fileExists: (String) -> Boolean): String =
-        rewriteResolvedAssetRefs(text, fileExists)
+        rewriteResolvedAssetRefsOnce(text, fileExists)
 
     companion object {
         private val IMAGE_EXTENSIONS = listOf(".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif")

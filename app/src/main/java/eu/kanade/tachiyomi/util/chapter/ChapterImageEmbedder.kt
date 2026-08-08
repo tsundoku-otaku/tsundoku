@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.archive.HtmlAssetRewriter
+import mihon.core.archive.markAssetsResolved
+import mihon.core.archive.novelImageUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import tachiyomi.core.common.util.system.logcat
@@ -40,7 +42,7 @@ class ChapterImageEmbedder(
         tmpDir: com.hippo.unifile.UniFile? = null,
     ): String = withContext(Dispatchers.IO) {
         if (!novelDownloadPreferences.downloadChapterImages().get()) {
-            return@withContext html
+            return@withContext markAssetsResolved(html)
         }
 
         val imageUrls = HtmlAssetRewriter.extractImageUrls(html).filterNot(::isAlreadyLocal)
@@ -72,7 +74,7 @@ class ChapterImageEmbedder(
                         } while (tmpDir.findFile(filename) != null)
 
                         tmpDir.createFile(filename)?.openOutputStream()?.use { it.write(imageBytes) }
-                        filename
+                        novelImageUrl(filename)
                     } else {
                         // Fallback to base64 if not actively zipping
                         val base64 = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
@@ -88,7 +90,7 @@ class ChapterImageEmbedder(
         }
 
         // Attribute-aware rewrite; a plain string replace would corrupt shared-prefix srcset candidates.
-        HtmlAssetRewriter.rewriteImageUrls(html, replacements::get)
+        markAssetsResolved(HtmlAssetRewriter.rewriteImageUrls(html, replacements::get))
     }
 
     private fun isAlreadyLocal(url: String): Boolean =

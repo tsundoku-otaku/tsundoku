@@ -29,3 +29,13 @@ fun relativeAssetScheme(ref: String): String? = relativeAssetPath(ref)?.let(::no
 /** Rewrites resolvable asset refs to [NOVEL_IMAGE_SCHEME] URIs, only when [fileExists] confirms the file. */
 fun rewriteResolvedAssetRefs(text: String, fileExists: (String) -> Boolean): String =
     HtmlAssetRewriter.rewriteHtml(text) { ref -> relativeAssetPath(ref)?.takeIf(fileExists)?.let(::novelImageUrl) }
+
+private const val ASSETS_RESOLVED_MARKER = "<!--tsundoku:assets-resolved-->"
+
+fun markAssetsResolved(text: String): String = ASSETS_RESOLVED_MARKER + text
+
+/** Skips the regex scan entirely for content already stamped by [markAssetsResolved]. */
+fun rewriteResolvedAssetRefsOnce(text: String, fileExists: (String) -> Boolean): String {
+    if (text.startsWith(ASSETS_RESOLVED_MARKER)) return text.removePrefix(ASSETS_RESOLVED_MARKER)
+    return rewriteResolvedAssetRefs(text, fileExists)
+}
