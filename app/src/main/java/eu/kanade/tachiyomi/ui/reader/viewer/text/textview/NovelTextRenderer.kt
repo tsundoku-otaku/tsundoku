@@ -230,9 +230,30 @@ internal class NovelTextRenderer(
         private const val CHUNK_TARGET_CHARS = 6_000
 
         // <source> is void; Html.fromHtml corrupts the rest of the document without one.
+        private val DECODABLE_IMAGE_TYPES = setOf(
+            "image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif", "image/bmp",
+        )
+
+        private fun org.jsoup.nodes.Element.isDecodableSource(): Boolean {
+            val type = attr("type").trim().lowercase()
+            return type.isEmpty() || type in DECODABLE_IMAGE_TYPES
+        }
+
         internal fun unwrapPictureSources(doc: org.jsoup.nodes.Document) {
+            doc.select("video source, audio source").remove()
             doc.select("picture").forEach { picture ->
-                picture.select("source").remove()
+                val sources = picture.select("source")
+                val fallbackSrcset = sources.firstOrNull { it.isDecodableSource() && it.hasAttr("srcset") }
+                    ?.attr("srcset")
+                var img = picture.selectFirst("img")
+                if (img == null) {
+                    if (fallbackSrcset != null) {
+                        img = picture.appendElement("img").attr("srcset", fallbackSrcset)
+                    }
+                } else if (!img.hasAttr("srcset") && fallbackSrcset != null) {
+                    img.attr("srcset", fallbackSrcset)
+                }
+                sources.remove()
                 picture.unwrap()
             }
         }
