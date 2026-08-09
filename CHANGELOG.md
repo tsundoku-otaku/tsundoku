@@ -12,7 +12,12 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased]
 ### Added
+
+### Improved
 - Handle picture/source/video/audio tags in text view [@mrissaoussama](https://github.com/mrissaoussama) [#381](https://github.com/tsundoku-otaku/tsundoku/pull/381)
+
+### Fixed
+- PRevent crash with setting search on duplicate key [@mrissaoussama](https://github.com/mrissaoussama) [#383](https://github.com/tsundoku-otaku/tsundoku/pull/383)
 
 
 ### Other
