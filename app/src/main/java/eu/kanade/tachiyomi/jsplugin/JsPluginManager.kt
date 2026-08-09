@@ -786,18 +786,35 @@ class JsPluginManager(
         var delayMs = 20L
         while (true) {
             if (findFile(name) == null) {
-                createFile(name)?.let { return it }
+                createFileSafe(name)?.let { return it }
             }
             attempts++
             if (attempts >= 5) {
                 logcat(LogPriority.WARN) {
                     "replaceFile: $name still contested after $attempts retries, creating anyway"
                 }
-                return createFile(name)
+                return createFileSafe(name)
             }
             Thread.sleep(delayMs)
             delayMs *= 2
         }
+    }
+
+    /**
+     * Some SAF providers (Android 13+/Samsung) reverse-map the MIME type UniFile derives from
+     * a ".js" extension back to ".es", silently renaming the file. Creating under an unmapped
+     * ".tmp" extension keeps the provider on the generic octet-stream path, then renaming to
+     * the real name avoids the mismatch.
+     */
+    private fun UniFile.createFileSafe(name: String): UniFile? {
+        val tmpName = "$name.tmp"
+        findFile(tmpName)?.delete()
+        val tmpFile = createFile(tmpName) ?: return null
+        if (!tmpFile.renameTo(name)) {
+            tmpFile.delete()
+            return null
+        }
+        return findFile(name) ?: tmpFile
     }
 
     private fun UniFile.readText(): String {
