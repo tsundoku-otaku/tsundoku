@@ -810,6 +810,7 @@ class LNReaderBackupImporter(
         includeCategories: Boolean = true,
     ): BackupManga {
         val backupChapters = if (includeChapters) {
+            val lastIndex = novel.chapters.size - 1
             novel.chapters.mapIndexed { index, ch ->
                 BackupChapter(
                     url = ch.path,
@@ -821,7 +822,9 @@ class LNReaderBackupImporter(
                     dateFetch = 0L,
                     dateUpload = parseDate(ch.releaseTime) ?: 0L,
                     chapterNumber = ch.chapterNumber ?: (index + 1).toFloat(),
-                    sourceOrder = index.toLong(),
+                    // LNReader stores chapters oldest-first, but sourceOrder follows this
+                    // codebase's newest-first convention (sourceOrder 0 == newest chapter).
+                    sourceOrder = (lastIndex - index).toLong(),
                 )
             }
         } else {
