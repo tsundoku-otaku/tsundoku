@@ -68,10 +68,7 @@ import java.util.zip.ZipInputStream
  * ```
  */
 
-/**
- * LNReader used to export SQLite boolean columns as 0/1 integers; newer versions export them
- * as real JSON booleans. Accept either so backups from both eras import cleanly.
- */
+/** Older LNReader exports use 0/1 for booleans; newer ones use real JSON booleans. Accept both. */
 private object FlexibleBoolAsIntSerializer : KSerializer<Int> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("FlexibleBoolAsInt", PrimitiveKind.INT)
 
@@ -396,11 +393,8 @@ class LNReaderBackupImporter(
     }
 
     /**
-     * Represents extracted backup data: novels, categories, and optional plugin/asset zip bytes.
-     *
-     * Older LNReader exports bundle plugin code and downloaded chapters/covers into a single
-     * "download.zip" ([legacyZipFile]); newer exports split them into "plugins.zip"
-     * ([pluginsZipFile]) and "novel-files.zip" ([novelFilesZipFile]).
+     * Older LNReader exports bundle plugins and downloaded assets into one [legacyZipFile];
+     * newer ones split them into [pluginsZipFile] and [novelFilesZipFile].
      */
     data class ExtractedBackup(
         val novels: List<LNNovel>,
@@ -500,8 +494,7 @@ class LNReaderBackupImporter(
                     val nameLower = name.lowercase()
                     if (nameLower.endsWith("/index.js") && !entry.isDirectory) {
                         val parts = name.split("/")
-                        // Older LNReader exports wrap plugins in a "plugins/" folder inside
-                        // download.zip; newer plugins.zip exports are flat: "<id>/index.js".
+                        // legacy: "plugins/<id>/index.js"; new plugins.zip: flat "<id>/index.js"
                         val pluginId = when {
                             parts.size == 2 -> parts[0]
                             parts.size == 3 && parts[0].equals("plugins", ignoreCase = true) -> parts[1]
@@ -538,11 +531,7 @@ class LNReaderBackupImporter(
         return installedCount
     }
 
-    /**
-     * Older LNReader download.zip exports wrap asset entries in a "Novels/" folder; newer
-     * novel-files.zip exports are flat: "<pluginId>/<novelId>/...". Strip the wrapper so both
-     * layouts resolve to the same "<pluginId>/<novelId>/..." shape.
-     */
+    /** Strips the legacy "Novels/" wrapper so old and new asset paths share one shape. */
     private fun normalizeAssetEntryName(name: String): String {
         return if (name.substringBefore('/').equals("Novels", ignoreCase = true)) {
             name.substringAfter('/')
@@ -822,8 +811,7 @@ class LNReaderBackupImporter(
                     dateFetch = 0L,
                     dateUpload = parseDate(ch.releaseTime) ?: 0L,
                     chapterNumber = ch.chapterNumber ?: (index + 1).toFloat(),
-                    // LNReader stores chapters oldest-first, but sourceOrder follows this
-                    // codebase's newest-first convention (sourceOrder 0 == newest chapter).
+                    // LNReader lists chapters oldest-first; sourceOrder 0 must be the newest
                     sourceOrder = (lastIndex - index).toLong(),
                 )
             }

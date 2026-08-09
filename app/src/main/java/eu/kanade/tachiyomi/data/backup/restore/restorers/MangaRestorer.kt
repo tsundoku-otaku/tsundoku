@@ -95,8 +95,7 @@ class MangaRestorer(
         backupCategories: List<BackupCategory>,
     ) {
         database.transaction {
-            // A restore implies the novel should be in the library, even if the existing DB
-            // row (e.g. from a prior browse/search) isn't favorited yet.
+            // an existing row may be a non-favorite leftover (e.g. from browse/search)
             if (!existingManga.favorite && backupManga.favorite) {
                 updateManga(existingManga.copy(favorite = true))
             }
