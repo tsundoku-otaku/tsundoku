@@ -1403,6 +1403,7 @@ class MangaRepositoryImpl(
                 id = id,
                 groupKey = title.trim().lowercase().ifBlank { id.toString() },
                 source = source,
+                title = title,
                 chapterCount = totalCount.toInt(),
                 readCount = readCount.toInt(),
             )

@@ -8,6 +8,7 @@ data class MangaSelectionMetric(
     val id: Long,
     val groupKey: String,
     val source: Long,
+    val title: String,
     val chapterCount: Int,
     val readCount: Int,
 )

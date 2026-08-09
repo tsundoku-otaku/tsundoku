@@ -25,6 +25,7 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.manga.interactor.DuplicateMatchMode
 import tachiyomi.domain.manga.interactor.FindDuplicateNovels
+import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaSelectionMetric
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.model.applyFilter
@@ -474,11 +475,29 @@ class DuplicateDetectionViewModel(
                         }
                         restrictedMetrics
                     }
-                    truncated = metrics.size > LISTING_MAX
-                    listingTotalMatches = metrics.size
-                    selectionGroups = metrics.groupBy { it.groupKey }
+                    // filterDownloaded has no DB column to prefilter on; it isn't covered by
+                    // getFavoriteIdsMatchingLibraryFilter, so it must be rechecked here against the
+                    // rest of the filters, same as the tag recheck above.
+                    val filterDownloaded = state.value.libraryFilterSnapshot.filterDownloaded
+                    val downloadFilteredMetrics = if (state.value.applyLibraryFilters &&
+                        filterDownloaded != TriState.DISABLED
+                    ) {
+                        val metricMangas = metrics.map { Manga.create().copy(id = it.id, source = it.source, title = it.title) }
+                        val downloadCounts = downloadManager.getDownloadCounts(metricMangas)
+                        metrics.filterIndexed { index, metric ->
+                            val manga = metricMangas[index]
+                            applyFilter(filterDownloaded) {
+                                manga.isLocal() || manga.isLocalNovel() || (downloadCounts[metric.id] ?: 0) > 0
+                            }
+                        }
+                    } else {
+                        metrics
+                    }
+                    truncated = downloadFilteredMetrics.size > LISTING_MAX
+                    listingTotalMatches = downloadFilteredMetrics.size
+                    selectionGroups = downloadFilteredMetrics.groupBy { it.groupKey }
                         .map { (_, items) -> items.map { SelItem(it.id, it.source, it.chapterCount, it.readCount) } }
-                    findDuplicateNovels.findGroupedByIds(metrics.take(LISTING_MAX).map { it.id })
+                    findDuplicateNovels.findGroupedByIds(downloadFilteredMetrics.take(LISTING_MAX).map { it.id })
                 } else {
                     findDuplicateNovels.findDuplicatesGrouped(state.value.matchMode)
                 }
@@ -671,7 +690,9 @@ class DuplicateDetectionViewModel(
                 selection = emptySet(),
             )
         }
-        recomputeFiltered()
+        // Library filters bound the listing materialization and selectionGroups the same way
+        // category filters do, so a change must reload rather than just recompute in-memory.
+        if (state.value.listingMode) loadDuplicates() else recomputeFiltered()
     }
 
     private fun TriState.toDbInt(): Long = when (this) {
