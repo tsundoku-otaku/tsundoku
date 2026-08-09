@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.data.backup
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.graphics.BitmapFactory
 import androidx.core.app.NotificationCompat
 import com.hippo.unifile.UniFile
@@ -8,6 +10,7 @@ import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.notification.NotificationReceiver
 import eu.kanade.tachiyomi.data.notification.Notifications
+import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.util.storage.getUriCompat
 import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.notificationBuilder
@@ -177,9 +180,23 @@ class BackupNotifier(private val context: Context) {
                     context.stringResource(MR.strings.action_show_errors),
                     errorLogIntent,
                 )
+            } else {
+                setContentIntent(openMainActivityPendingActivity())
             }
 
             show(Notifications.ID_RESTORE_COMPLETE)
         }
+    }
+
+    private fun openMainActivityPendingActivity(): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        return PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 }
