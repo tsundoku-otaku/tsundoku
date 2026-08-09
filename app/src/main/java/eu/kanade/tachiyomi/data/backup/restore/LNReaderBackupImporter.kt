@@ -194,7 +194,9 @@ class LNReaderBackupImporter(
 
         try {
             // Step 1: Extract data only
-            val (novels, categories, pluginZipFile) = extractBackupData(uri)
+            val (novels, categories, legacyZipFile, pluginsZipFile, novelFilesZipFile) = extractBackupData(uri)
+            val effectivePluginsZipFile = pluginsZipFile ?: legacyZipFile
+            val effectiveAssetsZipFile = novelFilesZipFile ?: legacyZipFile
 
             try {
                 logcat(LogPriority.INFO) {
@@ -217,8 +219,8 @@ class LNReaderBackupImporter(
                 }
 
                 // Step 3: Install plugins
-                if (options.restorePlugins && pluginZipFile != null) {
-                    installedPluginCount = installPluginsFromDownloadZip(pluginZipFile)
+                if (options.restorePlugins && effectivePluginsZipFile != null) {
+                    installedPluginCount = installPluginsFromDownloadZip(effectivePluginsZipFile)
                     // Wait for plugins to be processed by subscribing to the hot flow or just a short delay
                     // Since it's blocking in the plugin manager ideally, we can remove the delay
                 }
@@ -346,10 +348,10 @@ class LNReaderBackupImporter(
                         }
                     }
                 }
-                // Step 5: Restore downloaded chapter HTML and cached covers from LNReader download.zip
-                if ((options.restoreDownloadedChapters || options.restoreCovers) && pluginZipFile != null) {
+                // Step 5: Restore downloaded chapter HTML and cached covers
+                if ((options.restoreDownloadedChapters || options.restoreCovers) && effectiveAssetsZipFile != null) {
                     val restored = restoreDownloadedAssetsFromDownloadZip(
-                        pluginZipFile,
+                        effectiveAssetsZipFile,
                         novels,
                         pluginIdToSourceId,
                         options.restoreDownloadedChapters,
@@ -360,7 +362,9 @@ class LNReaderBackupImporter(
                     restoredCoverCount = restored.second
                 }
             } finally {
-                pluginZipFile?.delete()
+                legacyZipFile?.delete()
+                pluginsZipFile?.delete()
+                novelFilesZipFile?.delete()
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "LNReaderImport: Failed to import backup" }
@@ -392,18 +396,26 @@ class LNReaderBackupImporter(
     }
 
     /**
-     * Represents extracted backup data: novels, categories, and optional plugin zip bytes.
+     * Represents extracted backup data: novels, categories, and optional plugin/asset zip bytes.
+     *
+     * Older LNReader exports bundle plugin code and downloaded chapters/covers into a single
+     * "download.zip" ([legacyZipFile]); newer exports split them into "plugins.zip"
+     * ([pluginsZipFile]) and "novel-files.zip" ([novelFilesZipFile]).
      */
     data class ExtractedBackup(
         val novels: List<LNNovel>,
         val categories: List<LNCategory>,
-        val pluginZipFile: File?,
+        val legacyZipFile: File?,
+        val pluginsZipFile: File?,
+        val novelFilesZipFile: File?,
     )
 
     private fun extractBackupData(uri: Uri): ExtractedBackup {
         val novels = mutableListOf<LNNovel>()
         var categories = emptyList<LNCategory>()
         var downloadZipFile: File? = null
+        var pluginsZipFile: File? = null
+        var novelFilesZipFile: File? = null
         var lastNotifyTime = 0L
 
         try {
@@ -446,6 +458,20 @@ class LNReaderBackupImporter(
                                 }
                                 downloadZipFile = tempFile
                             }
+                            name == "plugins.zip" -> {
+                                val tempFile = context.createFileInCacheDir("lnreader_plugins.zip")
+                                tempFile.outputStream().use { fos ->
+                                    zip.copyTo(fos)
+                                }
+                                pluginsZipFile = tempFile
+                            }
+                            name == "novel-files.zip" -> {
+                                val tempFile = context.createFileInCacheDir("lnreader_novel_files.zip")
+                                tempFile.outputStream().use { fos ->
+                                    zip.copyTo(fos)
+                                }
+                                novelFilesZipFile = tempFile
+                            }
                         }
                         zip.closeEntry()
                         entry = zip.nextEntry
@@ -455,10 +481,12 @@ class LNReaderBackupImporter(
             }
         } catch (e: Exception) {
             downloadZipFile?.delete()
+            pluginsZipFile?.delete()
+            novelFilesZipFile?.delete()
             throw e
         }
 
-        return ExtractedBackup(novels, categories, downloadZipFile)
+        return ExtractedBackup(novels, categories, downloadZipFile, pluginsZipFile, novelFilesZipFile)
     }
 
     private suspend fun installPluginsFromDownloadZip(zipFile: File): Int {
@@ -470,10 +498,16 @@ class LNReaderBackupImporter(
                     val name = entry.name
                     // Process plugin JS files
                     val nameLower = name.lowercase()
-                    if (nameLower.startsWith("plugins/") && nameLower.endsWith("/index.js") && !entry.isDirectory) {
-                        val parts = name.removePrefix(name.substringBefore("/") + "/").split("/")
-                        if (parts.size == 2) {
-                            val pluginId = parts[0]
+                    if (nameLower.endsWith("/index.js") && !entry.isDirectory) {
+                        val parts = name.split("/")
+                        // Older LNReader exports wrap plugins in a "plugins/" folder inside
+                        // download.zip; newer plugins.zip exports are flat: "<id>/index.js".
+                        val pluginId = when {
+                            parts.size == 2 -> parts[0]
+                            parts.size == 3 && parts[0].equals("plugins", ignoreCase = true) -> parts[1]
+                            else -> null
+                        }
+                        if (pluginId != null) {
                             try {
                                 val code = zip.bufferedReader(StandardCharsets.UTF_8).readText()
                                 if (code.isNotBlank()) {
@@ -502,6 +536,19 @@ class LNReaderBackupImporter(
             errors.add(Date() to "Failed to process download.zip: ${e.message}")
         }
         return installedCount
+    }
+
+    /**
+     * Older LNReader download.zip exports wrap asset entries in a "Novels/" folder; newer
+     * novel-files.zip exports are flat: "<pluginId>/<novelId>/...". Strip the wrapper so both
+     * layouts resolve to the same "<pluginId>/<novelId>/..." shape.
+     */
+    private fun normalizeAssetEntryName(name: String): String {
+        return if (name.substringBefore('/').equals("Novels", ignoreCase = true)) {
+            name.substringAfter('/')
+        } else {
+            name
+        }
     }
 
     private suspend fun restoreDownloadedAssetsFromDownloadZip(
@@ -547,10 +594,10 @@ class LNReaderBackupImporter(
                         continue
                     }
 
-                    val parts = name.split('/')
-                    if (parts.size >= 4 && parts[0].equals("Novels", ignoreCase = true)) {
-                        val pluginId = parts[1]
-                        val novelId = parts[2].toIntOrNull()
+                    val parts = normalizeAssetEntryName(name).split('/')
+                    if (parts.size >= 3) {
+                        val pluginId = parts[0]
+                        val novelId = parts[1].toIntOrNull()
 
                         if (novelId != null) {
                             entriesToProcess.add(Triple(novelId, pluginId, entry))
@@ -584,16 +631,15 @@ class LNReaderBackupImporter(
                                     var dbManga: tachiyomi.domain.manga.model.Manga? = null
 
                                     for ((_, _, entry) in novelEntries) {
-                                        val name = entry.name
-                                        val parts = name.split('/')
+                                        val parts = normalizeAssetEntryName(entry.name).split('/')
 
                                         val isChapter =
-                                            parts.size == 5 && parts[4].startsWith("index.", ignoreCase = true)
+                                            parts.size == 4 && parts[3].startsWith("index.", ignoreCase = true)
                                         val isCover =
-                                            parts.size == 4 && parts[3].startsWith("cover.", ignoreCase = true)
+                                            parts.size == 3 && parts[2].startsWith("cover.", ignoreCase = true)
 
                                         if (isChapter && restoreDownloadedChapters) {
-                                            val chapterId = parts[3].toIntOrNull()
+                                            val chapterId = parts[2].toIntOrNull()
                                             if (chapterId != null) {
                                                 val chapter = downloadedChapterByKey[
                                                     Triple(
