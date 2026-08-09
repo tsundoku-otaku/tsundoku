@@ -3,6 +3,7 @@ package tachiyomi.source.local
 import mihon.core.archive.HtmlAssetRewriter
 import mihon.core.archive.NOVEL_IMAGE_SCHEME
 import mihon.core.archive.isResolvableAssetRef
+import mihon.core.archive.novelImageUrl
 import mihon.core.archive.relativeAssetScheme
 
 internal object NovelAssetRewriter {
@@ -39,7 +40,7 @@ internal object NovelAssetRewriter {
         val effectiveBase = if (decoded.startsWith("/")) "" else baseDir
         val path = resolveArchivePath(effectiveBase, decoded) ?: return null
         if (path.isBlank()) return null
-        return "$SCHEME${java.net.URLEncoder.encode(path, "UTF-8")}"
+        return novelImageUrl(path)
     }
 
     // Saved web pages write pre-encoded refs; decode before re-encoding so "%20" doesn't become "%2520".
