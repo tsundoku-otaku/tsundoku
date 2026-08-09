@@ -23,9 +23,19 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.decodeFromStream
+import kotlinx.serialization.json.intOrNull
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.model.Category
@@ -57,6 +67,26 @@ import java.util.zip.ZipInputStream
  * └── Setting.json
  * ```
  */
+
+/**
+ * LNReader used to export SQLite boolean columns as 0/1 integers; newer versions export them
+ * as real JSON booleans. Accept either so backups from both eras import cleanly.
+ */
+private object FlexibleBoolAsIntSerializer : KSerializer<Int> {
+    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("FlexibleBoolAsInt", PrimitiveKind.INT)
+
+    override fun serialize(encoder: Encoder, value: Int) {
+        encoder.encodeInt(value)
+    }
+
+    override fun deserialize(decoder: Decoder): Int {
+        val element = (decoder as JsonDecoder).decodeJsonElement() as? JsonPrimitive
+            ?: return 0
+        element.booleanOrNull?.let { return if (it) 1 else 0 }
+        return element.intOrNull ?: 0
+    }
+}
+
 class LNReaderBackupImporter(
     private val context: Context,
     private val notifier: BackupNotifier? = null,
@@ -89,7 +119,9 @@ class LNReaderBackupImporter(
         val artist: String? = null,
         val status: String? = null,
         val genres: String? = null,
+        @Serializable(with = FlexibleBoolAsIntSerializer::class)
         val inLibrary: Int = 0,
+        @Serializable(with = FlexibleBoolAsIntSerializer::class)
         val isLocal: Int = 0,
         val totalPages: Int = 0,
         val chapters: List<LNChapter> = emptyList(),
@@ -103,8 +135,11 @@ class LNReaderBackupImporter(
         val name: String = "",
         val releaseTime: String? = null,
         val readTime: String? = null,
+        @Serializable(with = FlexibleBoolAsIntSerializer::class)
         val bookmark: Int = 0,
+        @Serializable(with = FlexibleBoolAsIntSerializer::class)
         val unread: Int = 1,
+        @Serializable(with = FlexibleBoolAsIntSerializer::class)
         val isDownloaded: Int = 0,
         val updatedTime: String? = null,
         val chapterNumber: Float? = null,
