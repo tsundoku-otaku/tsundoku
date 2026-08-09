@@ -96,7 +96,6 @@ class JsPluginManager(
         cacheDir.mkdirs()
         loadRepositoriesFromPrefs()
         scope.launch {
-            loadRepositories()
             loadInstalledPlugins()
             loadCachedPluginList()
         }
@@ -166,13 +165,16 @@ class JsPluginManager(
                     }
                 }
 
-                _availablePlugins.value = allPlugins
+                val dedupedPlugins = allPlugins
+                    .groupBy { it.id }
+                    .map { (_, dupes) -> dupes.maxBy { it.version.replace(".", "").toLongOrNull() ?: 0L } }
+                _availablePlugins.value = dedupedPlugins
 
                 // Save to cache file
-                saveCachedPluginList(allPlugins)
+                saveCachedPluginList(dedupedPlugins)
 
                 // Cache icons to avoid re-fetching each time
-                cacheIcons(allPlugins)
+                cacheIcons(dedupedPlugins)
             } finally {
                 _isLoading.value = false
             }
@@ -587,65 +589,6 @@ class JsPluginManager(
     }
 
     /**
-     * Load repositories from the plugin directory file (requires storage to be available).
-     * If the directory is unavailable, keeps current repos (possibly already loaded from prefs).
-     */
-    private fun loadRepositories() {
-        try {
-            val dir = pluginsDir
-            if (dir == null) {
-                logcat(LogPriority.WARN) {
-                    "Plugins directory not available for loading repositories — keeping existing (${_repositories.value.size} repos)"
-                }
-                return
-            }
-            val reposFile = dir.findFile("repositories.json")
-            if (reposFile != null && reposFile.exists()) {
-                val content = reposFile.readText().trim()
-                if (content.isNotBlank() && content.startsWith("[")) {
-                    val allRepos = mutableListOf<JsPluginRepository>()
-                    try {
-                        allRepos.addAll(json.decodeFromString<List<JsPluginRepository>>(content))
-                    } catch (e: Exception) {
-                        logcat(LogPriority.WARN) {
-                            "repositories.json has concatenated JSON, attempting to split and merge"
-                        }
-                        val segments = content.split(Regex("""\]\s*\["""))
-                        for ((i, segment) in segments.withIndex()) {
-                            val fixed = when {
-                                i == 0 && !segment.endsWith("]") -> "$segment]"
-                                i == segments.lastIndex && !segment.startsWith("[") -> "[$segment"
-                                !segment.startsWith("[") && !segment.endsWith("]") -> "[$segment]"
-                                else -> segment
-                            }
-                            try {
-                                allRepos.addAll(json.decodeFromString<List<JsPluginRepository>>(fixed))
-                            } catch (e2: Exception) {
-                                logcat(LogPriority.WARN) {
-                                    "Skipping malformed JSON segment in repositories.json: ${e2.message}"
-                                }
-                            }
-                        }
-                    }
-                    val distinct = allRepos.distinctBy { it.url }
-                    val merged = (_repositories.value + distinct).distinctBy { it.url }
-                    _repositories.value = merged
-                    logcat(LogPriority.INFO) {
-                        "Loaded ${distinct.size} repositories from disk (merged total: ${merged.size})"
-                    }
-                    saveRepositories()
-                    return
-                }
-            }
-            if (_repositories.value.isNotEmpty()) {
-                saveRepositoriesToFile()
-            }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to load repositories from disk" }
-        }
-    }
-
-    /**
      * Load repositories from SharedPreferences.
      */
     private fun loadRepositoriesFromPrefs() {
@@ -670,28 +613,6 @@ class JsPluginManager(
             logcat(LogPriority.DEBUG) { "Saved ${_repositories.value.size} repositories to SharedPreferences" }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to save repositories to SharedPreferences" }
-        }
-        saveRepositoriesToFile()
-    }
-
-    private fun saveRepositoriesToFile() {
-        try {
-            val dir = pluginsDir
-            if (dir == null) {
-                logcat(LogPriority.WARN) { "Plugins directory not available for saving repositories.json" }
-                return
-            }
-            val reposFile = dir.replaceFile("repositories.json")
-            if (reposFile == null) {
-                logcat(LogPriority.ERROR) { "Failed to create repositories.json file" }
-                return
-            }
-            val jsonContent = json.encodeToString(_repositories.value)
-            reposFile.writeText(jsonContent)
-            logcat(LogPriority.INFO) { "Wrote ${jsonContent.length} chars to repositories.json" }
-            logcat(LogPriority.INFO) { "Saved ${_repositories.value.size} repositories to disk" }
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to save repositories to disk" }
         }
     }
 
