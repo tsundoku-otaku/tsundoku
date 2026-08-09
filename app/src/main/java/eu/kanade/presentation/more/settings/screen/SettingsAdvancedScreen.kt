@@ -296,6 +296,12 @@ object SettingsAdvancedScreen : SearchableSettings {
         )
     }
 
+    private fun allowedNormalizeSourceIds(): Set<Long> =
+        Injekt.get<tachiyomi.domain.source.service.SourceManager>().getAll()
+            .filter { it is eu.kanade.tachiyomi.jsplugin.source.JsSource || it is eu.kanade.tachiyomi.source.custom.CustomNovelSource }
+            .map { it.id }
+            .toSet()
+
     @Composable
     private fun getDataGroup(): Preference.PreferenceGroup {
         val context = LocalContext.current
@@ -504,7 +510,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                 title = { Text(text = "Normalize manga URLs") },
                 text = {
                     Column {
-                        Text(text = "This will clean up manga URLs in your library:")
+                        Text(text = "This will clean up manga URLs from JS-plugin and custom sources:")
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(text = "• Remove trailing slashes")
                         Text(text = "• Remove URL fragments (#...)")
@@ -524,7 +530,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                         onClick = {
                             scope.launch {
                                 val result = Injekt.get<tachiyomi.domain.manga.repository.MangaRepository>()
-                                    .normalizeAllUrlsAdvanced(removeDoubleSlashes)
+                                    .normalizeAllUrlsAdvanced(removeDoubleSlashes, allowedNormalizeSourceIds())
                                 duplicateUrls = result.second
                                 if (duplicateUrls.isNotEmpty()) {
                                     showDuplicatesDialog = true
@@ -624,7 +630,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     scope.launch {
                                         isRemoving = true
                                         val result = Injekt.get<MangaRepository>()
-                                            .normalizeAllUrlsAdvanced(removeDupDoubleSlashes)
+                                            .normalizeAllUrlsAdvanced(removeDupDoubleSlashes, allowedNormalizeSourceIds())
                                         isRemoving = false
 
                                         duplicateUrls = result.second
