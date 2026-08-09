@@ -11,6 +11,8 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+### Added
+- Handle picture/source/video/audio tags in text view [@mrissaoussama](https://github.com/mrissaoussama) [#381](https://github.com/tsundoku-otaku/tsundoku/pull/381)
 
 
 ### Other
