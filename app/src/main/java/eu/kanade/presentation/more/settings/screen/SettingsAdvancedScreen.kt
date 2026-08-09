@@ -651,7 +651,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     scope.launch {
                                         isRemoving = true
                                         val result = Injekt.get<MangaRepository>()
-                                            .removePotentialDuplicates(removeDupDoubleSlashes)
+                                            .removePotentialDuplicates(removeDupDoubleSlashes, allowedNormalizeSourceIds())
                                         isRemoving = false
                                         if (result.first > 0) {
                                             removedDuplicates = result.second

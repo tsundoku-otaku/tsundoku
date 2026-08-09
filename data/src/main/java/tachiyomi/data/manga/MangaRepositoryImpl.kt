@@ -2055,7 +2055,10 @@ class MangaRepositoryImpl(
         }
     }
 
-    override suspend fun removePotentialDuplicates(removeDoubleSlashes: Boolean): Pair<Int, List<Triple<String, String, String>>> {
+    override suspend fun removePotentialDuplicates(
+        removeDoubleSlashes: Boolean,
+        allowedSourceIds: Set<Long>,
+    ): Pair<Int, List<Triple<String, String, String>>> {
         return try {
             var removedCount = 0
             val removedItems = mutableListOf<Triple<String, String, String>>()
@@ -2077,7 +2080,7 @@ class MangaRepositoryImpl(
                         title = title,
                         favorite = favorite,
                     )
-                }.awaitAsList()
+                }.awaitAsList().filter { it.source in allowedSourceIds }
 
                 // First pass: identify which manga would be kept (first occurrence of each normalized URL)
                 allManga.forEach { manga ->
