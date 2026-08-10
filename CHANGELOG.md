@@ -15,6 +15,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Improved
 - Handle picture/source/video/audio tags in text view [@mrissaoussama](https://github.com/mrissaoussama) [#381](https://github.com/tsundoku-otaku/tsundoku/pull/381)
+- avoid list copies during backup restore - #389 [@mrissaoussama](https://github.com/mrissaoussama) [#389](https://github.com/tsundoku-otaku/tsundoku/pull/389)
 
 ### Fixed
 - PRevent crash with setting search on duplicate key [@mrissaoussama](https://github.com/mrissaoussama) [#383](https://github.com/tsundoku-otaku/tsundoku/pull/383)
