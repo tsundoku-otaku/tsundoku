@@ -32,9 +32,9 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Collections
 import java.util.Date
 import java.util.Locale
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.concurrent.atomics.incrementAndFetch
@@ -54,10 +54,14 @@ class BackupRestorer(
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
 ) {
 
+    companion object {
+        private const val NOTIFY_INTERVAL = 25
+    }
+
     private var restoreAmount = 0
     private val restoreProgress = AtomicInt(0)
-    private val errors = CopyOnWriteArrayList<Pair<Date, String>>()
-    private val restoredMangaIds = CopyOnWriteArrayList<Long>()
+    private val errors = Collections.synchronizedList(mutableListOf<Pair<Date, String>>())
+    private val restoredMangaIds = mutableListOf<Long>()
 
     /**
      * Mapping of source ID to source name from backup data
@@ -214,7 +218,9 @@ class BackupRestorer(
             }
 
             val progress = restoreProgress.incrementAndFetch()
-            notifier.showRestoreProgress(backupManga.title, progress, restoreAmount, isSync)
+            if (progress % NOTIFY_INTERVAL == 0 || progress == restoreAmount) {
+                notifier.showRestoreProgress(backupManga.title, progress, restoreAmount, isSync)
+            }
         }
     }
 
