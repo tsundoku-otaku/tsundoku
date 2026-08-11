@@ -20,6 +20,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ### Fixed
 - Prevent crash with setting search on duplicate key [@mrissaoussama](https://github.com/mrissaoussama) [#383](https://github.com/tsundoku-otaku/tsundoku/pull/383)
+- Fix importing new LNreader backups, all novels in DB come favorited [@mrissaoussama](https://github.com/mrissaoussama) [#388](https://github.com/tsundoku-otaku/tsundoku/pull/388)
 
 
 ### Other
