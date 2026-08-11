@@ -13,7 +13,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.TextSplitter
 import mihon.core.archive.archiveReader
-import mihon.core.archive.rewriteResolvedAssetRefsOnce
+import mihon.core.archive.rewriteResolvedAssetRefs
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.model.Manga
 import uy.kohesive.injekt.injectLazy
@@ -144,5 +144,5 @@ internal class DownloadPageLoader(
     }
 
     private fun rewriteAssetRefs(text: String, fileExists: (String) -> Boolean): String =
-        rewriteResolvedAssetRefsOnce(text, fileExists)
+        rewriteResolvedAssetRefs(text, fileExists)
 }

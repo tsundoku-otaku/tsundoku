@@ -26,16 +26,12 @@ private fun decodeAssetPath(path: String): String =
 /** Maps a flat/relative asset reference to a [NOVEL_IMAGE_SCHEME] URI, or null if already absolute. */
 fun relativeAssetScheme(ref: String): String? = relativeAssetPath(ref)?.let(::novelImageUrl)
 
-/** Rewrites resolvable asset refs to [NOVEL_IMAGE_SCHEME] URIs, only when [fileExists] confirms the file. */
+/**
+ * Rewrites resolvable asset refs to [NOVEL_IMAGE_SCHEME] URIs, only when [fileExists] confirms the file.
+ *
+ * Already-rewritten refs use an absolute scheme, so [isResolvableAssetRef] rejects them and this is a
+ * no-op on a second pass. That idempotency is what lets callers join several already-processed HTML
+ * pages into one string and rewrite once, safely, with no per-document "already resolved" marker needed.
+ */
 fun rewriteResolvedAssetRefs(text: String, fileExists: (String) -> Boolean): String =
     HtmlAssetRewriter.rewriteHtml(text) { ref -> relativeAssetPath(ref)?.takeIf(fileExists)?.let(::novelImageUrl) }
-
-private const val ASSETS_RESOLVED_MARKER = "<!--tsundoku:assets-resolved-->"
-
-fun markAssetsResolved(text: String): String = ASSETS_RESOLVED_MARKER + text
-
-/** Skips the regex scan entirely for content already stamped by [markAssetsResolved]. */
-fun rewriteResolvedAssetRefsOnce(text: String, fileExists: (String) -> Boolean): String {
-    if (text.startsWith(ASSETS_RESOLVED_MARKER)) return text.removePrefix(ASSETS_RESOLVED_MARKER)
-    return rewriteResolvedAssetRefs(text, fileExists)
-}

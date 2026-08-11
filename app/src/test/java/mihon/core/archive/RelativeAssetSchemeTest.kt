@@ -69,16 +69,20 @@ class RelativeAssetSchemeTest {
     }
 
     @Test
-    fun `rewriteResolvedAssetRefsOnce skips the scan when the marker is present`() {
-        val marked = markAssetsResolved("""<img src="never-checked.jpg">""")
-        val out = rewriteResolvedAssetRefsOnce(marked) { error("fileExists must not be called for marked content") }
-        assertEquals("""<img src="never-checked.jpg">""", out)
-    }
+    fun `rewriting the same joined text twice is a no-op, so multi-page joins are safe`() {
+        val page1 = """<img src="a.jpg">"""
+        val page2 = """<img src="b.jpg">"""
+        val joined = listOf(page1, page2).joinToString("\n\n")
 
-    @Test
-    fun `rewriteResolvedAssetRefsOnce falls back to a full scan for unmarked content`() {
-        val html = """<img src="a.jpg">"""
-        val out = rewriteResolvedAssetRefsOnce(html) { it == "a.jpg" }
-        assertEquals("""<img src="${scheme("a.jpg")}">""", out)
+        val onceRewritten = rewriteResolvedAssetRefs(joined) { it == "a.jpg" || it == "b.jpg" }
+        val twiceRewritten = rewriteResolvedAssetRefs(onceRewritten) {
+            error("fileExists must not be called for content that is already fully rewritten")
+        }
+
+        assertEquals(
+            """<img src="${scheme("a.jpg")}">""" + "\n\n" + """<img src="${scheme("b.jpg")}">""",
+            onceRewritten,
+        )
+        assertEquals(onceRewritten, twiceRewritten)
     }
 }
