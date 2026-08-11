@@ -167,7 +167,7 @@ class JsPluginManager(
 
                 val dedupedPlugins = allPlugins
                     .groupBy { it.id }
-                    .map { (_, dupes) -> dupes.maxBy { it.version.replace(".", "").toLongOrNull() ?: 0L } }
+                    .map { (_, dupes) -> dupes.reduce { newest, cur -> if (compareVersions(cur.version, newest.version) > 0) cur else newest } }
                 _availablePlugins.value = dedupedPlugins
 
                 // Save to cache file
@@ -181,6 +181,20 @@ class JsPluginManager(
         } finally {
             refreshMutex.unlock()
         }
+    }
+
+    /**
+     * Compares two dot-separated version strings numerically segment-by-segment, e.g. "1.9" < "1.10".
+     * Non-numeric or missing segments are treated as 0.
+     */
+    private fun compareVersions(a: String, b: String): Int {
+        val segmentsA = a.split(".")
+        val segmentsB = b.split(".")
+        for (i in 0 until maxOf(segmentsA.size, segmentsB.size)) {
+            val diff = (segmentsA.getOrNull(i)?.toIntOrNull() ?: 0) - (segmentsB.getOrNull(i)?.toIntOrNull() ?: 0)
+            if (diff != 0) return diff
+        }
+        return 0
     }
 
     /**
