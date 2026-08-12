@@ -41,7 +41,7 @@ class ExtensionStoresViewModel(
     init {
         viewModelScope.launchIO {
             combine(
-                getExtensionStores.subscribe(isNovel = false),
+                getExtensionStores.subscribe(),
                 sourcePreferences.disabledExtensionRepos.changes(),
             ) { stores, disabled -> stores to disabled }
                 .collectLatest { (stores, disabled) ->
