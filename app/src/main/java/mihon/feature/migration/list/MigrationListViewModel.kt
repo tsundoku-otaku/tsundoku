@@ -315,6 +315,7 @@ class MigrationListViewModel(
             if (!started) {
                 mutableState.update { it.copy(dialog = null) }
                 migrationFailedChannel.send(Unit)
+                navigateBack()
                 return@launchIO
             }
             observeMigrationJob(estimatedTotal = pairs.size)
