@@ -73,7 +73,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_MIGRATION) {
         setSmallIcon(android.R.drawable.stat_notify_sync)
         setContentTitle(context.stringResource(MR.strings.action_quick_migrate))
-        setContentText("Starting...")
+        setContentText(context.stringResource(MR.strings.quick_migrate_notification_starting))
         setOngoing(true)
         setOnlyAlertOnce(true)
         addAction(
@@ -287,7 +287,14 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             notificationBuilder
                 .setOngoing(false)
                 .setProgress(0, 0, false)
-                .setContentText("Migrated $migrated/${targets.size}, removed ${removal.removed}")
+                .setContentText(
+                    context.stringResource(
+                        MR.strings.quick_migrate_notification_result,
+                        migrated,
+                        targets.size,
+                        removal.removed,
+                    ),
+                )
                 .clearActions()
             context.notify(Notifications.ID_QUICK_MIGRATE_COMPLETE, notificationBuilder.build())
 
@@ -306,7 +313,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             notificationBuilder
                 .setOngoing(false)
                 .setProgress(0, 0, false)
-                .setContentText(e.message ?: "Quick migrate failed")
+                .setContentText(e.message ?: context.stringResource(MR.strings.quick_migrate_notification_failed))
                 .clearActions()
             context.notify(Notifications.ID_QUICK_MIGRATE_COMPLETE, notificationBuilder.build())
             Result.failure()
