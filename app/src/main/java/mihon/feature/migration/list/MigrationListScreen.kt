@@ -105,7 +105,10 @@ class MigrationListScreen(private val mangaIds: Collection<Long>, private val ex
             MigrationListViewModel.Dialog.Exit -> {
                 MigrationExitDialog(
                     onDismissRequest = viewModel::dismissDialog,
-                    exitMigration = navigator::pop,
+                    exitMigration = {
+                        viewModel.cancelMigrate()
+                        navigator.pop()
+                    },
                 )
             }
             null -> Unit
