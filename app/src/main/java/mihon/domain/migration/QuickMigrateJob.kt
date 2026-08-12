@@ -210,7 +210,6 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                         logcat(LogPriority.WARN) {
                             "Skipping quick migrate for ${manga.title}: download relocation did not complete"
                         }
-                        updateProgress(progressCount.incrementAndGet(), total)
                         continue
                     }
                     if (withTranslations == null || manga.title in withTranslations) {
