@@ -168,6 +168,13 @@ class MigrateMangaViewModel(
     // would still attach to and report completion of that unrelated, already-running job instead of
     // ever actually migrating.
     fun executeQuickMigrate(targetSourceId: Long, categoryName: String?, removeSkipped: Boolean) {
+        // Guards against a fast double-tap racing two calls in before either has enqueued its
+        // WorkManager job: QuickMigrateJob.isRunning() below queries WorkManager state, which
+        // isn't guaranteed visible immediately after enqueueUniqueWork() returns, so the second
+        // call's own isRunning() check could still see "not running" and attach an observer using
+        // its own (wrong) mangaIds/estimatedTotal to the first call's job.
+        if (state.value.dialog is Dialog.QuickMigrateProgress) return
+
         val mangaIds = state.value.titles.filter { it.id in state.value.selection }.map { it.id }
         if (mangaIds.isEmpty()) {
             mutableState.update { it.copy(dialog = null, selection = emptySet()) }
