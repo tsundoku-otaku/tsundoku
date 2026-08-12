@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ElevatedCard
@@ -47,6 +48,8 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.stringResource
+import tachiyomi.presentation.core.icons.CustomIcons
+import tachiyomi.presentation.core.icons.Discord
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.LoadingScreen
 
@@ -405,13 +408,25 @@ private fun KotlinRepoListItem(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.indexUrl))
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.contact.website))
                 context.startActivity(intent)
             }) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                    imageVector = Icons.Outlined.Public,
                     contentDescription = stringResource(MR.strings.action_open_in_browser),
                 )
+            }
+
+            if (repo.contact.discord != null) {
+                IconButton(onClick = {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(repo.contact.discord))
+                    context.startActivity(intent)
+                }) {
+                    Icon(
+                        imageVector = CustomIcons.Discord,
+                        contentDescription = null,
+                    )
+                }
             }
 
             IconButton(
