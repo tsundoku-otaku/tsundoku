@@ -280,7 +280,13 @@ class MigrationListViewModel(
         }
         if (pairs.isEmpty()) return
 
-        MigrationJob.start(context, pairs, replace)
+        try {
+            MigrationJob.start(context, pairs, replace)
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to start migration job" }
+            viewModelScope.launchIO { navigateBack() }
+            return
+        }
         observeMigrationJob(estimatedTotal = pairs.size)
     }
 
