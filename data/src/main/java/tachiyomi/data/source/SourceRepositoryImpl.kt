@@ -49,10 +49,19 @@ class SourceRepositoryImpl(
             sourceManager.sources,
         ) { sourceIdWithFavoriteCount, _ -> sourceIdWithFavoriteCount }
             .map {
-                it.map { (sourceId, count) ->
+                it.map { (sourceId, count, isNovelFromManga) ->
                     val source = sourceManager.getOrStub(sourceId)
+                    // A stub whose extension was never loaded/installed on this device (blank
+                    // name/lang) has no authoritative type of its own. Fall back to the actual
+                    // favorited manga's is_novel flag as a best guess, but also flag it as
+                    // unknown so callers can surface it in both the manga and novel migrate
+                    // lists - old backups predate the is_novel field, so even that flag can be a
+                    // false negative.
+                    val isUnknownStub = source is StubSource && source.isInvalid
                     val domainSource = mapSourceToDomainSource(source).copy(
                         isStub = source is StubSource,
+                        isTypeUnknown = isUnknownStub,
+                        isNovelSource = if (isUnknownStub) isNovelFromManga == true else source.isNovelSource(),
                     )
                     domainSource to count
                 }

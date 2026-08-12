@@ -24,7 +24,7 @@ class GetNovelSourcesWithFavoriteCount(
         ) { direction, mode, list ->
             list
                 .filter { (source, _) ->
-                    !source.isLocal() && source.isNovelSource
+                    !source.isLocal() && (source.isNovelSource || source.isTypeUnknown)
                 }
                 .sortedWith(sortFn(direction, mode))
         }

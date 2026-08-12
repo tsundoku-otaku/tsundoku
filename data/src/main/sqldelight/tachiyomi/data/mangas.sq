@@ -218,7 +218,8 @@ WHERE favorite_modified_at IS NOT NULL;
 getSourceIdWithFavoriteCount:
 SELECT
 source,
-count(*)
+count(*),
+max(is_novel) AS isNovel
 FROM mangas
 WHERE favorite = 1
 GROUP BY source;

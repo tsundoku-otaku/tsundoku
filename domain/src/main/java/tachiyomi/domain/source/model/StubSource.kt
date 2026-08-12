@@ -17,7 +17,11 @@ data class StubSource(
     val isJsSource: Boolean = false,
 ) : Source {
 
-    private val isInvalid: Boolean = name.isBlank() || lang.isBlank()
+    // True for a stub whose real type was never learned - the extension it belongs to has
+    // neither been loaded on this device before (registerStubSource) nor is present in an
+    // installed extension repo's listing (extensionManager.getSourceData). Backup restores that
+    // reference such a source can't know if it's a manga or novel source.
+    val isInvalid: Boolean = name.isBlank() || lang.isBlank()
 
     override val supportsLatest: Boolean = false
 
