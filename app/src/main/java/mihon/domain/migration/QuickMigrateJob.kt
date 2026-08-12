@@ -40,6 +40,10 @@ import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.io.IOException
 
 /**
  * Runs "Quick migrate" (bulk source-swap for already-favorited entries) as a durable background
@@ -90,12 +94,21 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
     override suspend fun doWork(): Result {
         val sourceId = inputData.getLong(KEY_SOURCE_ID, -1L)
         val targetSourceId = inputData.getLong(KEY_TARGET_SOURCE_ID, -1L)
-        val mangaIds = inputData.getLongArray(KEY_MANGA_IDS)
+        val mangaIdsFile = inputData.getString(KEY_MANGA_IDS_FILE)?.let { File(it) }
         val categoryName = inputData.getString(KEY_CATEGORY_NAME)
         val removeSkipped = inputData.getBoolean(KEY_REMOVE_SKIPPED, false)
 
-        if (sourceId == -1L || targetSourceId == -1L || mangaIds == null) {
+        if (sourceId == -1L || targetSourceId == -1L || mangaIdsFile == null || !mangaIdsFile.exists()) {
             return Result.failure()
+        }
+
+        val mangaIds = try {
+            readMangaIds(mangaIdsFile)
+        } catch (e: IOException) {
+            logcat(LogPriority.ERROR, e) { "Failed to read quick migrate job data" }
+            return Result.failure()
+        } finally {
+            mangaIdsFile.delete()
         }
 
         setForegroundSafely()
@@ -406,6 +419,13 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
 
     private data class SkippedRemoval(val removed: Int, val touchedDownloads: Boolean)
 
+    private fun readMangaIds(file: File): LongArray {
+        return DataInputStream(file.inputStream().buffered()).use { input ->
+            val count = input.readInt()
+            LongArray(count) { input.readLong() }
+        }
+    }
+
     override suspend fun getForegroundInfo(): ForegroundInfo {
         return ForegroundInfo(
             Notifications.ID_QUICK_MIGRATE_PROGRESS,
@@ -422,7 +442,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         const val TAG = "QuickMigrateJob"
         const val KEY_SOURCE_ID = "source_id"
         const val KEY_TARGET_SOURCE_ID = "target_source_id"
-        const val KEY_MANGA_IDS = "manga_ids"
+        const val KEY_MANGA_IDS_FILE = "manga_ids_file"
         const val KEY_CATEGORY_NAME = "category_name"
         const val KEY_REMOVE_SKIPPED = "remove_skipped"
         const val KEY_PROGRESS_CURRENT = "progress_current"
@@ -431,6 +451,9 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         const val KEY_RESULT_REMOVED = "result_removed"
         private const val UPDATE_CHUNK_SIZE = 200
 
+        // WorkManager's Data payload is capped at 10240 bytes when serialized; a large quick
+        // migrate selection's id array can exceed that on its own, so the ids are written to a
+        // cache file instead and only its path travels through Data.
         fun start(
             context: Context,
             sourceId: Long,
@@ -439,10 +462,15 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             categoryName: String?,
             removeSkipped: Boolean,
         ) {
+            val mangaIdsFile = File(context.cacheDir, "quick_migrate_job_${System.nanoTime()}.dat")
+            DataOutputStream(mangaIdsFile.outputStream().buffered()).use { out ->
+                out.writeInt(mangaIds.size)
+                mangaIds.forEach { out.writeLong(it) }
+            }
             val data = workDataOf(
                 KEY_SOURCE_ID to sourceId,
                 KEY_TARGET_SOURCE_ID to targetSourceId,
-                KEY_MANGA_IDS to mangaIds.toLongArray(),
+                KEY_MANGA_IDS_FILE to mangaIdsFile.absolutePath,
                 KEY_CATEGORY_NAME to categoryName,
                 KEY_REMOVE_SKIPPED to removeSkipped,
             )
