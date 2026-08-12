@@ -30,6 +30,10 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.DataInputStream
+import java.io.DataOutputStream
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -57,12 +61,20 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
     }
 
     override suspend fun doWork(): Result {
-        val currentIds = inputData.getLongArray(KEY_CURRENT_IDS)
-        val targetIds = inputData.getLongArray(KEY_TARGET_IDS)
+        val dataFile = inputData.getString(KEY_DATA_FILE)?.let { File(it) }
         val replace = inputData.getBoolean(KEY_REPLACE, true)
 
-        if (currentIds == null || targetIds == null || currentIds.size != targetIds.size) {
+        if (dataFile == null || !dataFile.exists()) {
             return Result.failure()
+        }
+
+        val (currentIds, targetIds) = try {
+            readIdPairs(dataFile)
+        } catch (e: IOException) {
+            logcat(LogPriority.ERROR, e) { "Failed to read migration job data" }
+            return Result.failure()
+        } finally {
+            dataFile.delete()
         }
 
         setForegroundSafely()
@@ -120,6 +132,19 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         }
     }
 
+    private fun readIdPairs(file: File): Pair<LongArray, LongArray> {
+        return DataInputStream(file.inputStream().buffered()).use { input ->
+            val count = input.readInt()
+            val current = LongArray(count)
+            val target = LongArray(count)
+            for (i in 0 until count) {
+                current[i] = input.readLong()
+                target[i] = input.readLong()
+            }
+            current to target
+        }
+    }
+
     override suspend fun getForegroundInfo(): ForegroundInfo {
         return ForegroundInfo(
             Notifications.ID_MIGRATION_PROGRESS,
@@ -134,16 +159,25 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
 
     companion object {
         const val TAG = "MigrationJob"
-        const val KEY_CURRENT_IDS = "current_ids"
-        const val KEY_TARGET_IDS = "target_ids"
+        const val KEY_DATA_FILE = "data_file"
         const val KEY_REPLACE = "replace"
         const val KEY_PROGRESS_CURRENT = "progress_current"
         const val KEY_PROGRESS_TOTAL = "progress_total"
 
+        // WorkManager's Data payload is capped at 10240 bytes when serialized; a large migration
+        // batch's id arrays can exceed that on their own, so the ids are written to a cache file
+        // instead and only its path travels through Data.
         fun start(context: Context, pairs: List<Pair<Long, Long>>, replace: Boolean) {
+            val dataFile = File(context.cacheDir, "migration_job_${System.nanoTime()}.dat")
+            DataOutputStream(dataFile.outputStream().buffered()).use { out ->
+                out.writeInt(pairs.size)
+                pairs.forEach { (current, target) ->
+                    out.writeLong(current)
+                    out.writeLong(target)
+                }
+            }
             val data = workDataOf(
-                KEY_CURRENT_IDS to pairs.map { it.first }.toLongArray(),
-                KEY_TARGET_IDS to pairs.map { it.second }.toLongArray(),
+                KEY_DATA_FILE to dataFile.absolutePath,
                 KEY_REPLACE to replace,
             )
             val request = OneTimeWorkRequestBuilder<MigrationJob>()
