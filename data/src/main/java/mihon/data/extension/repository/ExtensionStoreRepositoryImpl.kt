@@ -102,7 +102,7 @@ class ExtensionStoreRepositoryImpl(
 
     private suspend fun normalizeIfStub(store: ExtensionStore): ExtensionStore {
         if (store.isLegacy || !store.indexUrl.endsWith("/repo.json")) return store
-        return service.fetch(store.indexUrl).map { resolved ->
+        return service.fetch(store.indexUrl).mapCatching { resolved ->
             val fixed = resolved.copy(isNovel = store.isNovel)
             database.transaction {
                 upsert(fixed)
@@ -111,6 +111,10 @@ class ExtensionStoreRepositoryImpl(
                 }
             }
             fixed
+        }.onFailure {
+            logcat(LogPriority.ERROR, it) {
+                "Failed to normalize stub store '${store.name} (${store.indexUrl})'"
+            }
         }.getOrDefault(store)
     }
 
