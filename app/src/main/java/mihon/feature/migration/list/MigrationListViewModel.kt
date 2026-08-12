@@ -282,10 +282,18 @@ class MigrationListViewModel(
     }
 
     private fun migrateMangas(replace: Boolean) {
+        // Guards against a fast double-tap racing two calls in before either has enqueued its
+        // WorkManager job: the dialog is otherwise only swapped to Dialog.Progress asynchronously
+        // inside observeMigrationJob() below, leaving a window where the confirm dialog is still
+        // showing and a second tap would fire another migrateMangas() call.
+        if (state.value.dialog is Dialog.Progress) return
+
         val pairs = items.mapNotNull { manga ->
             (manga.searchResult.value as? SearchResult.Success)?.let { manga.manga.id to it.manga.id }
         }
         if (pairs.isEmpty()) return
+
+        mutableState.update { it.copy(dialog = Dialog.Progress(0f)) }
 
         // MigrationJob.start() does blocking file I/O (writes the id pairs to a cache file), so
         // it can't run directly on the caller's thread - onMigrate is invoked synchronously from
@@ -299,11 +307,13 @@ class MigrationListViewModel(
                 MigrationJob.start(context, pairs, replace)
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to start migration job" }
+                mutableState.update { it.copy(dialog = null) }
                 migrationFailedChannel.send(Unit)
                 navigateBack()
                 return@launchIO
             }
             if (!started) {
+                mutableState.update { it.copy(dialog = null) }
                 migrationFailedChannel.send(Unit)
                 return@launchIO
             }
