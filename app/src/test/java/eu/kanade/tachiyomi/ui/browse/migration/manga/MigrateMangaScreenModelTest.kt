@@ -3,6 +3,9 @@ package eu.kanade.tachiyomi.ui.browse.migration.manga
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.Source
 import io.mockk.mockk
+import mihon.domain.migration.normalizeQuickMigrateUrl
+import mihon.domain.migration.quickMigrateSkipped
+import mihon.domain.migration.quickMigrateTargets
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.model.Manga

@@ -16,9 +16,6 @@ import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.data.track.source.SourceTrackerDispatcher
 import eu.kanade.tachiyomi.source.Source
-import eu.kanade.tachiyomi.ui.browse.migration.manga.normalizeQuickMigrateUrl
-import eu.kanade.tachiyomi.ui.browse.migration.manga.quickMigrateSkipped
-import eu.kanade.tachiyomi.ui.browse.migration.manga.quickMigrateTargets
 import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.util.system.cancelNotification
 import eu.kanade.tachiyomi.util.system.isRunning
