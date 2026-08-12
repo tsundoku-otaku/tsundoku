@@ -283,17 +283,20 @@ class MigrationListViewModel(
         }
         if (pairs.isEmpty()) return
 
-        try {
-            MigrationJob.start(context, pairs, replace)
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to start migration job" }
-            viewModelScope.launchIO {
+        // MigrationJob.start() does blocking file I/O (writes the id pairs to a cache file), so
+        // it can't run directly on the caller's thread - onMigrate is invoked synchronously from
+        // a Compose click.
+        viewModelScope.launchIO {
+            try {
+                MigrationJob.start(context, pairs, replace)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to start migration job" }
                 migrationFailedChannel.send(Unit)
                 navigateBack()
+                return@launchIO
             }
-            return
+            observeMigrationJob(estimatedTotal = pairs.size)
         }
-        observeMigrationJob(estimatedTotal = pairs.size)
     }
 
     // Also used to reattach from init() when the app was reopened while a migration started in
