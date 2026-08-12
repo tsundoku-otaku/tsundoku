@@ -162,7 +162,14 @@ class MigrateMangaViewModel(
         }
 
         mutableState.update { it.copy(dialog = Dialog.QuickMigrateProgress(0f)) }
-        QuickMigrateJob.start(context, sourceId, targetSourceId, mangaIds, categoryName, removeSkipped)
+        try {
+            QuickMigrateJob.start(context, sourceId, targetSourceId, mangaIds, categoryName, removeSkipped)
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to start quick migrate" }
+            mutableState.update { it.copy(dialog = null) }
+            viewModelScope.launch { _events.send(MigrationMangaEvent.FailedFetchingFavorites) }
+            return
+        }
 
         quickMigrateJob = context.workManager.getWorkInfosForUniqueWorkFlow(QuickMigrateJob.TAG)
             .mapNotNull { it.firstOrNull() }
@@ -194,6 +201,12 @@ class MigrateMangaViewModel(
                     }
                     else -> {}
                 }
+            }
+            .catch {
+                logcat(LogPriority.ERROR, it) { "Quick migrate progress tracking failed" }
+                mutableState.update { it.copy(dialog = null) }
+                quickMigrateJob = null
+                _events.send(MigrationMangaEvent.FailedFetchingFavorites)
             }
             .launchIn(viewModelScope)
     }
