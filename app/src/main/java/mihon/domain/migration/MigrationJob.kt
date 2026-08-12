@@ -105,12 +105,19 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
                 currentIds.indices.map { i ->
                     async {
                         semaphore.withPermit {
-                            val current = getManga.await(currentIds[i])
-                            val target = getManga.await(targetIds[i])
-                            if (current != null && target != null) {
-                                migrateManga(current = current, target = target, replace = replace)
+                            try {
+                                val current = getManga.await(currentIds[i])
+                                val target = getManga.await(targetIds[i])
+                                if (current != null && target != null) {
+                                    migrateManga(current = current, target = target, replace = replace)
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                logcat(LogPriority.ERROR, e) { "Failed to migrate manga at index $i" }
+                            } finally {
+                                updateProgress()
                             }
-                            updateProgress()
                         }
                     }
                 }.awaitAll()
