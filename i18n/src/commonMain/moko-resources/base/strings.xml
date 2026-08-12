@@ -904,6 +904,9 @@
     <string name="quick_migrate_notification_starting">Starting…</string>
     <string name="quick_migrate_notification_result">Migrated %1$d/%2$d, removed %3$d</string>
     <string name="quick_migrate_notification_failed">Quick migrate failed</string>
+    <string name="migrate_notification_starting">Starting…</string>
+    <string name="migrate_notification_result">Migrated %1$d/%2$d entries</string>
+    <string name="migrate_notification_failed">Migration failed</string>
     <!-- Make a copy (noun) when migrating. Don't use for copying to clipboard. -->
     <string name="copy">Copy</string>
     <string name="empty_screen">Well, this is awkward</string>

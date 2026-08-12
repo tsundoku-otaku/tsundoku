@@ -52,7 +52,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_MIGRATION) {
         setSmallIcon(android.R.drawable.stat_notify_sync)
         setContentTitle(context.stringResource(MR.strings.action_migrate))
-        setContentText("Starting...")
+        setContentText(context.stringResource(MR.strings.migrate_notification_starting))
         setOngoing(true)
         setOnlyAlertOnce(true)
         addAction(
@@ -128,7 +128,9 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             notificationBuilder
                 .setOngoing(false)
                 .setProgress(0, 0, false)
-                .setContentText("Migrated ${completed.get()}/$total entries")
+                .setContentText(
+                    context.stringResource(MR.strings.migrate_notification_result, completed.get(), total),
+                )
                 .clearActions()
             context.notify(Notifications.ID_MIGRATION_COMPLETE, notificationBuilder.build())
 
@@ -140,7 +142,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             notificationBuilder
                 .setOngoing(false)
                 .setProgress(0, 0, false)
-                .setContentText(e.message ?: "Migration failed")
+                .setContentText(e.message ?: context.stringResource(MR.strings.migrate_notification_failed))
                 .clearActions()
             context.notify(Notifications.ID_MIGRATION_COMPLETE, notificationBuilder.build())
             Result.failure()
