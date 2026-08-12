@@ -232,7 +232,9 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             val active = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .getStringSet(KEY_ACTIVE_CURRENT_IDS, null)
                 ?: return false
-            return mangaIds.any { it.toString() in active }
+            // Full-set match, not partial overlap: two unrelated selections that merely share
+            // one manga id must not be treated as the same running job.
+            return mangaIds.mapTo(mutableSetOf()) { it.toString() } == active
         }
 
         private fun clearActiveIds(context: Context) {
