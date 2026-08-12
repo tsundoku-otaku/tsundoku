@@ -171,7 +171,7 @@ CREATE TRIGGER manga_agg_history_upsert
 AFTER INSERT ON history
 BEGIN
     UPDATE mangas SET
-        last_read = max(last_read, CAST(new.last_read AS INTEGER))
+        last_read = max(last_read, ifnull(CAST(new.last_read AS INTEGER), 0))
     WHERE _id = (SELECT manga_id FROM chapters WHERE _id = new.chapter_id)
     AND favorite = 1;
 END;
@@ -180,7 +180,7 @@ CREATE TRIGGER manga_agg_history_update
 AFTER UPDATE OF last_read ON history
 BEGIN
     UPDATE mangas SET
-        last_read = max(last_read, CAST(new.last_read AS INTEGER))
+        last_read = max(last_read, ifnull(CAST(new.last_read AS INTEGER), 0))
     WHERE _id = (SELECT manga_id FROM chapters WHERE _id = new.chapter_id)
     AND favorite = 1;
 END;
