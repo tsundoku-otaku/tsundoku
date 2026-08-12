@@ -287,7 +287,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                     }
                 }
                 if (categoryId != null) {
-                    setMangaCategories.await(mangaIds = migratedIds, categoryIds = listOf(categoryId))
+                    setMangaCategories.add(mangaIds = migratedIds, categoryIds = listOf(categoryId))
                 }
             }
 
