@@ -107,9 +107,8 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             readMangaIds(mangaIdsFile)
         } catch (e: IOException) {
             logcat(LogPriority.ERROR, e) { "Failed to read quick migrate job data" }
-            return Result.failure()
-        } finally {
             mangaIdsFile.delete()
+            return Result.failure()
         }
 
         setForegroundSafely()
@@ -320,6 +319,11 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             Result.failure()
         } finally {
             context.cancelNotification(Notifications.ID_QUICK_MIGRATE_PROGRESS)
+            // Only deleted once the run has actually finished (success, definitive failure, or
+            // cancellation) - not right after being read - so a WorkManager retry after process
+            // death (this finally block never runs if the process is killed mid-run) can still
+            // find the file and resume instead of failing outright with no data to work from.
+            mangaIdsFile.delete()
         }
     }
 

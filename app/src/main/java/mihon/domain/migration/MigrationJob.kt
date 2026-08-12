@@ -76,10 +76,9 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             readIdPairs(dataFile)
         } catch (e: IOException) {
             logcat(LogPriority.ERROR, e) { "Failed to read migration job data" }
+            dataFile.delete()
             clearActiveIds(context)
             return Result.failure()
-        } finally {
-            dataFile.delete()
         }
 
         setForegroundSafely()
@@ -150,6 +149,11 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         } finally {
             context.cancelNotification(Notifications.ID_MIGRATION_PROGRESS)
             clearActiveIds(context)
+            // Only deleted once the run has actually finished (success, definitive failure, or
+            // cancellation) - not right after being read - so a WorkManager retry after process
+            // death (this finally block never runs if the process is killed mid-migration) can
+            // still find the file and resume instead of failing outright with no data to work from.
+            dataFile.delete()
         }
     }
 
