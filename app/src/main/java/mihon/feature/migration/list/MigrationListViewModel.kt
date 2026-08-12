@@ -362,9 +362,17 @@ class MigrationListViewModel(
     }
 
     fun cancelMigrate() {
-        MigrationJob.stop(context)
-        migrateJob?.cancel()
-        migrateJob = null
+        // migrateJob is only non-null when this screen actually started or reattached to the
+        // running MigrationJob (see migrateMangas()/observeMigrationJob()). MigrationJob is a
+        // single app-wide unique work item, so stopping it unconditionally here - e.g. from a
+        // plain back-press exit on a screen that only ever ran the search phase for its own,
+        // different manga set - would cancel an unrelated migration still running for another
+        // screen instead of a no-op.
+        if (migrateJob != null) {
+            MigrationJob.stop(context)
+            migrateJob?.cancel()
+            migrateJob = null
+        }
         mutableState.update { it.copy(dialog = null) }
     }
 
