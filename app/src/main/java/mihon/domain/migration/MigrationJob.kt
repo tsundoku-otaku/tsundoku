@@ -234,7 +234,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         }
 
         fun isRunning(context: Context): Boolean {
-            return context.workManager.isRunning(TAG)
+            return context.workManager.isRunning(TAG, includeEnqueued = true)
         }
 
         // MigrationJob is unique work, so at most one batch can be running at a time, but a

@@ -494,7 +494,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         }
 
         fun isRunning(context: Context): Boolean {
-            return context.workManager.isRunning(TAG)
+            return context.workManager.isRunning(TAG, includeEnqueued = true)
         }
     }
 }

@@ -12,12 +12,15 @@ import kotlin.time.Duration.Companion.seconds
 val Context.workManager: WorkManager
     get() = WorkManager.getInstance(this)
 
-fun WorkManager.isRunning(tag: String): Boolean {
+// includeEnqueued defaults to false so existing callers keep their original RUNNING-only
+// semantics. MigrationJob/QuickMigrateJob pass true: a job restored after process death sits
+// ENQUEUED for a moment before WorkManager transitions it back to RUNNING, and those two
+// callers reattach during that window and need to see it as active rather than idle.
+fun WorkManager.isRunning(tag: String, includeEnqueued: Boolean = false): Boolean {
     val list = this.getWorkInfosByTag(tag).get()
-    // ENQUEUED matters as much as RUNNING here: a job restored after process death sits
-    // ENQUEUED for a moment before WorkManager transitions it back to RUNNING, and callers
-    // reattaching during that window need to see it as active rather than idle.
-    return list.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
+    return list.any {
+        it.state == WorkInfo.State.RUNNING || (includeEnqueued && it.state == WorkInfo.State.ENQUEUED)
+    }
 }
 
 /**
