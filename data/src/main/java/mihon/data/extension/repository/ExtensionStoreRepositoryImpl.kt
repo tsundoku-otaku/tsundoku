@@ -84,11 +84,13 @@ class ExtensionStoreRepositoryImpl(
                     .map { store ->
                         async {
                             val resolved = normalizeIfStub(store)
-                            service.getExtensions(resolved).onFailure {
-                                this@ExtensionStoreRepositoryImpl.logcat(LogPriority.ERROR, it) {
-                                    "Failed to fetch extensions for store '${resolved.name} (${resolved.indexUrl})'"
+                            service.getExtensions(resolved)
+                                .onSuccess { syncContentType(resolved, it) }
+                                .onFailure {
+                                    this@ExtensionStoreRepositoryImpl.logcat(LogPriority.ERROR, it) {
+                                        "Failed to fetch extensions for store '${resolved.name} (${resolved.indexUrl})'"
+                                    }
                                 }
-                            }
                         }
                     }
                     .awaitAll()
@@ -97,6 +99,17 @@ class ExtensionStoreRepositoryImpl(
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             emptyList()
+        }
+    }
+
+    // The isNovel tag on the store row is only a UI-list sorting hint set at add time; correct it
+    // from what the store actually serves so a manga store that starts publishing novels (or vice
+    // versa) moves to the right screen without the user having to re-add it.
+    private suspend fun syncContentType(store: ExtensionStore, extensions: List<Extension.Available>) {
+        if (extensions.isEmpty()) return
+        val derivedIsNovel = extensions.count { it.isNovel } > extensions.size / 2
+        if (derivedIsNovel != store.isNovel) {
+            upsert(store.copy(isNovel = derivedIsNovel))
         }
     }
 
