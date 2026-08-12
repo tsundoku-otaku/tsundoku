@@ -84,6 +84,9 @@ class MigrationListViewModel(
     private val navigateBackChannel = Channel<Unit>()
     val navigateBackEvent = navigateBackChannel.receiveAsFlow()
 
+    private val migrationFailedChannel = Channel<Unit>()
+    val migrationFailedEvent = migrationFailedChannel.receiveAsFlow()
+
     private var migrateJob: Job? = null
 
     init {
@@ -284,7 +287,10 @@ class MigrationListViewModel(
             MigrationJob.start(context, pairs, replace)
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to start migration job" }
-            viewModelScope.launchIO { navigateBack() }
+            viewModelScope.launchIO {
+                migrationFailedChannel.send(Unit)
+                navigateBack()
+            }
             return
         }
         observeMigrationJob(estimatedTotal = pairs.size)
@@ -309,7 +315,13 @@ class MigrationListViewModel(
                         val fraction = if (total > 0) current.toFloat() / total else 0f
                         mutableState.update { it.copy(dialog = Dialog.Progress(fraction.coerceIn(0f, 1f))) }
                     }
-                    WorkInfo.State.SUCCEEDED, WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                    WorkInfo.State.FAILED -> {
+                        mutableState.update { it.copy(dialog = null) }
+                        migrateJob = null
+                        migrationFailedChannel.send(Unit)
+                        navigateBack()
+                    }
+                    WorkInfo.State.SUCCEEDED, WorkInfo.State.CANCELLED -> {
                         mutableState.update { it.copy(dialog = null) }
                         migrateJob = null
                         navigateBack()

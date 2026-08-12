@@ -58,6 +58,12 @@ class MigrationListScreen(private val mangaIds: Collection<Long>, private val ex
                 navigator.pop()
             }
         }
+
+        LaunchedEffect(viewModel) {
+            viewModel.migrationFailedEvent.collect {
+                context.toast(MR.strings.internal_error)
+            }
+        }
         MigrationListScreenContent(
             items = state.items,
             migrationComplete = state.migrationComplete,
