@@ -895,6 +895,7 @@
     <string name="quick_migrate_remove_skipped">Remove skipped entries</string>
     <string name="quick_migrate_remove_skipped_summary">Their downloads, translations and quotes move to the copy that stays</string>
     <string name="quick_migrate_complete_removed">Quick migrated %1$d entries, removed %2$d</string>
+    <string name="quick_migrate_already_running">A quick migrate is already running</string>
 
     <string name="action_sort_source_name">Source name</string>
     <string name="pref_duplicate_sort_mode">Duplicate list order</string>

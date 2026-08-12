@@ -159,6 +159,11 @@ class MigrateMangaViewModel(
     // coroutine, so an accidental app kill mid-run - e.g. after the phone was dropped - no longer
     // loses whatever hadn't reached the DB-flip step yet. The confirm dialog also used to just sit
     // there frozen for however long a large batch took; this drives a real progress dialog instead.
+    //
+    // QuickMigrateJob.start() enqueues with ExistingWorkPolicy.KEEP, so it's a silent no-op while a
+    // previous quick migrate is still running. Without the isRunning guard below, this selection
+    // would still attach to and report completion of that unrelated, already-running job instead of
+    // ever actually migrating.
     fun executeQuickMigrate(targetSourceId: Long, categoryName: String?, removeSkipped: Boolean) {
         val mangaIds = state.value.titles.filter { it.id in state.value.selection }.map { it.id }
         if (mangaIds.isEmpty()) {
@@ -167,16 +172,22 @@ class MigrateMangaViewModel(
         }
 
         mutableState.update { it.copy(dialog = Dialog.QuickMigrateProgress(0f)) }
-        try {
-            QuickMigrateJob.start(context, sourceId, targetSourceId, mangaIds, categoryName, removeSkipped)
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to start quick migrate" }
-            mutableState.update { it.copy(dialog = null) }
-            viewModelScope.launch { _events.send(MigrationMangaEvent.FailedFetchingFavorites) }
-            return
+        viewModelScope.launchIO {
+            if (QuickMigrateJob.isRunning(context)) {
+                mutableState.update { it.copy(dialog = null) }
+                _events.send(MigrationMangaEvent.QuickMigrateAlreadyRunning)
+                return@launchIO
+            }
+            try {
+                QuickMigrateJob.start(context, sourceId, targetSourceId, mangaIds, categoryName, removeSkipped)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to start quick migrate" }
+                mutableState.update { it.copy(dialog = null) }
+                _events.send(MigrationMangaEvent.FailedFetchingFavorites)
+                return@launchIO
+            }
+            observeQuickMigrateJob(estimatedTotal = mangaIds.size)
         }
-
-        observeQuickMigrateJob(estimatedTotal = mangaIds.size)
     }
 
     // Also used to reattach from init() when the app was reopened while a quick migrate started
@@ -266,5 +277,6 @@ class MigrateMangaViewModel(
 
 sealed interface MigrationMangaEvent {
     data object FailedFetchingFavorites : MigrationMangaEvent
+    data object QuickMigrateAlreadyRunning : MigrationMangaEvent
     data class QuickMigrateComplete(val count: Int, val removedCount: Int = 0) : MigrationMangaEvent
 }

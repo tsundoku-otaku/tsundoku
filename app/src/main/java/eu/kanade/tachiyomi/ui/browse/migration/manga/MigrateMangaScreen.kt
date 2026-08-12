@@ -188,6 +188,9 @@ data class MigrateMangaScreen(
                     MigrationMangaEvent.FailedFetchingFavorites -> {
                         context.toast(MR.strings.internal_error)
                     }
+                    MigrationMangaEvent.QuickMigrateAlreadyRunning -> {
+                        context.toast(TDMR.strings.quick_migrate_already_running)
+                    }
                     is MigrationMangaEvent.QuickMigrateComplete -> {
                         context.toast(
                             if (event.removedCount > 0) {
