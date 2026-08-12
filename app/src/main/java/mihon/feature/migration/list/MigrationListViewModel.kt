@@ -287,6 +287,14 @@ class MigrationListViewModel(
         // it can't run directly on the caller's thread - onMigrate is invoked synchronously from
         // a Compose click.
         viewModelScope.launchIO {
+            // start() enqueues with ExistingWorkPolicy.KEEP, so it's a silent no-op while another
+            // migration job is already running - without this guard, observeMigrationJob() below
+            // would attach to and report completion of that unrelated job instead of this batch
+            // ever actually migrating.
+            if (MigrationJob.isRunning(context)) {
+                migrationFailedChannel.send(Unit)
+                return@launchIO
+            }
             try {
                 MigrationJob.start(context, pairs, replace)
             } catch (e: Exception) {
