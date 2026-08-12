@@ -96,9 +96,11 @@ class MigrateMangaViewModel(
                 }
         }
 
-        // isRunning() does a blocking WorkManager query; keep it off the main dispatcher.
+        // isRunningFor() does a blocking WorkManager query; keep it off the main dispatcher.
+        // Scoped to this screen's sourceId - a bare isRunning() would also reattach to a quick
+        // migrate started from a different, unrelated source screen.
         viewModelScope.launchIO {
-            if (QuickMigrateJob.isRunning(context)) {
+            if (QuickMigrateJob.isRunningFor(context, sourceId)) {
                 observeQuickMigrateJob(estimatedTotal = 0)
             }
         }

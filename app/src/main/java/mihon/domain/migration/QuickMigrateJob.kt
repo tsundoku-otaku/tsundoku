@@ -324,6 +324,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             // death (this finally block never runs if the process is killed mid-run) can still
             // find the file and resume instead of failing outright with no data to work from.
             mangaIdsFile.delete()
+            clearActiveSourceId(context)
         }
     }
 
@@ -464,6 +465,9 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         const val KEY_RESULT_REMOVED = "result_removed"
         private const val UPDATE_CHUNK_SIZE = 200
 
+        private const val PREFS_NAME = "quick_migrate_job_state"
+        private const val KEY_ACTIVE_SOURCE_ID = "active_source_id"
+
         // WorkManager's Data payload is capped at 10240 bytes when serialized; a large quick
         // migrate selection's id array can exceed that on its own, so the ids are written to a
         // cache file instead and only its path travels through Data.
@@ -503,15 +507,42 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                 mangaIdsFile.delete()
                 return false
             }
+            // Persisted so a freshly (re)created MigrateMangaViewModel can tell whether an
+            // already-running job belongs to its own source screen - see isRunningFor(). Written
+            // with commit() rather than apply() to avoid the same race MigrationJob.start() had:
+            // a concurrently (re)created ViewModel's isRunningFor() can already see
+            // isRunning() == true right after the enqueue above.
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .putLong(KEY_ACTIVE_SOURCE_ID, sourceId)
+                .commit()
             return true
         }
 
         fun stop(context: Context) {
             context.workManager.cancelUniqueWork(TAG)
+            clearActiveSourceId(context)
         }
 
         fun isRunning(context: Context): Boolean {
             return context.workManager.isRunning(TAG, includeEnqueued = true)
+        }
+
+        // QuickMigrateJob is unique work, so at most one batch can be running at a time, but a
+        // screen reattaching in init() still needs to know whether that running job is *its own*
+        // source's batch or an unrelated one left over from a different source screen - otherwise
+        // it would show a bogus progress dialog and later report an unrelated job's result on the
+        // wrong screen.
+        fun isRunningFor(context: Context, sourceId: Long): Boolean {
+            if (!isRunning(context)) return false
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            if (!prefs.contains(KEY_ACTIVE_SOURCE_ID)) return false
+            return prefs.getLong(KEY_ACTIVE_SOURCE_ID, -1L) == sourceId
+        }
+
+        private fun clearActiveSourceId(context: Context) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .remove(KEY_ACTIVE_SOURCE_ID)
+                .apply()
         }
     }
 }
