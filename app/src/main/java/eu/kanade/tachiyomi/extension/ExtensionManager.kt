@@ -217,10 +217,11 @@ class ExtensionManager(
                 changed = true
             } else if (availableExt != null) {
                 val hasUpdate = extension.updateExists(availableExt)
-                if (extension.hasUpdate != hasUpdate) {
+                if (extension.hasUpdate != hasUpdate || extension.isObsolete) {
                     installedExtensionsMap[pkgName] = extension.copy(
                         hasUpdate = hasUpdate,
                         store = availableExt.store,
+                        isObsolete = false,
                     )
                 } else {
                     installedExtensionsMap[pkgName] = extension.copy(
