@@ -199,7 +199,6 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                 countsUsable = countsUsable,
                 queuedMangaIds = queuedMangaIds,
                 onItemDone = { updateProgress(progressCount.incrementAndGet(), total) },
-                onChunkRemoved = {},
             )
             if (removal.touchedDownloads) attemptedDownloadMove = true
             for ((manga, newUrl) in targets) {
@@ -354,7 +353,6 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         countsUsable: Boolean,
         queuedMangaIds: Set<Long>,
         onItemDone: suspend () -> Unit,
-        onChunkRemoved: suspend (Int) -> Unit,
     ): SkippedRemoval {
         if (skipped.isEmpty()) return SkippedRemoval(removed = 0, touchedDownloads = false)
         val titles = skipped.mapTo(mutableSetOf()) { it.title }
@@ -431,7 +429,6 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             }
             if (updateManga.awaitAll(chunk.map { MangaUpdate(id = it.id, favorite = false) })) {
                 removed += chunk.size
-                onChunkRemoved(chunk.size)
             } else {
                 logcat(LogPriority.ERROR) { "Failed to remove a chunk of ${chunk.size} skipped entries" }
             }
