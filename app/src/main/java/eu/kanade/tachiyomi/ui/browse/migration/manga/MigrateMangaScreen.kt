@@ -173,6 +173,12 @@ data class MigrateMangaScreen(
                     onDismissRequest = { viewModel.dismissDialog() },
                 )
             }
+            is MigrateMangaViewModel.Dialog.QuickMigrateProgress -> {
+                QuickMigrateProgressDialog(
+                    progress = dialog.progress,
+                    onCancel = { viewModel.cancelQuickMigrate() },
+                )
+            }
             null -> {}
         }
 

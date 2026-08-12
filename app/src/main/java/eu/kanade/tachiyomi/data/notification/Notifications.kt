@@ -123,6 +123,13 @@ object Notifications {
     const val ID_DB_MAINTENANCE_PROGRESS = -901
     const val ID_DB_MAINTENANCE_COMPLETE = -902
 
+    /**
+     * Notification channel and ids used by quick migrate.
+     */
+    const val CHANNEL_MIGRATION = "migration_channel"
+    const val ID_QUICK_MIGRATE_PROGRESS = -1001
+    const val ID_QUICK_MIGRATE_COMPLETE = -1002
+
     private val deprecatedChannels = listOf(
         "downloader_channel",
         "downloader_complete_channel",
@@ -239,6 +246,10 @@ object Notifications {
                 },
                 buildNotificationChannel(CHANNEL_DB_MAINTENANCE, IMPORTANCE_LOW) {
                     setName(context.stringResource(TDMR.strings.channel_db_maintenance))
+                    setShowBadge(false)
+                },
+                buildNotificationChannel(CHANNEL_MIGRATION, IMPORTANCE_LOW) {
+                    setName(context.stringResource(MR.strings.action_quick_migrate))
                     setShowBadge(false)
                 },
             ),
