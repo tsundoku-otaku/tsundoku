@@ -100,6 +100,7 @@ class NovelExtensionReposViewModel(
 
     fun setJsRepoEnabled(url: String, enabled: Boolean) {
         jsPluginManager.setRepositoryEnabled(url, enabled)
+        viewModelScope.launchIO { jsPluginManager.refreshAvailablePlugins() }
     }
 
     fun setKotlinRepoEnabled(indexUrl: String, enabled: Boolean) {
@@ -108,6 +109,7 @@ class NovelExtensionReposViewModel(
                 if (enabled) disabledRepos - indexUrl else disabledRepos + indexUrl
             },
         )
+        viewModelScope.launchIO { extensionManager.findAvailableExtensions() }
     }
 
     fun refreshRepos() {
