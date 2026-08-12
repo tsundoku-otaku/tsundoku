@@ -255,7 +255,8 @@ object Notifications {
                     setShowBadge(false)
                 },
                 buildNotificationChannel(CHANNEL_MIGRATION, IMPORTANCE_LOW) {
-                    setName(context.stringResource(MR.strings.action_quick_migrate))
+                    // Shared by both bulk migrate (MigrationJob) and quick migrate (QuickMigrateJob).
+                    setName(context.stringResource(MR.strings.label_migration))
                     setShowBadge(false)
                 },
             ),
