@@ -108,6 +108,9 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
 
         setForegroundSafely()
 
+        val migratedIds = mutableListOf<Long>()
+        var removedCount = 0
+
         return try {
             val selectedManga = mangaIds.toList().mapNotNull { getManga.await(it) }
             val newSource = sourceManager.getOrStub(targetSourceId)
@@ -119,7 +122,6 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             } else {
                 emptyList()
             }
-            val migratedIds = mutableListOf<Long>()
             val total = targets.size + skipped.size
             if (total == 0) {
                 context.cancelNotification(Notifications.ID_QUICK_MIGRATE_PROGRESS)
@@ -185,6 +187,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                 countsUsable = countsUsable,
                 queuedMangaIds = queuedMangaIds,
                 onItemDone = { updateProgress(progressCount.incrementAndGet(), total) },
+                onChunkRemoved = { removedCount += it },
             )
             if (removal.touchedDownloads) attemptedDownloadMove = true
             for ((manga, newUrl) in targets) {
@@ -291,7 +294,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                 ),
             )
         } catch (e: CancellationException) {
-            Result.success(workDataOf(KEY_RESULT_MIGRATED to 0, KEY_RESULT_REMOVED to 0))
+            Result.success(workDataOf(KEY_RESULT_MIGRATED to migratedIds.size, KEY_RESULT_REMOVED to removedCount))
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Quick migrate job failed" }
             notificationBuilder
@@ -324,6 +327,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         countsUsable: Boolean,
         queuedMangaIds: Set<Long>,
         onItemDone: suspend () -> Unit,
+        onChunkRemoved: suspend (Int) -> Unit,
     ): SkippedRemoval {
         if (skipped.isEmpty()) return SkippedRemoval(removed = 0, touchedDownloads = false)
         val titles = skipped.mapTo(mutableSetOf()) { it.title }
@@ -400,6 +404,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             }
             if (updateManga.awaitAll(chunk.map { MangaUpdate(id = it.id, favorite = false) })) {
                 removed += chunk.size
+                onChunkRemoved(chunk.size)
             } else {
                 logcat(LogPriority.ERROR) { "Failed to remove a chunk of ${chunk.size} skipped entries" }
             }
