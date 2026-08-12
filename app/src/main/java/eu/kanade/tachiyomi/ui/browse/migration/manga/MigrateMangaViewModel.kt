@@ -79,10 +79,6 @@ class MigrateMangaViewModel(
                 state.copy(source = sourceManager.getOrStub(sourceId))
             }
 
-            if (QuickMigrateJob.isRunning(context)) {
-                observeQuickMigrateJob(estimatedTotal = 0)
-            }
-
             getFavorites.subscribe(sourceId)
                 .catch {
                     logcat(LogPriority.ERROR, it)
@@ -98,6 +94,13 @@ class MigrateMangaViewModel(
                 .collectLatest { list ->
                     mutableState.update { it.copy(titleList = list.toList()) }
                 }
+        }
+
+        // isRunning() does a blocking WorkManager query; keep it off the main dispatcher.
+        viewModelScope.launchIO {
+            if (QuickMigrateJob.isRunning(context)) {
+                observeQuickMigrateJob(estimatedTotal = 0)
+            }
         }
     }
 
