@@ -229,7 +229,7 @@ class DomainModule : InjektModule {
         addFactory { DeleteSourcePinGroup(get()) }
         addSingletonFactory { TrustExtension(get(), get()) } // Singleton to enable caching of trusted fingerprints
 
-        addSingletonFactory { ExtensionStoreService(get(), get(), get()) }
+        addSingletonFactory { ExtensionStoreService(get(), get()) }
         addSingletonFactory<ExtensionStoreRepository> { ExtensionStoreRepositoryImpl(get(), get()) }
         addFactory { AddExtensionStore(get()) }
         addFactory { GetExtensionStoreCountAsFlow(get()) }

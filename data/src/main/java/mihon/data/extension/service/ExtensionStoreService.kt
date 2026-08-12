@@ -23,12 +23,19 @@ import kotlin.coroutines.cancellation.CancellationException
 
 class ExtensionStoreService(
     private val network: NetworkHelper,
-    private val json: Json,
     private val protoBuf: ProtoBuf,
 ) {
     // Extension repo hosts aren't novel/manga sources - exempt them same as the sibling
     // ExtensionInstaller (which downloads the APK these fetches point to).
     private val client by lazy { network.client.rateLimitExempt() }
+
+    // protobuf's canonical JSON mapping renders int64 fields (versionCode, source ids) as
+    // quoted strings, so this needs isLenient to accept indexes published via json_format.
+    private val json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+        isLenient = true
+    }
 
     suspend fun fetch(indexUrl: String): Result<ExtensionStore> {
         var updatedIndexUrl: String = indexUrl
