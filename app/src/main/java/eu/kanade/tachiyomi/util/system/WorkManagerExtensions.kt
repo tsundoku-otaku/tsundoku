@@ -14,7 +14,10 @@ val Context.workManager: WorkManager
 
 fun WorkManager.isRunning(tag: String): Boolean {
     val list = this.getWorkInfosByTag(tag).get()
-    return list.any { it.state == WorkInfo.State.RUNNING }
+    // ENQUEUED matters as much as RUNNING here: a job restored after process death sits
+    // ENQUEUED for a moment before WorkManager transitions it back to RUNNING, and callers
+    // reattaching during that window need to see it as active rather than idle.
+    return list.any { it.state == WorkInfo.State.RUNNING || it.state == WorkInfo.State.ENQUEUED }
 }
 
 /**
