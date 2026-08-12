@@ -68,7 +68,7 @@ class NovelExtensionReposScreen(
         Scaffold(
             topBar = {
                 AppBar(
-                    title = stringResource(MR.strings.label_extension_repos),
+                    title = stringResource(MR.strings.extensionStores),
                     navigateUp = navigator::pop,
                     actions = {
                         androidx.compose.material3.IconButton(onClick = screenModel::refreshRepos) {

@@ -43,7 +43,7 @@ fun novelExtensionsTab(
                 onClick = { navigator.push(ExtensionFilterScreen()) },
             ),
             AppBar.OverflowAction(
-                title = stringResource(MR.strings.label_extension_repos),
+                title = stringResource(MR.strings.extensionStores),
                 onClick = { navigator.push(NovelExtensionReposScreen()) },
             ),
         ),
