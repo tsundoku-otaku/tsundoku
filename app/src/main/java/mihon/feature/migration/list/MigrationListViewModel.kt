@@ -108,7 +108,11 @@ class MigrationListViewModel(
                 .awaitAll()
                 .filterNotNull()
             mutableState.update { it.copy(items = manga) }
-            if (MigrationJob.isRunning(context)) {
+            // isRunning(context) alone isn't enough here: MigrationJob is identified only by a
+            // global TAG, so it would match any running job, including one started by a
+            // different MigrationListViewModel for an unrelated manga set - which would skip the
+            // search phase below entirely and later report false success for this screen's items.
+            if (MigrationJob.isRunningFor(context, mangaIds)) {
                 observeMigrationJob(estimatedTotal = manga.size)
             } else {
                 runMigrations(manga)

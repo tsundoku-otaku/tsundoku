@@ -67,6 +67,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         val replace = inputData.getBoolean(KEY_REPLACE, true)
 
         if (dataFile == null || !dataFile.exists()) {
+            clearActiveIds(context)
             return Result.failure()
         }
 
@@ -74,6 +75,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             readIdPairs(dataFile)
         } catch (e: IOException) {
             logcat(LogPriority.ERROR, e) { "Failed to read migration job data" }
+            clearActiveIds(context)
             return Result.failure()
         } finally {
             dataFile.delete()
@@ -144,6 +146,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             Result.failure()
         } finally {
             context.cancelNotification(Notifications.ID_MIGRATION_PROGRESS)
+            clearActiveIds(context)
         }
     }
 
@@ -179,6 +182,9 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         const val KEY_PROGRESS_CURRENT = "progress_current"
         const val KEY_PROGRESS_TOTAL = "progress_total"
 
+        private const val PREFS_NAME = "migration_job_state"
+        private const val KEY_ACTIVE_CURRENT_IDS = "active_current_ids"
+
         // WorkManager's Data payload is capped at 10240 bytes when serialized; a large migration
         // batch's id arrays can exceed that on their own, so the ids are written to a cache file
         // instead and only its path travels through Data.
@@ -199,15 +205,40 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
                 .addTag(TAG)
                 .setInputData(data)
                 .build()
+            // Persisted separately from the WorkManager Data above (which is deleted off the
+            // cache file once doWork() reads it) so a freshly (re)created ViewModel can tell
+            // whether an already-running job is for its own manga set - see isRunningFor().
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .putStringSet(KEY_ACTIVE_CURRENT_IDS, pairs.mapTo(mutableSetOf()) { it.first.toString() })
+                .apply()
             context.workManager.enqueueUniqueWork(TAG, ExistingWorkPolicy.KEEP, request)
         }
 
         fun stop(context: Context) {
             context.workManager.cancelUniqueWork(TAG)
+            clearActiveIds(context)
         }
 
         fun isRunning(context: Context): Boolean {
             return context.workManager.isRunning(TAG)
+        }
+
+        // MigrationJob is unique work, so at most one batch can be running at a time, but a
+        // screen reattaching in init() still needs to know whether that running job is *its*
+        // batch or an unrelated one left over from a different manga selection - otherwise it
+        // would skip its own search phase and report false success once the unrelated job ends.
+        fun isRunningFor(context: Context, mangaIds: Collection<Long>): Boolean {
+            if (!isRunning(context)) return false
+            val active = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getStringSet(KEY_ACTIVE_CURRENT_IDS, null)
+                ?: return false
+            return mangaIds.any { it.toString() in active }
+        }
+
+        private fun clearActiveIds(context: Context) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .remove(KEY_ACTIVE_CURRENT_IDS)
+                .apply()
         }
     }
 }
