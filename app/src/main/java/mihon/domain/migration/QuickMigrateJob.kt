@@ -462,6 +462,12 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         // WorkManager's Data payload is capped at 10240 bytes when serialized; a large quick
         // migrate selection's id array can exceed that on its own, so the ids are written to a
         // cache file instead and only its path travels through Data.
+        //
+        // Returns false if a job was already running: with ExistingWorkPolicy.KEEP, an existing
+        // unique job silently drops the new request instead of queuing it, so the request's own
+        // WorkInfo is checked to tell that apart from a genuine enqueue - otherwise the caller has
+        // no way to know its request was a no-op and would attach progress/completion reporting
+        // for its own selection to whatever unrelated job is actually running.
         fun start(
             context: Context,
             sourceId: Long,
@@ -469,7 +475,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             mangaIds: List<Long>,
             categoryName: String?,
             removeSkipped: Boolean,
-        ) {
+        ): Boolean {
             val mangaIdsFile = File(context.cacheDir, "quick_migrate_job_${System.nanoTime()}.dat")
             DataOutputStream(mangaIdsFile.outputStream().buffered()).use { out ->
                 out.writeInt(mangaIds.size)
@@ -486,7 +492,13 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                 .addTag(TAG)
                 .setInputData(data)
                 .build()
-            context.workManager.enqueueUniqueWork(TAG, ExistingWorkPolicy.KEEP, request)
+            val workManager = context.workManager
+            workManager.enqueueUniqueWork(TAG, ExistingWorkPolicy.KEEP, request).result.get()
+            if (workManager.getWorkInfoById(request.id).get() == null) {
+                mangaIdsFile.delete()
+                return false
+            }
+            return true
         }
 
         fun stop(context: Context) {

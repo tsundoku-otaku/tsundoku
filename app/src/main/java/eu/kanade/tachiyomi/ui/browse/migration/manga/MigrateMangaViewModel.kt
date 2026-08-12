@@ -188,12 +188,17 @@ class MigrateMangaViewModel(
                 _events.send(MigrationMangaEvent.QuickMigrateAlreadyRunning)
                 return@launchIO
             }
-            try {
+            val started = try {
                 QuickMigrateJob.start(context, sourceId, targetSourceId, mangaIds, categoryName, removeSkipped)
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to start quick migrate" }
                 mutableState.update { it.copy(dialog = null) }
                 _events.send(MigrationMangaEvent.FailedFetchingFavorites)
+                return@launchIO
+            }
+            if (!started) {
+                mutableState.update { it.copy(dialog = null) }
+                _events.send(MigrationMangaEvent.QuickMigrateAlreadyRunning)
                 return@launchIO
             }
             observeQuickMigrateJob(estimatedTotal = mangaIds.size)
