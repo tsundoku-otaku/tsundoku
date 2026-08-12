@@ -114,7 +114,6 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         setForegroundSafely()
 
         val migratedIds = mutableListOf<Long>()
-        var removedCount = 0
 
         return try {
             val selectedManga = mangaIds.toList().mapNotNull { getManga.await(it) }
@@ -192,7 +191,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                 countsUsable = countsUsable,
                 queuedMangaIds = queuedMangaIds,
                 onItemDone = { updateProgress(progressCount.incrementAndGet(), total) },
-                onChunkRemoved = { removedCount += it },
+                onChunkRemoved = {},
             )
             if (removal.touchedDownloads) attemptedDownloadMove = true
             for ((manga, newUrl) in targets) {
@@ -299,7 +298,9 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                 ),
             )
         } catch (e: CancellationException) {
-            Result.success(workDataOf(KEY_RESULT_MIGRATED to migratedIds.size, KEY_RESULT_REMOVED to removedCount))
+            // WorkManager discards any Result returned after external cancellation and reports
+            // WorkInfo.State.CANCELLED with no output data, so there's no point building one here.
+            Result.success()
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Quick migrate job failed" }
             notificationBuilder
