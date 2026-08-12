@@ -39,7 +39,7 @@ class NovelExtensionReposViewModel(
         viewModelScope.launchIO {
             combine(
                 jsPluginManager.repositories,
-                getExtensionStores.subscribe(),
+                getExtensionStores.subscribe(isNovel = true),
                 sourcePreferences.disabledExtensionRepos.changes(),
             ) { jsRepos, kotlinRepos, disabledKotlinRepos ->
                 NovelRepoScreenState.Success(
