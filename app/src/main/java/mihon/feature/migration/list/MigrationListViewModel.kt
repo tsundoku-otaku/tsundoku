@@ -1,13 +1,16 @@
 package mihon.feature.migration.list
 
+import android.content.Context
 import androidx.annotation.FloatRange
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.work.WorkInfo
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.getNameForMangaInfo
+import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -15,7 +18,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -23,6 +28,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
+import mihon.domain.migration.MigrationJob
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.domain.source.interactor.UpdateMangaFromRemote
 import mihon.feature.migration.list.models.MigratingManga
@@ -42,6 +48,7 @@ import uy.kohesive.injekt.api.get
 class MigrationListViewModel(
     mangaIds: Collection<Long>,
     extraSearchQuery: String?,
+    private val context: Context = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
@@ -264,53 +271,43 @@ class MigrationListViewModel(
     }
 
     private fun migrateMangas(replace: Boolean) {
-        migrateJob = viewModelScope.launchIO {
-            mutableState.update { it.copy(dialog = Dialog.Progress(0f)) }
-            val items = items
-            try {
-                // Use semaphore to allow limited concurrency for migrations
-                // (each migration involves network calls that benefit from parallelism)
-                val migrationSemaphore = Semaphore(3)
-                val completed = java.util.concurrent.atomic.AtomicInteger(0)
-
-                items.map { manga ->
-                    async {
-                        migrationSemaphore.withPermit {
-                            try {
-                                ensureActive()
-                                val target = manga.searchResult.value.let {
-                                    if (it is SearchResult.Success) {
-                                        it.manga
-                                    } else {
-                                        null
-                                    }
-                                }
-                                if (target != null) {
-                                    migrateManga(current = manga.manga, target = target, replace = replace)
-                                }
-                            } catch (e: Exception) {
-                                if (e is CancellationException) throw e
-                                logcat(LogPriority.WARN, throwable = e)
-                            }
-                            val done = completed.incrementAndGet()
-                            mutableState.update {
-                                it.copy(dialog = Dialog.Progress((done.toFloat() / items.size).coerceAtMost(1f)))
-                            }
-                        }
-                    }
-                }.awaitAll()
-
-                navigateBack()
-            } finally {
-                mutableState.update { it.copy(dialog = null) }
-                migrateJob = null
-            }
+        val pairs = items.mapNotNull { manga ->
+            (manga.searchResult.value as? SearchResult.Success)?.let { manga.manga.id to it.manga.id }
         }
+        if (pairs.isEmpty()) return
+
+        mutableState.update { it.copy(dialog = Dialog.Progress(0f)) }
+        MigrationJob.start(context, pairs, replace)
+
+        // Backed by a durable WorkManager job (with its own notification) rather than this
+        // coroutine, so an accidental app kill mid-migration no longer loses whatever hadn't
+        // been swapped over yet. This just mirrors that job's progress back into the dialog.
+        migrateJob = context.workManager.getWorkInfosForUniqueWorkFlow(MigrationJob.TAG)
+            .mapNotNull { it.firstOrNull() }
+            .onEach { workInfo ->
+                when (workInfo.state) {
+                    WorkInfo.State.RUNNING -> {
+                        val current = workInfo.progress.getInt(MigrationJob.KEY_PROGRESS_CURRENT, 0)
+                        val total = workInfo.progress.getInt(MigrationJob.KEY_PROGRESS_TOTAL, pairs.size)
+                        val fraction = if (total > 0) current.toFloat() / total else 0f
+                        mutableState.update { it.copy(dialog = Dialog.Progress(fraction.coerceIn(0f, 1f))) }
+                    }
+                    WorkInfo.State.SUCCEEDED, WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> {
+                        mutableState.update { it.copy(dialog = null) }
+                        migrateJob = null
+                        navigateBack()
+                    }
+                    else -> {}
+                }
+            }
+            .launchIn(viewModelScope)
     }
 
     fun cancelMigrate() {
+        MigrationJob.stop(context)
         migrateJob?.cancel()
         migrateJob = null
+        mutableState.update { it.copy(dialog = null) }
     }
 
     private suspend fun navigateBack() {

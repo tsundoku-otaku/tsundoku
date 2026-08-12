@@ -81,6 +81,8 @@ class NotificationReceiver : BroadcastReceiver() {
             ACTION_CANCEL_MASS_IMPORT -> cancelMassImport(context)
             // Cancel library export
             ACTION_CANCEL_LIBRARY_EXPORT -> cancelLibraryExport(context)
+            // Cancel bulk source migration
+            ACTION_CANCEL_MIGRATION -> cancelMigration(context)
             // Cancel quick migrate
             ACTION_CANCEL_QUICK_MIGRATE -> cancelQuickMigrate(context)
             // Start downloading app update
@@ -213,6 +215,11 @@ class NotificationReceiver : BroadcastReceiver() {
      *
      * @param context context of application
      */
+    private fun cancelMigration(context: Context) {
+        mihon.domain.migration.MigrationJob.stop(context)
+        context.cancelNotification(Notifications.ID_MIGRATION_PROGRESS)
+    }
+
     /**
      * Method called when user wants to stop a quick migrate job
      *
@@ -296,6 +303,7 @@ class NotificationReceiver : BroadcastReceiver() {
         private const val ACTION_CANCEL_MASS_IMPORT = "$ID.$NAME.CANCEL_MASS_IMPORT"
 
         private const val ACTION_CANCEL_LIBRARY_EXPORT = "$ID.$NAME.CANCEL_LIBRARY_EXPORT"
+        private const val ACTION_CANCEL_MIGRATION = "$ID.$NAME.CANCEL_MIGRATION"
         private const val ACTION_CANCEL_QUICK_MIGRATE = "$ID.$NAME.CANCEL_QUICK_MIGRATE"
 
         private const val ACTION_START_APP_UPDATE = "$ID.$NAME.ACTION_START_APP_UPDATE"
@@ -632,6 +640,19 @@ class NotificationReceiver : BroadcastReceiver() {
         internal fun cancelLibraryExportPendingBroadcast(context: Context): PendingIntent {
             val intent = Intent(context, NotificationReceiver::class.java).apply {
                 action = ACTION_CANCEL_LIBRARY_EXPORT
+            }
+            return PendingIntent.getBroadcast(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        /** Returns a [PendingIntent] that stops the bulk migration job. */
+        internal fun cancelMigrationPendingBroadcast(context: Context): PendingIntent {
+            val intent = Intent(context, NotificationReceiver::class.java).apply {
+                action = ACTION_CANCEL_MIGRATION
             }
             return PendingIntent.getBroadcast(
                 context,

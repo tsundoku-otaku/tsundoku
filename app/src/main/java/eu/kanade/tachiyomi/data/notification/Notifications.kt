@@ -130,6 +130,12 @@ object Notifications {
     const val ID_QUICK_MIGRATE_PROGRESS = -1001
     const val ID_QUICK_MIGRATE_COMPLETE = -1002
 
+    /**
+     * Notification ids used by bulk source migration (shares CHANNEL_MIGRATION with quick migrate).
+     */
+    const val ID_MIGRATION_PROGRESS = -1003
+    const val ID_MIGRATION_COMPLETE = -1004
+
     private val deprecatedChannels = listOf(
         "downloader_channel",
         "downloader_complete_channel",
