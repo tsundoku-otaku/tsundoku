@@ -291,20 +291,20 @@ class MigrationListViewModel(
         // it can't run directly on the caller's thread - onMigrate is invoked synchronously from
         // a Compose click.
         viewModelScope.launchIO {
-            // start() enqueues with ExistingWorkPolicy.KEEP, so it's a silent no-op while another
-            // migration job is already running - without this guard, observeMigrationJob() below
-            // would attach to and report completion of that unrelated job instead of this batch
-            // ever actually migrating.
-            if (MigrationJob.isRunning(context)) {
-                migrationFailedChannel.send(Unit)
-                return@launchIO
-            }
-            try {
+            // start() itself reports whether it actually enqueued this batch (it's a silent no-op
+            // under ExistingWorkPolicy.KEEP while another migration job is already running) -
+            // without this check, observeMigrationJob() below would attach to and report
+            // completion of that unrelated job instead of this batch ever actually migrating.
+            val started = try {
                 MigrationJob.start(context, pairs, replace)
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to start migration job" }
                 migrationFailedChannel.send(Unit)
                 navigateBack()
+                return@launchIO
+            }
+            if (!started) {
+                migrationFailedChannel.send(Unit)
                 return@launchIO
             }
             observeMigrationJob(estimatedTotal = pairs.size)

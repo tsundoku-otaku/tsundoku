@@ -188,7 +188,13 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         // WorkManager's Data payload is capped at 10240 bytes when serialized; a large migration
         // batch's id arrays can exceed that on their own, so the ids are written to a cache file
         // instead and only its path travels through Data.
-        fun start(context: Context, pairs: List<Pair<Long, Long>>, replace: Boolean) {
+        //
+        // Returns false if a job was already running: with ExistingWorkPolicy.KEEP, an existing
+        // unique job silently drops the new request instead of queuing it, so the request's own
+        // WorkInfo is checked to tell that apart from a genuine enqueue - otherwise the caller has
+        // no way to know its request was a no-op, and the active-ids below would clobber the
+        // running job's own set out from under isRunningFor().
+        fun start(context: Context, pairs: List<Pair<Long, Long>>, replace: Boolean): Boolean {
             val dataFile = File(context.cacheDir, "migration_job_${System.nanoTime()}.dat")
             DataOutputStream(dataFile.outputStream().buffered()).use { out ->
                 out.writeInt(pairs.size)
@@ -205,13 +211,19 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
                 .addTag(TAG)
                 .setInputData(data)
                 .build()
+            val workManager = context.workManager
+            workManager.enqueueUniqueWork(TAG, ExistingWorkPolicy.KEEP, request).result.get()
+            if (workManager.getWorkInfoById(request.id).get() == null) {
+                dataFile.delete()
+                return false
+            }
             // Persisted separately from the WorkManager Data above (which is deleted off the
             // cache file once doWork() reads it) so a freshly (re)created ViewModel can tell
             // whether an already-running job is for its own manga set - see isRunningFor().
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
                 .putStringSet(KEY_ACTIVE_CURRENT_IDS, pairs.mapTo(mutableSetOf()) { it.first.toString() })
                 .apply()
-            context.workManager.enqueueUniqueWork(TAG, ExistingWorkPolicy.KEEP, request)
+            return true
         }
 
         fun stop(context: Context) {
