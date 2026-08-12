@@ -14,6 +14,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Added
 
 ### Improved
+- Novel Extension Repo > Extension Store + Related fixes [@Rojikku](https://github.com/Rojikku) [#391](https://github.com/tsundoku-otaku/tsundoku/pull/391)
 - Handle picture/source/video/audio tags in text view [@mrissaoussama](https://github.com/mrissaoussama) [#381](https://github.com/tsundoku-otaku/tsundoku/pull/381)
 - avoid list copies during backup restore [@mrissaoussama](https://github.com/mrissaoussama) [#389](https://github.com/tsundoku-otaku/tsundoku/pull/389)
 - Improve UI filter panel with scroll, apply library filters [@mrissaoussama](https://github.com/mrissaoussama) [#382](https://github.com/tsundoku-otaku/tsundoku/pull/382)
