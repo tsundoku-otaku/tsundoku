@@ -128,7 +128,15 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             }
             val total = targets.size + skipped.size
             if (total == 0) {
-                context.cancelNotification(Notifications.ID_QUICK_MIGRATE_PROGRESS)
+                // Still posts a completion notification like every other exit path below - without
+                // it, a run that finishes while the app is backgrounded leaves the user with zero
+                // indication it ever ran.
+                notificationBuilder
+                    .setOngoing(false)
+                    .setProgress(0, 0, false)
+                    .setContentText(context.stringResource(TDMR.strings.quick_migrate_notification_result, 0, 0, 0))
+                    .clearActions()
+                context.notify(Notifications.ID_QUICK_MIGRATE_COMPLETE, notificationBuilder.build())
                 return Result.success(workDataOf(KEY_RESULT_MIGRATED to 0, KEY_RESULT_REMOVED to 0))
             }
 
