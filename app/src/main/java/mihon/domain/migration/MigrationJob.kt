@@ -20,7 +20,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.domain.migration.usecases.MigrateMangaUseCase
@@ -82,11 +84,17 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         val total = currentIds.size
         val completed = AtomicInteger(0)
         val progressNotifier = MigrationProgressNotifier(context, Notifications.ID_MIGRATION_PROGRESS, notificationBuilder)
+        // Serializes increment+publish together so concurrent workers can't publish progress
+        // out of order (the increment alone is atomic, but publishing it isn't tied to that
+        // order without a lock spanning both).
+        val progressMutex = Mutex()
 
         suspend fun updateProgress() {
-            val done = completed.incrementAndGet()
-            setProgress(workDataOf(KEY_PROGRESS_CURRENT to done, KEY_PROGRESS_TOTAL to total))
-            progressNotifier.update(done, total)
+            progressMutex.withLock {
+                val done = completed.incrementAndGet()
+                setProgress(workDataOf(KEY_PROGRESS_CURRENT to done, KEY_PROGRESS_TOTAL to total))
+                progressNotifier.update(done, total)
+            }
         }
 
         return try {
