@@ -237,9 +237,14 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             // Persisted separately from the WorkManager Data above (which is deleted off the
             // cache file once doWork() reads it) so a freshly (re)created ViewModel can tell
             // whether an already-running job is for its own manga set - see isRunningFor().
+            //
+            // Written with commit() rather than apply(): a concurrently (re)created ViewModel's
+            // isRunningFor() can already see isRunning() == true right after the enqueue above,
+            // so an async apply() would leave a window where active ids aren't visible yet and
+            // isRunningFor() wrongly returns false for this job's own manga set.
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
                 .putStringSet(KEY_ACTIVE_CURRENT_IDS, activeIds.mapTo(mutableSetOf()) { it.toString() })
-                .apply()
+                .commit()
             return true
         }
 
