@@ -30,6 +30,7 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.DataInputStream
@@ -52,7 +53,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_MIGRATION) {
         setSmallIcon(android.R.drawable.stat_notify_sync)
         setContentTitle(context.stringResource(MR.strings.action_migrate))
-        setContentText(context.stringResource(MR.strings.migrate_notification_starting))
+        setContentText(context.stringResource(TDMR.strings.migrate_notification_starting))
         setOngoing(true)
         setOnlyAlertOnce(true)
         addAction(
@@ -129,7 +130,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
                 .setOngoing(false)
                 .setProgress(0, 0, false)
                 .setContentText(
-                    context.stringResource(MR.strings.migrate_notification_result, completed.get(), total),
+                    context.stringResource(TDMR.strings.migrate_notification_result, completed.get(), total),
                 )
                 .clearActions()
             context.notify(Notifications.ID_MIGRATION_COMPLETE, notificationBuilder.build())
@@ -142,7 +143,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             notificationBuilder
                 .setOngoing(false)
                 .setProgress(0, 0, false)
-                .setContentText(e.message ?: context.stringResource(MR.strings.migrate_notification_failed))
+                .setContentText(e.message ?: context.stringResource(TDMR.strings.migrate_notification_failed))
                 .clearActions()
             context.notify(Notifications.ID_MIGRATION_COMPLETE, notificationBuilder.build())
             Result.failure()

@@ -38,6 +38,7 @@ import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.io.DataInputStream
@@ -73,7 +74,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
     private val notificationBuilder = context.notificationBuilder(Notifications.CHANNEL_MIGRATION) {
         setSmallIcon(android.R.drawable.stat_notify_sync)
         setContentTitle(context.stringResource(MR.strings.action_quick_migrate))
-        setContentText(context.stringResource(MR.strings.quick_migrate_notification_starting))
+        setContentText(context.stringResource(TDMR.strings.quick_migrate_notification_starting))
         setOngoing(true)
         setOnlyAlertOnce(true)
         addAction(
@@ -289,7 +290,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
                 .setProgress(0, 0, false)
                 .setContentText(
                     context.stringResource(
-                        MR.strings.quick_migrate_notification_result,
+                        TDMR.strings.quick_migrate_notification_result,
                         migrated,
                         targets.size,
                         removal.removed,
@@ -313,7 +314,7 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
             notificationBuilder
                 .setOngoing(false)
                 .setProgress(0, 0, false)
-                .setContentText(e.message ?: context.stringResource(MR.strings.quick_migrate_notification_failed))
+                .setContentText(e.message ?: context.stringResource(TDMR.strings.quick_migrate_notification_failed))
                 .clearActions()
             context.notify(Notifications.ID_QUICK_MIGRATE_COMPLETE, notificationBuilder.build())
             Result.failure()
