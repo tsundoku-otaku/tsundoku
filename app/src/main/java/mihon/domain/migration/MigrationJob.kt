@@ -196,7 +196,17 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         // WorkInfo is checked to tell that apart from a genuine enqueue - otherwise the caller has
         // no way to know its request was a no-op, and the active-ids below would clobber the
         // running job's own set out from under isRunningFor().
-        fun start(context: Context, pairs: List<Pair<Long, Long>>, replace: Boolean): Boolean {
+        //
+        // activeIds defaults to pairs' current-side ids but should be passed explicitly as the
+        // screen's full original manga selection: pairs only contains entries that had a
+        // successful search match, while isRunningFor() is compared against a freshly (re)created
+        // ViewModel's full ctor manga set, matches included or not.
+        fun start(
+            context: Context,
+            pairs: List<Pair<Long, Long>>,
+            replace: Boolean,
+            activeIds: Collection<Long> = pairs.map { it.first },
+        ): Boolean {
             val dataFile = File(context.cacheDir, "migration_job_${System.nanoTime()}.dat")
             DataOutputStream(dataFile.outputStream().buffered()).use { out ->
                 out.writeInt(pairs.size)
@@ -223,7 +233,7 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
             // cache file once doWork() reads it) so a freshly (re)created ViewModel can tell
             // whether an already-running job is for its own manga set - see isRunningFor().
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-                .putStringSet(KEY_ACTIVE_CURRENT_IDS, pairs.mapTo(mutableSetOf()) { it.first.toString() })
+                .putStringSet(KEY_ACTIVE_CURRENT_IDS, activeIds.mapTo(mutableSetOf()) { it.toString() })
                 .apply()
             return true
         }

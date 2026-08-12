@@ -46,7 +46,7 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
 class MigrationListViewModel(
-    mangaIds: Collection<Long>,
+    private val mangaIds: Collection<Long>,
     extraSearchQuery: String?,
     private val context: Context = Injekt.get(),
     private val preferences: SourcePreferences = Injekt.get(),
@@ -304,7 +304,10 @@ class MigrationListViewModel(
             // without this check, observeMigrationJob() below would attach to and report
             // completion of that unrelated job instead of this batch ever actually migrating.
             val started = try {
-                MigrationJob.start(context, pairs, replace)
+                // activeIds must be the screen's full original selection, not just pairs (which
+                // drops entries with no search match) - isRunningFor() in init() compares against
+                // that full set when a recreated ViewModel tries to reattach to this job.
+                MigrationJob.start(context, pairs, replace, activeIds = mangaIds)
             } catch (e: Exception) {
                 logcat(LogPriority.ERROR, e) { "Failed to start migration job" }
                 mutableState.update { it.copy(dialog = null) }
