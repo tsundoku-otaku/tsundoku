@@ -6,14 +6,12 @@ import kotlinx.coroutines.flow.combine
 import tachiyomi.core.common.util.lang.compareToWithCollator
 import tachiyomi.domain.source.model.Source
 import tachiyomi.domain.source.repository.SourceRepository
-import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.isLocal
 import java.util.Collections
 
 class GetNovelSourcesWithFavoriteCount(
     private val repository: SourceRepository,
     private val preferences: SourcePreferences,
-    @Suppress("unused") private val sourceManager: SourceManager,
 ) {
 
     fun subscribe(): Flow<List<Pair<Source, Long>>> {
