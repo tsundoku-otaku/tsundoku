@@ -69,19 +69,12 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
 
         val total = currentIds.size
         val completed = AtomicInteger(0)
-        var lastNotifyAt = 0L
+        val progressNotifier = MigrationProgressNotifier(context, Notifications.ID_MIGRATION_PROGRESS, notificationBuilder)
 
         suspend fun updateProgress() {
             val done = completed.incrementAndGet()
             setProgress(workDataOf(KEY_PROGRESS_CURRENT to done, KEY_PROGRESS_TOTAL to total))
-            val now = System.currentTimeMillis()
-            if (now - lastNotifyAt >= PROGRESS_NOTIFY_INTERVAL_MS || done >= total) {
-                lastNotifyAt = now
-                notificationBuilder
-                    .setContentText("$done/$total")
-                    .setProgress(total, done, false)
-                context.notify(Notifications.ID_MIGRATION_PROGRESS, notificationBuilder.build())
-            }
+            progressNotifier.update(done, total)
         }
 
         return try {
@@ -146,7 +139,6 @@ class MigrationJob(private val context: Context, workerParams: WorkerParameters)
         const val KEY_REPLACE = "replace"
         const val KEY_PROGRESS_CURRENT = "progress_current"
         const val KEY_PROGRESS_TOTAL = "progress_total"
-        private const val PROGRESS_NOTIFY_INTERVAL_MS = 500L
 
         fun start(context: Context, pairs: List<Pair<Long, Long>>, replace: Boolean) {
             val data = workDataOf(

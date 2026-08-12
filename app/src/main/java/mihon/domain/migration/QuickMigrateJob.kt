@@ -79,18 +79,12 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         )
     }
 
-    private var lastNotifyAt = 0L
+    private val progressNotifier =
+        MigrationProgressNotifier(context, Notifications.ID_QUICK_MIGRATE_PROGRESS, notificationBuilder)
 
     private suspend fun updateProgress(done: Int, total: Int) {
         setProgress(workDataOf(KEY_PROGRESS_CURRENT to done, KEY_PROGRESS_TOTAL to total))
-        val now = System.currentTimeMillis()
-        if (now - lastNotifyAt >= PROGRESS_NOTIFY_INTERVAL_MS || done >= total) {
-            lastNotifyAt = now
-            notificationBuilder
-                .setContentText("$done/$total")
-                .setProgress(total, done, false)
-            context.notify(Notifications.ID_QUICK_MIGRATE_PROGRESS, notificationBuilder.build())
-        }
+        progressNotifier.update(done, total)
     }
 
     override suspend fun doWork(): Result {
@@ -436,7 +430,6 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
         const val KEY_RESULT_MIGRATED = "result_migrated"
         const val KEY_RESULT_REMOVED = "result_removed"
         private const val UPDATE_CHUNK_SIZE = 200
-        private const val PROGRESS_NOTIFY_INTERVAL_MS = 500L
 
         fun start(
             context: Context,
