@@ -78,6 +78,10 @@ class MigrateMangaViewModel(
                 state.copy(source = sourceManager.getOrStub(sourceId))
             }
 
+            if (QuickMigrateJob.isRunning(context)) {
+                observeQuickMigrateJob(estimatedTotal = 0)
+            }
+
             getFavorites.subscribe(sourceId)
                 .catch {
                     logcat(LogPriority.ERROR, it)
@@ -171,13 +175,21 @@ class MigrateMangaViewModel(
             return
         }
 
+        observeQuickMigrateJob(estimatedTotal = mangaIds.size)
+    }
+
+    // Also used to reattach from init() when the app was reopened while a quick migrate started
+    // in a previous process was still running - the WorkManager job survives process death, but
+    // nothing was resubscribing to it, so the screen showed idle state instead of progress.
+    private fun observeQuickMigrateJob(estimatedTotal: Int) {
+        mutableState.update { it.copy(dialog = Dialog.QuickMigrateProgress(0f)) }
         quickMigrateJob = context.workManager.getWorkInfosForUniqueWorkFlow(QuickMigrateJob.TAG)
             .mapNotNull { it.firstOrNull() }
             .onEach { workInfo ->
                 when (workInfo.state) {
                     WorkInfo.State.RUNNING -> {
                         val current = workInfo.progress.getInt(QuickMigrateJob.KEY_PROGRESS_CURRENT, 0)
-                        val total = workInfo.progress.getInt(QuickMigrateJob.KEY_PROGRESS_TOTAL, mangaIds.size)
+                        val total = workInfo.progress.getInt(QuickMigrateJob.KEY_PROGRESS_TOTAL, estimatedTotal)
                         val fraction = if (total > 0) current.toFloat() / total else 0f
                         mutableState.update {
                             it.copy(dialog = Dialog.QuickMigrateProgress(fraction.coerceIn(0f, 1f)))

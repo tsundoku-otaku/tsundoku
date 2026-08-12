@@ -21,6 +21,7 @@ import eu.kanade.tachiyomi.ui.browse.migration.manga.quickMigrateSkipped
 import eu.kanade.tachiyomi.ui.browse.migration.manga.quickMigrateTargets
 import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.util.system.cancelNotification
+import eu.kanade.tachiyomi.util.system.isRunning
 import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.setForegroundSafely
@@ -464,6 +465,10 @@ class QuickMigrateJob(private val context: Context, workerParams: WorkerParamete
 
         fun stop(context: Context) {
             context.workManager.cancelUniqueWork(TAG)
+        }
+
+        fun isRunning(context: Context): Boolean {
+            return context.workManager.isRunning(TAG)
         }
     }
 }

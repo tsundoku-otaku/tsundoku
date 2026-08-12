@@ -105,7 +105,11 @@ class MigrationListViewModel(
                 .awaitAll()
                 .filterNotNull()
             mutableState.update { it.copy(items = manga) }
-            runMigrations(manga)
+            if (MigrationJob.isRunning(context)) {
+                observeMigrationJob(estimatedTotal = manga.size)
+            } else {
+                runMigrations(manga)
+            }
         }
     }
 
@@ -276,8 +280,15 @@ class MigrationListViewModel(
         }
         if (pairs.isEmpty()) return
 
-        mutableState.update { it.copy(dialog = Dialog.Progress(0f)) }
         MigrationJob.start(context, pairs, replace)
+        observeMigrationJob(estimatedTotal = pairs.size)
+    }
+
+    // Also used to reattach from init() when the app was reopened while a migration started in
+    // a previous process was still running - the WorkManager job survives process death, but
+    // nothing was resubscribing to it, so the screen showed idle state instead of progress.
+    private fun observeMigrationJob(estimatedTotal: Int) {
+        mutableState.update { it.copy(dialog = Dialog.Progress(0f)) }
 
         // Backed by a durable WorkManager job (with its own notification) rather than this
         // coroutine, so an accidental app kill mid-migration no longer loses whatever hadn't
@@ -288,7 +299,7 @@ class MigrationListViewModel(
                 when (workInfo.state) {
                     WorkInfo.State.RUNNING -> {
                         val current = workInfo.progress.getInt(MigrationJob.KEY_PROGRESS_CURRENT, 0)
-                        val total = workInfo.progress.getInt(MigrationJob.KEY_PROGRESS_TOTAL, pairs.size)
+                        val total = workInfo.progress.getInt(MigrationJob.KEY_PROGRESS_TOTAL, estimatedTotal)
                         val fraction = if (total > 0) current.toFloat() / total else 0f
                         mutableState.update { it.copy(dialog = Dialog.Progress(fraction.coerceIn(0f, 1f))) }
                     }
