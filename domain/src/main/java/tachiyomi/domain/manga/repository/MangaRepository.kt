@@ -128,7 +128,7 @@ interface MangaRepository {
         limit: Long,
     ): List<MangaWithChapterCount>
 
-    suspend fun findDuplicatesExact(): List<DuplicateGroup>
+    suspend fun findDuplicatesExact(includeBlank: Boolean = false): List<DuplicateGroup>
 
     suspend fun findDuplicatesContains(): List<DuplicatePair>
 
@@ -175,7 +175,7 @@ interface MangaRepository {
      * Find duplicates by URL within the same source.
      * Returns groups where multiple manga have the same URL from the same source.
      */
-    suspend fun findDuplicatesByUrl(): List<DuplicateGroup>
+    suspend fun findDuplicatesByUrl(includeBlank: Boolean = false): List<DuplicateGroup>
 
     /**
      * Get lightweight favorite genres for tag counting.

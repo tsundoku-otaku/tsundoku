@@ -1306,8 +1306,8 @@ class MangaRepositoryImpl(
         }.awaitAsList()
     }
 
-    override suspend fun findDuplicatesExact(): List<DuplicateGroup> {
-        return database.mangasQueries.findDuplicatesExact { normalizedTitle, ids, count ->
+    override suspend fun findDuplicatesExact(includeBlank: Boolean): List<DuplicateGroup> {
+        return database.mangasQueries.findDuplicatesExact(includeBlank) { normalizedTitle, ids, count ->
             DuplicateGroup(
                 normalizedTitle = normalizedTitle ?: "",
                 ids =
@@ -1415,8 +1415,8 @@ class MangaRepositoryImpl(
         }
     }
 
-    override suspend fun findDuplicatesByUrl(): List<DuplicateGroup> {
-        return database.mangasQueries.findDuplicatesByUrl { url, source, ids, count ->
+    override suspend fun findDuplicatesByUrl(includeBlank: Boolean): List<DuplicateGroup> {
+        return database.mangasQueries.findDuplicatesByUrl(includeBlank) { url, source, ids, count ->
             DuplicateGroup(
                 normalizedTitle = url, // Using URL as the group key
                 ids = ids.split(",").mapNotNull { id -> id.toLongOrNull() },

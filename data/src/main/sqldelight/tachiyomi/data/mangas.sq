@@ -311,7 +311,7 @@ SELECT
     CAST(group_concat(_id) AS TEXT) AS ids,
     count(*) AS duplicate_count
 FROM mangas
-WHERE favorite = 1
+WHERE favorite = 1 AND (:includeBlank OR trim(title) <> '')
 GROUP BY lower(trim(title))
 HAVING count(*) > 1
 ORDER BY duplicate_count DESC;
@@ -362,7 +362,7 @@ SELECT
     CAST(group_concat(_id) AS TEXT) AS ids,
     count(*) AS duplicate_count
 FROM mangas
-WHERE favorite = 1
+WHERE favorite = 1 AND (:includeBlank OR trim(url) <> '')
 GROUP BY url, source
 HAVING count(*) > 1
 ORDER BY duplicate_count DESC;
