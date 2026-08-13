@@ -178,6 +178,10 @@ class FindDuplicateNovels(
      * SQL groups by url+source), so two different-source groups can share a normalizedTitle;
      * disambiguate rather than letting `.associate` silently drop one group's ids.
      */
+    private fun List<DuplicateGroup>.filterOnlyBlank(onlyBlank: Boolean): List<DuplicateGroup> {
+        return if (onlyBlank) filter { it.normalizedTitle.isBlank() } else this
+    }
+
     private fun groupsToMap(groups: List<DuplicateGroup>): Map<String, List<Long>> {
         val result = LinkedHashMap<String, List<Long>>()
         groups.forEach { group ->
@@ -212,18 +216,13 @@ class FindDuplicateNovels(
         blankTitleFilter: BlankTitleFilter = BlankTitleFilter.EXCLUDE,
     ): DuplicateScanResult {
         val includeBlank = blankTitleFilter != BlankTitleFilter.EXCLUDE
+        val onlyBlank = blankTitleFilter == BlankTitleFilter.ONLY && mode != DuplicateMatchMode.CONTAINS
 
-        var rawGroups = when (mode) {
-            DuplicateMatchMode.EXACT -> groupsToMap(findExact(includeBlank))
-            DuplicateMatchMode.URL -> groupsToMap(findUrlDuplicates(includeBlank))
+        val rawGroups = when (mode) {
+            DuplicateMatchMode.EXACT -> groupsToMap(findExact(includeBlank).filterOnlyBlank(onlyBlank))
+            DuplicateMatchMode.URL -> groupsToMap(findUrlDuplicates(includeBlank).filterOnlyBlank(onlyBlank))
             DuplicateMatchMode.CONTAINS -> groupContainsPairs(findContains())
         }.filterValues { it.size > 1 }
-
-        // CONTAINS never groups blanks (findContains already excludes them), so a leftover ONLY
-        // filter from a previous EXACT/URL session would otherwise silently zero out the results.
-        if (blankTitleFilter == BlankTitleFilter.ONLY && mode != DuplicateMatchMode.CONTAINS) {
-            rawGroups = rawGroups.filterKeys { it.isBlank() }
-        }
 
         // Rank by chapter count BEFORE truncating so a group larger than MAX_GROUP_MEMBERS keeps
         // its highest-chapter-count entries instead of an arbitrary DB-order slice; total_count is

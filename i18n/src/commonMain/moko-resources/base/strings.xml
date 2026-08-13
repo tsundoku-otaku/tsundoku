@@ -937,7 +937,7 @@
     <string name="duplicate_blank_exclude">Exclude</string>
     <string name="duplicate_blank_include">Include</string>
     <string name="duplicate_blank_only">Only</string>
-    <string name="duplicate_group_truncated_selectable">Showing %1$d of %2$d..</string>
+    <string name="duplicate_group_truncated_selectable">Showing %1$d of %2$d.</string>
     <string name="duplicate_group_truncated_filtered">Showing %1$d of %2$d.</string>
     <string name="duplicate_filters_sort">Filters &amp; Sort</string>
     <string name="duplicate_type_label">Type:</string>
