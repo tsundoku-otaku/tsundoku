@@ -572,7 +572,6 @@ class DuplicateDetectionViewModel(
                         ids
                     }
                 }
-
                 val truncatedGroupExtraItems = if (cappedHiddenIdsByGroup.isEmpty()) {
                     emptyMap()
                 } else {
@@ -671,6 +670,21 @@ class DuplicateDetectionViewModel(
         }
         return ListingCategoryRestriction(includedIds = includedIds, excludedIds = excludedIds)
     }
+
+    private fun selectionItemGroups(state: State): List<List<SelItem>> {
+        return if (state.listingMode) {
+            val novelIds = state.novelSourceIds
+            val downloadCounts = state.mangaDownloadCounts
+            state.selectionGroups.mapNotNull { group ->
+                val filtered = when (state.contentType) {
+                    ContentType.ALL -> group
+                    ContentType.MANGA -> group.filter { it.source !in novelIds }
+                    ContentType.NOVEL -> group.filter { it.source in novelIds }
+                }.map { item -> item.copy(downloadCount = downloadCounts[item.id] ?: item.downloadCount) }
+                filtered.ifEmpty { null }
+            }
+        } else {
+            val readCounts = state.mangaReadCounts
             val downloadCounts = state.mangaDownloadCounts
             val canIncludeHiddenTail = state.canIncludeHiddenTail
             state.filteredDuplicateGroups.map { (key, group) ->
@@ -678,6 +692,26 @@ class DuplicateDetectionViewModel(
                     SelItem(
                         id = entry.manga.id,
                         source = entry.manga.source,
+                        chapterCount = entry.chapterCount.toInt(),
+                        readCount = readCounts[entry.manga.id] ?: entry.readCount.toInt(),
+                        downloadCount = downloadCounts[entry.manga.id] ?: 0,
+                    )
+                }
+                if (canIncludeHiddenTail) {
+                    materialized + (state.truncatedGroupExtraItems[key] ?: emptyList())
+                } else {
+                    materialized
+                }
+            }
+        }
+    }
+
+    fun setMatchMode(mode: DuplicateMatchMode) {
+        if (mode != state.value.matchMode) {
+            mutableState.update { it.copy(matchMode = mode, selection = emptySet()) }
+            loadDuplicates()
+        }
+    }
 
     fun setContentType(contentType: ContentType) {
         mutableState.update { it.copy(contentType = contentType, selection = emptySet()) }
@@ -755,7 +789,7 @@ class DuplicateDetectionViewModel(
     private fun buildIncludedTagsCsv(snapshot: LibraryFilterSnapshot): String {
         val incTags = snapshot.includedTags.map { it.trim() }.filter { it.isNotEmpty() }
         val allAscii = incTags.all { tag -> tag.all { it.code < 128 } }
-        return if (incTags.isNotEmpty() && allAscii) incTags.joinToString("") { it.lowercase() } else ""
+        return if (incTags.isNotEmpty() && allAscii) incTags.joinToString("\u001F") { it.lowercase() } else ""
     }
 
     private fun captureLibraryFilterSnapshot(): LibraryFilterSnapshot {
