@@ -20,6 +20,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - avoid list copies during backup restore [@mrissaoussama](https://github.com/mrissaoussama) [#389](https://github.com/tsundoku-otaku/tsundoku/pull/389)
 - Improve UI filter panel with scroll, apply library filters [@mrissaoussama](https://github.com/mrissaoussama) [#382](https://github.com/tsundoku-otaku/tsundoku/pull/382)
 - Asset-rewrite logic uses relative paths for chapter embedder/local novels [@mrissaoussama](https://github.com/mrissaoussama) [#385](https://github.com/tsundoku-otaku/tsundoku/pull/385)
+- Add blank title/URL filter and category dialog to duplicate detection - #393 [@mrissaoussama](https://github.com/mrissaoussama) [#393](https://github.com/tsundoku-otaku/tsundoku/pull/393)
 
 ### Fixed
 - Prevent crash with setting search on duplicate key [@mrissaoussama](https://github.com/mrissaoussama) [#383](https://github.com/tsundoku-otaku/tsundoku/pull/383)
