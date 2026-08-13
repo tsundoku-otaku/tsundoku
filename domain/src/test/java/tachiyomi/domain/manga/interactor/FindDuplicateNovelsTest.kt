@@ -65,6 +65,7 @@ class FindDuplicateNovelsTest {
         val hugeIds = (1L..5000L).toList()
         val hugeGroup = DuplicateGroup(normalizedTitle = "", ids = hugeIds, count = hugeIds.size)
         coEvery { mangaRepository.findDuplicatesExact(includeBlank = true) } returns listOf(hugeGroup)
+        coEvery { mangaRepository.getTotalCountsForIds(any()) } returns emptyList()
         coEvery { mangaRepository.getMangaWithCountsLightWithGenre(any()) } answers {
             val ids = firstArg<List<Long>>()
             ids.map { mangaWithCount(it, "") }
@@ -82,6 +83,7 @@ class FindDuplicateNovelsTest {
         val hugeIds = (1L..5000L).toList()
         val hugeGroup = DuplicateGroup(normalizedTitle = "", ids = hugeIds, count = hugeIds.size)
         coEvery { mangaRepository.findDuplicatesExact(includeBlank = true) } returns listOf(hugeGroup)
+        coEvery { mangaRepository.getTotalCountsForIds(any()) } returns emptyList()
         coEvery { mangaRepository.getMangaWithCountsLightWithGenre(any()) } answers {
             val ids = firstArg<List<Long>>()
             ids.map { mangaWithCount(it, "") }
@@ -92,4 +94,53 @@ class FindDuplicateNovelsTest {
         result.displayGroups[""]?.size shouldBe 2000
         result.fullGroupIds[""]?.size shouldBe 5000
     }
+
+    @Test
+    fun `truncation keeps the highest chapter-count members, not an arbitrary id-order slice`() =
+        kotlinx.coroutines.test.runTest {
+            val hugeIds = (1L..5000L).toList()
+            val hugeGroup = DuplicateGroup(normalizedTitle = "", ids = hugeIds, count = hugeIds.size)
+            coEvery { mangaRepository.findDuplicatesExact(includeBlank = true) } returns listOf(hugeGroup)
+            // The true best copy (id 4999) sits outside the first 2000 ids returned by the DB.
+            coEvery { mangaRepository.getTotalCountsForIds(any()) } returns
+                hugeIds.map { id -> id to if (id == 4999L) 999L else 1L }
+            coEvery { mangaRepository.getMangaWithCountsLightWithGenre(any()) } answers {
+                val ids = firstArg<List<Long>>()
+                ids.map { mangaWithCount(it, "") }
+            }
+
+            val result = findDuplicateNovels.findDuplicatesGrouped(DuplicateMatchMode.EXACT, BlankTitleFilter.INCLUDE)
+
+            result.displayGroups[""]?.map { it.manga.id } shouldBe listOf(4999L) +
+                (1L..1999L).toList()
+        }
+
+    @Test
+    fun `findSimilarTo includes blank titles even though findDuplicatesExact now defaults to excluding them`() =
+        kotlinx.coroutines.test.runTest {
+            val blankGroup = DuplicateGroup(normalizedTitle = "", ids = listOf(1L, 2L), count = 2)
+            coEvery { mangaRepository.findDuplicatesExact(includeBlank = true) } returns listOf(blankGroup)
+            coEvery { mangaRepository.findDuplicatesContains() } returns emptyList()
+            coEvery { mangaRepository.getMangaWithCounts(listOf(2L)) } returns listOf(mangaWithCount(2L, ""))
+
+            findDuplicateNovels.findSimilarTo(1L, "")
+
+            coVerify(exactly = 1) { mangaRepository.findDuplicatesExact(includeBlank = true) }
+        }
+
+    @Test
+    fun `URL groups sharing the same url key across sources are not collapsed into one`() =
+        kotlinx.coroutines.test.runTest {
+            val groupA = DuplicateGroup(normalizedTitle = "", ids = listOf(1L, 2L), count = 2)
+            val groupB = DuplicateGroup(normalizedTitle = "", ids = listOf(3L, 4L), count = 2)
+            coEvery { mangaRepository.findDuplicatesByUrl(includeBlank = true) } returns listOf(groupA, groupB)
+            coEvery { mangaRepository.getMangaWithCountsLightWithGenre(any()) } answers {
+                val ids = firstArg<List<Long>>()
+                ids.map { mangaWithCount(it, "") }
+            }
+
+            val result = findDuplicateNovels.findDuplicatesGrouped(DuplicateMatchMode.URL, BlankTitleFilter.INCLUDE)
+
+            result.fullGroupIds.values.flatten().toSet() shouldBe setOf(1L, 2L, 3L, 4L)
+        }
 }

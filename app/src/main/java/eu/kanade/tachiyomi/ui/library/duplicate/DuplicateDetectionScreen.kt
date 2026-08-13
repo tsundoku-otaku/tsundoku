@@ -969,11 +969,7 @@ class DuplicateDetectionScreen : Screen {
                             key = { it.first },
                         ) { (title, mangaList) ->
                             val fullGroupCount = state.fullGroupIds[title]?.size ?: mangaList.size
-                            val canSelectHiddenTail = state.searchQuery.isBlank() &&
-                                state.contentType == DuplicateDetectionViewModel.ContentType.ALL &&
-                                state.selectedCategoryFilters.isEmpty() &&
-                                state.excludedCategoryFilters.isEmpty() &&
-                                !state.applyLibraryFilters
+                            val canSelectHiddenTail = state.canIncludeHiddenTail
                             DuplicateGroupCard(
                                 groupTitle = title,
                                 mangaList = mangaList,

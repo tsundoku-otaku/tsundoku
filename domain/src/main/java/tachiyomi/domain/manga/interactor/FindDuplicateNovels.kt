@@ -90,7 +90,7 @@ class FindDuplicateNovels(
      * Returns novels in library that match or contain the title.
      */
     suspend fun findSimilarTo(mangaId: Long, title: String): List<MangaWithChapterCount> {
-        val exactMatches = mangaRepository.findDuplicatesExact()
+        val exactMatches = mangaRepository.findDuplicatesExact(includeBlank = true)
             .find { group -> group.ids.contains(mangaId) }
             ?.ids?.filter { it != mangaId }
             ?: emptyList()
@@ -173,6 +173,21 @@ class FindDuplicateNovels(
         return result
     }
 
+    /**
+     * Turns [DuplicateGroup]s into a key->ids map. URL-mode groups are keyed by URL alone (the
+     * SQL groups by url+source), so two different-source groups can share a normalizedTitle;
+     * disambiguate rather than letting `.associate` silently drop one group's ids.
+     */
+    private fun groupsToMap(groups: List<DuplicateGroup>): Map<String, List<Long>> {
+        val result = LinkedHashMap<String, List<Long>>()
+        groups.forEach { group ->
+            val baseKey = group.normalizedTitle
+            val key = if (result.containsKey(baseKey)) "$baseKey#${group.ids.first()}" else baseKey
+            result[key] = group.ids
+        }
+        return result
+    }
+
     private fun groupContainsPairs(pairs: List<DuplicatePair>): Map<String, List<Long>> {
         val groups = mutableMapOf<String, MutableSet<Long>>()
         pairs.forEach { pair ->
@@ -199,8 +214,8 @@ class FindDuplicateNovels(
         val includeBlank = blankTitleFilter != BlankTitleFilter.EXCLUDE
 
         var rawGroups = when (mode) {
-            DuplicateMatchMode.EXACT -> findExact(includeBlank).associate { it.normalizedTitle to it.ids }
-            DuplicateMatchMode.URL -> findUrlDuplicates(includeBlank).associate { it.normalizedTitle to it.ids }
+            DuplicateMatchMode.EXACT -> groupsToMap(findExact(includeBlank))
+            DuplicateMatchMode.URL -> groupsToMap(findUrlDuplicates(includeBlank))
             DuplicateMatchMode.CONTAINS -> groupContainsPairs(findContains())
         }.filterValues { it.size > 1 }
 
@@ -210,7 +225,17 @@ class FindDuplicateNovels(
             rawGroups = rawGroups.filterKeys { it.isBlank() }
         }
 
-        val cappedGroups = rawGroups.mapValues { (_, ids) -> ids.take(MAX_GROUP_MEMBERS) }
+        // Rank by chapter count BEFORE truncating so a group larger than MAX_GROUP_MEMBERS keeps
+        // its highest-chapter-count entries instead of an arbitrary DB-order slice; total_count is
+        // a cached column, so this is a cheap id-scoped lookup, not a full manga row fetch.
+        val cappedGroups = rawGroups.mapValues { (_, ids) ->
+            if (ids.size <= MAX_GROUP_MEMBERS) {
+                ids
+            } else {
+                val counts = mangaRepository.getTotalCountsForIds(ids).toMap()
+                ids.sortedByDescending { counts[it] ?: 0L }.take(MAX_GROUP_MEMBERS)
+            }
+        }
         val mangaMap = getMangaWithCountsLight(cappedGroups.values.flatten()).associateBy { it.manga.id }
 
         val displayGroups = cappedGroups.mapNotNull { (key, ids) ->

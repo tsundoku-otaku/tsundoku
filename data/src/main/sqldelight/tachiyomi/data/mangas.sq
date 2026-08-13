@@ -1092,6 +1092,21 @@ FROM mangas M
 JOIN mangas_categories MC ON MC.manga_id = M._id
 WHERE M.favorite = 1 AND MC.category_id IN :categoryIds;
 
+-- Targeted variant of getFavoriteSelectionMetrics scoped to a known id set (e.g. a truncated
+-- duplicate group's hidden tail), so hydrating a handful of ids doesn't require scanning every
+-- favorite in a huge library.
+getSelectionMetricsForIds:
+SELECT _id, source, title, total_count, read_count
+FROM mangas
+WHERE _id IN :ids;
+
+-- Cheap (_id, total_count) lookup scoped to a known id set, used to rank a duplicate group's
+-- members by chapter count before it gets truncated for display.
+getTotalCountsForIds:
+SELECT _id, total_count
+FROM mangas
+WHERE _id IN :ids;
+
 -- Ids of favorites matching the cheap/DB-expressible half of the Library screen's active filters
 -- (source exclusion, unread/started/completed/novel/chapter-count columns, and an included-tags
 -- SUPERSET prefilter using the same substring technique as libraryPageFiltered). Used to restrict a listing-mode

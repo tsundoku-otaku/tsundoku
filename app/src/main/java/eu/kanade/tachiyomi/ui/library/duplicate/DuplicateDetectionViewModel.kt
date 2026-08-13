@@ -146,6 +146,19 @@ class DuplicateDetectionViewModel(
         val precheckProgress: Pair<Int, Int>? = null,
     ) {
 
+        /**
+         * Safe to include a truncated group's hidden tail (in selection/select-all) only when no
+         * filter needs per-manga data (genre/category/download/etc.) to decide whether it matches,
+         * since full rows were never fetched for it. Single source of truth shared by the
+         * selection logic and the "Showing X of Y" UI hint so they can't silently desync.
+         */
+        val canIncludeHiddenTail: Boolean
+            get() = searchQuery.isBlank() &&
+                contentType == ContentType.ALL &&
+                selectedCategoryFilters.isEmpty() &&
+                excludedCategoryFilters.isEmpty() &&
+                !applyLibraryFilters
+
         fun computeFilteredGroups(): Map<String, List<MangaWithChapterCount>> {
             val visibleGroups = duplicateGroups.filterKeys { it !in dismissedGroups }
             val searchFiltered = if (searchQuery.isBlank()) {
@@ -551,7 +564,8 @@ class DuplicateDetectionViewModel(
                         if (truncated.isEmpty()) {
                             emptyMap()
                         } else {
-                            val metricsById = mangaRepository.getFavoriteSelectionMetrics(emptyList())
+                            val hiddenIds = truncated.values.flatten().filterNot { it in materializedIds }.distinct()
+                            val metricsById = mangaRepository.getSelectionMetricsForIds(hiddenIds)
                                 .associateBy { it.id }
                             truncated.mapValues { (_, ids) ->
                                 ids.filter { it !in materializedIds }.mapNotNull { id ->
@@ -656,13 +670,7 @@ class DuplicateDetectionViewModel(
             }
         } else {
             val readCounts = state.mangaReadCounts
-            // Safe only when no filter needs per-manga data (genre/category/download/etc.) to
-            // decide whether the hidden tail matches, since full rows were never fetched for it.
-            val canIncludeHiddenTail = state.searchQuery.isBlank() &&
-                state.contentType == ContentType.ALL &&
-                state.selectedCategoryFilters.isEmpty() &&
-                state.excludedCategoryFilters.isEmpty() &&
-                !state.applyLibraryFilters
+            val canIncludeHiddenTail = state.canIncludeHiddenTail
             state.filteredDuplicateGroups.map { (key, group) ->
                 val materialized = group.map { entry ->
                     SelItem(
@@ -920,8 +928,14 @@ class DuplicateDetectionViewModel(
     }
 
     fun selectGroup(groupTitle: String) {
-        val group = state.value.filteredDuplicateGroups[groupTitle] ?: return
-        val groupIds = group.map { it.manga.id }.toSet()
+        val snapshot = state.value
+        val group = snapshot.filteredDuplicateGroups[groupTitle] ?: return
+        val hiddenTailIds = if (snapshot.canIncludeHiddenTail) {
+            snapshot.truncatedGroupExtraItems[groupTitle]?.map { it.id } ?: emptyList()
+        } else {
+            emptyList()
+        }
+        val groupIds = (group.map { it.manga.id } + hiddenTailIds).toSet()
         mutableState.update { state ->
             val allSelected = groupIds.isNotEmpty() && state.selection.containsAll(groupIds)
             val newSelection = if (allSelected) state.selection - groupIds else state.selection + groupIds

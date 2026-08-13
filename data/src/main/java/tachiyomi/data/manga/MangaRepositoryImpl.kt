@@ -1415,6 +1415,32 @@ class MangaRepositoryImpl(
         }
     }
 
+    override suspend fun getSelectionMetricsForIds(ids: List<Long>): List<MangaSelectionMetric> {
+        if (ids.isEmpty()) return emptyList()
+        val mapper = { id: Long, source: Long, title: String, totalCount: Long, readCount: Long ->
+            MangaSelectionMetric(
+                id = id,
+                groupKey = title.trim().lowercase().ifBlank { id.toString() },
+                source = source,
+                title = title,
+                chapterCount = totalCount.toInt(),
+                readCount = readCount.toInt(),
+            )
+        }
+        return ids.chunked(500).flatMap { chunk ->
+            database.mangasQueries.getSelectionMetricsForIds(chunk, mapper).awaitAsList()
+        }
+    }
+
+    override suspend fun getTotalCountsForIds(ids: List<Long>): List<Pair<Long, Long>> {
+        if (ids.isEmpty()) return emptyList()
+        return ids.chunked(500).flatMap { chunk ->
+            database.mangasQueries.getTotalCountsForIds(chunk) { id, totalCount ->
+                id to totalCount
+            }.awaitAsList()
+        }
+    }
+
     override suspend fun findDuplicatesByUrl(includeBlank: Boolean): List<DuplicateGroup> {
         return database.mangasQueries.findDuplicatesByUrl(includeBlank) { url, source, ids, count ->
             DuplicateGroup(
