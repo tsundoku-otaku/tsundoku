@@ -101,6 +101,7 @@ class DuplicateDetectionViewModel(
         val source: Long,
         val chapterCount: Int,
         val readCount: Int,
+        val downloadCount: Int = 0,
     )
 
     data class State(
@@ -556,26 +557,44 @@ class DuplicateDetectionViewModel(
 
                 val readCounts = allMangaItems.associate { it.manga.id to it.readCount.toInt() }
 
-                // Only fetch metrics for a truncated group's hidden tail, and only when one exists.
                 val materializedIds = allMangaItems.mapTo(HashSet()) { it.manga.id }
-                val truncatedGroupExtraItems = fullGroupIds
-                    .filterValues { ids -> ids.any { it !in materializedIds } }
-                    .let { truncated ->
-                        if (truncated.isEmpty()) {
-                            emptyMap()
-                        } else {
-                            val hiddenIds = truncated.values.flatten().filterNot { it in materializedIds }.distinct()
-                            val metricsById = mangaRepository.getSelectionMetricsForIds(hiddenIds)
-                                .associateBy { it.id }
-                            truncated.mapValues { (_, ids) ->
-                                ids.filter { it !in materializedIds }.mapNotNull { id ->
-                                    metricsById[id]?.let {
-                                        SelItem(it.id, it.source, it.chapterCount, it.readCount)
-                                    }
-                                }
+                val hiddenIdsByGroup = fullGroupIds.mapValues { (_, ids) ->
+                    ids.filterNot { it in materializedIds }.distinct()
+                }.filterValues { it.isNotEmpty() }
+                val cappedHiddenIdsByGroup = hiddenIdsByGroup.mapValues { (_, ids) ->
+                    if (ids.size > HIDDEN_TAIL_METRICS_MAX) {
+                        logcat(LogPriority.WARN) {
+                            "loadDuplicates: hidden tail of ${ids.size} ids exceeds " +
+                                "$HIDDEN_TAIL_METRICS_MAX, truncating metrics hydration"
+                        }
+                        ids.take(HIDDEN_TAIL_METRICS_MAX)
+                    } else {
+                        ids
+                    }
+                }
+                val truncatedGroupExtraItems = if (cappedHiddenIdsByGroup.isEmpty()) {
+                    emptyMap()
+                } else {
+                    val allHiddenIds = cappedHiddenIdsByGroup.values.flatten().distinct()
+                    val metrics = mangaRepository.getSelectionMetricsForIds(allHiddenIds)
+                    val hiddenDownloadCounts = downloadManager.getDownloadCounts(
+                        metrics.map { Manga.create().copy(id = it.id, source = it.source, title = it.title) },
+                    )
+                    val metricsById = metrics.associateBy { it.id }
+                    cappedHiddenIdsByGroup.mapValues { (_, ids) ->
+                        ids.mapNotNull { id ->
+                            metricsById[id]?.let {
+                                SelItem(
+                                    it.id,
+                                    it.source,
+                                    it.chapterCount,
+                                    it.readCount,
+                                    hiddenDownloadCounts[it.id] ?: 0,
+                                )
                             }
                         }
                     }
+                }
 
                 mutableState.update {
                     it.copy(
@@ -660,16 +679,18 @@ class DuplicateDetectionViewModel(
     private fun selectionItemGroups(state: State): List<List<SelItem>> {
         return if (state.listingMode) {
             val novelIds = state.novelSourceIds
+            val downloadCounts = state.mangaDownloadCounts
             state.selectionGroups.mapNotNull { group ->
                 val filtered = when (state.contentType) {
                     ContentType.ALL -> group
                     ContentType.MANGA -> group.filter { it.source !in novelIds }
                     ContentType.NOVEL -> group.filter { it.source in novelIds }
-                }
+                }.map { item -> item.copy(downloadCount = downloadCounts[item.id] ?: item.downloadCount) }
                 filtered.ifEmpty { null }
             }
         } else {
             val readCounts = state.mangaReadCounts
+            val downloadCounts = state.mangaDownloadCounts
             val canIncludeHiddenTail = state.canIncludeHiddenTail
             state.filteredDuplicateGroups.map { (key, group) ->
                 val materialized = group.map { entry ->
@@ -678,6 +699,7 @@ class DuplicateDetectionViewModel(
                         source = entry.manga.source,
                         chapterCount = entry.chapterCount.toInt(),
                         readCount = readCounts[entry.manga.id] ?: entry.readCount.toInt(),
+                        downloadCount = downloadCounts[entry.manga.id] ?: 0,
                     )
                 }
                 if (canIncludeHiddenTail) {
@@ -886,27 +908,21 @@ class DuplicateDetectionViewModel(
     }
 
     fun selectLowestDownloadCount() {
-        val downloadCounts = state.value.mangaDownloadCounts
-        val ids = state.value.filteredDuplicateGroups.values
-            .mapNotNull { group ->
-                // Filter to only those with downloads > 0
-                val withDownloads = group.filter { (downloadCounts[it.manga.id] ?: 0) > 0 }
-                withDownloads.minByOrNull { downloadCounts[it.manga.id] ?: 0 }?.manga?.id
+        mutableState.update { state ->
+            val ids = selectionItemGroups(state).mapNotNullTo(HashSet()) { group ->
+                group.filter { it.downloadCount > 0 }.minByOrNull { it.downloadCount }?.id
             }
-            .toSet()
-        mutableState.update { it.copy(selection = ids) }
+            state.copy(selection = ids)
+        }
     }
 
     fun selectHighestDownloadCount() {
-        val downloadCounts = state.value.mangaDownloadCounts
-        val ids = state.value.filteredDuplicateGroups.values
-            .mapNotNull { group ->
-                // Filter to only those with downloads > 0
-                val withDownloads = group.filter { (downloadCounts[it.manga.id] ?: 0) > 0 }
-                withDownloads.maxByOrNull { downloadCounts[it.manga.id] ?: 0 }?.manga?.id
+        mutableState.update { state ->
+            val ids = selectionItemGroups(state).mapNotNullTo(HashSet()) { group ->
+                group.filter { it.downloadCount > 0 }.maxByOrNull { it.downloadCount }?.id
             }
-            .toSet()
-        mutableState.update { it.copy(selection = ids) }
+            state.copy(selection = ids)
+        }
     }
 
     fun selectLowestReadCount() {
@@ -1133,6 +1149,7 @@ class DuplicateDetectionViewModel(
         private const val UNCATEGORIZED_ID = 0L
         private const val TAG_PRECISE_RECHECK_MAX = 200_000
         private const val TAG_PRECHECK_CHUNK = 2000
+        private const val HIDDEN_TAIL_METRICS_MAX = 20_000
 
         fun matchesTagFilter(genre: List<String>?, snapshot: LibraryFilterSnapshot): Boolean {
             if (snapshot.includedTags.isEmpty() &&

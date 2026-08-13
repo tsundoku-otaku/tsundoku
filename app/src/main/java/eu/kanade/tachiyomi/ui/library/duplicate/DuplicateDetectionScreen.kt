@@ -968,7 +968,13 @@ class DuplicateDetectionScreen : Screen {
                             state.filteredDuplicateGroups.toList(),
                             key = { it.first },
                         ) { (title, mangaList) ->
-                            val fullGroupCount = state.fullGroupIds[title]?.size ?: mangaList.size
+                            val materializedGroupCount = state.duplicateGroups[title]?.size ?: mangaList.size
+                            val scanFullCount = state.fullGroupIds[title]?.size ?: materializedGroupCount
+                            val fullGroupCount = if (scanFullCount > materializedGroupCount) {
+                                scanFullCount
+                            } else {
+                                mangaList.size
+                            }
                             val canSelectHiddenTail = state.canIncludeHiddenTail
                             DuplicateGroupCard(
                                 groupTitle = title,
@@ -1035,12 +1041,14 @@ class DuplicateDetectionScreen : Screen {
                     navigator.push(CategoryScreen())
                 },
                 onConfirm = { addCategories, removeCategories ->
-                    val count = state.selection.size
-                    scope.launch {
-                        screenModel.moveSelectedToCategories(addCategories, removeCategories)
-                        snackbarHostState.showSnackbar(
-                            context.ctxStringResource(MR.strings.duplicate_moved_count, count),
-                        )
+                    if (addCategories.isNotEmpty() || removeCategories.isNotEmpty()) {
+                        val count = state.selection.size
+                        scope.launch {
+                            screenModel.moveSelectedToCategories(addCategories, removeCategories)
+                            snackbarHostState.showSnackbar(
+                                context.ctxStringResource(MR.strings.duplicate_moved_count, count),
+                            )
+                        }
                     }
                 },
             )
