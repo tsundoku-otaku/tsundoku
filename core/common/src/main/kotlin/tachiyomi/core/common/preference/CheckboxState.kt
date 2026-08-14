@@ -45,3 +45,23 @@ inline fun <T> T.asCheckboxState(condition: (T) -> Boolean): CheckboxState.State
 inline fun <T> List<T>.mapAsCheckboxState(condition: (T) -> Boolean): List<CheckboxState.State<T>> {
     return this.map { it.asCheckboxState(condition) }
 }
+
+/**
+ * Common/mixed/none tri-state for a bulk category-selection dialog: an item is [CheckboxState.State.Checked]
+ * only when present in every one of [perEntryIds], [CheckboxState.TriState.None] (mixed) when present in
+ * some but not all, otherwise [CheckboxState.State.None]. Shared so every bulk "move to category" style
+ * dialog computes this the same way.
+ */
+fun <T> List<T>.toCommonCheckboxState(idOf: (T) -> Long, perEntryIds: List<Set<Long>>): List<CheckboxState<T>> {
+    if (perEntryIds.isEmpty()) return this.map { CheckboxState.State.None(it) }
+    val common = perEntryIds.reduce { a, b -> a intersect b }
+    val union = perEntryIds.flatten().toSet()
+    return this.map {
+        val id = idOf(it)
+        when {
+            id in common -> CheckboxState.State.Checked(it)
+            id in union -> CheckboxState.TriState.None(it)
+            else -> CheckboxState.State.None(it)
+        }
+    }
+}

@@ -937,8 +937,8 @@
     <string name="duplicate_blank_label">Blank titles/URLs:</string>
     <string name="duplicate_blank_exclude">Exclude</string>
     <string name="duplicate_blank_include">Include</string>
-    <string name="duplicate_group_truncated_selectable">Showing %1$d of %2$d.</string>
-    <string name="duplicate_group_truncated_filtered">Showing %1$d of %2$d.</string>
+    <string name="duplicate_group_truncated_selectable">Showing %1$d of %2$d. Hidden entries are still included in bulk actions.</string>
+    <string name="duplicate_group_truncated_filtered">Showing %1$d of %2$d. Hidden entries are excluded from bulk actions while a filter is active.</string>
     <string name="duplicate_filters_sort">Filters &amp; Sort</string>
     <string name="duplicate_type_label">Type:</string>
     <string name="duplicate_type_all">All</string>
@@ -973,6 +973,7 @@
     <string name="duplicate_urls_copied">%d URLs copied</string>
     <string name="duplicate_deleted_count">Deleted %d entries</string>
     <string name="duplicate_moved_count">Moved %d entries</string>
+    <string name="duplicate_move_failed">Failed to move some entries to categories</string>
     <string name="duplicate_n_in_group">%d entries in this group</string>
     <string name="duplicate_select_group">Select Group</string>
     <string name="duplicate_original">ORIGINAL</string>

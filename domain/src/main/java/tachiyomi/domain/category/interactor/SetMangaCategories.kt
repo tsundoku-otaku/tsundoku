@@ -51,8 +51,8 @@ class SetMangaCategories(
      * @param skipRefresh If true, skip the library refresh. Useful for batch operations
      *                    where the caller will handle refresh at the end.
      */
-    suspend fun add(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false) {
-        try {
+    suspend fun add(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false): Boolean {
+        return try {
             mangaRepository.addMangasCategories(mangaIds, categoryIds)
             if (!skipRefresh) {
                 getLibraryManga.applyCategoryUpdates(
@@ -61,8 +61,10 @@ class SetMangaCategories(
                     removeCategories = emptyList(),
                 )
             }
+            true
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
+            false
         }
     }
 
@@ -71,8 +73,8 @@ class SetMangaCategories(
      * @param skipRefresh If true, skip the library refresh. Useful for batch operations
      *                    where the caller will handle refresh at the end.
      */
-    suspend fun remove(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false) {
-        try {
+    suspend fun remove(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false): Boolean {
+        return try {
             mangaRepository.removeMangasCategories(mangaIds, categoryIds)
             if (!skipRefresh) {
                 getLibraryManga.applyCategoryUpdates(
@@ -81,8 +83,10 @@ class SetMangaCategories(
                     removeCategories = categoryIds,
                 )
             }
+            true
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
+            false
         }
     }
 

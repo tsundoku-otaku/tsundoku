@@ -1,5 +1,7 @@
 package tachiyomi.domain.manga.interactor
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import tachiyomi.domain.manga.model.MangaWithChapterCount
 import tachiyomi.domain.manga.repository.DuplicateGroup
 import tachiyomi.domain.manga.repository.DuplicatePair
@@ -106,8 +108,14 @@ class FindDuplicateNovels(
             .distinct()
 
         val allMatchIds = (exactMatches + containsMatches).distinct()
+        val cappedMatchIds = if (allMatchIds.size <= MAX_GROUP_MEMBERS) {
+            allMatchIds
+        } else {
+            val counts = mangaRepository.getTotalCountsForIds(allMatchIds).toMap()
+            allMatchIds.sortedByDescending { counts[it] ?: 0L }.take(MAX_GROUP_MEMBERS)
+        }
 
-        return getMangaWithCounts(allMatchIds).sortedByDescending { it.chapterCount }
+        return getMangaWithCounts(cappedMatchIds).sortedByDescending { it.chapterCount }
     }
 
     /**
@@ -231,22 +239,27 @@ class FindDuplicateNovels(
         var runningTotal = 0
         val keptGroups = LinkedHashMap<String, List<Long>>()
         for (entry in orderedGroups) {
-            if (runningTotal >= MAX_TOTAL_MATERIALIZED_IDS) break
+            val size = entry.value.size.coerceAtMost(MAX_GROUP_MEMBERS)
+            if (keptGroups.isNotEmpty() && runningTotal + size > MAX_TOTAL_MATERIALIZED_IDS) break
             keptGroups[entry.key] = entry.value
-            runningTotal += entry.value.size.coerceAtMost(MAX_GROUP_MEMBERS)
+            runningTotal += size
         }
         val truncated = keptGroups.size < rawGroups.size
 
         // Rank by chapter count BEFORE truncating so a group larger than MAX_GROUP_MEMBERS keeps
         // its highest-chapter-count entries instead of an arbitrary DB-order slice; total_count is
         // a cached column, so this is a cheap id-scoped lookup, not a full manga row fetch.
-        val cappedGroups = keptGroups.mapValues { (_, ids) ->
-            if (ids.size <= MAX_GROUP_MEMBERS) {
-                ids
-            } else {
-                val counts = mangaRepository.getTotalCountsForIds(ids).toMap()
-                ids.sortedByDescending { counts[it] ?: 0L }.take(MAX_GROUP_MEMBERS)
-            }
+        val cappedGroups = coroutineScope {
+            keptGroups.mapValues { (_, ids) ->
+                async {
+                    if (ids.size <= MAX_GROUP_MEMBERS) {
+                        ids
+                    } else {
+                        val counts = mangaRepository.getTotalCountsForIds(ids).toMap()
+                        ids.sortedByDescending { counts[it] ?: 0L }.take(MAX_GROUP_MEMBERS)
+                    }
+                }
+            }.mapValues { (_, deferred) -> deferred.await() }
         }
         val mangaMap = getMangaWithCountsLight(cappedGroups.values.flatten()).associateBy { it.manga.id }
 

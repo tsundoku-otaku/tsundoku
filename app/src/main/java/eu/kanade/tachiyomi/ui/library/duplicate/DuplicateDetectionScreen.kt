@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.library.duplicate
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -10,6 +11,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -83,6 +87,7 @@ import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.launch
 import tachiyomi.core.common.preference.CheckboxState
+import tachiyomi.core.common.preference.toCommonCheckboxState
 import tachiyomi.domain.manga.interactor.BlankTitleFilter
 import tachiyomi.domain.manga.interactor.DuplicateMatchMode
 import tachiyomi.domain.manga.model.MangaWithChapterCount
@@ -1044,10 +1049,13 @@ class DuplicateDetectionScreen : Screen {
                     if (addCategories.isNotEmpty() || removeCategories.isNotEmpty()) {
                         val count = state.selection.size
                         scope.launch {
-                            screenModel.moveSelectedToCategories(addCategories, removeCategories)
-                            snackbarHostState.showSnackbar(
-                                context.ctxStringResource(MR.strings.duplicate_moved_count, count),
-                            )
+                            val success = screenModel.moveSelectedToCategories(addCategories, removeCategories)
+                            val message = if (success) {
+                                context.ctxStringResource(MR.strings.duplicate_moved_count, count)
+                            } else {
+                                context.ctxStringResource(MR.strings.duplicate_move_failed)
+                            }
+                            snackbarHostState.showSnackbar(message)
                         }
                     }
                 },
@@ -1062,17 +1070,10 @@ private fun categorySelectionFor(
     val selectedIds = state.selection
     if (selectedIds.isEmpty()) return state.categories.map { CheckboxState.State.None(it) }
 
-    val perManga = selectedIds.map { state.mangaCategoryIdSets[it] ?: setOf(0L) }
-    val common = perManga.reduce { a, b -> a intersect b }
-    val union = perManga.flatten().toSet()
-
-    return state.categories.map {
-        when {
-            it.id in common -> CheckboxState.State.Checked(it)
-            it.id in union -> CheckboxState.TriState.None(it)
-            else -> CheckboxState.State.None(it)
-        }
-    }
+    // Hidden-tail selections have no materialized category data; skip them rather than assuming
+    // Uncategorized, which would wrongly drag a category that's actually common down to "mixed".
+    val perManga = selectedIds.mapNotNull { state.mangaCategoryIdSets[it] }
+    return state.categories.toCommonCheckboxState({ it.id }, perManga)
 }
 
 @Composable

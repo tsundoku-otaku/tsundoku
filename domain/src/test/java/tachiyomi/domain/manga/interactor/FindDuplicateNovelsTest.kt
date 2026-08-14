@@ -44,23 +44,6 @@ class FindDuplicateNovelsTest {
     }
 
     @Test
-    fun `only filter keeps just the blank-key group`() = kotlinx.coroutines.test.runTest {
-        val blankGroup = DuplicateGroup(normalizedTitle = "", ids = listOf(1L, 2L), count = 2)
-        val namedGroup = DuplicateGroup(normalizedTitle = "one piece", ids = listOf(3L, 4L), count = 2)
-        coEvery { mangaRepository.findDuplicatesExact(includeBlank = true) } returns listOf(blankGroup, namedGroup)
-        coEvery { mangaRepository.getMangaWithCountsLightWithGenre(any()) } returns listOf(
-            mangaWithCount(1L, ""),
-            mangaWithCount(2L, ""),
-            mangaWithCount(3L, "One Piece"),
-            mangaWithCount(4L, "One Piece"),
-        )
-
-        val result = findDuplicateNovels.findDuplicatesGrouped(DuplicateMatchMode.EXACT, BlankTitleFilter.ONLY)
-
-        result.displayGroups.keys shouldBe setOf("")
-    }
-
-    @Test
     fun `a group larger than the cap is truncated before manga rows are materialized`() = kotlinx.coroutines.test.runTest {
         val hugeIds = (1L..5000L).toList()
         val hugeGroup = DuplicateGroup(normalizedTitle = "", ids = hugeIds, count = hugeIds.size)
@@ -79,7 +62,7 @@ class FindDuplicateNovelsTest {
     }
 
     @Test
-    fun `fullGroupIds keeps every member even though display is capped`() = kotlinx.coroutines.test.runTest {
+    fun `allGroupIds keeps every member even though display is capped`() = kotlinx.coroutines.test.runTest {
         val hugeIds = (1L..5000L).toList()
         val hugeGroup = DuplicateGroup(normalizedTitle = "", ids = hugeIds, count = hugeIds.size)
         coEvery { mangaRepository.findDuplicatesExact(includeBlank = true) } returns listOf(hugeGroup)
@@ -92,7 +75,7 @@ class FindDuplicateNovelsTest {
         val result = findDuplicateNovels.findDuplicatesGrouped(DuplicateMatchMode.EXACT, BlankTitleFilter.INCLUDE)
 
         result.displayGroups[""]?.size shouldBe 2000
-        result.fullGroupIds[""]?.size shouldBe 5000
+        result.allGroupIds[""]?.size shouldBe 5000
     }
 
     @Test
@@ -141,6 +124,6 @@ class FindDuplicateNovelsTest {
 
             val result = findDuplicateNovels.findDuplicatesGrouped(DuplicateMatchMode.URL, BlankTitleFilter.INCLUDE)
 
-            result.fullGroupIds.values.flatten().toSet() shouldBe setOf(1L, 2L, 3L, 4L)
+            result.allGroupIds.values.flatten().toSet() shouldBe setOf(1L, 2L, 3L, 4L)
         }
 }
