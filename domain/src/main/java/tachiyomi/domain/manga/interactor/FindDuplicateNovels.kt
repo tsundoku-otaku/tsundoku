@@ -19,13 +19,14 @@ enum class BlankTitleFilter {
 /**
  * [displayGroups] is capped per-group and in total group count, so neither one pathological group
  * nor many small ones can materialize more than [MAX_TOTAL_MATERIALIZED_IDS] full manga rows.
- * [fullGroupIds] mirrors the same surviving subset uncapped per-group, for callers that don't need
- * full manga rows (bulk select/delete/move). [truncated]/[totalGroups] let the caller show "N of M
- * groups" instead of silently dropping some.
+ * [allGroupIds] has every id in every duplicate group, uncapped, including groups that didn't make
+ * it into [displayGroups] at all: callers that only need ids (bulk select/delete/move) aren't
+ * bound by the display cap. [truncated]/[totalGroups] let the caller show "N of M groups" instead
+ * of silently dropping some.
  */
 data class DuplicateScanResult(
     val displayGroups: Map<String, List<MangaWithChapterCount>>,
-    val fullGroupIds: Map<String, List<Long>>,
+    val allGroupIds: Map<String, List<Long>>,
     val truncated: Boolean = false,
     val totalGroups: Int = 0,
 )
@@ -254,9 +255,7 @@ class FindDuplicateNovels(
             if (mangaList.size > 1) key to mangaList.sortedByDescending { it.chapterCount } else null
         }.toMap()
 
-        val fullGroupIds = keptGroups.filterKeys { it in displayGroups }
-
-        return DuplicateScanResult(displayGroups, fullGroupIds, truncated, rawGroups.size)
+        return DuplicateScanResult(displayGroups, rawGroups, truncated, rawGroups.size)
     }
 
     companion object {

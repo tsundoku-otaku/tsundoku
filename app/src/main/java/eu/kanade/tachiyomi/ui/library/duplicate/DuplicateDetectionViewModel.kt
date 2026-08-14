@@ -142,9 +142,13 @@ class DuplicateDetectionViewModel(
         val scanTotalGroups: Int = 0,
         val blankTitleFilter: BlankTitleFilter = BlankTitleFilter.EXCLUDE,
         val selectionGroups: List<List<SelItem>> = emptyList(),
-        /** Non-listing mode only: every id in each duplicate group, uncapped (see [DuplicateScanResult]). */
-        val fullGroupIds: Map<String, List<Long>> = emptyMap(),
-        /** Members of a truncated group beyond the materialized cap, keyed by group; empty when nothing was capped. */
+        /** Non-listing mode only: every id in every duplicate group, uncapped (see [DuplicateScanResult]). */
+        val allGroupIds: Map<String, List<Long>> = emptyMap(),
+        /**
+         * Members not covered by [duplicateGroups], keyed by group: either the tail of a group
+         * truncated past the per-group materialization cap, or (for a group dropped entirely by
+         * the total-group cap) every one of its members. Empty when nothing was capped.
+         */
         val truncatedGroupExtraItems: Map<String, List<SelItem>> = emptyMap(),
         /** (scanned, total) while the precise tag recheck is running over a large candidate set. */
         val precheckProgress: Pair<Int, Int>? = null,
@@ -436,7 +440,7 @@ class DuplicateDetectionViewModel(
                     mangaDownloadCounts = emptyMap(),
                     mangaReadCounts = emptyMap(),
                     selectionGroups = emptyList(),
-                    fullGroupIds = emptyMap(),
+                    allGroupIds = emptyMap(),
                     truncatedGroupExtraItems = emptyMap(),
                     precheckProgress = null,
                 )
@@ -447,7 +451,7 @@ class DuplicateDetectionViewModel(
                 var scanGroupsTruncated = false
                 var scanTotalGroups = 0
                 var selectionGroups = emptyList<List<SelItem>>()
-                var fullGroupIds: Map<String, List<Long>> = emptyMap()
+                var allGroupIds: Map<String, List<Long>> = emptyMap()
                 val groups = if (state.value.listingMode) {
                     val restriction = resolveListingCategoryRestriction(state.value)
                     val rawMetrics = mangaRepository.getFavoriteSelectionMetrics(restriction.dbCategoryIds)
@@ -534,7 +538,7 @@ class DuplicateDetectionViewModel(
                         state.value.matchMode,
                         state.value.blankTitleFilter,
                     )
-                    fullGroupIds = scanResult.fullGroupIds
+                    allGroupIds = scanResult.allGroupIds
                     scanGroupsTruncated = scanResult.truncated
                     scanTotalGroups = scanResult.totalGroups
                     scanResult.displayGroups
@@ -565,18 +569,27 @@ class DuplicateDetectionViewModel(
                 val readCounts = allMangaItems.associate { it.manga.id to it.readCount.toInt() }
 
                 val materializedIds = allMangaItems.mapTo(HashSet()) { it.manga.id }
-                val hiddenIdsByGroup = fullGroupIds.mapValues { (_, ids) ->
+                // A group either has a materialized tail beyond the per-group display cap, or (if
+                // the total-group cap dropped it entirely) every one of its members is "hidden".
+                val hiddenIdsByGroup = allGroupIds.mapValues { (_, ids) ->
                     ids.filterNot { it in materializedIds }.distinct()
                 }.filterValues { it.isNotEmpty() }
-                val cappedHiddenIdsByGroup = hiddenIdsByGroup.mapValues { (_, ids) ->
-                    if (ids.size > HIDDEN_TAIL_METRICS_MAX) {
-                        logcat(LogPriority.WARN) {
-                            "loadDuplicates: hidden tail of ${ids.size} ids exceeds " +
-                                "$HIDDEN_TAIL_METRICS_MAX, truncating metrics hydration"
-                        }
-                        ids.take(HIDDEN_TAIL_METRICS_MAX)
-                    } else {
-                        ids
+                val perGroupCapped = hiddenIdsByGroup.mapValues { (_, ids) ->
+                    if (ids.size > HIDDEN_TAIL_METRICS_MAX) ids.take(HIDDEN_TAIL_METRICS_MAX) else ids
+                }
+                // Many small dropped groups can sum to as many ids as one big one; cap the total
+                // hydrated too, biggest tails first (same "worst offenders first" as the scan cap).
+                var hiddenRunningTotal = 0
+                val cappedHiddenIdsByGroup = LinkedHashMap<String, List<Long>>()
+                for (entry in perGroupCapped.entries.sortedByDescending { it.value.size }) {
+                    if (hiddenRunningTotal >= HIDDEN_TAIL_TOTAL_MAX) break
+                    cappedHiddenIdsByGroup[entry.key] = entry.value
+                    hiddenRunningTotal += entry.value.size
+                }
+                if (cappedHiddenIdsByGroup.size < hiddenIdsByGroup.size || perGroupCapped.any { (k, v) -> v.size < hiddenIdsByGroup[k]?.size ?: 0 }) {
+                    logcat(LogPriority.WARN) {
+                        "loadDuplicates: hidden tail exceeds caps ($HIDDEN_TAIL_METRICS_MAX/group, " +
+                            "$HIDDEN_TAIL_TOTAL_MAX total), some entries won't be selectable"
                     }
                 }
                 val truncatedGroupExtraItems = if (cappedHiddenIdsByGroup.isEmpty()) {
@@ -620,7 +633,7 @@ class DuplicateDetectionViewModel(
                         scanGroupsTruncated = scanGroupsTruncated,
                         scanTotalGroups = scanTotalGroups,
                         selectionGroups = selectionGroups,
-                        fullGroupIds = fullGroupIds,
+                        allGroupIds = allGroupIds,
                         truncatedGroupExtraItems = truncatedGroupExtraItems,
                         precheckProgress = null,
                     )
@@ -638,7 +651,7 @@ class DuplicateDetectionViewModel(
                         scanGroupsTruncated = false,
                         scanTotalGroups = 0,
                         selectionGroups = emptyList(),
-                        fullGroupIds = emptyMap(),
+                        allGroupIds = emptyMap(),
                         truncatedGroupExtraItems = emptyMap(),
                     )
                 }
@@ -698,7 +711,7 @@ class DuplicateDetectionViewModel(
             val readCounts = state.mangaReadCounts
             val downloadCounts = state.mangaDownloadCounts
             val canIncludeHiddenTail = state.canIncludeHiddenTail
-            state.filteredDuplicateGroups.map { (key, group) ->
+            val visible = state.filteredDuplicateGroups.map { (key, group) ->
                 val materialized = group.map { entry ->
                     SelItem(
                         id = entry.manga.id,
@@ -713,6 +726,17 @@ class DuplicateDetectionViewModel(
                 } else {
                     materialized
                 }
+            }
+            if (!canIncludeHiddenTail) {
+                visible
+            } else {
+                // Groups dropped entirely by the total-group cap have no materialized rows at all,
+                // so they never show up in filteredDuplicateGroups above; their hidden tail IS the
+                // whole group.
+                val whollyHidden = state.truncatedGroupExtraItems
+                    .filterKeys { it !in state.filteredDuplicateGroups }
+                    .values
+                visible + whollyHidden
             }
         }
     }
@@ -1156,6 +1180,7 @@ class DuplicateDetectionViewModel(
         private const val TAG_PRECISE_RECHECK_MAX = 200_000
         private const val TAG_PRECHECK_CHUNK = 2000
         private const val HIDDEN_TAIL_METRICS_MAX = 20_000
+        private const val HIDDEN_TAIL_TOTAL_MAX = 200_000
 
         fun matchesTagFilter(genre: List<String>?, snapshot: LibraryFilterSnapshot): Boolean {
             if (snapshot.includedTags.isEmpty() &&

@@ -969,7 +969,7 @@ class DuplicateDetectionScreen : Screen {
                             key = { it.first },
                         ) { (title, mangaList) ->
                             val materializedGroupCount = state.duplicateGroups[title]?.size ?: mangaList.size
-                            val scanFullCount = state.fullGroupIds[title]?.size ?: materializedGroupCount
+                            val scanFullCount = state.allGroupIds[title]?.size ?: materializedGroupCount
                             val fullGroupCount = if (scanFullCount > materializedGroupCount) {
                                 scanFullCount
                             } else {
