@@ -14,17 +14,20 @@ enum class DuplicateMatchMode {
 enum class BlankTitleFilter {
     EXCLUDE, // Default; avoids one giant false-duplicate group of every blank title/URL
     INCLUDE,
-    ONLY,
 }
 
 /**
- * [displayGroups] is capped per-group to avoid materializing a pathologically large group (e.g.
- * hundreds of thousands of blank titles) into full manga rows. [fullGroupIds] keeps every id in
- * each surviving group, uncapped, for callers that don't need full manga rows (bulk select/delete/move).
+ * [displayGroups] is capped per-group and in total group count, so neither one pathological group
+ * nor many small ones can materialize more than [MAX_TOTAL_MATERIALIZED_IDS] full manga rows.
+ * [fullGroupIds] mirrors the same surviving subset uncapped per-group, for callers that don't need
+ * full manga rows (bulk select/delete/move). [truncated]/[totalGroups] let the caller show "N of M
+ * groups" instead of silently dropping some.
  */
 data class DuplicateScanResult(
     val displayGroups: Map<String, List<MangaWithChapterCount>>,
     val fullGroupIds: Map<String, List<Long>>,
+    val truncated: Boolean = false,
+    val totalGroups: Int = 0,
 )
 
 /**
@@ -178,10 +181,6 @@ class FindDuplicateNovels(
      * SQL groups by url+source), so two different-source groups can share a normalizedTitle;
      * disambiguate rather than letting `.associate` silently drop one group's ids.
      */
-    private fun List<DuplicateGroup>.filterOnlyBlank(onlyBlank: Boolean): List<DuplicateGroup> {
-        return if (onlyBlank) filter { it.normalizedTitle.isBlank() } else this
-    }
-
     private fun groupsToMap(groups: List<DuplicateGroup>): Map<String, List<Long>> {
         val result = LinkedHashMap<String, List<Long>>()
         groups.forEach { group ->
@@ -216,18 +215,31 @@ class FindDuplicateNovels(
         blankTitleFilter: BlankTitleFilter = BlankTitleFilter.EXCLUDE,
     ): DuplicateScanResult {
         val includeBlank = blankTitleFilter != BlankTitleFilter.EXCLUDE
-        val onlyBlank = blankTitleFilter == BlankTitleFilter.ONLY && mode != DuplicateMatchMode.CONTAINS
 
         val rawGroups = when (mode) {
-            DuplicateMatchMode.EXACT -> groupsToMap(findExact(includeBlank).filterOnlyBlank(onlyBlank))
-            DuplicateMatchMode.URL -> groupsToMap(findUrlDuplicates(includeBlank).filterOnlyBlank(onlyBlank))
+            DuplicateMatchMode.EXACT -> groupsToMap(findExact(includeBlank))
+            DuplicateMatchMode.URL -> groupsToMap(findUrlDuplicates(includeBlank))
             DuplicateMatchMode.CONTAINS -> groupContainsPairs(findContains())
         }.filterValues { it.size > 1 }
+
+        // A mass-imported library can surface thousands of small real duplicate groups; their
+        // combined member count is just as heap-dangerous as one giant group, so cap the total
+        // across groups too, not just per-group. Largest groups first: the biggest offenders are
+        // what the user is here to fix, and they'd otherwise be crowded out by many tiny ones.
+        val orderedGroups = rawGroups.entries.sortedByDescending { it.value.size }
+        var runningTotal = 0
+        val keptGroups = LinkedHashMap<String, List<Long>>()
+        for (entry in orderedGroups) {
+            if (runningTotal >= MAX_TOTAL_MATERIALIZED_IDS) break
+            keptGroups[entry.key] = entry.value
+            runningTotal += entry.value.size.coerceAtMost(MAX_GROUP_MEMBERS)
+        }
+        val truncated = keptGroups.size < rawGroups.size
 
         // Rank by chapter count BEFORE truncating so a group larger than MAX_GROUP_MEMBERS keeps
         // its highest-chapter-count entries instead of an arbitrary DB-order slice; total_count is
         // a cached column, so this is a cheap id-scoped lookup, not a full manga row fetch.
-        val cappedGroups = rawGroups.mapValues { (_, ids) ->
+        val cappedGroups = keptGroups.mapValues { (_, ids) ->
             if (ids.size <= MAX_GROUP_MEMBERS) {
                 ids
             } else {
@@ -242,12 +254,13 @@ class FindDuplicateNovels(
             if (mangaList.size > 1) key to mangaList.sortedByDescending { it.chapterCount } else null
         }.toMap()
 
-        val fullGroupIds = rawGroups.filterKeys { it in displayGroups }
+        val fullGroupIds = keptGroups.filterKeys { it in displayGroups }
 
-        return DuplicateScanResult(displayGroups, fullGroupIds)
+        return DuplicateScanResult(displayGroups, fullGroupIds, truncated, rawGroups.size)
     }
 
     companion object {
         private const val MAX_GROUP_MEMBERS = 2000
+        private const val MAX_TOTAL_MATERIALIZED_IDS = 20_000
     }
 }

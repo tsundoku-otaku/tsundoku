@@ -137,6 +137,9 @@ class DuplicateDetectionViewModel(
         val listingMode: Boolean = false,
         val listingTruncated: Boolean = false,
         val listingTotalMatches: Int = 0,
+        /** Non-listing mode only: set when there were more duplicate groups than could be materialized. */
+        val scanGroupsTruncated: Boolean = false,
+        val scanTotalGroups: Int = 0,
         val blankTitleFilter: BlankTitleFilter = BlankTitleFilter.EXCLUDE,
         val selectionGroups: List<List<SelItem>> = emptyList(),
         /** Non-listing mode only: every id in each duplicate group, uncapped (see [DuplicateScanResult]). */
@@ -441,6 +444,8 @@ class DuplicateDetectionViewModel(
             try {
                 var truncated = false
                 var listingTotalMatches = 0
+                var scanGroupsTruncated = false
+                var scanTotalGroups = 0
                 var selectionGroups = emptyList<List<SelItem>>()
                 var fullGroupIds: Map<String, List<Long>> = emptyMap()
                 val groups = if (state.value.listingMode) {
@@ -530,6 +535,8 @@ class DuplicateDetectionViewModel(
                         state.value.blankTitleFilter,
                     )
                     fullGroupIds = scanResult.fullGroupIds
+                    scanGroupsTruncated = scanResult.truncated
+                    scanTotalGroups = scanResult.totalGroups
                     scanResult.displayGroups
                 }
 
@@ -610,6 +617,8 @@ class DuplicateDetectionViewModel(
                         isLoading = false,
                         listingTruncated = truncated,
                         listingTotalMatches = listingTotalMatches,
+                        scanGroupsTruncated = scanGroupsTruncated,
+                        scanTotalGroups = scanTotalGroups,
                         selectionGroups = selectionGroups,
                         fullGroupIds = fullGroupIds,
                         truncatedGroupExtraItems = truncatedGroupExtraItems,
@@ -626,6 +635,8 @@ class DuplicateDetectionViewModel(
                         precheckProgress = null,
                         listingTruncated = false,
                         listingTotalMatches = 0,
+                        scanGroupsTruncated = false,
+                        scanTotalGroups = 0,
                         selectionGroups = emptyList(),
                         fullGroupIds = emptyMap(),
                         truncatedGroupExtraItems = emptyMap(),

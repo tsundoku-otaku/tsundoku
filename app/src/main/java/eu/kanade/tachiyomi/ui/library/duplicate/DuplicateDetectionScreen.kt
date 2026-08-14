@@ -369,6 +369,21 @@ class DuplicateDetectionScreen : Screen {
                     }
                 }
 
+                if (!state.listingMode && state.scanGroupsTruncated) {
+                    item(key = "scan_groups_truncated") {
+                        Text(
+                            text = stringResource(
+                                MR.strings.duplicate_scan_groups_truncated,
+                                state.duplicateGroups.size,
+                                state.scanTotalGroups,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+
                 if (state.hasStartedAnalysis && state.duplicateGroups.isNotEmpty()) {
                     item(key = "search_field") {
                         OutlinedTextField(
@@ -552,17 +567,6 @@ class DuplicateDetectionScreen : Screen {
                                     onClick = { screenModel.setBlankTitleFilter(BlankTitleFilter.INCLUDE) },
                                     label = { Text(stringResource(MR.strings.duplicate_blank_include)) },
                                     leadingIcon = if (state.blankTitleFilter == BlankTitleFilter.INCLUDE) {
-                                        { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                    } else {
-                                        null
-                                    },
-                                )
-                                FilterChip(
-                                    selected = state.blankTitleFilter == BlankTitleFilter.ONLY,
-                                    enabled = blankFiltersEnabled,
-                                    onClick = { screenModel.setBlankTitleFilter(BlankTitleFilter.ONLY) },
-                                    label = { Text(stringResource(MR.strings.duplicate_blank_only)) },
-                                    leadingIcon = if (state.blankTitleFilter == BlankTitleFilter.ONLY) {
                                         { Icon(Icons.Filled.Check, contentDescription = null, Modifier.size(18.dp)) }
                                     } else {
                                         null

@@ -933,10 +933,10 @@
     <string name="action_clear_category">Clear category…</string>
     <string name="duplicate_listing_mode">List all</string>
     <string name="duplicate_listing_truncated">Showing 2000 of %1$d matching entries. Narrow with category filters, or use Select All to act on all %1$d.</string>
+    <string name="duplicate_scan_groups_truncated">Showing %1$d of %2$d duplicate groups (largest first). Narrow with category filters or switch to List All.</string>
     <string name="duplicate_blank_label">Blank titles/URLs:</string>
     <string name="duplicate_blank_exclude">Exclude</string>
     <string name="duplicate_blank_include">Include</string>
-    <string name="duplicate_blank_only">Only</string>
     <string name="duplicate_group_truncated_selectable">Showing %1$d of %2$d.</string>
     <string name="duplicate_group_truncated_filtered">Showing %1$d of %2$d.</string>
     <string name="duplicate_filters_sort">Filters &amp; Sort</string>
