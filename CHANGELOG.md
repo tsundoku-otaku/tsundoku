@@ -11,7 +11,8 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
-
+### Improved
+- Support tsundoku:// extension stores [@Rojikku](https://github.com/Rojikku) [#397](https://github.com/tsundoku-otaku/tsundoku/pull/397)
 
 ## [v0.3.1] - 2026-08-14
 ### Improved
