@@ -100,6 +100,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:scheme="mihon" />
+                <data android:scheme="tsundoku" />
                 <data android:host="extension-store" />
             </intent-filter>
 
