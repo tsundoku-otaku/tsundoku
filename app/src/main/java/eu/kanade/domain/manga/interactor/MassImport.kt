@@ -30,9 +30,6 @@ class MassImport(
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
-    // Factory, not an instance: each analyzeUrls call is its own batch and gets a fresh
-    // resolver so its caches can't go stale across extension install/update/uninstall.
-    // Overridable so tests can inject a fake without touching Injekt/PackageManager.
     private val deeplinkResolverFactory: () -> DeeplinkResolver = { PackageManagerDeeplinkResolver() },
 ) {
     private val missingSourceHostLogCache = ConcurrentHashMap<String, Boolean>()
@@ -265,11 +262,6 @@ class MassImport(
                 invalidUrls.add(line to "No matching source")
                 continue
             }
-            // Deeplink-shaped URLs (canonical-vs-shareable divergence, e.g. MangaDex
-            // /title/<uuid>/<slug> vs stored /manga/<uuid>) can't have their real stored path
-            // derived without a network call, so the guessed path below would be wrong - skip the
-            // already-in-library check and let it through as valid-but-unverified. Real dedup
-            // still happens at import time once the source resolves the canonical URL.
             if (!deeplinkResolver.isDeeplinkUrl(source, line)) {
                 val path = extractPathFromUrl(line, getSourceBaseUrl(source), source)
                 if (libraryUrlIndex.contains(source.id to path)) {

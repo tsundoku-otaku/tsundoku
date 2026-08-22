@@ -352,7 +352,6 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         hydrateBatchFromStore(batchId)
         startRunningUnlessPaused(batchId)
 
-        // Batch-scoped: dies with this run instead of caching pkgName/deeplink lookups app-wide.
         val deeplinkResolver = PackageManagerDeeplinkResolver()
 
         val importSources = getImportSources()
