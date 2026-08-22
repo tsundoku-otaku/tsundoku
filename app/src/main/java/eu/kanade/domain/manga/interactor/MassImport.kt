@@ -1,6 +1,8 @@
 package eu.kanade.domain.manga.interactor
 
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.data.massimport.DeeplinkResolver
+import eu.kanade.tachiyomi.data.massimport.PackageManagerDeeplinkResolver
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
@@ -28,6 +30,10 @@ class MassImport(
     private val networkToLocalManga: NetworkToLocalManga = Injekt.get(),
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val sourcePreferences: SourcePreferences = Injekt.get(),
+    // Factory, not an instance: each analyzeUrls call is its own batch and gets a fresh
+    // resolver so its caches can't go stale across extension install/update/uninstall.
+    // Overridable so tests can inject a fake without touching Injekt/PackageManager.
+    private val deeplinkResolverFactory: () -> DeeplinkResolver = { PackageManagerDeeplinkResolver() },
 ) {
     private val missingSourceHostLogCache = ConcurrentHashMap<String, Boolean>()
 
@@ -51,15 +57,9 @@ class MassImport(
         val inputUrl = normalizeSourcePath(source, path)
         // No search-by-URL or slash-toggle fallbacks here: they never resolved anything reliably
         // and their failures (e.g. UnknownHostException from a slash-less baseUrl + url concat)
-        // masked the real error from the direct details fetch.
-        var resolved: eu.kanade.tachiyomi.source.model.SManga? = null
-        if (source is eu.kanade.tachiyomi.source.online.ResolvableSource &&
-            source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga
-        ) {
-            resolved = runCatching { source.getManga(url) }.getOrNull()
-        }
-
-        val sManga = resolved ?: source.getMangaUpdate(
+        // masked the real error from the direct details fetch. Deeplink-shaped URLs are already
+        // resolved to their canonical path by the caller before path is passed in here.
+        val sManga = source.getMangaUpdate(
             eu.kanade.tachiyomi.source.model.SManga.create().apply {
                 this.url = inputUrl
             },
@@ -233,6 +233,7 @@ class MassImport(
 
     suspend fun analyzeUrls(text: String): UrlAnalysisResult = kotlinx.coroutines.withContext(Dispatchers.IO) {
         val novelSources = getAllSources()
+        val deeplinkResolver = deeplinkResolverFactory()
         val libraryUrlIndex = try {
             mangaRepository.getFavoriteSourceAndUrl().toSet()
         } catch (_: Exception) {
@@ -264,10 +265,17 @@ class MassImport(
                 invalidUrls.add(line to "No matching source")
                 continue
             }
-            val path = extractPathFromUrl(line, getSourceBaseUrl(source), source)
-            if (libraryUrlIndex.contains(source.id to path)) {
-                alreadyInLibrary.add(line)
-                continue
+            // Deeplink-shaped URLs (canonical-vs-shareable divergence, e.g. MangaDex
+            // /title/<uuid>/<slug> vs stored /manga/<uuid>) can't have their real stored path
+            // derived without a network call, so the guessed path below would be wrong - skip the
+            // already-in-library check and let it through as valid-but-unverified. Real dedup
+            // still happens at import time once the source resolves the canonical URL.
+            if (!deeplinkResolver.isDeeplinkUrl(source, line)) {
+                val path = extractPathFromUrl(line, getSourceBaseUrl(source), source)
+                if (libraryUrlIndex.contains(source.id to path)) {
+                    alreadyInLibrary.add(line)
+                    continue
+                }
             }
 
             validUrls.add(line)
