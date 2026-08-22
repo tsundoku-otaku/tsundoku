@@ -352,6 +352,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         hydrateBatchFromStore(batchId)
         startRunningUnlessPaused(batchId)
 
+        val deeplinkResolver = PackageManagerDeeplinkResolver()
+
         val importSources = getImportSources()
         if (importSources.isEmpty()) {
             showCompletionNotification(batchId, 0, 0, totalCount, "No compatible sources installed")
@@ -679,6 +681,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                                 fetchChapters,
                                                 pendingAddIds,
                                                 flushBatchSize,
+                                                deeplinkResolver,
                                             )
                                         }
                                     }
@@ -944,6 +947,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         fetchChapters: Boolean,
         pendingAddIds: MutableList<Long>,
         flushBatchSize: Int,
+        deeplinkResolver: DeeplinkResolver,
     ): Boolean {
         // `false` = intentionally skipped (already in library); genuine failures must throw so
         // they're classified errored and captured for retry.
@@ -958,28 +962,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val normalizedPath = massImportInteractor.normalizeUrl(rawPath)
 
         var finalUrl = normalizedPath
-        if (url.startsWith("http", ignoreCase = true)) {
-            // Only ResolvableSource gets a canonical-URL resolve; searching with the raw URL as a
-            // query never matched anything reliably and just burned a request per import.
-            val resolvedManga = runCatching {
-                withTimeoutOrNull(FETCH_TIMEOUT_MS) {
-                    if (source is eu.kanade.tachiyomi.source.online.ResolvableSource &&
-                        source.getUriType(url) == eu.kanade.tachiyomi.source.online.UriType.Manga
-                    ) {
-                        source.getManga(url)
-                    } else {
-                        null
-                    }
-                }
-            }.getOrNull()
-            if (resolvedManga != null) {
-                try {
-                    if (resolvedManga.url.isNotEmpty()) {
-                        finalUrl = eu.kanade.tachiyomi.util.source.normalizeSourcePath(source, resolvedManga.url)
-                    }
-                } catch (_: UninitializedPropertyAccessException) {
-                }
-            }
+        val resolvedManga = resolveDeeplinkManga(source, url, deeplinkResolver, FETCH_TIMEOUT_MS)
+        val resolvedUrl = resolvedManga?.let { runCatching { it.url }.getOrNull() }
+        if (!resolvedUrl.isNullOrEmpty()) {
+            finalUrl = eu.kanade.tachiyomi.util.source.normalizeSourcePath(source, resolvedUrl)
         }
 
         val existingManga = getMangaByUrlAndSourceId.await(finalUrl, source.id)
