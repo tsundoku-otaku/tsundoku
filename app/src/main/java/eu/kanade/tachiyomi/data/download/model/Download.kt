@@ -30,6 +30,7 @@ data class Download(
     val chapterScanlator: String?,
     val chapterDateUpload: Long,
     val chapterNumber: Double,
+    val chapterMemo: JsonObject = JsonObject.EMPTY,
 ) {
     var pages: List<Page>? = null
 
@@ -127,6 +128,7 @@ data class Download(
                 chapterScanlator = chapter.scanlator,
                 chapterDateUpload = chapter.dateUpload,
                 chapterNumber = chapter.chapterNumber,
+                chapterMemo = chapter.memo,
             ).apply { this.bypassRateLimit = bypassRateLimit }
         }
 
@@ -161,7 +163,7 @@ data class Download(
             lastModifiedAt = 0,
             version = 1,
             locked = false,
-            memo = JsonObject.EMPTY,
+            memo = chapterMemo,
         )
     }
 }
