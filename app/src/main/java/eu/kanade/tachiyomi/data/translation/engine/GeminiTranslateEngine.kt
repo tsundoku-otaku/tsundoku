@@ -16,6 +16,7 @@ import tachiyomi.domain.translation.model.LanguageCodes
 import tachiyomi.domain.translation.model.TranslationEngine
 import tachiyomi.domain.translation.model.TranslationResult
 import tachiyomi.domain.translation.service.TranslationPreferences
+import tachiyomi.domain.translation.service.TranslationPromptDefaults
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -102,34 +103,11 @@ class GeminiTranslateEngine(
     ): String {
         val sourceLangName = LanguageCodes.getDisplayName(sourceLanguage)
         val targetLangName = LanguageCodes.getDisplayName(targetLanguage)
+        val sourceLangDisplay = TranslationPromptDefaults.sourceLangDisplay(sourceLanguage, sourceLangName)
 
-        val fromClause = if (sourceLanguage == "auto") {
-            "Detect the source language and translate the following text to $targetLangName."
-        } else {
-            "Translate the following text from $sourceLangName to $targetLangName."
-        }
-
-        val prompt = """
-    You are a professional translator specializing in novel/fiction translation.
-
-    $fromClause
-
-    Rules:
-    - Only output the translation, nothing else
-    - Preserve paragraph structure
-    - Do NOT summarize.
-    - Do NOT merge or split paragraphs.
-    - Do NOT normalize whitespace.
-    - Maintain style and tone
-    - Keep character names consistent
-    - Every line break in the input MUST be preserved exactly in the output.
-    - Do NOT wrap lines.
-    - Copy tokens like [IMG_PLACEHOLDER_0] verbatim — do not translate or alter them.
-    Text:
-    $text
-
-    Translation:
-        """.trimIndent()
+        val template = preferences.geminiPrompt().get()
+            .ifBlank { TranslationPromptDefaults.DEFAULT_COMBINED_PROMPT }
+        val prompt = TranslationPromptDefaults.apply(template, sourceLangDisplay, targetLangName, text)
 
         val request = GenerateRequest(
             contents = listOf(Content(parts = listOf(Part(prompt)))),

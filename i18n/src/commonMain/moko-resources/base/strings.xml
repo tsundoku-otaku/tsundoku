@@ -1197,6 +1197,7 @@
     <string name="pref_translation_system_prompt_desc">Custom system prompt for GPT models. Leave empty for default.</string>
     <string name="pref_translation_user_prompt">User Prompt Template</string>
     <string name="pref_translation_user_prompt_desc">Use {SOURCE_LANG}, {TARGET_LANG}, {TEXT} as placeholders.</string>
+    <string name="pref_translation_reset_prompt_confirm">Reset this prompt to its default text? Your custom text will be lost.</string>
     <string name="pref_translation_api_key">API Key</string>
     <string name="pref_translation_api_url">API URL</string>
     <string name="pref_translation_custom_prompt">Custom Prompt</string>

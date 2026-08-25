@@ -22,6 +22,7 @@ import eu.kanade.presentation.more.settings.widget.ListPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.MultiSelectListPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.PrefsHorizontalPadding
 import eu.kanade.presentation.more.settings.widget.PrefsVerticalPadding
+import eu.kanade.presentation.more.settings.widget.PromptPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.SwitchPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import eu.kanade.presentation.more.settings.widget.TitleFontSize
@@ -166,6 +167,21 @@ internal fun PreferenceItem(
                         if (accepted) item.preference.set(it)
                         accepted
                     },
+                )
+            }
+            is Preference.PreferenceItem.PromptPreference -> {
+                val value by item.preference.collectAsState()
+                PromptPreferenceWidget(
+                    title = item.title,
+                    subtitle = item.subtitle,
+                    value = value,
+                    defaultValue = item.defaultValue,
+                    onConfirm = {
+                        val accepted = item.onValueChanged(it)
+                        if (accepted) item.preference.set(it)
+                        accepted
+                    },
+                    onReset = { item.preference.delete() },
                 )
             }
             is Preference.PreferenceItem.TrackerPreference -> {

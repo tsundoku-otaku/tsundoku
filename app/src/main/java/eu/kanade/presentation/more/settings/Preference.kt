@@ -146,6 +146,21 @@ sealed class Preference {
         }
 
         /**
+         * A [PreferenceItem] for editing a multi-line LLM prompt template, prefilled with
+         * [defaultValue] when unset, and resettable back to it.
+         */
+        data class PromptPreference(
+            val preference: PreferenceData<String>,
+            override val title: String,
+            val defaultValue: String,
+            override val subtitle: String? = null,
+            override val enabled: Boolean = true,
+            override val onValueChanged: suspend (value: String) -> Boolean = { true },
+        ) : PreferenceItem<String, Boolean>() {
+            override val icon: ImageVector? = null
+        }
+
+        /**
          * A [PreferenceItem] for individual tracker.
          */
         data class TrackerPreference(

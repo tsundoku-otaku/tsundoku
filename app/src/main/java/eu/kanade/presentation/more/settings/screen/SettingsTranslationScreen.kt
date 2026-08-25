@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.data.translation.TranslationEngineManager
 import kotlinx.coroutines.launch
 import tachiyomi.domain.translation.model.TranslationResult
 import tachiyomi.domain.translation.service.TranslationPreferences
+import tachiyomi.domain.translation.service.TranslationPromptDefaults
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
@@ -340,15 +341,17 @@ object SettingsTranslationScreen : SearchableSettings {
                         title = stringResource(TDMR.strings.pref_translation_openai_key),
                         subtitle = if (openAiKey.isNotBlank()) "••••••••" else stringResource(TDMR.strings.not_set),
                     ),
-                    Preference.PreferenceItem.EditTextPreference(
+                    Preference.PreferenceItem.PromptPreference(
                         preference = prefs.openAiSystemPrompt(),
                         title = stringResource(MR.strings.pref_translation_system_prompt),
                         subtitle = stringResource(MR.strings.pref_translation_system_prompt_desc),
+                        defaultValue = TranslationPromptDefaults.DEFAULT_SYSTEM_PROMPT,
                     ),
-                    Preference.PreferenceItem.EditTextPreference(
+                    Preference.PreferenceItem.PromptPreference(
                         preference = prefs.openAiUserPrompt(),
                         title = stringResource(MR.strings.pref_translation_user_prompt),
                         subtitle = stringResource(MR.strings.pref_translation_user_prompt_desc),
+                        defaultValue = TranslationPromptDefaults.DEFAULT_USER_PROMPT,
                     ),
                     testButton(engineManager.engines.first { it.name.contains("OpenAI") }),
                 ),
@@ -384,6 +387,18 @@ object SettingsTranslationScreen : SearchableSettings {
                         title = stringResource(TDMR.strings.pref_translation_ollama_model),
                         subtitle = nvidiaNimModel.ifBlank { stringResource(TDMR.strings.not_set) },
                     ),
+                    Preference.PreferenceItem.PromptPreference(
+                        preference = prefs.nvidiaNimSystemPrompt(),
+                        title = stringResource(MR.strings.pref_translation_system_prompt),
+                        subtitle = stringResource(MR.strings.pref_translation_system_prompt_desc),
+                        defaultValue = TranslationPromptDefaults.DEFAULT_SYSTEM_PROMPT,
+                    ),
+                    Preference.PreferenceItem.PromptPreference(
+                        preference = prefs.nvidiaNimUserPrompt(),
+                        title = stringResource(MR.strings.pref_translation_user_prompt),
+                        subtitle = stringResource(MR.strings.pref_translation_user_prompt_desc),
+                        defaultValue = TranslationPromptDefaults.DEFAULT_USER_PROMPT,
+                    ),
                     testButton(engineManager.getEngineById(TranslationEngineManager.ENGINE_NVIDIA_NIM)!!),
                 ),
             ),
@@ -395,6 +410,18 @@ object SettingsTranslationScreen : SearchableSettings {
                         preference = prefs.deepSeekApiKey(),
                         title = stringResource(TDMR.strings.pref_translation_deepseek_key),
                         subtitle = if (deepSeekKey.isNotBlank()) "••••••••" else stringResource(TDMR.strings.not_set),
+                    ),
+                    Preference.PreferenceItem.PromptPreference(
+                        preference = prefs.deepSeekSystemPrompt(),
+                        title = stringResource(MR.strings.pref_translation_system_prompt),
+                        subtitle = stringResource(MR.strings.pref_translation_system_prompt_desc),
+                        defaultValue = TranslationPromptDefaults.DEFAULT_SYSTEM_PROMPT,
+                    ),
+                    Preference.PreferenceItem.PromptPreference(
+                        preference = prefs.deepSeekUserPrompt(),
+                        title = stringResource(MR.strings.pref_translation_user_prompt),
+                        subtitle = stringResource(MR.strings.pref_translation_user_prompt_desc),
+                        defaultValue = TranslationPromptDefaults.DEFAULT_USER_PROMPT,
                     ),
                     testButton(engineManager.engines.first { it.name.contains("DeepSeek") }),
                 ),
@@ -456,6 +483,12 @@ object SettingsTranslationScreen : SearchableSettings {
                         title = stringResource(TDMR.strings.pref_translation_ollama_model),
                         subtitle = geminiModel.ifBlank { "gemini-2.0-flash" },
                     ),
+                    Preference.PreferenceItem.PromptPreference(
+                        preference = prefs.geminiPrompt(),
+                        title = stringResource(MR.strings.pref_translation_custom_prompt),
+                        subtitle = stringResource(MR.strings.pref_translation_user_prompt_desc),
+                        defaultValue = TranslationPromptDefaults.DEFAULT_COMBINED_PROMPT,
+                    ),
                     testButton(engineManager.engines.first { it.name.contains("Gemini") }),
                 ),
             ),
@@ -496,10 +529,11 @@ object SettingsTranslationScreen : SearchableSettings {
                         title = stringResource(TDMR.strings.pref_translation_ollama_model),
                         subtitle = ollamaModel,
                     ),
-                    Preference.PreferenceItem.EditTextPreference(
+                    Preference.PreferenceItem.PromptPreference(
                         preference = prefs.ollamaPrompt(),
                         title = stringResource(MR.strings.pref_translation_custom_prompt),
                         subtitle = stringResource(MR.strings.pref_translation_user_prompt_desc),
+                        defaultValue = TranslationPromptDefaults.DEFAULT_COMBINED_PROMPT,
                     ),
                     testButton(engineManager.engines.first { it.name.contains("Ollama") }),
                 ),

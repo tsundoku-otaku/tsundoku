@@ -12,6 +12,7 @@ import tachiyomi.domain.translation.model.LanguageCodes
 import tachiyomi.domain.translation.model.TranslationEngine
 import tachiyomi.domain.translation.model.TranslationResult
 import tachiyomi.domain.translation.service.TranslationPreferences
+import tachiyomi.domain.translation.service.TranslationPromptDefaults
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.TimeUnit
@@ -115,36 +116,11 @@ class OllamaTranslateEngine(
     ): String {
         val sourceLangName = LanguageCodes.getDisplayName(sourceLanguage)
         val targetLangName = LanguageCodes.getDisplayName(targetLanguage)
+        val sourceLangDisplay = TranslationPromptDefaults.sourceLangDisplay(sourceLanguage, sourceLangName)
 
-        val fromClause = if (sourceLanguage == "auto") {
-            "Detect the source language and translate the following text to $targetLangName."
-        } else {
-            "Translate the following text from $sourceLangName to $targetLangName."
-        }
-
-        // Use custom prompt if configured
-        val customPrompt = preferences.ollamaPrompt().get()
-        val prompt = if (customPrompt.isNotBlank()) {
-            customPrompt
-                .replace("{SOURCE_LANG}", sourceLangName)
-                .replace("{TARGET_LANG}", targetLangName)
-                .replace("{TEXT}", text)
-        } else {
-            """You are a professional translator specializing in novel/fiction translation.
-$fromClause
-Rules:
-- Only output the translation, nothing else
-- Preserve paragraph structure (keep empty lines between paragraphs)
-- Maintain the author's writing style and tone
-- Keep character names consistent
-- Do not add explanations or notes
-- Copy tokens like [IMG_PLACEHOLDER_0] verbatim — do not translate or alter them
-
-Text to translate:
-$text
-
-Translation:"""
-        }
+        val template = preferences.ollamaPrompt().get()
+            .ifBlank { TranslationPromptDefaults.DEFAULT_COMBINED_PROMPT }
+        val prompt = TranslationPromptDefaults.apply(template, sourceLangDisplay, targetLangName, text)
 
         val request = GenerateRequest(
             model = model,

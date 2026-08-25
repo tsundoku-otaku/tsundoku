@@ -132,10 +132,46 @@ class TranslationPreferences(
     )
 
     /**
+     * Custom system prompt for NVIDIA NIM models. Blank means use [TranslationPromptDefaults.DEFAULT_SYSTEM_PROMPT].
+     * Supports {SOURCE_LANG} and {TARGET_LANG} placeholders.
+     */
+    fun nvidiaNimSystemPrompt() = preferenceStore.getString(
+        "translation_nvidia_nim_system_prompt",
+        "",
+    )
+
+    /**
+     * Custom user prompt template for NVIDIA NIM models. Blank means use [TranslationPromptDefaults.DEFAULT_USER_PROMPT].
+     * Supports {SOURCE_LANG}, {TARGET_LANG}, and {TEXT} placeholders.
+     */
+    fun nvidiaNimUserPrompt() = preferenceStore.getString(
+        "translation_nvidia_nim_user_prompt",
+        "",
+    )
+
+    /**
      * DeepSeek API key.
      */
     fun deepSeekApiKey() = preferenceStore.getString(
         "translation_deepseek_api_key",
+        "",
+    )
+
+    /**
+     * Custom system prompt for DeepSeek models. Blank means use [TranslationPromptDefaults.DEFAULT_SYSTEM_PROMPT].
+     * Supports {SOURCE_LANG} and {TARGET_LANG} placeholders.
+     */
+    fun deepSeekSystemPrompt() = preferenceStore.getString(
+        "translation_deepseek_system_prompt",
+        "",
+    )
+
+    /**
+     * Custom user prompt template for DeepSeek models. Blank means use [TranslationPromptDefaults.DEFAULT_USER_PROMPT].
+     * Supports {SOURCE_LANG}, {TARGET_LANG}, and {TEXT} placeholders.
+     */
+    fun deepSeekUserPrompt() = preferenceStore.getString(
+        "translation_deepseek_user_prompt",
         "",
     )
 
@@ -196,7 +232,7 @@ class TranslationPreferences(
     )
 
     /**
-     * Custom prompt template for Ollama.
+     * Custom prompt template for Ollama. Blank means use [TranslationPromptDefaults.DEFAULT_COMBINED_PROMPT].
      * Supports {SOURCE_LANG}, {TARGET_LANG}, and {TEXT} placeholders.
      */
     fun ollamaPrompt() = preferenceStore.getString(
@@ -205,7 +241,8 @@ class TranslationPreferences(
     )
 
     /**
-     * Custom system prompt for OpenAI/GPT models.
+     * Custom system prompt for OpenAI/GPT models. Blank means use [TranslationPromptDefaults.DEFAULT_SYSTEM_PROMPT].
+     * Supports {SOURCE_LANG} and {TARGET_LANG} placeholders.
      */
     fun openAiSystemPrompt() = preferenceStore.getString(
         "translation_openai_system_prompt",
@@ -213,7 +250,7 @@ class TranslationPreferences(
     )
 
     /**
-     * Custom user prompt template for OpenAI/GPT models.
+     * Custom user prompt template for OpenAI/GPT models. Blank means use [TranslationPromptDefaults.DEFAULT_USER_PROMPT].
      * Supports {SOURCE_LANG}, {TARGET_LANG}, and {TEXT} placeholders.
      */
     fun openAiUserPrompt() = preferenceStore.getString(
@@ -377,5 +414,14 @@ class TranslationPreferences(
     fun geminiModel() = preferenceStore.getString(
         "translation_gemini_model",
         "gemini-2.0-flash",
+    )
+
+    /**
+     * Custom prompt template for Gemini. Blank means use [TranslationPromptDefaults.DEFAULT_COMBINED_PROMPT].
+     * Supports {SOURCE_LANG}, {TARGET_LANG}, and {TEXT} placeholders.
+     */
+    fun geminiPrompt() = preferenceStore.getString(
+        "translation_gemini_prompt",
+        "",
     )
 }
