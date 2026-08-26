@@ -105,10 +105,7 @@ class MassImportJobDeeplinkTest {
 
     @Test
     fun `same host but different paths are queried independently`() {
-        // Regression test: the cache used to be keyed by (pkgName, host), so one path's result
-        // was wrongly reused for every other path on the same host. Since MassImport skips the
-        // already-in-library check when isDeeplinkUrl is true, that let duplicates slip past
-        // dedup. Each distinct path must be queried on its own.
+        // Regression: cache was keyed by (pkgName, host), reusing one path's result for all.
         var queries = 0
         val resolver = PackageManagerDeeplinkResolver(
             lookupPkgName = { "com.example.extension" },
