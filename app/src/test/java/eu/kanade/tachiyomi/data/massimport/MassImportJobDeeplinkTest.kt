@@ -105,7 +105,6 @@ class MassImportJobDeeplinkTest {
 
     @Test
     fun `same host but different paths are queried independently`() {
-        // Regression: cache was keyed by (pkgName, host), reusing one path's result for all.
         var queries = 0
         val resolver = PackageManagerDeeplinkResolver(
             lookupPkgName = { "com.example.extension" },
