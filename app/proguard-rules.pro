@@ -17,6 +17,7 @@
 -keep,allowoptimization class rx.** { public protected *; }
 -keep,allowoptimization class com.dokar.quickjs.** { public protected *; }
 -keep class com.dokar.quickjs.MemoryUsage { *; }
+-keep,allowoptimization class app.cash.quickjs.** { public protected *; }
 -keepclassmembers class kotlin.UByteArray { <init>(...); }
 -keep,allowoptimization class uy.kohesive.injekt.** { public protected *; }
 -keep,allowoptimization class com.squareup.zstd.** { public protected *; }
