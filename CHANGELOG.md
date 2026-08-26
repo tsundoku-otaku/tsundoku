@@ -13,6 +13,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ## [Unreleased]
 ### Improved
 - Add option to clear only error-free completed massimport batches [@mrissaoussama](https://github.com/mrissaoussama) [#402](https://github.com/tsundoku-otaku/tsundoku/pull/402)
+- Add multiline LLM prompt editor, and reset option to all LLM options [@mrissaoussama](https://github.com/mrissaoussama) [#411](https://github.com/tsundoku-otaku/tsundoku/pull/411)
 
 
 ### Fixed
