@@ -90,7 +90,7 @@ class MassImportJobDeeplinkTest {
     }
 
     @Test
-    fun `same host is only queried once per batch`() {
+    fun `same url is only queried once per batch`() {
         var queries = 0
         val resolver = PackageManagerDeeplinkResolver(
             lookupPkgName = { "com.example.extension" },
@@ -98,9 +98,30 @@ class MassImportJobDeeplinkTest {
         )
         val source = FakeSource()
 
-        repeat(5) { i -> resolver.isDeeplinkUrl(source, "https://example.com/title/$i") }
+        repeat(5) { resolver.isDeeplinkUrl(source, "https://example.com/title/same-slug") }
 
         assertEquals(1, queries)
+    }
+
+    @Test
+    fun `same host but different paths are queried independently`() {
+        // Regression test: the cache used to be keyed by (pkgName, host), so one path's result
+        // was wrongly reused for every other path on the same host. Since MassImport skips the
+        // already-in-library check when isDeeplinkUrl is true, that let duplicates slip past
+        // dedup. Each distinct path must be queried on its own.
+        var queries = 0
+        val resolver = PackageManagerDeeplinkResolver(
+            lookupPkgName = { "com.example.extension" },
+            queryHostSupported = { _, url -> queries++; url.endsWith("/supported-path") },
+        )
+        val source = FakeSource()
+
+        val supported = resolver.isDeeplinkUrl(source, "https://example.com/supported-path")
+        val unsupported = resolver.isDeeplinkUrl(source, "https://example.com/unsupported-path")
+
+        assertEquals(true, supported)
+        assertEquals(false, unsupported)
+        assertEquals(2, queries)
     }
 
     @Test
