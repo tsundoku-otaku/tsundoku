@@ -44,8 +44,7 @@ class PackageManagerDeeplinkResolver(
         val pkgName = pkgNameCache.getOrPut(source.id) { lookupPkgName(source.id) ?: NO_PACKAGE }
         if (pkgName == NO_PACKAGE) return false
 
-        val host = runCatching { java.net.URI(url).host }.getOrNull()?.lowercase() ?: return false
-        return deeplinkCache.getOrPut(pkgName to host) { queryHostSupported(pkgName, url) }
+        return deeplinkCache.getOrPut(pkgName to url) { queryHostSupported(pkgName, url) }
     }
 
     private companion object {
