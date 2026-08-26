@@ -200,12 +200,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     e.y / container.height.toFloat(),
                 )
 
-                if (preferences.navigationModeNovel.get() == ReaderPreferences.TapZones.size) {
-                    val centerXStart = 0.4f
-                    val centerXEnd = 0.6f
-                    val centerYStart = 0.4f
-                    val centerYEnd = 0.6f
-                    if (pos.x in centerXStart..centerXEnd && pos.y in centerYStart..centerYEnd) {
+                if (preferences.navigationModeNovel.get() in ReaderPreferences.TAPZONE_ZONE_ONLY_MODES) {
+                    val menuZone = navigator.getRegions().firstOrNull()?.rectF
+                    if (menuZone != null && menuZone.contains(pos.x, pos.y)) {
                         activity.toggleMenu()
                         return true
                     }

@@ -191,6 +191,8 @@ class ReaderPreferences(
         TappingInvertMode.NONE,
     )
 
+    val novelBottomZoneHeight: Preference<Int> = preferenceStore.getInt("reader_novel_bottom_zone_height", 12)
+
     val showNavigationOverlayNewUser: Preference<Boolean> = preferenceStore.getBoolean(
         "reader_navigation_overlay_new_user",
         true,
@@ -465,6 +467,10 @@ class ReaderPreferences(
 
         const val TAPZONE_DISABLED_INDEX = 5
         const val TAPZONE_CENTER_INDEX = 6
+        const val TAPZONE_CENTER_LARGE_INDEX = 7
+        const val TAPZONE_BOTTOM_INDEX = 8
+
+        val TAPZONE_ZONE_ONLY_MODES = setOf(TAPZONE_CENTER_INDEX, TAPZONE_CENTER_LARGE_INDEX, TAPZONE_BOTTOM_INDEX)
 
         val TapZones = listOf(
             MR.strings.label_default,

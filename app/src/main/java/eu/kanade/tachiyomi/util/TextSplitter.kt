@@ -47,8 +47,7 @@ object TextSplitter {
             if (endsWithPunctuation) {
                 // Check if we've passed the threshold since last punctuation
                 if (wordsSincePunctuation >= targetWordCount) {
-                    // Insert paragraph break after this punctuation
-                    result.append("<br><br>")
+                    result.append("\n\n")
                     wordsSincePunctuation = 0
                 } else {
                     // Just add a space, continue counting

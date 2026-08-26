@@ -7,8 +7,6 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
-import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
-import eu.kanade.tachiyomi.util.TextSplitter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +33,6 @@ internal class HttpPageLoader(
     private val chapter: ReaderChapter,
     private val source: HttpSource,
     private val chapterCache: ChapterCache = Injekt.get(),
-    private val readerPreferences: ReaderPreferences = Injekt.get(),
 ) : PageLoader() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -200,14 +197,7 @@ internal class HttpPageLoader(
 
             if (treatAsNovel) {
                 page.status = Page.State.LoadPage
-                var text = source.fetchPageText(page)
-                if (readerPreferences.novelAutoSplitText.get()) {
-                    val wordCount = readerPreferences.novelAutoSplitWordCount.get().coerceAtLeast(20)
-                    if (wordCount > 0) {
-                        text = TextSplitter.splitText(text, wordCount)
-                    }
-                }
-                page.text = text
+                page.text = source.fetchPageText(page)
                 page.status = Page.State.Ready
                 return
             }

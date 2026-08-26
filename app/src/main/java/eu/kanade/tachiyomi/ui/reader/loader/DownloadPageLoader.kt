@@ -10,8 +10,6 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
-import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
-import eu.kanade.tachiyomi.util.TextSplitter
 import mihon.core.archive.archiveReader
 import mihon.core.archive.rewriteResolvedAssetRefs
 import tachiyomi.core.common.util.system.logcat
@@ -30,7 +28,6 @@ internal class DownloadPageLoader(
 ) : PageLoader() {
 
     private val context: Application by injectLazy()
-    private val readerPreferences: ReaderPreferences by injectLazy()
 
     private var archivePageLoader: ArchivePageLoader? = null
 
@@ -84,20 +81,13 @@ internal class DownloadPageLoader(
             val uriString = page.uri?.toString() ?: ""
             logcat { "DownloadPageLoader: Processing page ${page.index}, uri=$uriString" }
 
-            var textContent = if (uriString.isHtmlContentPath()) {
+            val textContent = if (uriString.isHtmlContentPath()) {
                 logcat { "DownloadPageLoader: Reading HTML content from $uriString" }
                 context.contentResolver.openInputStream(page.uri!!)?.use {
                     it.bufferedReader().readText()
                 }?.let { rewriteAssetRefs(it) { name -> chapterDir?.findFile(name) != null } }
             } else {
                 null
-            }
-            // Apply auto-split if enabled
-            if (textContent != null && readerPreferences.novelAutoSplitText.get()) {
-                val wordCount = readerPreferences.novelAutoSplitWordCount.get().coerceAtLeast(20)
-                if (wordCount > 0) {
-                    textContent = TextSplitter.splitText(textContent, wordCount)
-                }
             }
 
             logcat { "DownloadPageLoader: Page ${page.index} has ${textContent?.length ?: 0} chars of text" }

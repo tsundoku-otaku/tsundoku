@@ -588,33 +588,60 @@ internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, re
             }
         }
 
-        // Add explicit center-only mode (small center tap shows app bars)
         FilterChip(
             selected = navigationModeNovel == ReaderPreferences.TAPZONE_CENTER_INDEX,
             onClick = { viewModel.preferences.navigationModeNovel.set(ReaderPreferences.TAPZONE_CENTER_INDEX) },
             label = { Text(stringResource(TDMR.strings.novel_nav_center_only)) },
         )
+        FilterChip(
+            selected = navigationModeNovel == ReaderPreferences.TAPZONE_CENTER_LARGE_INDEX,
+            onClick = { viewModel.preferences.navigationModeNovel.set(ReaderPreferences.TAPZONE_CENTER_LARGE_INDEX) },
+            label = { Text(stringResource(TDMR.strings.novel_nav_center_large)) },
+        )
+        FilterChip(
+            selected = navigationModeNovel == ReaderPreferences.TAPZONE_BOTTOM_INDEX,
+            onClick = { viewModel.preferences.navigationModeNovel.set(ReaderPreferences.TAPZONE_BOTTOM_INDEX) },
+            label = { Text(stringResource(TDMR.strings.novel_status_bar_position_bottom)) },
+        )
     }
 
-    // Show invert options only when navigation is not default, disabled, or center-only
-    if (effectiveNavigationModeNovel != 0 &&
-        effectiveNavigationModeNovel != ReaderPreferences.TAPZONE_CENTER_INDEX
-    ) {
+    val invertOptions = when {
+        effectiveNavigationModeNovel == 0 -> emptyList()
+        navigationModeNovel == ReaderPreferences.TAPZONE_CENTER_INDEX ||
+            navigationModeNovel == ReaderPreferences.TAPZONE_CENTER_LARGE_INDEX -> emptyList()
+        navigationModeNovel == ReaderPreferences.TAPZONE_BOTTOM_INDEX -> listOf(
+            ReaderPreferences.TappingInvertMode.NONE to TDMR.strings.novel_status_bar_position_bottom,
+            ReaderPreferences.TappingInvertMode.VERTICAL to TDMR.strings.novel_status_bar_position_top,
+        )
+        else -> ReaderPreferences.TappingInvertMode.entries.map { it to it.titleRes }
+    }
+    if (invertOptions.isNotEmpty()) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text(
                 stringResource(MR.strings.pref_read_with_tapping_inverted),
                 style = MaterialTheme.typography.bodyMedium,
             )
             SettingsChipRow("") {
-                ReaderPreferences.TappingInvertMode.entries.forEach { entry ->
+                invertOptions.forEach { (entry, label) ->
                     FilterChip(
                         selected = entry == novelNavInverted,
                         onClick = { viewModel.preferences.novelNavInverted.set(entry) },
-                        label = { Text(stringResource(entry.titleRes)) },
+                        label = { Text(stringResource(label)) },
                     )
                 }
             }
         }
+    }
+
+    if (navigationModeNovel == ReaderPreferences.TAPZONE_BOTTOM_INDEX) {
+        val bottomZoneHeight by viewModel.preferences.novelBottomZoneHeight.collectAsState()
+        SliderItem(
+            label = stringResource(TDMR.strings.novel_nav_zone_height),
+            value = bottomZoneHeight,
+            valueRange = 5..50,
+            valueString = "$bottomZoneHeight%",
+            onChange = { viewModel.preferences.novelBottomZoneHeight.set(it) },
+        )
     }
 
     // Swipe Navigation

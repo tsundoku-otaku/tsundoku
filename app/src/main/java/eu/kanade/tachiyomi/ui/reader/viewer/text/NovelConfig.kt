@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation
+import eu.kanade.tachiyomi.ui.reader.viewer.navigation.BottomNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.CenterNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.DisabledNavigation
 import eu.kanade.tachiyomi.ui.reader.viewer.navigation.EdgeNavigation
@@ -18,7 +19,7 @@ import uy.kohesive.injekt.api.get
 
 class NovelConfig(
     scope: CoroutineScope,
-    readerPreferences: ReaderPreferences = Injekt.get(),
+    private val readerPreferences: ReaderPreferences = Injekt.get(),
 ) : ViewerConfig(readerPreferences, scope) {
 
     // suppress tap-zone preview on initial flow emit during construction
@@ -33,6 +34,11 @@ class NovelConfig(
         readerPreferences.novelNavInverted.changes()
             .drop(1)
             .onEach { navigationModeChangedListener?.invoke() }
+            .launchIn(scope)
+
+        readerPreferences.novelBottomZoneHeight.changes()
+            .drop(1)
+            .onEach { updateNavigation(navigationMode) }
             .launchIn(scope)
     }
 
@@ -53,6 +59,9 @@ class NovelConfig(
             3 -> EdgeNavigation()
             4 -> RightAndLeftNavigation()
             ReaderPreferences.TAPZONE_CENTER_INDEX -> CenterNavigation()
+            ReaderPreferences.TAPZONE_CENTER_LARGE_INDEX -> CenterNavigation(large = true)
+            ReaderPreferences.TAPZONE_BOTTOM_INDEX ->
+                BottomNavigation(readerPreferences.novelBottomZoneHeight.get() / 100f)
             ReaderPreferences.TAPZONE_DISABLED_INDEX -> DisabledNavigation()
             else -> defaultNavigation()
         }

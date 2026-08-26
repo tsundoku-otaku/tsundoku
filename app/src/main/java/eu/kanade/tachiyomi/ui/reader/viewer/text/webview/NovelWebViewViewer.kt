@@ -287,10 +287,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     e.y / container.height.toFloat(),
                 )
 
-                // Center-only mode: navigator.getAction defaults every unmatched tap to MENU, so
-                // gate the toggle on the center rect ourselves (parity with the TextView viewer).
-                if (preferences.navigationModeNovel.get() == ReaderPreferences.TapZones.size) {
-                    if (pos.x in 0.4f..0.6f && pos.y in 0.4f..0.6f) {
+                if (preferences.navigationModeNovel.get() in ReaderPreferences.TAPZONE_ZONE_ONLY_MODES) {
+                    val menuZone = navigator.getRegions().firstOrNull()?.rectF
+                    if (menuZone != null && menuZone.contains(pos.x, pos.y)) {
                         activity.toggleMenu()
                     }
                     return true

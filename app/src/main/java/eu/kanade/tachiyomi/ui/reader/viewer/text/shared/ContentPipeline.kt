@@ -2,10 +2,12 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import androidx.annotation.WorkerThread
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
+import eu.kanade.tachiyomi.util.TextSplitter
 
 /**
  * Order (kept stable — changing it changes user-visible output for some chapters):
- * stripChapterTitle → normalize → regex replacements → forceLowercase → translate → sanitizeForRender.
+ * stripChapterTitle → normalize → regex replacements → forceLowercase → autoSplit →
+ * translate → sanitizeForRender.
  */
 class ContentPipeline(private val preferences: ReaderPreferences) {
 
@@ -33,6 +35,11 @@ class ContentPipeline(private val preferences: ReaderPreferences) {
         content = RegexReplacementsProcessor.apply(content, preferences)
 
         if (config.forceLowercase) content = content.lowercase()
+
+        if (preferences.novelAutoSplitText.get()) {
+            val wordCount = preferences.novelAutoSplitWordCount.get().coerceAtLeast(20)
+            content = TextSplitter.splitText(content, wordCount)
+        }
 
         return PreTranslated(content, plainTextMode)
     }
