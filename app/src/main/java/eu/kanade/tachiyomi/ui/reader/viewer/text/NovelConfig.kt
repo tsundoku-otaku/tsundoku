@@ -38,7 +38,7 @@ class NovelConfig(
 
         readerPreferences.novelBottomZoneHeight.changes()
             .drop(1)
-            .onEach { updateNavigation(navigationMode) }
+            .onEach { if (navigationMode == ReaderPreferences.TAPZONE_BOTTOM_INDEX) updateNavigation(navigationMode) }
             .launchIn(scope)
     }
 

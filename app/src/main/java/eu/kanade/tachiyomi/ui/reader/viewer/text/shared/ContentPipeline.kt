@@ -37,8 +37,7 @@ class ContentPipeline(private val preferences: ReaderPreferences) {
         if (config.forceLowercase) content = content.lowercase()
 
         if (preferences.novelAutoSplitText.get()) {
-            val wordCount = preferences.novelAutoSplitWordCount.get().coerceAtLeast(20)
-            content = TextSplitter.splitText(content, wordCount)
+            content = TextSplitter.splitText(content, preferences.novelAutoSplitWordCount.get(), isHtml = !plainTextMode)
         }
 
         return PreTranslated(content, plainTextMode)
