@@ -52,6 +52,7 @@ class NovelConfig(
     }
 
     override fun updateNavigation(navigationMode: Int) {
+        coerceInvertForZoneOnlyMode(navigationMode)
         this.navigator = when (navigationMode) {
             0 -> defaultNavigation()
             1 -> LNavigation()
@@ -69,6 +70,33 @@ class NovelConfig(
             navigationModeChangedListener?.invoke()
         } else {
             initialNavigationConsumed = true
+        }
+    }
+
+    /**
+     * Zone-only modes expose a restricted invert choice in settings (center: none only;
+     * bottom: none or vertical). A wider value carried over from a previous nav mode would
+     * leave the settings chip row showing nothing selected while still shifting the zone.
+     * Snap it to the nearest equivalent so the navigator and the chip row agree.
+     */
+    private fun coerceInvertForZoneOnlyMode(navigationMode: Int) {
+        val pref = readerPreferences.novelNavInverted
+        val current = pref.get()
+        val target = when (navigationMode) {
+            ReaderPreferences.TAPZONE_CENTER_INDEX,
+            ReaderPreferences.TAPZONE_CENTER_LARGE_INDEX,
+            -> ReaderPreferences.TappingInvertMode.NONE
+            ReaderPreferences.TAPZONE_BOTTOM_INDEX -> when (current) {
+                // Horizontal invert is a no-op on the full-width bottom rect; both == vertical.
+                ReaderPreferences.TappingInvertMode.HORIZONTAL -> ReaderPreferences.TappingInvertMode.NONE
+                ReaderPreferences.TappingInvertMode.BOTH -> ReaderPreferences.TappingInvertMode.VERTICAL
+                else -> current
+            }
+            else -> return
+        }
+        if (target != current) {
+            tappingInverted = target
+            pref.set(target)
         }
     }
 }
