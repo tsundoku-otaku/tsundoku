@@ -19,6 +19,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 
 ### Fixed
+- Route novel-extension deeplinks to novel global search [@mrissaoussama](https://github.com/mrissaoussama) [#417](https://github.com/tsundoku-otaku/tsundoku/pull/417)
 - Library sort by last read now updates after reading [@mrissaoussama](https://github.com/mrissaoussama) [#400](https://github.com/tsundoku-otaku/tsundoku/pull/400)
 - Update QuickJS [@mrissaoussama](https://github.com/mrissaoussama) [#414](https://github.com/tsundoku-otaku/tsundoku/pull/414)
 - Double-tapping browse now does novel search if manga UI hidden [@mrissaoussama](https://github.com/mrissaoussama) [#401](https://github.com/tsundoku-otaku/tsundoku/pull/401)
