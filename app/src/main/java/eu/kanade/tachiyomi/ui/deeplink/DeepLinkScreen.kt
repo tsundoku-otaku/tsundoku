@@ -13,6 +13,7 @@ import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.util.Screen
 import eu.kanade.tachiyomi.ui.browse.source.globalsearch.GlobalSearchScreen
+import eu.kanade.tachiyomi.ui.browse.source.globalsearch.NovelGlobalSearchScreen
 import eu.kanade.tachiyomi.ui.manga.MangaScreen
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import tachiyomi.i18n.MR
@@ -22,6 +23,7 @@ import tachiyomi.presentation.core.screens.LoadingScreen
 
 class DeepLinkScreen(
     val query: String = "",
+    private val extensionPackage: String? = null,
 ) : Screen() {
 
     @Composable
@@ -33,6 +35,7 @@ class DeepLinkScreen(
             factory = DeepLinkViewModel.Factory,
             extras = CreationExtras {
                 set(DeepLinkViewModel.QUERY_KEY, query)
+                extensionPackage?.let { set(DeepLinkViewModel.PACKAGE_KEY, it) }
             },
         )
         val state by viewModel.state.collectAsState()
@@ -50,7 +53,11 @@ class DeepLinkScreen(
                     LoadingScreen(Modifier.padding(contentPadding))
                 }
                 is DeepLinkViewModel.State.NoResults -> {
-                    navigator.replace(GlobalSearchScreen(query))
+                    if ((state as DeepLinkViewModel.State.NoResults).isNovel) {
+                        navigator.replace(NovelGlobalSearchScreen(query))
+                    } else {
+                        navigator.replace(GlobalSearchScreen(query))
+                    }
                 }
                 is DeepLinkViewModel.State.Result -> {
                     val resultState = state as DeepLinkViewModel.State.Result

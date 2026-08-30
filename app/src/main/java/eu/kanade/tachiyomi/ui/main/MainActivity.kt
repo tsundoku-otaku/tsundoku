@@ -562,7 +562,14 @@ class MainActivity : BaseActivity() {
                 if (!query.isNullOrEmpty()) {
                     val filter = intent.getStringExtra(INTENT_SEARCH_FILTER)
                     navigator.popUntilRoot()
-                    navigator.push(GlobalSearchScreen(query, filter))
+                    // An extension's "open in app" sends the entry URL through this action (with
+                    // its own package as the filter); resolve it to the manga page instead of
+                    // dumping the raw URL into a text search.
+                    if (query.startsWith("http://") || query.startsWith("https://")) {
+                        navigator.push(DeepLinkScreen(query, filter))
+                    } else {
+                        navigator.push(GlobalSearchScreen(query, filter))
+                    }
                 }
                 null
             }

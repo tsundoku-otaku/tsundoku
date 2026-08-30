@@ -3,6 +3,7 @@ package eu.kanade.domain.manga.interactor
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.data.massimport.DeeplinkResolver
 import eu.kanade.tachiyomi.data.massimport.PackageManagerDeeplinkResolver
+import eu.kanade.tachiyomi.data.massimport.resolveDeeplinkManga
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
@@ -37,6 +38,10 @@ class MassImport(
     companion object {
         private val GLUE_REGEX = Regex("(?<=[^\\s])(?=https?://)")
         private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+\\-.]*://")
+
+        // Upper bound on the deeplink pattern-match + optional canonical-URL lookup done while
+        // resolving a single shared URL (deeplink handling, not the batched import).
+        private const val URL_RESOLVE_TIMEOUT_MS = 30_000L
 
         // Shared tokenizer for every entry point so the "valid" count matches what the import
         // walks. Splits on comma/semicolon/space/tab and de-glues separator-less URLs.
@@ -80,6 +85,33 @@ class MassImport(
         }
 
         return networkToLocalManga(sManga.toDomainManga(source.id, source.isNovelSource()))
+    }
+
+    /**
+     * Resolve a shared/browser URL to a local [Manga] via the same steps the URL mass-import
+     * flow uses: match the URL to an installed source by host, resolve its canonical path
+     * (extension deeplink pattern when the URL diverges from the stored path, otherwise the
+     * URL's own path), then fetch details. Shared with the deeplink handler so both agree on
+     * how a pasted URL maps to a library entry.
+     *
+     * @return the resolved [Manga] paired with the [source] it came from, or null when no
+     *   installed source matches the URL's host. Throws when a source matched but its
+     *   extension failed to fetch/parse the entry.
+     */
+    suspend fun resolveUrlToManga(url: String): Pair<Manga, CatalogueSource>? {
+        val source = findMatchingSource(url) ?: return null
+        return resolveUrlToManga(url, source) to source
+    }
+
+    /**
+     * Same as [resolveUrlToManga] but for a caller that already knows the source (e.g. an
+     * extension's "open in app" intent names its own package), skipping the host match.
+     */
+    suspend fun resolveUrlToManga(url: String, source: CatalogueSource): Manga {
+        val resolved = resolveDeeplinkManga(source, url, deeplinkResolverFactory(), URL_RESOLVE_TIMEOUT_MS)
+        val path = resolved?.let { runCatching { it.url }.getOrNull() }?.takeIf { it.isNotBlank() }
+            ?: extractPathFromUrl(url, getSourceBaseUrl(source), source)
+        return resolveMangaUrl(url, path, source)
     }
 
     private fun getAllSources(): List<CatalogueSource> {
