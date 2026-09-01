@@ -67,11 +67,13 @@ internal class NovelWebViewPreferenceObserver(
         }
 
         scope.launch {
-            // Infinite scroll is a structural change (single document vs. multi-chapter appends),
-            // so reload the whole view for a consistent state instead of patching it live.
-            preferences.novelInfiniteScroll.changes()
-                .drop(1)
-                .collect { onChapterReloadRequested() }
+            // Infinite scroll and paged mode are both structural changes (single document vs.
+            // multi-chapter appends; continuous scroll vs. CSS-column pagination), so reload the
+            // whole view for a consistent state instead of patching either live.
+            merge(
+                preferences.novelInfiniteScroll.changes().drop(1),
+                preferences.novelPagedMode.changes().drop(1),
+            ).collect { onChapterReloadRequested() }
         }
 
         scope.launch {

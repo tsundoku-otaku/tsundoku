@@ -88,6 +88,10 @@ val EstimatedStatusBarHeight = 40.dp
 fun NovelStatusBar(
     chapterText: String?,
     progressPercent: Int,
+    // Paged mode (webview only): when pagedPageCount > 0, the progress segment shows "N/M"
+    // instead of a percentage.
+    pagedPageIndex: Int = 0,
+    pagedPageCount: Int = 0,
     order: List<StatusBarItem>,
     showTime: Boolean,
     showChapter: Boolean,
@@ -190,7 +194,12 @@ fun NovelStatusBar(
                         }
 
                         StatusBarItem.PROGRESS -> if (showProgress) {
-                            Text(text = "$progressPercent%", style = labelStyle, color = contentColor)
+                            val text = if (pagedPageCount > 0) {
+                                "${(pagedPageIndex + 1).coerceAtMost(pagedPageCount)}/$pagedPageCount"
+                            } else {
+                                "$progressPercent%"
+                            }
+                            Text(text = text, style = labelStyle, color = contentColor)
                         }
 
                         StatusBarItem.BATTERY -> if (showBattery && batteryPercent >= 0) {

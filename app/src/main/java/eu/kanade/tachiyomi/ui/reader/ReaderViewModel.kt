@@ -767,7 +767,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * Saves reading progress for novel chapters using percentage (0-100).
      * Used by NovelViewer to save scroll position.
      */
-    fun saveNovelProgress(page: ReaderPage, progressPercentage: Int) {
+    fun saveNovelProgress(page: ReaderPage, progressPercentage: Int, allowBackwardJump: Boolean = false) {
         val selectedChapter = page.chapter
 
         if (incognitoMode) return
@@ -784,8 +784,11 @@ class ReaderViewModel @JvmOverloads constructor(
 
                 // Reject large backward jumps (>10%), including spurious 0% reports that
                 // fire during relayout/recreation (e.g. orientation lock). A 0 used to be
-                // exempted here, which let a transient 0 wipe real progress on reopen.
-                if (clampedProgress < currentProgress - 10) {
+                // exempted here, which let a transient 0 wipe real progress on reopen. Paged
+                // mode's own reports are always an explicit, deliberate page-turn ratio (never
+                // a relayout blip - see NovelWebViewViewer.saveProgress), and one page of a short
+                // chapter can legitimately be a >10% jump, so it's exempted via allowBackwardJump.
+                if (!allowBackwardJump && clampedProgress < currentProgress - 10) {
                     logcat(LogPriority.DEBUG) {
                         "NovelProgress: Skipping save - new progress $clampedProgress% is much less than current $currentProgress%"
                     }
@@ -839,6 +842,10 @@ class ReaderViewModel @JvmOverloads constructor(
         val clamped = progress.coerceIn(0, 100)
         mutableState.update { it.copy(novelProgressPercent = clamped) }
         novelScrollProgress = clamped
+    }
+
+    fun updateNovelPageInfo(pageIndex: Int, pageCount: Int) {
+        mutableState.update { it.copy(novelPageIndex = pageIndex, novelPageCount = pageCount) }
     }
 
     private fun downloadNextChapters() {
@@ -1588,6 +1595,11 @@ class ReaderViewModel @JvmOverloads constructor(
          * Current reading progress for novel viewer (0-100 percentage).
          */
         val novelProgressPercent: Int = 0,
+        /**
+         * Current/total page in the novel webview paged reader (0/0 when paged mode is off).
+         */
+        val novelPageIndex: Int = 0,
+        val novelPageCount: Int = 0,
 
         /**
          * Whether translation is enabled for the current chapter.

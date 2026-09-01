@@ -136,10 +136,60 @@ class NovelWebViewDocumentBuilderTest {
     }
 
     @Test
-    fun `assemble does not produce chapter divider without infinite scroll`() {
+    fun `assemble does not produce the divider's visible-boundary rule without infinite scroll`() {
         val html = NovelWebViewDocumentBuilder.assemble(
             minimalInput(infiniteScrollEnabled = false),
         )
-        assertFalse(html.contains("tsundoku-chapter-divider"))
+        // The infinite-scroll-only visible hr-style boundary rule must be absent; the always-shipped
+        // paged-mode override (which forces the divider invisible under html.tsundoku-paged
+        // regardless of infinite scroll, see NovelWebViewDocumentBuilder.kt) legitimately still
+        // mentions the class name, so this checks for the divider *element* markup instead of the
+        // bare class-name substring.
+        assertFalse(html.contains("<div class=\"${NovelWebViewChapterMeta.CHAPTER_DIVIDER_CLASS}\""))
+    }
+
+    // Paged mode CSS: always embedded, gated at runtime by the .tsundoku-paged class
+
+    @Test
+    fun `assemble always embeds the paged-mode clip and column CSS`() {
+        val html = NovelWebViewDocumentBuilder.assemble(minimalInput())
+        assertTrue(html.contains("html.tsundoku-paged"))
+        assertTrue(html.contains("html.tsundoku-paged body"))
+        assertTrue(html.contains("html.tsundoku-paged #${NovelWebViewChapterMeta.TSUNDOKU_CHAPTERS_CONTAINER_ID}"))
+    }
+
+    @Test
+    fun `assemble scopes content-visibility to non-paged mode only`() {
+        val html = NovelWebViewDocumentBuilder.assemble(minimalInput())
+        assertTrue(html.contains("html:not(.tsundoku-paged) tsundoku-chapter > *"))
+        assertTrue(html.contains("content-visibility: auto"))
+    }
+
+    @Test
+    fun `assemble avoids splitting media elements across a page break`() {
+        val html = NovelWebViewDocumentBuilder.assemble(minimalInput())
+        val styleSection = html.substringAfter("<style>").substringBefore("</style>")
+        val breakRule = Regex(
+            "html\\.tsundoku-paged[^{]*\\{[^}]*break-inside:\\s*avoid",
+            RegexOption.DOT_MATCHES_ALL,
+        )
+        assertTrue(breakRule.containsMatchIn(styleSection)) {
+            "Expected a break-inside: avoid rule scoped to .tsundoku-paged, got: $styleSection"
+        }
+        for (tag in listOf("img", "table", "pre", "blockquote", "figure")) {
+            assertTrue("html.tsundoku-paged $tag" in styleSection) { "Missing paged break-inside rule for <$tag>" }
+        }
+    }
+
+    @Test
+    fun `assemble forces the chapter divider invisible under paged mode regardless of infinite scroll`() {
+        val html = NovelWebViewDocumentBuilder.assemble(
+            minimalInput(infiniteScrollEnabled = true),
+        )
+        assertTrue(
+            html.contains(
+                "html.tsundoku-paged .${NovelWebViewChapterMeta.CHAPTER_DIVIDER_CLASS}",
+            ),
+        )
     }
 }

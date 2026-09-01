@@ -16,6 +16,9 @@ internal object NovelWebViewChapterMeta {
     const val CHAPTER_DIVIDER_CLASS = "tsundoku-chapter-divider"
     const val TSUNDOKU_CHAPTERS_CONTAINER_ID = "tsundoku-chapters-container"
 
+    // Paged mode: class toggled on <html> by paged-reader.js, and the CSS multicol target.
+    const val PAGED_BODY_CLASS = "tsundoku-paged"
+
     const val TSUNDOKU_OBJECT_NAME = "Tsundoku"
     const val TSUNDOKU_NOVEL_URL_KEY = "novelUrl"
     const val TSUNDOKU_CURRENT_CHAPTER_KEY = "currentChapter"
@@ -28,12 +31,17 @@ internal object NovelWebViewChapterMeta {
     const val TSUNDOKU_IMMERSIVE_KEY = "immersive"
     const val TSUNDOKU_TTS_STATE_KEY = "ttsState"
     const val TSUNDOKU_LOADING_CHAPTER_KEY = "loadingChapter"
+    const val TSUNDOKU_PAGING_ENABLED_KEY = "pagingEnabled"
 
     // Event names dispatched on `window` so plugins/snippets can subscribe with addEventListener.
     const val EVENT_MENU_VISIBILITY = "tsundoku:menuvisibilitychange"
     const val EVENT_CHAPTER_NAVIGATE = "tsundoku:chapternavigate"
     const val EVENT_CHAPTER_LOADING = "tsundoku:chapterloading"
     const val EVENT_TTS_STATE = "tsundoku:ttsstatechange"
+
+    // Fired page-side (paged-reader.js) whenever the current page or page count changes: a page
+    // turn, a repagination after reflow/rotation/append, or an explicit goToPage.
+    const val EVENT_PAGE_CHANGE = "tsundoku:pagechange"
 
     // Fired page-side (scroll-tracking.js) as reading progress advances, throttled with the slider
     // bridge. Dispatched from JS, not Kotlin, so there is no per-frame bridge hop.
@@ -199,6 +207,7 @@ internal object NovelWebViewChapterMeta {
         val chaptersInOrder: List<ReaderChapter>,
         val isEditingMode: Boolean,
         val isInfiniteScroll: Boolean,
+        val isPagedMode: Boolean,
         val textSelectionBlocked: Boolean,
         val forcedLowercase: Boolean,
         val menuVisible: Boolean = false,
@@ -219,6 +228,7 @@ internal object NovelWebViewChapterMeta {
             window.$TSUNDOKU_OBJECT_NAME.runtime = window.$TSUNDOKU_OBJECT_NAME.runtime || {};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_IS_EDIT_MODE_KEY = ${context.isEditingMode};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_IS_INF_SCROLL_KEY = ${context.isInfiniteScroll};
+            window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_PAGING_ENABLED_KEY = ${context.isPagedMode};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_TEXT_SELECTION_BLOCKED_KEY = ${context.textSelectionBlocked};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_FORCED_LOWERCASE_KEY = ${context.forcedLowercase};
             window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_MENU_VISIBLE_KEY = ${context.menuVisible};

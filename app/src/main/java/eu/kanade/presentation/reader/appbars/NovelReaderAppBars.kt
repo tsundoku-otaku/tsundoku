@@ -115,6 +115,11 @@ fun NovelReaderAppBars(
     verticalProgressSliderSize: String,
     currentProgress: Int, // 0-100 percentage
     onProgressChange: (Int) -> Unit,
+    // Paged mode (webview only): current/total page, shown instead of the percentage when
+    // pagedPageCount > 0. Dragging the slider still works in percentage terms (setProgressPercent
+    // re-derives the target page from the percent).
+    pagedPageIndex: Int = 0,
+    pagedPageCount: Int = 0,
 
     // Bottom bar - navigation
     onNextChapter: () -> Unit,
@@ -129,6 +134,9 @@ fun NovelReaderAppBars(
     onScrollToTop: () -> Unit,
     isAutoScrolling: Boolean,
     onToggleAutoScroll: () -> Unit,
+    // Auto-scroll has no paged-mode equivalent - hide the bottom-bar button rather than leave a
+    // control that does nothing while paged mode is on.
+    hideAutoScroll: Boolean = false,
     isTranslating: Boolean,
     onToggleTranslation: () -> Unit,
     onLongPressTranslation: () -> Unit,
@@ -270,6 +278,8 @@ fun NovelReaderAppBars(
                             currentProgress = currentProgress,
                             onProgressChange = onProgressChange,
                             backgroundColor = backgroundColor,
+                            pagedPageIndex = pagedPageIndex,
+                            pagedPageCount = pagedPageCount,
                         )
                     }
 
@@ -288,6 +298,7 @@ fun NovelReaderAppBars(
                         onScrollToTop = onScrollToTop,
                         isAutoScrolling = isAutoScrolling,
                         onToggleAutoScroll = onToggleAutoScroll,
+                        hideAutoScroll = hideAutoScroll,
                         isTranslating = isTranslating,
                         onToggleTranslation = onToggleTranslation,
                         onLongPressTranslation = onLongPressTranslation,
@@ -418,6 +429,7 @@ private fun NovelReaderBottomBar(
     onScrollToTop: () -> Unit,
     isAutoScrolling: Boolean,
     onToggleAutoScroll: () -> Unit,
+    hideAutoScroll: Boolean,
     isTranslating: Boolean,
     onToggleTranslation: () -> Unit,
     onLongPressTranslation: () -> Unit,
@@ -431,8 +443,11 @@ private fun NovelReaderBottomBar(
     onQuotes: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val enabledItems = remember(items, isWebView) {
-        items.filter { it.enabled && (isWebView || it.item != BottomBarItem.EDIT) }
+    val enabledItems = remember(items, isWebView, hideAutoScroll) {
+        items.filter {
+            it.enabled && (isWebView || it.item != BottomBarItem.EDIT) &&
+                (!hideAutoScroll || it.item != BottomBarItem.AUTO_SCROLL)
+        }
     }
 
     Box(modifier = modifier) {
@@ -720,10 +735,15 @@ private fun NovelProgressSlider(
     onProgressChange: (Int) -> Unit,
     backgroundColor: Color,
     modifier: Modifier = Modifier,
+    pagedPageIndex: Int = 0,
+    pagedPageCount: Int = 0,
 ) {
     val haptic = LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
     val sliderDragged by interactionSource.collectIsDraggedAsState()
+    val isPaged = pagedPageCount > 0
+    val pageLabel = "${(pagedPageIndex + 1).coerceAtMost(pagedPageCount)}/$pagedPageCount"
+    val maxPageLabel = "$pagedPageCount/$pagedPageCount"
 
     LaunchedEffect(currentProgress) {
         if (sliderDragged) {
@@ -738,11 +758,11 @@ private fun NovelProgressSlider(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Current progress percentage
+        // Current progress percentage, or "page N/M" while paged mode is active
         Box(contentAlignment = Alignment.CenterEnd) {
-            Text(text = "$currentProgress%")
+            Text(text = if (isPaged) pageLabel else "$currentProgress%")
             // Taking up full length so the slider doesn't shift
-            Text(text = "100%", color = Color.Transparent)
+            Text(text = if (isPaged) maxPageLabel else "100%", color = Color.Transparent)
         }
 
         Slider(
@@ -759,7 +779,7 @@ private fun NovelProgressSlider(
             interactionSource = interactionSource,
         )
 
-        Text(text = "100%")
+        Text(text = if (isPaged) maxPageLabel else "100%")
     }
 }
 

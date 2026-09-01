@@ -13,6 +13,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_TITLE_ATTR
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_URL_ATTR
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_CHAPTER_ATTR
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_CHAPTERS_CONTAINER_ID
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.htmlAttributeEscape
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 
@@ -124,6 +125,90 @@ internal object NovelWebViewDocumentBuilder {
                     tsundoku-chapter {
                         display: block;
                         contain: content;
+                    }
+                    /* Skips layout/paint for offscreen paragraphs on long chapters (continuous scroll
+                       only - deliberately excluded under html.tsundoku-paged, see paged-reader.js:
+                       CSS multicol pagination needs every element's true size to compute page count,
+                       which is in direct tension with content-visibility's offscreen-placeholder trick). */
+                    html:not(.tsundoku-paged) tsundoku-chapter > * {
+                        content-visibility: auto;
+                        contain-intrinsic-size: auto 64px;
+                    }
+                    /* body keeps the user's configured margin (that margin IS the paged reading
+                       gutter - zeroing it was an earlier bug); it still needs its OWN overflow:
+                       hidden though, not just html's, because body's own box is only pageWidth
+                       wide (width:auto shrinks to fit within its margins) while the multicol
+                       container overflows that box horizontally - without body clipping it too,
+                       the overflowing sibling columns paint into the margin gutter on either side
+                       (visible as stray text bleeding in from the next/prev page) and remain
+                       natively touch-scrollable underneath the transform-based page turns. */
+                    html.tsundoku-paged {
+                        height: 100%;
+                        overflow: hidden;
+                        margin: 0;
+                    }
+                    html.tsundoku-paged body {
+                        overflow: hidden;
+                    }
+                    html.tsundoku-paged #$TSUNDOKU_CHAPTERS_CONTAINER_ID {
+                        column-gap: 0;
+                        column-fill: auto;
+                        height: 100%;
+                        box-sizing: border-box;
+                        will-change: transform;
+                        transition: transform 220ms ease;
+                    }
+                    /* Suppressed via JS (transition: none) around any non-user-turn transform change
+                       (restore, resize/rotation repagination, chapter append) - see setTransform(). */
+                    html.tsundoku-paged #$TSUNDOKU_CHAPTERS_CONTAINER_ID.tsundoku-paged-no-transition {
+                        transition: none;
+                    }
+                    html.tsundoku-paged img,
+                    html.tsundoku-paged table,
+                    html.tsundoku-paged pre,
+                    html.tsundoku-paged blockquote,
+                    html.tsundoku-paged figure {
+                        break-inside: avoid;
+                    }
+                    /* The infinite-scroll chapter-boundary marker (chapterDividerCss above) renders
+                       as a visible hr-like line in continuous mode; in paged mode it would show up
+                       as a stray horizontal line mid-page instead of a clean boundary, so keep it
+                       invisible here regardless of infinite scroll. */
+                    html.tsundoku-paged .$CHAPTER_DIVIDER_CLASS {
+                        visibility: hidden !important;
+                        height: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        border: none !important;
+                    }
+                    /* Pull-to-refresh-style edge badge - icon only, no chapter title text. */
+                    .tsundoku-paged-chapter-transition {
+                        position: fixed;
+                        top: 0;
+                        bottom: 0;
+                        width: 72px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        opacity: 0;
+                        pointer-events: none;
+                        transition: opacity 150ms ease;
+                        z-index: 2147483647;
+                    }
+                    .tsundoku-paged-chapter-transition[data-side="start"] { left: 0; }
+                    .tsundoku-paged-chapter-transition[data-side="end"] { right: 0; }
+                    .tsundoku-paged-chapter-transition.tsundoku-visible {
+                        opacity: 1;
+                    }
+                    .tsundoku-paged-transition-badge {
+                        width: 40px;
+                        height: 40px;
+                        border-radius: 50%;
+                        background: rgba(128, 128, 128, 0.4);
+                        color: inherit;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
                     }
                     img {
                         max-width: 100%;

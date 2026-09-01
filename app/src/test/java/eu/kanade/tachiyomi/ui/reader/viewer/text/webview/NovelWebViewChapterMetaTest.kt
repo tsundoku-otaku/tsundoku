@@ -203,6 +203,7 @@ class NovelWebViewChapterMetaTest {
                 chaptersInOrder = emptyList(),
                 isEditingMode = false,
                 isInfiniteScroll = true,
+                isPagedMode = false,
                 textSelectionBlocked = false,
                 forcedLowercase = false,
             ),
@@ -231,6 +232,7 @@ class NovelWebViewChapterMetaTest {
                 chaptersInOrder = emptyList(),
                 isEditingMode = false,
                 isInfiniteScroll = false,
+                isPagedMode = false,
                 textSelectionBlocked = false,
                 forcedLowercase = false,
                 menuVisible = true,
@@ -254,6 +256,7 @@ class NovelWebViewChapterMetaTest {
                 chaptersInOrder = emptyList(),
                 isEditingMode = true,
                 isInfiniteScroll = false,
+                isPagedMode = false,
                 textSelectionBlocked = true,
                 forcedLowercase = true,
             ),
@@ -264,5 +267,36 @@ class NovelWebViewChapterMetaTest {
         assertTrue(script.contains(".textSelectionBlocked = true"))
         assertTrue(script.contains(".forcedLowercase = true"))
         assertFalse(script.contains(".isEditMode = false"))
+    }
+
+    @Test
+    fun `buildTsundokuScript reflects isPagedMode on the pagingEnabled runtime key`() {
+        val pagedOn = NovelWebViewChapterMeta.buildTsundokuScript(
+            NovelWebViewChapterMeta.TsundokuScriptContext(
+                novelUrl = null,
+                currentChapter = null,
+                chaptersInOrder = emptyList(),
+                isEditingMode = false,
+                isInfiniteScroll = false,
+                isPagedMode = true,
+                textSelectionBlocked = false,
+                forcedLowercase = false,
+            ),
+        )
+        assertTrue(pagedOn.contains(".pagingEnabled = true"))
+
+        val pagedOff = NovelWebViewChapterMeta.buildTsundokuScript(
+            NovelWebViewChapterMeta.TsundokuScriptContext(
+                novelUrl = null,
+                currentChapter = null,
+                chaptersInOrder = emptyList(),
+                isEditingMode = false,
+                isInfiniteScroll = false,
+                isPagedMode = false,
+                textSelectionBlocked = false,
+                forcedLowercase = false,
+            ),
+        )
+        assertTrue(pagedOff.contains(".pagingEnabled = false"))
     }
 }
