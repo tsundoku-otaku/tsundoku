@@ -43,8 +43,10 @@ internal object NovelWebViewChapterMeta {
     // turn, a repagination after reflow/rotation/append, or an explicit goToPage.
     const val EVENT_PAGE_CHANGE = "tsundoku:pagechange"
 
-    // Fired page-side (scroll-tracking.js) as reading progress advances, throttled with the slider
-    // bridge. Dispatched from JS, not Kotlin, so there is no per-frame bridge hop.
+    // Fired page-side (scroll-tracking.js, or paged-reader.js when paged mode is active) as reading
+    // progress advances, throttled with the slider bridge. Dispatched from JS, not Kotlin, so there
+    // is no per-frame bridge hop. Same detail shape `{progress, chapterProgress, chapterId, isLast}`
+    // in both modes - a snippet can bind one listener regardless of which mode is active.
     const val EVENT_PROGRESS = "tsundoku:progresschange"
 
     // Safe-area CSS custom properties: the reader menu bar heights the page must clear (0 while the

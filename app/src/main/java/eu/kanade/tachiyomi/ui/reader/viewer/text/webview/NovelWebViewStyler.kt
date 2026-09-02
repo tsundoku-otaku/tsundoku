@@ -285,6 +285,7 @@ internal class NovelWebViewStyler(
                 "CHAPTERS_CONTAINER_ID" to TSUNDOKU_CHAPTERS_CONTAINER_ID,
                 "PAGED_BODY_CLASS" to PAGED_BODY_CLASS,
                 "PAGE_EVENT" to EVENT_PAGE_CHANGE,
+                "PROGRESS_EVENT" to NovelWebViewChapterMeta.EVENT_PROGRESS,
                 "PAGED_ENABLED" to preferences.novelPagedMode.get().toString(),
                 "SAFE_TOP_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_TOP,
                 "SAFE_BOTTOM_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_BOTTOM,

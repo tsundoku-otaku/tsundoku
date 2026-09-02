@@ -1,7 +1,7 @@
 // Paged-mode engine for the novel WebView reader (webview only, v1).
 // Installed once per load via NovelWebViewStyler.injectPagedReader(), which substitutes the
 // __TSUNDOKU_OBJECT_NAME__ / __CHAPTERS_CONTAINER_ID__ / __PAGED_BODY_CLASS__ / __PAGE_EVENT__ /
-// __PAGED_ENABLED__ / __SAFE_TOP_VAR__ / __SAFE_BOTTOM_VAR__ tokens.
+// __PROGRESS_EVENT__ / __PAGED_ENABLED__ / __SAFE_TOP_VAR__ / __SAFE_BOTTOM_VAR__ tokens.
 //
 // Mechanism: CSS multi-column on #__CHAPTERS_CONTAINER_ID__, column-width set inline from
 // document.body.clientWidth (accounts for the user's margins - body keeps its configured margin
@@ -37,6 +37,10 @@
 //
 // Publishes for snippets/plugins:
 //   runtime.pagingEnabled / runtime.pageIndex / runtime.pageCount
+//   runtime.progress / runtime.chapterProgress / runtime.currentChapterId   same fields
+//     scroll-tracking.js publishes in continuous mode, kept in sync here so a snippet reading them
+//     doesn't need a paged-mode branch (in paged mode progress === chapterProgress, since only one
+//     chapter is ever in the DOM - see the full-chapter-switch note above).
 //   actions.nextPage() / actions.prevPage() / actions.goToPage(n)
 //   actions.setPagedConfig({...})   merges into config.paged, takes effect on the next gesture
 //   config.paged.{dragCommitFraction, edgeCommitFraction, edgeMaxDampedFraction,
@@ -47,6 +51,8 @@
 //                 reload. Values already present on window.Tsundoku.config.paged when this script
 //                 evaluates (a customJs snippet ran first, same load) win over the defaults.
 //   window event __PAGE_EVENT__  { pageIndex, pageCount }
+//   window event __PROGRESS_EVENT__  { progress, chapterProgress, chapterId, isLast }   same shape
+//     scroll-tracking.js dispatches, so a snippet can bind one listener for both modes
 //
 // Chapter-edge overflow briefly shows a pull-to-refresh-style edge chevron before calling the
 // same Android bridge methods the non-paged "Next/Previous Chapter" actions use.
@@ -64,6 +70,7 @@
 
     var PAGED_CLASS = '__PAGED_BODY_CLASS__';
     var PAGE_EVENT = '__PAGE_EVENT__';
+    var PROGRESS_EVENT = '__PROGRESS_EVENT__';
     var CONTAINER_ID = '__CHAPTERS_CONTAINER_ID__';
     var NO_TRANSITION_CLASS = 'tsundoku-paged-no-transition';
     var TRANSITION_ID = 'tsundoku-paged-chapter-transition';
@@ -211,6 +218,29 @@
         try { Android.onPageInfoChanged(pageIndex, pageCount); } catch (e) {}
     }
 
+    // Mirrors scroll-tracking.js's publishProgress/dispatchProgress so a snippet listening for
+    // __PROGRESS_EVENT__ / reading runtime.progress doesn't need a separate paged-mode code path.
+    // ratio (0-1, same value persisted via reportProgress) stands in for both progress and
+    // chapterProgress - paged mode never has more than one chapter in the DOM (see file header),
+    // so there's no separate whole-document-vs-current-chapter distinction to make.
+    function publishProgress(ratio, pageIndex, pageCount) {
+        var chapterId = (T.currentChapter && T.currentChapter.id != null) ? T.currentChapter.id : null;
+        var isLast = pageCount <= 1 || pageIndex === pageCount - 1;
+        runtime.progress = ratio;
+        runtime.chapterProgress = ratio;
+        runtime.currentChapterId = chapterId;
+        try {
+            window.dispatchEvent(new CustomEvent(PROGRESS_EVENT, {
+                detail: {
+                    progress: ratio,
+                    chapterProgress: ratio,
+                    chapterId: chapterId,
+                    isLast: isLast,
+                },
+            }));
+        } catch (e) {}
+    }
+
     function hideChapterTransition() {
         var el = document.getElementById(TRANSITION_ID);
         if (el) el.classList.remove(TRANSITION_VISIBLE_CLASS);
@@ -226,6 +256,7 @@
         runtime.pageCount = pc;
         dispatchPageChange(idx, pc);
         reportPageInfo(idx, pc);
+        publishProgress(p.lastRatio, idx, pc);
     }
 
     // Recomputes page count/width against the current layout and lands on the page nearest
