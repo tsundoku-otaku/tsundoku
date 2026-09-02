@@ -211,6 +211,10 @@ class ReaderActivity : BaseActivity() {
                 TtsPlaybackService.COMMAND_PREV_PARAGRAPH -> stepTtsParagraph(isNext = false)
                 TtsPlaybackService.COMMAND_NEXT_PARAGRAPH -> stepTtsParagraph(isNext = true)
                 TtsPlaybackService.COMMAND_STOP -> stopTtsFromNotification()
+                TtsPlaybackService.COMMAND_SEEK_PARAGRAPH -> {
+                    val index = intent.getIntExtra(TtsPlaybackService.EXTRA_SEEK_PARAGRAPH_INDEX, -1)
+                    if (index >= 0) seekTtsToParagraph(index)
+                }
             }
         }
     }
@@ -1354,6 +1358,8 @@ class ReaderActivity : BaseActivity() {
             context = this,
             isPaused = state.paused,
             progressPercent = state.progressPercent,
+            paragraphIndex = state.paragraphIndex,
+            paragraphCount = state.paragraphCount,
             novelTitle = state.novelTitle,
             chapterTitle = state.chapterTitle,
             mangaId = state.mangaId,
@@ -1385,6 +1391,8 @@ class ReaderActivity : BaseActivity() {
         val active: Boolean,
         val paused: Boolean,
         val progressPercent: Int,
+        val paragraphIndex: Int,
+        val paragraphCount: Int,
         val novelTitle: String,
         val chapterTitle: String,
         val mangaId: Long,
@@ -1399,27 +1407,37 @@ class ReaderActivity : BaseActivity() {
         val chapterId = readerState.currentChapter?.chapter?.id ?: -1L
 
         return when (val viewer = viewModel.state.value.viewer) {
-            is NovelViewer -> NovelTtsState(
-                // Use isTtsActive() (covers the autoPlay flag) so the brief
-                // gap inside stepParagraph (stop → speakChunksFrom) doesn't
-                // make the periodic sync drop the foreground service.
-                active = viewer.isTtsActive(),
-                paused = viewer.isTtsPaused(),
-                progressPercent = viewer.getTtsProgressPercent(),
-                novelTitle = novelTitle,
-                chapterTitle = chapterTitle,
-                mangaId = mangaId,
-                chapterId = chapterId,
-            )
-            is NovelWebViewViewer -> NovelTtsState(
-                active = viewer.isTtsActive(),
-                paused = viewer.isTtsPaused(),
-                progressPercent = viewer.getTtsProgressPercent(),
-                novelTitle = novelTitle,
-                chapterTitle = chapterTitle,
-                mangaId = mangaId,
-                chapterId = chapterId,
-            )
+            is NovelViewer -> {
+                val (paragraphIndex, paragraphCount) = viewer.getTtsParagraphProgress()
+                NovelTtsState(
+                    // Use isTtsActive() (covers the autoPlay flag) so the brief
+                    // gap inside stepParagraph (stop → speakChunksFrom) doesn't
+                    // make the periodic sync drop the foreground service.
+                    active = viewer.isTtsActive(),
+                    paused = viewer.isTtsPaused(),
+                    progressPercent = viewer.getTtsProgressPercent(),
+                    paragraphIndex = paragraphIndex,
+                    paragraphCount = paragraphCount,
+                    novelTitle = novelTitle,
+                    chapterTitle = chapterTitle,
+                    mangaId = mangaId,
+                    chapterId = chapterId,
+                )
+            }
+            is NovelWebViewViewer -> {
+                val (paragraphIndex, paragraphCount) = viewer.getTtsParagraphProgress()
+                NovelTtsState(
+                    active = viewer.isTtsActive(),
+                    paused = viewer.isTtsPaused(),
+                    progressPercent = viewer.getTtsProgressPercent(),
+                    paragraphIndex = paragraphIndex,
+                    paragraphCount = paragraphCount,
+                    novelTitle = novelTitle,
+                    chapterTitle = chapterTitle,
+                    mangaId = mangaId,
+                    chapterId = chapterId,
+                )
+            }
             else -> null
         }
     }
@@ -1462,6 +1480,18 @@ class ReaderActivity : BaseActivity() {
         step ?: return
         startBackgroundTtsIfEnabled()
         step()
+        syncBackgroundTtsState()
+    }
+
+    private fun seekTtsToParagraph(index: Int) {
+        val seek: ((Int) -> Unit)? = when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer::seekTtsToParagraph
+            is NovelWebViewViewer -> viewer::seekTtsToParagraph
+            else -> null
+        }
+        seek ?: return
+        startBackgroundTtsIfEnabled()
+        seek(index)
         syncBackgroundTtsState()
     }
 

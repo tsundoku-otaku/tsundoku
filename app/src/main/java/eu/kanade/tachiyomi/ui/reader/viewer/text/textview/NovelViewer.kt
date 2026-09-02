@@ -1244,6 +1244,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             ttsController.isPaused() || ttsController.isStarting()
     fun getTtsProgressPercent(): Int = ttsController.getProgressPercent()
 
+    /** (paragraphIndex, paragraphCount) for the media notification's "paragraph N of M". */
+    fun getTtsParagraphProgress(): Pair<Int, Int> = ttsController.getParagraphProgress()
+
+    /** Media-notification seek-bar drag: jump straight to [paragraphIndex]. */
+    fun seekTtsToParagraph(paragraphIndex: Int) = ttsController.seekToParagraph(paragraphIndex)
+
     fun startTtsFromViewport() {
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
