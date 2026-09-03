@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import logcat.LogPriority
 import logcat.logcat
 import java.util.Locale
-import kotlin.math.roundToInt
 
 class TtsController(
     private val context: Context,
@@ -291,12 +290,6 @@ class TtsController(
     fun isPaused(): Boolean = ttsPaused
     fun isStarting(): Boolean =
         pendingStartRequest != null || (!ttsInitialized && tts != null) || (ttsChunks.isEmpty() && isTtsAutoPlay)
-
-    fun getProgressPercent(): Int {
-        val (paragraphIndex, paragraphCount) = getParagraphProgress()
-        if (paragraphCount <= 0) return 0
-        return (((paragraphIndex + 1) * 100f) / paragraphCount).roundToInt().coerceIn(0, 100)
-    }
 
     /**
      * Current (paragraphIndex, paragraphCount) - distinct from chunk index/count: a paragraph too

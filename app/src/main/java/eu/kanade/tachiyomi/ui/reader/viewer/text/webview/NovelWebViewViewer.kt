@@ -2701,8 +2701,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ttsController.isTtsAutoPlay || ttsController.isSpeaking() ||
             ttsController.isPaused() || ttsController.isStarting()
 
-    fun getTtsProgressPercent(): Int = ttsController.getProgressPercent()
-
     /** (paragraphIndex, paragraphCount) for the media notification's "paragraph N of M". */
     fun getTtsParagraphProgress(): Pair<Int, Int> = ttsController.getParagraphProgress()
 

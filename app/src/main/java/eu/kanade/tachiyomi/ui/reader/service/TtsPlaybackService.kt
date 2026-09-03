@@ -17,14 +17,17 @@ import androidx.media.app.NotificationCompat.MediaStyle
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.notification.Notifications
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.system.notificationBuilder
+import kotlin.math.roundToInt
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 class TtsPlaybackService : Service() {
 
     private var isPaused: Boolean = false
-    private var progressPercent: Int = 0
     private var paragraphIndex: Int = 0
     private var paragraphCount: Int = 0
     private var novelTitle: String = "TTS playback"
@@ -32,21 +35,16 @@ class TtsPlaybackService : Service() {
     private var mangaId: Long = -1L
     private var chapterId: Long = -1L
 
+    private val readerPreferences: ReaderPreferences by lazy { Injekt.get() }
+
     private lateinit var mediaSession: MediaSessionCompat
 
     override fun onCreate() {
         super.onCreate()
         mediaSession = MediaSessionCompat(this, "TsundokuTTS").apply {
             setCallback(object : MediaSessionCompat.Callback() {
-                // The lockscreen/Bluetooth toggle button fires onPlay()/onPause() depending on
-                // which icon PlaybackStateCompat's last-declared state showed; guard against a
-                // stray duplicate call (e.g. two quick taps racing the next sync) flipping it back.
-                override fun onPlay() {
-                    if (isPaused) sendControlBroadcast(COMMAND_TOGGLE_PAUSE)
-                }
-                override fun onPause() {
-                    if (!isPaused) sendControlBroadcast(COMMAND_TOGGLE_PAUSE)
-                }
+                override fun onPlay() = sendControlBroadcast(COMMAND_RESUME)
+                override fun onPause() = sendControlBroadcast(COMMAND_PAUSE)
                 override fun onSkipToPrevious() = sendControlBroadcast(COMMAND_PREV_PARAGRAPH)
                 override fun onSkipToNext() = sendControlBroadcast(COMMAND_NEXT_PARAGRAPH)
                 override fun onStop() = handleStopPlayback()
@@ -70,8 +68,12 @@ class TtsPlaybackService : Service() {
         }
 
         when (intent.action) {
-            ACTION_TOGGLE_PAUSE -> {
-                sendControlBroadcast(COMMAND_TOGGLE_PAUSE)
+            ACTION_PAUSE -> {
+                sendControlBroadcast(COMMAND_PAUSE)
+            }
+
+            ACTION_RESUME -> {
+                sendControlBroadcast(COMMAND_RESUME)
             }
 
             ACTION_PREV_PARAGRAPH -> {
@@ -89,7 +91,6 @@ class TtsPlaybackService : Service() {
 
             ACTION_SYNC -> {
                 isPaused = intent.getBooleanExtra(EXTRA_IS_PAUSED, false)
-                progressPercent = intent.getIntExtra(EXTRA_PROGRESS_PERCENT, 0).coerceIn(0, 100)
                 paragraphIndex = intent.getIntExtra(EXTRA_PARAGRAPH_INDEX, 0).coerceAtLeast(0)
                 paragraphCount = intent.getIntExtra(EXTRA_PARAGRAPH_COUNT, 0).coerceAtLeast(0)
                 novelTitle = intent.getStringExtra(EXTRA_NOVEL_TITLE).orEmpty().ifBlank { "TTS playback" }
@@ -129,7 +130,7 @@ class TtsPlaybackService : Service() {
         val toggleIntent = PendingIntent.getService(
             this,
             1001,
-            Intent(this, TtsPlaybackService::class.java).setAction(ACTION_TOGGLE_PAUSE),
+            Intent(this, TtsPlaybackService::class.java).setAction(if (isPaused) ACTION_RESUME else ACTION_PAUSE),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -169,10 +170,7 @@ class TtsPlaybackService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        updateMediaSession()
-
         val statusText = if (isPaused) "Paused" else "Reading in background"
-        val paragraphLabel = paragraphProgressLabel()
 
         val contentText = if (chapterTitle.isNotBlank()) {
             "$chapterTitle · $statusText"
@@ -180,51 +178,84 @@ class TtsPlaybackService : Service() {
             statusText
         }
 
-        val notification = notificationBuilder(Notifications.CHANNEL_TTS_PLAYBACK) {
-            setSmallIcon(R.drawable.ic_mihon)
-            setContentTitle(novelTitle)
-            setContentText(contentText)
-            if (paragraphLabel != null) setSubText(paragraphLabel)
-            setContentIntent(openReaderPendingIntent)
-            setDeleteIntent(stopIntent)
-            setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-            setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            setOngoing(true)
-            setOnlyAlertOnce(true)
-            setShowWhen(false)
+        val notification = if (readerPreferences.novelTtsLegacyNotification.get()) {
+            notificationBuilder(Notifications.CHANNEL_TTS_PLAYBACK) {
+                setSmallIcon(R.drawable.ic_mihon)
+                setContentTitle(novelTitle)
+                setContentText(contentText)
+                setContentIntent(openReaderPendingIntent)
+                setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+                setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                setOngoing(true)
+                setOnlyAlertOnce(true)
+                setShowWhen(false)
+                setProgress(100, progressPercent(), false)
 
-            addAction(
-                R.drawable.ic_skip_previous_24dp,
-                "Previous",
-                prevParagraphIntent,
-            )
+                addAction(R.drawable.ic_skip_previous_24dp, "Previous", prevParagraphIntent)
+                addAction(
+                    if (isPaused) R.drawable.ic_play_arrow_24dp else R.drawable.ic_pause_24dp,
+                    if (isPaused) "Resume" else "Pause",
+                    toggleIntent,
+                )
+                addAction(R.drawable.ic_skip_next_24dp, "Next", nextParagraphIntent)
+                addAction(R.drawable.ic_close_24dp, "Stop", stopIntent)
+            }.build()
+        } else {
+            val paragraphLabel = paragraphProgressLabel()
+            updateMediaSession(paragraphLabel)
 
-            addAction(
-                if (isPaused) R.drawable.ic_play_arrow_24dp else R.drawable.ic_pause_24dp,
-                if (isPaused) "Resume" else "Pause",
-                toggleIntent,
-            )
+            var compactActionCount = 0
+            var prevIndex = 0
+            var toggleIndex = 0
+            var nextIndex = 0
 
-            addAction(
-                R.drawable.ic_skip_next_24dp,
-                "Next",
-                nextParagraphIntent,
-            )
+            notificationBuilder(Notifications.CHANNEL_TTS_PLAYBACK) {
+                setSmallIcon(R.drawable.ic_mihon)
+                setContentTitle(novelTitle)
+                setContentText(contentText)
+                if (paragraphLabel != null) setSubText(paragraphLabel)
+                setContentIntent(openReaderPendingIntent)
+                setDeleteIntent(stopIntent)
+                setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+                setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                setOngoing(true)
+                setOnlyAlertOnce(true)
+                setShowWhen(false)
 
-            addAction(
-                R.drawable.ic_close_24dp,
-                "Stop",
-                stopIntent,
-            )
+                prevIndex = compactActionCount++
+                addAction(
+                    R.drawable.ic_skip_previous_24dp,
+                    "Previous",
+                    prevParagraphIntent,
+                )
 
-            setStyle(
-                MediaStyle()
-                    .setMediaSession(mediaSession.sessionToken)
-                    // prev / toggle / next in the compact row; Stop stays in the expanded view
-                    // (also reachable via swipe-to-dismiss, wired through setDeleteIntent above).
-                    .setShowActionsInCompactView(0, 1, 2),
-            )
-        }.build()
+                toggleIndex = compactActionCount++
+                addAction(
+                    if (isPaused) R.drawable.ic_play_arrow_24dp else R.drawable.ic_pause_24dp,
+                    if (isPaused) "Resume" else "Pause",
+                    toggleIntent,
+                )
+
+                nextIndex = compactActionCount++
+                addAction(
+                    R.drawable.ic_skip_next_24dp,
+                    "Next",
+                    nextParagraphIntent,
+                )
+
+                addAction(
+                    R.drawable.ic_close_24dp,
+                    "Stop",
+                    stopIntent,
+                )
+
+                setStyle(
+                    MediaStyle()
+                        .setMediaSession(mediaSession.sessionToken)
+                        .setShowActionsInCompactView(prevIndex, toggleIndex, nextIndex),
+                )
+            }.build()
+        }
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -250,13 +281,10 @@ class TtsPlaybackService : Service() {
         }
     }
 
-    // Feeds the lockscreen/Bluetooth/Android-Auto surfaces, which read PlaybackStateCompat/
-    // MediaMetadataCompat rather than the notification's own addAction list. Position/duration are
-    // paragraph-index units (one paragraph = SEEK_UNIT_MS), not real audio milliseconds - TTS has
-    // no continuous audio position to report - so playback speed is always 0 (static jumps on each
-    // sync/seek) rather than 1, which would make the system extrapolate a smoothly-advancing
-    // scrubber between syncs that doesn't match how position actually moves.
-    private fun updateMediaSession() {
+    // Feeds the lockscreen/Bluetooth/Android-Auto surfaces (PlaybackStateCompat/MediaMetadataCompat).
+    // Position/duration are paragraph-index units, not real audio ms; speed stays 0 since TTS has
+    // no continuous position, so the system won't extrapolate the scrubber between syncs.
+    private fun updateMediaSession(paragraphLabel: String?) {
         val positionMs = if (paragraphCount > 0) {
             paragraphIndex.toLong().coerceIn(0, (paragraphCount - 1).toLong()) * SEEK_UNIT_MS
         } else {
@@ -287,7 +315,7 @@ class TtsPlaybackService : Service() {
             MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, chapterTitle.ifBlank { novelTitle })
                 .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, novelTitle)
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, paragraphProgressLabel().orEmpty())
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, paragraphLabel.orEmpty())
                 .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, durationMs)
                 .build(),
         )
@@ -297,6 +325,11 @@ class TtsPlaybackService : Service() {
         if (paragraphCount <= 0) return null
         val current = paragraphIndex.coerceIn(0, paragraphCount - 1) + 1
         return "Paragraph $current of $paragraphCount"
+    }
+
+    private fun progressPercent(): Int {
+        if (paragraphCount <= 0) return 0
+        return (((paragraphIndex + 1) * 100f) / paragraphCount).roundToInt().coerceIn(0, 100)
     }
 
     private fun sendControlBroadcast(command: String, seekParagraphIndex: Int? = null) {
@@ -318,8 +351,11 @@ class TtsPlaybackService : Service() {
         private const val ACTION_SYNC =
             "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.SYNC"
 
-        private const val ACTION_TOGGLE_PAUSE =
-            "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.TOGGLE_PAUSE"
+        private const val ACTION_PAUSE =
+            "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.PAUSE"
+
+        private const val ACTION_RESUME =
+            "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.RESUME"
 
         private const val ACTION_PREV_PARAGRAPH =
             "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.PREV_PARAGRAPH"
@@ -335,7 +371,8 @@ class TtsPlaybackService : Service() {
 
         const val EXTRA_COMMAND = "extra_command"
 
-        const val COMMAND_TOGGLE_PAUSE = "toggle_pause"
+        const val COMMAND_PAUSE = "pause"
+        const val COMMAND_RESUME = "resume"
         const val COMMAND_PREV_PARAGRAPH = "prev_paragraph"
         const val COMMAND_NEXT_PARAGRAPH = "next_paragraph"
         const val COMMAND_STOP = "stop"
@@ -344,7 +381,6 @@ class TtsPlaybackService : Service() {
         const val EXTRA_SEEK_PARAGRAPH_INDEX = "extra_seek_paragraph_index"
 
         private const val EXTRA_IS_PAUSED = "extra_is_paused"
-        private const val EXTRA_PROGRESS_PERCENT = "extra_progress_percent"
         private const val EXTRA_PARAGRAPH_INDEX = "extra_paragraph_index"
         private const val EXTRA_PARAGRAPH_COUNT = "extra_paragraph_count"
         private const val EXTRA_NOVEL_TITLE = "extra_novel_title"
@@ -355,7 +391,6 @@ class TtsPlaybackService : Service() {
         fun syncState(
             context: Context,
             isPaused: Boolean,
-            progressPercent: Int,
             paragraphIndex: Int,
             paragraphCount: Int,
             novelTitle: String,
@@ -369,7 +404,6 @@ class TtsPlaybackService : Service() {
                     Intent(context, TtsPlaybackService::class.java)
                         .setAction(ACTION_SYNC)
                         .putExtra(EXTRA_IS_PAUSED, isPaused)
-                        .putExtra(EXTRA_PROGRESS_PERCENT, progressPercent.coerceIn(0, 100))
                         .putExtra(EXTRA_PARAGRAPH_INDEX, paragraphIndex.coerceAtLeast(0))
                         .putExtra(EXTRA_PARAGRAPH_COUNT, paragraphCount.coerceAtLeast(0))
                         .putExtra(EXTRA_NOVEL_TITLE, novelTitle)

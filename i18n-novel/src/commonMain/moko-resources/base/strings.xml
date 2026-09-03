@@ -577,6 +577,8 @@
     <string name="pref_novel_webview_devtools_summary">Attach a Chrome WebView client so JS alert/confirm/prompt dialogs and file pickers work, and console messages can be surfaced</string>
     <string name="pref_novel_console_error_toast">Toast on console messages</string>
     <string name="pref_novel_console_error_toast_summary">Show a toast for console log, warning and error messages from the novel WebView</string>
+    <string name="pref_novel_tts_legacy_notification">Use classic TTS notification</string>
+    <string name="pref_novel_tts_legacy_notification_summary">Plain notification with a progress bar instead of lockscreen/Bluetooth media controls</string>
 
     <!-- Novel Image Embedding (category header only) -->
     <string name="pref_category_novel_images">Chapter Images</string>

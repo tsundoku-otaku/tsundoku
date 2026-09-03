@@ -409,6 +409,10 @@ class ReaderPreferences(
         "pref_novel_tts_auto_start_on_panel_open",
         false,
     )
+    val novelTtsLegacyNotification: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_novel_tts_legacy_notification",
+        false,
+    )
 
     val novelBottomBarItems: Preference<String> = preferenceStore.getString(
         "novel_bottom_bar_items",

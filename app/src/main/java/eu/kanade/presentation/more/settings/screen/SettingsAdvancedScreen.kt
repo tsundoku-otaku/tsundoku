@@ -253,6 +253,11 @@ object SettingsAdvancedScreen : SearchableSettings {
                     subtitle = stringResource(TDMR.strings.pref_novel_console_error_toast_summary),
                     enabled = devToolsEnabled,
                 ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = readerPreferences.novelTtsLegacyNotification,
+                    title = stringResource(TDMR.strings.pref_novel_tts_legacy_notification),
+                    subtitle = stringResource(TDMR.strings.pref_novel_tts_legacy_notification_summary),
+                ),
             ),
         )
     }
