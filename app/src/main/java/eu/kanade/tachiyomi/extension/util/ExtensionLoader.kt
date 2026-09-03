@@ -168,9 +168,6 @@ internal object ExtensionLoader {
 
         // Load each extension concurrently and wait for completion
         return runBlocking(Dispatchers.IO) {
-            // Preload trusted fingerprints ONCE before loading all extensions
-            trustExtension.preloadTrustedFingerprints()
-
             val deferred = extPkgs.map {
                 async { loadExtension(context, it) }
             }

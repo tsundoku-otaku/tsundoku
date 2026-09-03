@@ -52,7 +52,7 @@ internal class ExtensionApi {
             findExtensions().also { lastExtCheck.set(Instant.now().toEpochMilli()) }
         }
 
-        val installedExtensions = ExtensionLoader.loadExtensions(context)
+        val installedExtensions = withIOContext { ExtensionLoader.loadExtensions(context) }
             .filterIsInstance<LoadResult.Success>()
             .map { it.extension }
 
