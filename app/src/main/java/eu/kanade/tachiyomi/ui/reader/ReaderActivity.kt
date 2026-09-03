@@ -1753,10 +1753,6 @@ class ReaderActivity : BaseActivity() {
         viewModel.updateNovelProgressPercent(percentage)
     }
 
-    /**
-     * Called from the webview novel viewer's paged-reader engine whenever the current page or
-     * page count changes. Updates the status bar / jump-to-page display.
-     */
     fun onNovelPageInfoChanged(pageIndex: Int, pageCount: Int) {
         viewModel.updateNovelPageInfo(pageIndex, pageCount)
     }

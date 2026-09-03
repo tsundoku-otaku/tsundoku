@@ -1108,15 +1108,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         Android.markChapterAsShort();
                     }
                 }
+                var debounceTimer = null;
                 var resizeObserver = new ResizeObserver(function() {
-                    tryMarkShort();
-                    if (called) resizeObserver.disconnect();
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(function() {
+                        tryMarkShort();
+                        if (called) resizeObserver.disconnect();
+                    }, 450);
                 });
                 resizeObserver.observe(document.body);
                 setTimeout(function() {
                     tryMarkShort();
                     resizeObserver.disconnect();
-                }, 500);
+                }, 900);
             })();
             """.trimIndent(),
             null,
@@ -1789,7 +1793,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     override fun handleKeyEvent(event: KeyEvent): Boolean {
         val isUp = event.action == KeyEvent.ACTION_UP
         // Paged mode's page turn doesn't need the menu hidden first, unlike continuous scroll.
-        val volumeKeysActive = preferences.novelVolumeKeysScroll.get() &&
+        val volumeKeysActive = preferences.novelVolumeKeysScroll.get() && !isEditingMode &&
             (isPagedModeActive() || !activity.viewModel.state.value.menuVisible)
 
         when (event.keyCode) {
@@ -2126,12 +2130,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // (see onPageInfoChanged below) so the switch is still fast.
                 if (isPagedModeActive()) {
                     if (pagedChapterSwitchPending) return@runOnUiThread
-                    // Check the ViewModel's viewerChapters, not this viewer's own (possibly stale)
-                    // currentChapters - activity.loadNextChapter() below reads the former, so a
-                    // divergence between the two would set the latch here and then have the actual
-                    // switch silently no-op, leaving pagedChapterSwitchPending stuck true forever
-                    // (neither onPageFinished nor displayError ever fires to clear it), permanently
-                    // blocking every later paged edge-crossing in both directions.
+                    // Check the ViewModel's viewerChapters, not this viewer's own (possibly
+                    // stale) currentChapters, matching what activity.loadNextChapter() reads -
+                    // otherwise the latch could be set and never cleared.
                     if (activity.viewModel.state.value.viewerChapters?.nextChapter == null) {
                         releasePagedEdgeTransition()
                         return@runOnUiThread

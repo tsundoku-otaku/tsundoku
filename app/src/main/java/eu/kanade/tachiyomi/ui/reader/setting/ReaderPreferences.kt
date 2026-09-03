@@ -310,6 +310,10 @@ class ReaderPreferences(
     val novelPagedSwipeEnabled: Preference<Boolean> =
         preferenceStore.getBoolean("pref_novel_paged_swipe_enabled", true)
 
+    // Swipe distance (percent of width) needed to commit a page turn in paged mode
+    val novelPagedDragCommitPercent: Preference<Int> =
+        preferenceStore.getInt("pref_novel_paged_drag_commit_percent", 15)
+
     // Keep chapters loaded in memory (0 = only current, 1 = current + prev, 2 = current + next, 3 = both)
     val novelKeepChaptersLoaded: Preference<Int> = preferenceStore.getInt("pref_novel_keep_chapters_loaded", 0)
 

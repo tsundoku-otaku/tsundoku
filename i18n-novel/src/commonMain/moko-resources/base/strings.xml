@@ -553,6 +553,8 @@
     <string name="tts_prev_paragraph">Previous paragraph</string>
     <string name="tts_next_paragraph">Next paragraph</string>
     <string name="pref_novel_infinite_scroll">Infinite scroll (auto-load next chapter)</string>
+    <string name="pref_novel_paged_drag_commit">Page-turn swipe distance</string>
+    <string name="pref_novel_paged_drag_commit_summary">How far a swipe must cross the screen to turn a page</string>
     <string name="pref_novel_progress_slider">Show progress slider</string>
     <string name="pref_novel_scrollbar_mode">Progress slider</string>
     <string name="novel_scrollbar_none">None</string>

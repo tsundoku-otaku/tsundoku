@@ -287,6 +287,7 @@ internal class NovelWebViewStyler(
                 "PAGE_EVENT" to EVENT_PAGE_CHANGE,
                 "PROGRESS_EVENT" to NovelWebViewChapterMeta.EVENT_PROGRESS,
                 "PAGED_ENABLED" to preferences.novelPagedMode.get().toString(),
+                "PAGED_DRAG_COMMIT_FRACTION" to (preferences.novelPagedDragCommitPercent.get() / 100.0).toString(),
                 "SAFE_TOP_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_TOP,
                 "SAFE_BOTTOM_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_BOTTOM,
             ),

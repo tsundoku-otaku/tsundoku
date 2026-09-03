@@ -126,22 +126,9 @@ internal object NovelWebViewDocumentBuilder {
                         display: block;
                         contain: content;
                     }
-                    /* Skips layout/paint for offscreen paragraphs on long chapters (continuous scroll
-                       only - deliberately excluded under html.tsundoku-paged, see paged-reader.js:
-                       CSS multicol pagination needs every element's true size to compute page count,
-                       which is in direct tension with content-visibility's offscreen-placeholder trick). */
-                    html:not(.tsundoku-paged) tsundoku-chapter > * {
-                        content-visibility: auto;
-                        contain-intrinsic-size: auto 64px;
-                    }
-                    /* body keeps the user's configured margin (that margin IS the paged reading
-                       gutter - zeroing it was an earlier bug); it still needs its OWN overflow:
-                       hidden though, not just html's, because body's own box is only pageWidth
-                       wide (width:auto shrinks to fit within its margins) while the multicol
-                       container overflows that box horizontally - without body clipping it too,
-                       the overflowing sibling columns paint into the margin gutter on either side
-                       (visible as stray text bleeding in from the next/prev page) and remain
-                       natively touch-scrollable underneath the transform-based page turns. */
+                    /* body keeps the user's margin (that's the paged reading gutter) but still needs
+                       its own overflow:hidden - its box is only pageWidth wide, so without this the
+                       overflowing multicol columns bleed text into the margin on either side. */
                     html.tsundoku-paged {
                         height: 100%;
                         overflow: hidden;

@@ -159,13 +159,6 @@ class NovelWebViewDocumentBuilderTest {
     }
 
     @Test
-    fun `assemble scopes content-visibility to non-paged mode only`() {
-        val html = NovelWebViewDocumentBuilder.assemble(minimalInput())
-        assertTrue(html.contains("html:not(.tsundoku-paged) tsundoku-chapter > *"))
-        assertTrue(html.contains("content-visibility: auto"))
-    }
-
-    @Test
     fun `assemble avoids splitting media elements across a page break`() {
         val html = NovelWebViewDocumentBuilder.assemble(minimalInput())
         val styleSection = html.substringAfter("<style>").substringBefore("</style>")

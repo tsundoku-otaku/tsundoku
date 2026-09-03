@@ -356,6 +356,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
         val autoLoadNextAt = readerPreferences.novelAutoLoadNextChapterAt.collectAsState().value
         val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.collectAsState().value
         val pagedModeEnabled = readerPreferences.novelPagedMode.collectAsState().value
+        val pagedDragCommitPercent = readerPreferences.novelPagedDragCommitPercent.collectAsState().value
 
         return Preference.PreferenceGroup(
             title = "Content",
@@ -385,6 +386,16 @@ object SettingsNovelReaderScreen : SearchableSettings {
                             preference = readerPreferences.novelPagedSwipeEnabled,
                             title = "Swipe to turn pages",
                             subtitle = "Turn off to navigate paged mode with tap zones only",
+                        ),
+                    )
+                    add(
+                        Preference.PreferenceItem.SliderPreference(
+                            value = pagedDragCommitPercent,
+                            valueRange = 5..50,
+                            title = stringResource(TDMR.strings.pref_novel_paged_drag_commit),
+                            subtitle = stringResource(TDMR.strings.pref_novel_paged_drag_commit_summary),
+                            valueString = "$pagedDragCommitPercent%",
+                            onValueChanged = { readerPreferences.novelPagedDragCommitPercent.set(it) },
                         ),
                     )
                 }
