@@ -546,14 +546,20 @@ internal fun ColumnScope.NovelAppearanceTab(viewModel: ReaderSettingsViewModel, 
 @Composable
 internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, renderingMode: String) {
     val autoScrollSpeed by viewModel.preferences.novelAutoScrollSpeed.collectAsState()
+    val pagedMode by viewModel.preferences.novelPagedMode.collectAsState()
+    val isWebviewPaged = renderingMode == "webview" && pagedMode
 
-    SliderItem(
-        label = stringResource(TDMR.strings.pref_novel_auto_scroll_speed),
-        value = autoScrollSpeed,
-        valueRange = 2..20,
-        valueString = "${autoScrollSpeed / 2f}",
-        onChange = { viewModel.preferences.novelAutoScrollSpeed.set(it) },
-    )
+    // Auto-scroll has no paged-mode equivalent (continuous scroll vs. discrete page turns), so
+    // hide it rather than leave a control that does nothing while paged mode is on.
+    if (!isWebviewPaged) {
+        SliderItem(
+            label = stringResource(TDMR.strings.pref_novel_auto_scroll_speed),
+            value = autoScrollSpeed,
+            valueRange = 2..20,
+            valueString = "${autoScrollSpeed / 2f}",
+            onChange = { viewModel.preferences.novelAutoScrollSpeed.set(it) },
+        )
+    }
 
     // Volume Keys to Scroll
     CheckboxItem(
@@ -616,19 +622,13 @@ internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, re
         else -> ReaderPreferences.TappingInvertMode.entries.map { it to it.titleRes }
     }
     if (invertOptions.isNotEmpty()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Text(
-                stringResource(MR.strings.pref_read_with_tapping_inverted),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            SettingsChipRow("") {
-                invertOptions.forEach { (entry, label) ->
-                    FilterChip(
-                        selected = entry == novelNavInverted,
-                        onClick = { viewModel.preferences.novelNavInverted.set(entry) },
-                        label = { Text(stringResource(label)) },
-                    )
-                }
+        SettingsChipRow(MR.strings.pref_read_with_tapping_inverted) {
+            invertOptions.forEach { (entry, label) ->
+                FilterChip(
+                    selected = entry == novelNavInverted,
+                    onClick = { viewModel.preferences.novelNavInverted.set(entry) },
+                    label = { Text(stringResource(label)) },
+                )
             }
         }
     }
@@ -644,11 +644,15 @@ internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, re
         )
     }
 
-    // Swipe Navigation
-    CheckboxItem(
-        label = stringResource(TDMR.strings.pref_novel_swipe_navigation),
-        pref = viewModel.preferences.novelSwipeNavigation,
-    )
+    // Swipe Navigation - paged mode's swipe IS the page-turn gesture, so this has no meaning
+    // while it's on. Gated on isWebviewPaged, not the raw pref: paged mode only ever applies to
+    // webview, so this setting must stay visible for a textview-rendered novel either way.
+    if (!isWebviewPaged) {
+        CheckboxItem(
+            label = stringResource(TDMR.strings.pref_novel_swipe_navigation),
+            pref = viewModel.preferences.novelSwipeNavigation,
+        )
+    }
 
     // Text Selection
     CheckboxItem(
@@ -672,37 +676,34 @@ internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, re
         stringResource(TDMR.strings.novel_vertical_scrollbar_left) to "vertical_left",
         stringResource(TDMR.strings.novel_vertical_scrollbar_right) to "vertical_right",
     )
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Text(stringResource(TDMR.strings.pref_novel_scrollbar_mode), style = MaterialTheme.typography.bodyMedium)
-        SettingsChipRow("") {
-            scrollbarModeOptions.forEach { (label, value) ->
-                FilterChip(
-                    selected = scrollbarMode == value,
-                    onClick = {
-                        when (value) {
-                            "none" -> {
-                                viewModel.preferences.novelShowProgressSlider.set(false)
-                                viewModel.preferences.novelVerticalScrollbar.set(false)
-                            }
-                            "horizontal" -> {
-                                viewModel.preferences.novelShowProgressSlider.set(true)
-                                viewModel.preferences.novelVerticalScrollbar.set(false)
-                            }
-                            "vertical_left" -> {
-                                viewModel.preferences.novelShowProgressSlider.set(true)
-                                viewModel.preferences.novelVerticalScrollbarPosition.set("left")
-                                viewModel.preferences.novelVerticalScrollbar.set(true)
-                            }
-                            "vertical_right" -> {
-                                viewModel.preferences.novelShowProgressSlider.set(true)
-                                viewModel.preferences.novelVerticalScrollbarPosition.set("right")
-                                viewModel.preferences.novelVerticalScrollbar.set(true)
-                            }
+    SettingsChipRow(TDMR.strings.pref_novel_scrollbar_mode) {
+        scrollbarModeOptions.forEach { (label, value) ->
+            FilterChip(
+                selected = scrollbarMode == value,
+                onClick = {
+                    when (value) {
+                        "none" -> {
+                            viewModel.preferences.novelShowProgressSlider.set(false)
+                            viewModel.preferences.novelVerticalScrollbar.set(false)
                         }
-                    },
-                    label = { Text(label) },
-                )
-            }
+                        "horizontal" -> {
+                            viewModel.preferences.novelShowProgressSlider.set(true)
+                            viewModel.preferences.novelVerticalScrollbar.set(false)
+                        }
+                        "vertical_left" -> {
+                            viewModel.preferences.novelShowProgressSlider.set(true)
+                            viewModel.preferences.novelVerticalScrollbarPosition.set("left")
+                            viewModel.preferences.novelVerticalScrollbar.set(true)
+                        }
+                        "vertical_right" -> {
+                            viewModel.preferences.novelShowProgressSlider.set(true)
+                            viewModel.preferences.novelVerticalScrollbarPosition.set("right")
+                            viewModel.preferences.novelVerticalScrollbar.set(true)
+                        }
+                    }
+                },
+                label = { Text(label) },
+            )
         }
     }
 
@@ -723,13 +724,33 @@ internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, re
         }
     }
 
-    // Infinite Scroll
+    // Infinite Scroll - gated on isWebviewPaged (see Swipe Navigation above): stays fully
+    // functional, and visible, for a textview-rendered novel regardless of the paged-mode pref.
     val infiniteScrollEnabled by viewModel.preferences.novelInfiniteScroll.collectAsState()
-    CheckboxItem(
-        label = stringResource(TDMR.strings.pref_novel_infinite_scroll),
-        checked = infiniteScrollEnabled,
-        onClick = { viewModel.preferences.novelInfiniteScroll.set(!infiniteScrollEnabled) },
-    )
+    if (!isWebviewPaged) {
+        CheckboxItem(
+            label = stringResource(TDMR.strings.pref_novel_infinite_scroll),
+            checked = infiniteScrollEnabled,
+            onClick = { viewModel.preferences.novelInfiniteScroll.set(!infiniteScrollEnabled) },
+        )
+    }
+
+    // Paged Mode (WebView only, experimental) - swipe/tap turns a page instead of scrolling.
+    // The page-number display only means anything once this is on, so it's shown right here
+    // rather than in the unrelated Display group.
+    if (renderingMode == "webview") {
+        CheckboxItem(
+            label = "Paged mode (experimental)",
+            checked = pagedMode,
+            onClick = { viewModel.preferences.novelPagedMode.set(!pagedMode) },
+        )
+        if (pagedMode) {
+            CheckboxItem(
+                label = "Swipe to turn pages",
+                pref = viewModel.preferences.novelPagedSwipeEnabled,
+            )
+        }
+    }
 
     // Auto-load next chapter at percentage (only relevant when infinite scroll is enabled)
     val autoLoadAt by viewModel.preferences.novelAutoLoadNextChapterAt.collectAsState()
@@ -739,7 +760,7 @@ internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, re
             viewModel.preferences.novelAutoLoadNextChapterAt.set(95)
         }
     }
-    if (infiniteScrollEnabled) {
+    if (infiniteScrollEnabled && !isWebviewPaged) {
         val effectiveAutoLoadAt = if (autoLoadAt > 0) autoLoadAt else 95
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
             Text(stringResource(TDMR.strings.pref_novel_auto_load_next_at), style = MaterialTheme.typography.bodyMedium)

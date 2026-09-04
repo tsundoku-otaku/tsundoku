@@ -12,6 +12,9 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_DIVIDER_CLASS
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_ID_ATTR
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_TAG_NAME
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.EVENT_PAGE_CHANGE
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.PAGED_BODY_CLASS
+import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_CHAPTERS_CONTAINER_ID
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 import kotlinx.serialization.json.Json
@@ -273,6 +276,25 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
+    fun injectPagedReader() {
+        val js = NovelWebViewJsAssets.loadWith(
+            activity,
+            "paged-reader.js",
+            mapOf(
+                "TSUNDOKU_OBJECT_NAME" to TSUNDOKU_OBJECT_NAME,
+                "CHAPTERS_CONTAINER_ID" to TSUNDOKU_CHAPTERS_CONTAINER_ID,
+                "PAGED_BODY_CLASS" to PAGED_BODY_CLASS,
+                "PAGE_EVENT" to EVENT_PAGE_CHANGE,
+                "PROGRESS_EVENT" to NovelWebViewChapterMeta.EVENT_PROGRESS,
+                "PAGED_ENABLED" to preferences.novelPagedMode.get().toString(),
+                "PAGED_DRAG_COMMIT_FRACTION" to (preferences.novelPagedDragCommitPercent.get() / 100.0).toString(),
+                "SAFE_TOP_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_TOP,
+                "SAFE_BOTTOM_VAR" to NovelWebViewChapterMeta.CSS_VAR_SAFE_BOTTOM,
+            ),
+        )
+        evaluateJs(js)
+    }
+
     fun injectScrollTracking() {
         val autoLoadThreshold = preferences.novelAutoLoadNextChapterAt.get()
         val effectiveThreshold = if (autoLoadThreshold > 0) autoLoadThreshold / 100.0 else 0.95
@@ -287,6 +309,7 @@ internal class NovelWebViewStyler(
                 "LOAD_THRESHOLD" to effectiveThreshold.toString(),
                 "DONE_THRESHOLD" to NovelProgress.DONE_THRESHOLD.toString(),
                 "PROGRESS_EVENT" to NovelWebViewChapterMeta.EVENT_PROGRESS,
+                "PAGED_ENABLED" to preferences.novelPagedMode.get().toString(),
             ),
         )
         evaluateJs(js)

@@ -16,6 +16,7 @@ internal class NovelWebViewPreferenceObserver(
     private val onChapterReloadRequested: () -> Unit,
     private val onBlockMediaChanged: (Boolean) -> Unit,
     private val onTtsSettingsChanged: () -> Unit,
+    private val onPagedDragCommitPercentChanged: (Int) -> Unit,
 ) {
 
     @OptIn(FlowPreview::class)
@@ -67,11 +68,19 @@ internal class NovelWebViewPreferenceObserver(
         }
 
         scope.launch {
-            // Infinite scroll is a structural change (single document vs. multi-chapter appends),
-            // so reload the whole view for a consistent state instead of patching it live.
-            preferences.novelInfiniteScroll.changes()
+            // Infinite scroll and paged mode are both structural changes (single document vs.
+            // multi-chapter appends; continuous scroll vs. CSS-column pagination), so reload the
+            // whole view for a consistent state instead of patching either live.
+            merge(
+                preferences.novelInfiniteScroll.changes().drop(1),
+                preferences.novelPagedMode.changes().drop(1),
+            ).collect { onChapterReloadRequested() }
+        }
+
+        scope.launch {
+            preferences.novelPagedDragCommitPercent.changes()
                 .drop(1)
-                .collect { onChapterReloadRequested() }
+                .collect { percent -> onPagedDragCommitPercentChanged(percent) }
         }
 
         scope.launch {

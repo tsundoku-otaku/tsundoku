@@ -162,10 +162,6 @@ object SettingsNovelReaderScreen : SearchableSettings {
                     title = stringResource(MR.strings.pref_fullscreen),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.showPageNumber,
-                    title = stringResource(MR.strings.pref_show_page_number),
-                ),
-                Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.novelShowProgressSlider,
                     title = "Show progress slider",
                 ),
@@ -255,6 +251,10 @@ object SettingsNovelReaderScreen : SearchableSettings {
     private fun getNavigationGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_reader_navigation),
+            // This screen is a global default with no per-series rendering-mode context (see the
+            // Content group below), and paged mode only ever applies to WebView-rendered novels -
+            // so Swipe navigation stays visible regardless of the paged-mode toggle, since it
+            // remains fully functional for TextView-rendered novels either way.
             preferenceItems = listOf(
                 Preference.PreferenceItem.SwitchPreference(
                     preference = readerPreferences.novelVolumeKeysScroll,
@@ -355,60 +355,111 @@ object SettingsNovelReaderScreen : SearchableSettings {
     private fun getContentGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
         val autoLoadNextAt = readerPreferences.novelAutoLoadNextChapterAt.collectAsState().value
         val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.collectAsState().value
+        val pagedModeEnabled = readerPreferences.novelPagedMode.collectAsState().value
+        val pagedDragCommitPercent = readerPreferences.novelPagedDragCommitPercent.collectAsState().value
 
         return Preference.PreferenceGroup(
             title = "Content",
-            preferenceItems = listOf(
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelInfiniteScroll,
-                    title = "Infinite scroll",
-                    subtitle = "Load next chapter automatically while scrolling",
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = autoLoadNextAt,
-                    valueRange = 50..100,
-                    title = "Auto-load next chapter at",
-                    valueString = "$autoLoadNextAt%",
-                    onValueChanged = { readerPreferences.novelAutoLoadNextChapterAt.set(it) },
-                ),
-                Preference.PreferenceItem.SliderPreference(
-                    value = markAsReadThreshold,
-                    valueRange = 50..100,
-                    title = "Mark chapter as read at",
-                    valueString = "$markAsReadThreshold%",
-                    onValueChanged = { readerPreferences.novelMarkAsReadThreshold.set(it) },
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelMarkShortChapterAsRead,
-                    title = "Auto-mark short chapters as read",
-                    subtitle = "If a chapter fits the screen without scrolling, mark it read immediately",
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelHideChapterTitle,
-                    title = "Hide chapter title",
-                    subtitle = "Strip chapter title from content",
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelBlockMedia,
-                    title = "Block media",
-                    subtitle = "Block images and media loading in both readers",
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelTextSelectable,
-                    title = "Text selectable",
-                    subtitle = "Allow selecting and copying text in the reader",
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelShowRawHtml,
-                    title = "Show raw HTML",
-                    subtitle = "Display HTML source instead of rendered content",
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = readerPreferences.novelSourceCssPriority,
-                    title = "Source CSS priority",
-                    subtitle = "Allow embedded/source CSS to override reader theme colors",
-                ),
-            ),
+            // This screen is a global default with no per-series rendering-mode context (unlike
+            // the per-series reader settings, which correctly gate on renderingMode == "webview"),
+            // and paged mode only ever applies to WebView-rendered novels - so Infinite scroll /
+            // Auto-load next chapter stay visible here regardless of the paged-mode toggle, since
+            // they remain fully functional for TextView-rendered novels either way.
+            preferenceItems = buildList {
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelInfiniteScroll,
+                        title = "Infinite scroll",
+                        subtitle = "Load next chapter automatically while scrolling (non-paged reading only)",
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelPagedMode,
+                        title = "Paged mode (WebView only, experimental)",
+                        subtitle = "Swipe/tap turns a page instead of scrolling; chapter changes only past the first/last page",
+                    ),
+                )
+                if (pagedModeEnabled) {
+                    add(
+                        Preference.PreferenceItem.SwitchPreference(
+                            preference = readerPreferences.novelPagedSwipeEnabled,
+                            title = "Swipe to turn pages",
+                            subtitle = "Turn off to navigate paged mode with tap zones only",
+                        ),
+                    )
+                    add(
+                        Preference.PreferenceItem.SliderPreference(
+                            value = pagedDragCommitPercent,
+                            valueRange = 5..50,
+                            title = stringResource(TDMR.strings.pref_novel_paged_drag_commit),
+                            subtitle = stringResource(TDMR.strings.pref_novel_paged_drag_commit_summary),
+                            valueString = "$pagedDragCommitPercent%",
+                            onValueChanged = { readerPreferences.novelPagedDragCommitPercent.set(it) },
+                        ),
+                    )
+                }
+                add(
+                    Preference.PreferenceItem.SliderPreference(
+                        value = autoLoadNextAt,
+                        valueRange = 50..100,
+                        title = "Auto-load next chapter at",
+                        valueString = "$autoLoadNextAt%",
+                        onValueChanged = { readerPreferences.novelAutoLoadNextChapterAt.set(it) },
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SliderPreference(
+                        value = markAsReadThreshold,
+                        valueRange = 50..100,
+                        title = "Mark chapter as read at",
+                        valueString = "$markAsReadThreshold%",
+                        onValueChanged = { readerPreferences.novelMarkAsReadThreshold.set(it) },
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelMarkShortChapterAsRead,
+                        title = "Auto-mark short chapters as read",
+                        subtitle = "If a chapter fits the screen without scrolling, mark it read immediately",
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelHideChapterTitle,
+                        title = "Hide chapter title",
+                        subtitle = "Strip chapter title from content",
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelBlockMedia,
+                        title = "Block media",
+                        subtitle = "Block images and media loading in both readers",
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelTextSelectable,
+                        title = "Text selectable",
+                        subtitle = "Allow selecting and copying text in the reader",
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelShowRawHtml,
+                        title = "Show raw HTML",
+                        subtitle = "Display HTML source instead of rendered content",
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelSourceCssPriority,
+                        title = "Source CSS priority",
+                        subtitle = "Allow embedded/source CSS to override reader theme colors",
+                    ),
+                )
+            },
         )
     }
 

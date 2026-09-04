@@ -301,6 +301,19 @@ class ReaderPreferences(
     // Infinite scroll - automatically load next/previous chapters
     val novelInfiniteScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_infinite_scroll", false)
 
+    // Paged mode (webview only) - swipe/tap left-right turns a page instead of scrolling;
+    // chapter navigation happens only when a page turn overflows past the first/last page.
+    val novelPagedMode: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_paged_mode", false)
+
+    // Whether swipe/drag turns a page while paged mode is on (tap zones always work regardless -
+    // this only controls the swipe gesture, for users who want tap-only navigation).
+    val novelPagedSwipeEnabled: Preference<Boolean> =
+        preferenceStore.getBoolean("pref_novel_paged_swipe_enabled", true)
+
+    // Swipe distance (percent of width) needed to commit a page turn in paged mode
+    val novelPagedDragCommitPercent: Preference<Int> =
+        preferenceStore.getInt("pref_novel_paged_drag_commit_percent", 15)
+
     // Keep chapters loaded in memory (0 = only current, 1 = current + prev, 2 = current + next, 3 = both)
     val novelKeepChaptersLoaded: Preference<Int> = preferenceStore.getInt("pref_novel_keep_chapters_loaded", 0)
 

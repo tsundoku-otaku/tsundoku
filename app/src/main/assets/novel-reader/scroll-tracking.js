@@ -1,7 +1,8 @@
 // Page-side scroll listener for the novel WebView reader.
 // Installed once per load via NovelWebViewStyler.injectScrollTracking(), which substitutes the
 // __TSUNDOKU_OBJECT_NAME__ / __CHAPTER_DIVIDER_CLASS__ / __CHAPTER_ID_ATTR__ /
-// __INFINITE_SCROLL_ENABLED__ / __LOAD_THRESHOLD__ / __DONE_THRESHOLD__ / __PROGRESS_EVENT__ tokens.
+// __INFINITE_SCROLL_ENABLED__ / __LOAD_THRESHOLD__ / __DONE_THRESHOLD__ / __PROGRESS_EVENT__ /
+// __PAGED_ENABLED__ tokens.
 //
 // Reports to the Android JS interface:
 //   onChapterScrollUpdate(chapterId, progress)  visible chapter changed
@@ -13,13 +14,16 @@
 //   runtime.progress / runtime.chapterProgress / runtime.currentChapterId  (updated every frame)
 //   window event __PROGRESS_EVENT__  { progress, chapterProgress, chapterId, isLast }
 //     dispatched JS-side (no Kotlin bridge hop), throttled with the slider bridge.
+//
+// Skipped entirely in paged mode (no vertical scroll there - paged-reader.js owns progress
+// reporting instead).
 
 (function () {
     window.__TSUNDOKU_OBJECT_NAME__ = window.__TSUNDOKU_OBJECT_NAME__ || {};
     window.__TSUNDOKU_OBJECT_NAME__.runtime = window.__TSUNDOKU_OBJECT_NAME__.runtime || {};
     var runtime = window.__TSUNDOKU_OBJECT_NAME__.runtime;
 
-    if (runtime.infiniteScrollInstalled) {
+    if (runtime.infiniteScrollInstalled || __PAGED_ENABLED__) {
         return;
     }
     runtime.infiniteScrollInstalled = true;

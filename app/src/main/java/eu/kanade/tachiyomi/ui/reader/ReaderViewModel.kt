@@ -767,7 +767,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * Saves reading progress for novel chapters using percentage (0-100).
      * Used by NovelViewer to save scroll position.
      */
-    fun saveNovelProgress(page: ReaderPage, progressPercentage: Int) {
+    fun saveNovelProgress(page: ReaderPage, progressPercentage: Int, backwardJumpAllowancePercent: Int = 10) {
         val selectedChapter = page.chapter
 
         if (incognitoMode) return
@@ -782,10 +782,13 @@ class ReaderViewModel @JvmOverloads constructor(
                 // Skip save if progress hasn't changed at all
                 if (clampedProgress == currentProgress) return@withLock
 
-                // Reject large backward jumps (>10%), including spurious 0% reports that
-                // fire during relayout/recreation (e.g. orientation lock). A 0 used to be
-                // exempted here, which let a transient 0 wipe real progress on reopen.
-                if (clampedProgress < currentProgress - 10) {
+                // Reject large backward jumps, including spurious 0% reports that fire during
+                // relayout/recreation (e.g. orientation lock). A 0 used to be exempted here,
+                // which let a transient 0 wipe real progress on reopen. The allowance is normally
+                // 10%; paged mode passes ceil(100/pageCount)% instead (see
+                // NovelWebViewViewer.saveProgress), since one page of a short chapter can
+                // legitimately be a >10% jump - but only that much, not an unconditional bypass.
+                if (clampedProgress < currentProgress - backwardJumpAllowancePercent) {
                     logcat(LogPriority.DEBUG) {
                         "NovelProgress: Skipping save - new progress $clampedProgress% is much less than current $currentProgress%"
                     }
@@ -839,6 +842,10 @@ class ReaderViewModel @JvmOverloads constructor(
         val clamped = progress.coerceIn(0, 100)
         mutableState.update { it.copy(novelProgressPercent = clamped) }
         novelScrollProgress = clamped
+    }
+
+    fun updateNovelPageInfo(pageIndex: Int, pageCount: Int) {
+        mutableState.update { it.copy(novelPageIndex = pageIndex, novelPageCount = pageCount) }
     }
 
     private fun downloadNextChapters() {
@@ -1588,6 +1595,11 @@ class ReaderViewModel @JvmOverloads constructor(
          * Current reading progress for novel viewer (0-100 percentage).
          */
         val novelProgressPercent: Int = 0,
+        /**
+         * Current/total page in the novel webview paged reader (0/0 when paged mode is off).
+         */
+        val novelPageIndex: Int = 0,
+        val novelPageCount: Int = 0,
 
         /**
          * Whether translation is enabled for the current chapter.
