@@ -767,7 +767,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * Saves reading progress for novel chapters using percentage (0-100).
      * Used by NovelViewer to save scroll position.
      */
-    fun saveNovelProgress(page: ReaderPage, progressPercentage: Int, allowBackwardJump: Boolean = false) {
+    fun saveNovelProgress(page: ReaderPage, progressPercentage: Int, backwardJumpAllowancePercent: Int = 10) {
         val selectedChapter = page.chapter
 
         if (incognitoMode) return
@@ -782,13 +782,13 @@ class ReaderViewModel @JvmOverloads constructor(
                 // Skip save if progress hasn't changed at all
                 if (clampedProgress == currentProgress) return@withLock
 
-                // Reject large backward jumps (>10%), including spurious 0% reports that
-                // fire during relayout/recreation (e.g. orientation lock). A 0 used to be
-                // exempted here, which let a transient 0 wipe real progress on reopen. Paged
-                // mode's own reports are always an explicit, deliberate page-turn ratio (never
-                // a relayout blip - see NovelWebViewViewer.saveProgress), and one page of a short
-                // chapter can legitimately be a >10% jump, so it's exempted via allowBackwardJump.
-                if (!allowBackwardJump && clampedProgress < currentProgress - 10) {
+                // Reject large backward jumps, including spurious 0% reports that fire during
+                // relayout/recreation (e.g. orientation lock). A 0 used to be exempted here,
+                // which let a transient 0 wipe real progress on reopen. The allowance is normally
+                // 10%; paged mode passes ceil(100/pageCount)% instead (see
+                // NovelWebViewViewer.saveProgress), since one page of a short chapter can
+                // legitimately be a >10% jump - but only that much, not an unconditional bypass.
+                if (clampedProgress < currentProgress - backwardJumpAllowancePercent) {
                     logcat(LogPriority.DEBUG) {
                         "NovelProgress: Skipping save - new progress $clampedProgress% is much less than current $currentProgress%"
                     }

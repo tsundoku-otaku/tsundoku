@@ -16,6 +16,7 @@ internal class NovelWebViewPreferenceObserver(
     private val onChapterReloadRequested: () -> Unit,
     private val onBlockMediaChanged: (Boolean) -> Unit,
     private val onTtsSettingsChanged: () -> Unit,
+    private val onPagedDragCommitPercentChanged: (Int) -> Unit,
 ) {
 
     @OptIn(FlowPreview::class)
@@ -74,6 +75,12 @@ internal class NovelWebViewPreferenceObserver(
                 preferences.novelInfiniteScroll.changes().drop(1),
                 preferences.novelPagedMode.changes().drop(1),
             ).collect { onChapterReloadRequested() }
+        }
+
+        scope.launch {
+            preferences.novelPagedDragCommitPercent.changes()
+                .drop(1)
+                .collect { percent -> onPagedDragCommitPercentChanged(percent) }
         }
 
         scope.launch {

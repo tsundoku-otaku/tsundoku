@@ -65,6 +65,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.unescapeJsResult
 import eu.kanade.tachiyomi.util.system.toast
+import kotlin.math.ceil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -877,6 +878,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             onTtsSettingsChanged = {
                 if (ttsController.ttsInitialized) ttsController.applySettings()
             },
+            onPagedDragCommitPercentChanged = { percent ->
+                val fraction = percent / 100.0
+                evaluateJavascriptSafe(
+                    "if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.actions && " +
+                        "window.$TSUNDOKU_OBJECT_NAME.actions.setPagedConfig) " +
+                        "window.$TSUNDOKU_OBJECT_NAME.actions.setPagedConfig({dragCommitFraction: $fraction});",
+                )
+            },
         ).observe()
     }
 
@@ -1040,8 +1049,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             lastPersistedPercent = progressValue
             // Paged mode's reports are always a deliberate page-turn ratio, never a relayout
             // blip, so a legitimate single-page-back turn in a short chapter isn't rejected by
-            // the backward-jump guard the way a spurious continuous-scroll 0% would be.
-            activity.saveNovelProgress(page, progressValue, allowBackwardJump = isPagedModeActive())
+            // the backward-jump guard the way a spurious continuous-scroll 0% would be. The
+            // allowance is sized to exactly one page (never more), not an unconditional bypass -
+            // an actual spurious backward report in paged mode should still be caught.
+            val pageCount = activity.viewModel.state.value.novelPageCount
+            val backwardJumpAllowance = if (isPagedModeActive() && pageCount > 0) {
+                ceil(100.0 / pageCount).toInt()
+            } else {
+                10
+            }
+            activity.saveNovelProgress(page, progressValue, backwardJumpAllowance)
             logcat(LogPriority.DEBUG) { "NovelWebViewViewer: Saving progress $progressValue%" }
         }
     }
@@ -2022,8 +2039,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // triggered by paging past it (always a full switch now, never an append) is fast.
                 // A single-page chapter is simultaneously at both edges, so both are checked
                 // independently rather than an if/else-if that can only ever pick one.
+                // Reads the ViewModel's viewerChapters, not this viewer's own (possibly stale)
+                // currentChapters - see loadNextChapter()'s matching comment.
+                val chapters = activity.viewModel.state.value.viewerChapters
                 if (pageIndex >= pageCount - 1) {
-                    val next = currentChapters?.nextChapter
+                    val next = chapters?.nextChapter
                     val nextId = next?.chapter?.id
                     if (next != null && nextId != lastPreloadRequestedNextChapterId) {
                         lastPreloadRequestedNextChapterId = nextId
@@ -2031,7 +2051,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     }
                 }
                 if (pageIndex <= 0) {
-                    val prev = currentChapters?.prevChapter
+                    val prev = chapters?.prevChapter
                     val prevId = prev?.chapter?.id
                     if (prev != null && prevId != lastPreloadRequestedPrevChapterId) {
                         lastPreloadRequestedPrevChapterId = prevId
