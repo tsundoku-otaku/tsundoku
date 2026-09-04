@@ -76,10 +76,10 @@ class ExtensionManager(
     val untrustedExtensionsFlow = untrustedExtensionMapFlow.mapExtensions(scope)
 
     init {
-        // Load off the constructing thread: ExtensionLoader.loadExtensions runBlocks on the
-        // trusted-fingerprint DB flow, so doing it synchronously here froze startup when the manager
-        // was first constructed on the main thread before the DB migration had completed. Consumers
-        // already observe isInitialized / installedExtensionsFlow, so async init is safe.
+        // Load off the constructing thread: ExtensionLoader.loadExtensions does blocking package
+        // manager and DB work, so doing it synchronously here froze startup when the manager was
+        // first constructed on the main thread. Consumers already observe isInitialized /
+        // installedExtensionsFlow, so async init is safe.
         scope.launchIO { initExtensions() }
         ExtensionInstallReceiver(InstallationListener()).register(context)
     }
