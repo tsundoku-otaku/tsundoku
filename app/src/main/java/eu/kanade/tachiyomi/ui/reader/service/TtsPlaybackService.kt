@@ -170,6 +170,8 @@ class TtsPlaybackService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        mediaSession.setSessionActivity(openReaderPendingIntent)
+
         val statusText = if (isPaused) "Paused" else "Reading in background"
 
         val contentText = if (chapterTitle.isNotBlank()) {
