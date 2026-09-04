@@ -2615,8 +2615,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         if (isPagedModeActive()) {
             val action = if (direction < 0) "prevPage" else "nextPage"
             evaluateJavascriptSafe(
-                "if (window.Tsundoku && window.Tsundoku.actions && window.Tsundoku.actions.$action) " +
-                    "window.Tsundoku.actions.$action();",
+                "if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.actions && " +
+                    "window.$TSUNDOKU_OBJECT_NAME.actions.$action) " +
+                    "window.$TSUNDOKU_OBJECT_NAME.actions.$action();",
             )
             return
         }

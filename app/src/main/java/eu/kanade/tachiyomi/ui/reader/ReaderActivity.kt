@@ -816,6 +816,7 @@ class ReaderActivity : BaseActivity() {
 
         if (isNovelViewer) {
             var isAutoScrolling by remember { mutableStateOf(false) }
+            val novelPagedModeState by readerPreferences.novelPagedMode.collectAsState()
 
             // Get common callbacks that work for both viewer types
             val onScrollToTop: () -> Unit = {
@@ -1050,8 +1051,7 @@ class ReaderActivity : BaseActivity() {
                 onScrollToTop = onScrollToTop,
                 isAutoScrolling = isAutoScrolling,
                 onToggleAutoScroll = onToggleAutoScroll,
-                hideAutoScroll = state.viewer is NovelWebViewViewer &&
-                    readerPreferences.novelPagedMode.collectAsState().value,
+                hideAutoScroll = state.viewer is NovelWebViewViewer && novelPagedModeState,
                 isTranslating = state.isTranslating,
                 onToggleTranslation = viewModel::toggleTranslation,
                 onLongPressTranslation = viewModel::openTranslationLanguageDialog,
