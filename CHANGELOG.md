@@ -14,6 +14,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - TTS media notification for pause/resume with headset buttons. Old notification available in advanced settings. [@mrissaoussama](https://github.com/mrissaoussama) [#421](https://github.com/tsundoku-otaku/tsundoku/pull/421)
 
+### Fixed
+- Fix extension restoring from cold state [@mrissaoussama](https://github.com/mrissaoussama) [#422](https://github.com/tsundoku-otaku/tsundoku/pull/422)
+
 
 ## [v0.3.3] - 2026-08-30
 ### Improved
