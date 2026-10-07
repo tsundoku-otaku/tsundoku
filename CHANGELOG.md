@@ -18,6 +18,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 
 ### Improved
+- TTS media notification for pause/resume with headset buttons. Old notification available in advanced settings. [@Rojikku](https://github.com/Rojikku) [#435](https://github.com/tsundoku-otaku/tsundoku/pull/435)
 - TTS media notification for pause/resume with headset buttons. Old notification available in advanced settings. [@mrissaoussama](https://github.com/mrissaoussama) [#421](https://github.com/tsundoku-otaku/tsundoku/pull/421)
 
 ### Fixed
