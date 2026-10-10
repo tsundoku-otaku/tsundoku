@@ -29,6 +29,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Font family selector dialog is now scrollable and long font names no longer squash the setting label [#427](https://github.com/tsundoku-otaku/tsundoku/issues/427)
 - Fix novel reader crash when opening a chapter on Android 8.0/8.1 [@RibatTRW](https://github.com/RibatTRW) [#432](https://github.com/tsundoku-otaku/tsundoku/pull/432)
 
+### Other
+- Refresh apt package index before installing xmllint in translation lint CI, fixing 404 failures from stale runner mirrors
+
 
 ## [v0.3.3] - 2026-08-30
 ### Improved
