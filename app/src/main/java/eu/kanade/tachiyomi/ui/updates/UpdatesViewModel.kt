@@ -80,7 +80,10 @@ data class UpdatesNovelGroup(
     val chapters: List<UpdatesItem>,
     val isNovel: Boolean = false,
 ) {
-    val chapterCount: Int get() = chapters.size
+    val chapterCount: Int by lazy {
+        val latestDay = latestChapterDate.toLocalDate()
+        chapters.count { it.update.dateFetch.toLocalDate() == latestDay }
+    }
     val hasUnreadChapters: Boolean get() = chapters.any { !it.update.read }
     val hasDownloaded: Boolean get() = chapters.any { it.downloadStateProvider() == Download.State.DOWNLOADED }
 }
