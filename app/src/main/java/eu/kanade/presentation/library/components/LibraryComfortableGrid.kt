@@ -23,6 +23,7 @@ internal fun LibraryComfortableGrid(
     titleMaxLines: Int = 2,
     onLoadMore: (() -> Unit)? = null,
     loadMoreKey: Long = 0,
+    isLoadingMore: Boolean = false,
 ) {
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),
@@ -68,5 +69,6 @@ internal fun LibraryComfortableGrid(
         }
 
         loadMoreSentinel(loadMoreKey, onLoadMore)
+        loadMoreFooter(isLoadingMore)
     }
 }
