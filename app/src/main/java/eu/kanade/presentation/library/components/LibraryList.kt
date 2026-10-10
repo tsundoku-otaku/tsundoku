@@ -25,6 +25,7 @@ internal fun LibraryList(
     showUrl: Boolean = false,
     onLoadMore: (() -> Unit)? = null,
     loadMoreKey: Long = 0,
+    isLoadingMore: Boolean = false,
 ) {
     FastScrollLazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -78,5 +79,6 @@ internal fun LibraryList(
         }
 
         loadMoreSentinel(loadMoreKey, onLoadMore)
+        loadMoreFooter(isLoadingMore)
     }
 }

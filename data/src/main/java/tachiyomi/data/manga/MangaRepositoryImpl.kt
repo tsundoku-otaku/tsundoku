@@ -5,6 +5,10 @@ package tachiyomi.data.manga
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.db.SqlPreparedStatement
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -26,6 +30,7 @@ import tachiyomi.data.subscribeToOne
 import tachiyomi.data.subscribeToOneOrNull
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
+import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaSelectionMetric
@@ -39,8 +44,19 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.time.Clock
 
+private const val AGGREGATE_CHUNK_SIZE = 400
+
+private val libraryPageColumns = listOf(
+    "_id", "source", "url", "genre", "title", "status", "thumbnail_url", "favorite",
+    "last_update", "next_update", "cover_last_modified", "date_added",
+    "is_novel", "total_count", "read_count", "latest_upload", "chapter_fetched_at",
+    "last_read", "bookmark_count",
+)
+private val libraryPageColumnIndex = libraryPageColumns.withIndex().associate { (i, name) -> name to i }
+
 class MangaRepositoryImpl(
     private val database: Database,
+    private val driver: SqlDriver,
 ) : MangaRepository {
 
     private data class UrlMaintenanceRow(
@@ -323,7 +339,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = cover_last_modified,
                 dateAdded = date_added,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -504,7 +520,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = cover_last_modified,
                 dateAdded = 0,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -549,7 +565,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = cover_last_modified,
                 dateAdded = 0,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -594,7 +610,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = cover_last_modified,
                 dateAdded = 0,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -778,7 +794,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -807,106 +823,218 @@ class MangaRepositoryImpl(
         return result
     }
 
+    private class SqlParamBuilder {
+        val sql = StringBuilder()
+        private val binderActions = mutableListOf<SqlPreparedStatement.() -> Unit>()
+        val paramCount get() = binderActions.size
+
+        fun raw(text: String): SqlParamBuilder {
+            sql.append(text)
+            return this
+        }
+
+        fun long(value: Long): SqlParamBuilder {
+            val idx = binderActions.size
+            binderActions.add { bindLong(idx, value) }
+            sql.append('?')
+            return this
+        }
+
+        fun boolean(value: Boolean): SqlParamBuilder {
+            val idx = binderActions.size
+            binderActions.add { bindBoolean(idx, value) }
+            sql.append('?')
+            return this
+        }
+
+        fun string(value: String): SqlParamBuilder {
+            val idx = binderActions.size
+            binderActions.add { bindString(idx, value) }
+            sql.append('?')
+            return this
+        }
+
+        /** Appends "(?, ?, ..., ?)"; the list must not be empty. */
+        fun longList(values: Collection<Long>): SqlParamBuilder {
+            sql.append('(')
+            values.forEachIndexed { i, value ->
+                if (i > 0) sql.append(", ")
+                long(value)
+            }
+            sql.append(')')
+            return this
+        }
+
+        fun triState(value: Int, matchExpr: String, notMatchExpr: String): SqlParamBuilder {
+            when (value) {
+                1 -> raw(" AND $matchExpr")
+                2 -> raw(" AND $notMatchExpr")
+            }
+            return this
+        }
+
+        fun bind(): SqlPreparedStatement.() -> Unit {
+            val actions = binderActions.toList()
+            return { actions.forEach { it() } }
+        }
+    }
+
     override suspend fun getLibraryMangaPage(
         categoryId: Long,
         isNovel: Boolean,
         limit: Long,
         offset: Long,
-        spec: tachiyomi.domain.library.model.LibraryPageSpec,
+        spec: LibraryPageSpec,
     ): List<LibraryManga> {
-        // NOT IN () is invalid, so pad an empty exclusion list with a non-existent source id.
-        val excluded = spec.excludedSourceIds.ifEmpty { listOf(-1L) }
-        return database.mangasQueries.libraryPageFiltered(
-            isNovel = isNovel,
-            categoryId = categoryId,
-            filterUnread = spec.filterUnread.toLong(),
-            filterStarted = spec.filterStarted.toLong(),
-            filterBookmarked = spec.filterBookmarked.toLong(),
-            filterCompleted = spec.filterCompleted.toLong(),
-            filterIntervalCustom = spec.filterIntervalCustom.toLong(),
-            filterChapterCount = spec.filterChapterCount.toLong(),
-            chapterCountThreshold = spec.filterChapterCountThreshold.toLong(),
-            excludedSourceIds = excluded,
-            searchTerm = spec.searchTerm,
-            searchAltTitles = if (spec.searchAlternativeTitles) 1L else 0L,
-            includedTagsCsv = spec.includedTagsCsv,
-            sortType = spec.sortType.toLong(),
-            sortAscending = if (spec.sortAscending) 1L else 0L,
-            limit = limit,
-            offset = offset,
-        ) {
-                id,
-                source,
-                url,
-                _,
-                _,
-                _,
-                genre,
-                title,
-                _,
-                status,
-                thumbnailUrl,
-                favorite,
-                lastUpdate,
-                nextUpdate,
-                _,
-                _,
-                _,
-                coverLastModified,
-                dateAdded,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                notes,
-                isNovel,
-                totalCount,
-                readCount,
-                latestUpload,
-                chapterFetchedAt,
-                lastRead,
-                bookmarkCount,
-                categories,
-            ->
-            MangaMapper.mapLibraryManga(
-                id = id,
-                source = source,
-                url = url,
-                artist = null,
-                author = null,
-                description = null,
-                genre = genre,
-                title = title,
-                alternativeTitles = null,
-                status = status,
-                thumbnailUrl = thumbnailUrl,
-                favorite = favorite,
-                lastUpdate = lastUpdate,
-                nextUpdate = nextUpdate,
-                initialized = false,
-                viewerFlags = 0,
-                chapterFlags = 0,
-                coverLastModified = coverLastModified,
-                dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
-                lastModifiedAt = 0,
-                favoriteModifiedAt = null,
-                version = 0,
-                isSyncing = 0,
-                notes = notes,
-                isNovel = isNovel,
-                totalCount = totalCount,
-                readCount = readCount,
-                latestUpload = latestUpload,
-                chapterFetchedAt = chapterFetchedAt,
-                lastRead = lastRead,
-                bookmarkCount = bookmarkCount,
-                categories = categories,
+        val b = SqlParamBuilder()
+
+        b.raw("SELECT ${libraryPageColumns.joinToString(", ") { "M.$it" }}, ")
+        b.raw(
+            "coalesce((SELECT group_concat(category_id) FROM mangas_categories WHERE manga_id = M._id), '0') " +
+                "AS categories",
+        )
+        b.raw("\nFROM mangas M\nWHERE M.favorite = 1 AND M.is_novel = ")
+        b.boolean(isNovel)
+        if (categoryId == 0L) {
+            b.raw(" AND NOT EXISTS (SELECT 1 FROM mangas_categories MCX WHERE MCX.manga_id = M._id)")
+        } else {
+            b.raw(" AND M._id IN (SELECT manga_id FROM mangas_categories WHERE category_id = ")
+            b.long(categoryId)
+            b.raw(")")
+        }
+
+        b.triState(
+            spec.filterUnread,
+            "(M.total_count - M.read_count) > 0",
+            "(M.total_count - M.read_count) <= 0",
+        )
+        b.triState(spec.filterStarted, "M.read_count > 0", "M.read_count = 0")
+        b.triState(spec.filterBookmarked, "M.bookmark_count > 0", "M.bookmark_count = 0")
+        b.triState(spec.filterCompleted, "M.status = 2", "M.status != 2")
+        b.triState(spec.filterIntervalCustom, "M.calculate_interval < 0", "M.calculate_interval >= 0")
+
+        val chapterThreshold = spec.filterChapterCountThreshold.toLong()
+        b.triState(
+            spec.filterChapterCount,
+            "M.total_count >= $chapterThreshold",
+            "M.total_count < $chapterThreshold",
+        )
+
+        if (spec.excludedSourceIds.isNotEmpty()) {
+            b.raw(" AND M.source NOT IN ")
+            b.longList(spec.excludedSourceIds)
+        }
+
+        if (spec.searchTerm.isNotEmpty()) {
+            val searchColumns = buildList {
+                add("M.title")
+                add("M.url")
+                add("coalesce(M.genre, '')")
+                if (spec.searchAlternativeTitles) add("coalesce(M.alternative_titles, '')")
+            }
+            b.raw(" AND (")
+            searchColumns.forEachIndexed { i, column ->
+                if (i > 0) b.raw(" OR ")
+                b.raw("$column LIKE '%' || ")
+                b.string(spec.searchTerm)
+                b.raw(" || '%' ESCAPE '\\'")
+            }
+            b.raw(")")
+        }
+
+        if (spec.includedTagsCsv.isNotEmpty()) {
+            b.raw(
+                """
+                | AND EXISTS (
+                |    WITH RECURSIVE inc(tag, rest) AS (
+                |        SELECT NULL,
+                """.trimMargin(),
             )
-        }.awaitAsList()
+            b.string(spec.includedTagsCsv)
+            b.raw(
+                """
+                | || char(31)
+                |        UNION ALL
+                |        SELECT substr(rest, 1, instr(rest, char(31)) - 1), substr(rest, instr(rest, char(31)) + 1)
+                |        FROM inc WHERE rest <> ''
+                |    )
+                |    SELECT 1 FROM inc
+                |    WHERE inc.tag IS NOT NULL AND inc.tag <> ''
+                |      AND lower(coalesce(M.genre, '')) LIKE '%' || inc.tag || '%'
+                |)
+                """.trimMargin(),
+            )
+        }
+
+        val dir = if (spec.sortAscending) "ASC" else "DESC"
+        val unread = "(M.total_count - M.read_count)"
+        val orderBy = when (spec.sortType) {
+            LibraryPageSpec.SORT_ALPHABETICAL -> "M.title COLLATE NOCASE $dir"
+            LibraryPageSpec.SORT_UNREAD_COUNT -> "($unread = 0), $unread $dir, M.title COLLATE NOCASE ASC"
+            LibraryPageSpec.SORT_LAST_READ -> "M.last_read $dir, M.title COLLATE NOCASE ASC"
+            LibraryPageSpec.SORT_LAST_UPDATE -> "M.last_update $dir, M.title COLLATE NOCASE ASC"
+            LibraryPageSpec.SORT_TOTAL_CHAPTERS -> "M.total_count $dir, M.title COLLATE NOCASE ASC"
+            LibraryPageSpec.SORT_LATEST_CHAPTER -> "M.latest_upload $dir, M.title COLLATE NOCASE ASC"
+            LibraryPageSpec.SORT_CHAPTER_FETCH_DATE -> "M.chapter_fetched_at $dir, M.title COLLATE NOCASE ASC"
+            else -> "M.date_added $dir, M.title COLLATE NOCASE ASC"
+        }
+        b.raw(" ORDER BY $orderBy, M._id ASC LIMIT ")
+        b.long(limit)
+        b.raw(" OFFSET ")
+        b.long(offset)
+
+        return driver.executeQuery(
+            null,
+            b.sql.toString(),
+            { cursor ->
+                fun col(name: String) = libraryPageColumnIndex.getValue(name)
+                val categoriesIndex = libraryPageColumns.size
+                val list = mutableListOf<LibraryManga>()
+                while (cursor.next().value) {
+                    list.add(
+                        MangaMapper.mapLibraryManga(
+                            id = cursor.getLong(col("_id"))!!,
+                            source = cursor.getLong(col("source"))!!,
+                            url = cursor.getString(col("url"))!!,
+                            artist = null,
+                            author = null,
+                            description = null,
+                            genre = cursor.getString(col("genre"))?.let(StringListColumnAdapter::decode),
+                            title = cursor.getString(col("title"))!!,
+                            alternativeTitles = null,
+                            status = cursor.getLong(col("status"))!!,
+                            thumbnailUrl = cursor.getString(col("thumbnail_url")),
+                            favorite = cursor.getBoolean(col("favorite"))!!,
+                            lastUpdate = cursor.getLong(col("last_update")),
+                            nextUpdate = cursor.getLong(col("next_update")),
+                            initialized = false,
+                            viewerFlags = 0,
+                            chapterFlags = 0,
+                            coverLastModified = cursor.getLong(col("cover_last_modified"))!!,
+                            dateAdded = cursor.getLong(col("date_added"))!!,
+                            updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+                            calculateInterval = 0,
+                            lastModifiedAt = 0,
+                            favoriteModifiedAt = null,
+                            version = 0,
+                            isSyncing = 0,
+                            notes = "",
+                            isNovel = cursor.getBoolean(col("is_novel"))!!,
+                            totalCount = cursor.getLong(col("total_count"))!!,
+                            readCount = (cursor.getLong(col("read_count")) ?: 0L).toDouble(),
+                            latestUpload = cursor.getLong(col("latest_upload"))!!,
+                            chapterFetchedAt = cursor.getLong(col("chapter_fetched_at"))!!,
+                            lastRead = cursor.getLong(col("last_read"))!!,
+                            bookmarkCount = (cursor.getLong(col("bookmark_count")) ?: 0L).toDouble(),
+                            categories = cursor.getString(categoriesIndex)!!,
+                        ),
+                    )
+                }
+                QueryResult.Value<List<LibraryManga>>(list)
+            },
+            b.paramCount,
+            b.bind(),
+        ).await()
     }
 
     override suspend fun getLibraryMangaById(mangaId: Long): LibraryManga? {
@@ -966,7 +1094,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -1043,7 +1171,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -1160,7 +1288,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -2196,7 +2324,39 @@ class MangaRepositoryImpl(
             "MangaRepositoryImpl.refreshLibraryCacheForMangas: Recomputing aggregates for ${mangaIds.size} manga"
         }
         database.transaction {
-            database.mangasQueries.recomputeAggregatesForMangas(mangaIds)
+            mangaIds.chunked(AGGREGATE_CHUNK_SIZE).forEach { chunk ->
+                database.mangasQueries.resetAggregatesForIds(chunk)
+
+                val idPlaceholders = chunk.joinToString(", ") { "?" }
+                val sql = """
+                    |UPDATE mangas
+                    |SET total_count = agg.total_count, read_count = agg.read_count,
+                    |    latest_upload = agg.latest_upload, chapter_fetched_at = agg.chapter_fetched_at,
+                    |    last_read = agg.last_read, bookmark_count = agg.bookmark_count
+                    |FROM (
+                    |    SELECT
+                    |        chapters.manga_id AS id,
+                    |        count(*) AS total_count,
+                    |        coalesce(sum(chapters.read), 0) AS read_count,
+                    |        coalesce(max(chapters.date_upload), 0) AS latest_upload,
+                    |        coalesce(max(chapters.date_fetch), 0) AS chapter_fetched_at,
+                    |        coalesce(max(history.last_read), 0) AS last_read,
+                    |        coalesce(sum(chapters.bookmark), 0) AS bookmark_count
+                    |    FROM chapters
+                    |    LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
+                    |        AND chapters.scanlator = excluded_scanlators.scanlator
+                    |    LEFT JOIN history ON chapters._id = history.chapter_id
+                    |    WHERE chapters.manga_id IN ($idPlaceholders) AND excluded_scanlators.scanlator IS NULL
+                    |    GROUP BY chapters.manga_id
+                    |) AS agg
+                    |WHERE mangas._id = agg.id AND mangas._id IN ($idPlaceholders)
+                """.trimMargin()
+                driver.execute(null, sql, chunk.size * 2) {
+                    var i = 0
+                    chunk.forEach { id -> bindLong(i++, id) }
+                    chunk.forEach { id -> bindLong(i++, id) }
+                }.await()
+            }
         }
     }
 

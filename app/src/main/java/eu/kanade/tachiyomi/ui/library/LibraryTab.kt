@@ -260,6 +260,8 @@ data object LibraryTab : Tab {
                         onLoadMore = viewModel::loadMoreForCategory,
                         getLoadMoreKey = { state.categoryLoadKey(it) },
                         isCategoryLoading = { state.paginationLoadingCategories.contains(it.id) },
+                        isCategoryLoadingMore = { state.paginationLoadingMoreCategories.contains(it.id) },
+                        resetToken = state.paginationResetToken,
                     )
                 }
             }
