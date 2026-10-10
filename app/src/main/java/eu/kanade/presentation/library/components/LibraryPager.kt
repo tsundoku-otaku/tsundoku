@@ -52,6 +52,8 @@ fun LibraryPager(
     onLoadMore: (Category) -> Unit = {},
     getLoadMoreKey: (Category) -> Long = { 0 },
     isCategoryLoading: (Category) -> Boolean = { false },
+    isCategoryLoadingMore: (Category) -> Boolean = { false },
+    resetToken: Int = 0,
 ) {
     HorizontalPager(
         modifier = Modifier.fillMaxSize(),
@@ -66,7 +68,7 @@ fun LibraryPager(
         val items = getItemsForCategory(category)
 
         if (paginationEnabled) {
-            LaunchedEffect(category.id) { onCategoryFirstVisible(category) }
+            LaunchedEffect(category.id, resetToken) { onCategoryFirstVisible(category) }
         }
 
         if (items.isEmpty()) {
@@ -97,6 +99,7 @@ fun LibraryPager(
         }
         // Generation key (paginated) drives sentinel re-fire; item count otherwise.
         val loadMoreKey = if (paginationEnabled) getLoadMoreKey(category) else items.size.toLong()
+        val isLoadingMore = paginationEnabled && isCategoryLoadingMore(category)
 
         val displayMode by getDisplayMode(page)
         val columns by if (displayMode != LibraryDisplayMode.List) {
@@ -125,6 +128,7 @@ fun LibraryPager(
                     showUrl = showUrlInList,
                     onLoadMore = onLoadMoreForCategory,
                     loadMoreKey = loadMoreKey,
+                    isLoadingMore = isLoadingMore,
                 )
             }
             LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
@@ -141,6 +145,7 @@ fun LibraryPager(
                     onGlobalSearchClicked = onGlobalSearchClicked,
                     onLoadMore = onLoadMoreForCategory,
                     loadMoreKey = loadMoreKey,
+                    isLoadingMore = isLoadingMore,
                 )
             }
             LibraryDisplayMode.ComfortableGrid -> {
@@ -157,6 +162,7 @@ fun LibraryPager(
                     titleMaxLines = titleMaxLines,
                     onLoadMore = onLoadMoreForCategory,
                     loadMoreKey = loadMoreKey,
+                    isLoadingMore = isLoadingMore,
                 )
             }
         }

@@ -44,9 +44,9 @@ CREATE TABLE mangas(
 
 CREATE INDEX library_favorite_index ON mangas(favorite) WHERE favorite = 1;
 CREATE INDEX mangas_url_index ON mangas(url);
-CREATE INDEX mangas_is_novel_index ON mangas(is_novel);
 CREATE INDEX idx_mangas_source ON mangas(source);
 CREATE INDEX idx_mangas_source_url ON mangas(source, url);
+CREATE INDEX idx_mangas_library_is_novel ON mangas(is_novel) WHERE favorite = 1;
 
 CREATE TRIGGER update_last_favorited_at_mangas
 AFTER UPDATE OF favorite ON mangas
@@ -682,127 +682,9 @@ SELECT
     M.chapter_fetched_at AS chapterFetchedAt,
     M.last_read AS lastRead,
     CAST(M.bookmark_count AS REAL) AS bookmarkCount,
-    coalesce(MC.categories, '0') AS categories
+    coalesce((SELECT group_concat(category_id) FROM mangas_categories WHERE manga_id = M._id), '0') AS categories
 FROM mangas M
-LEFT JOIN (
-    SELECT manga_id, group_concat(category_id) AS categories
-    FROM mangas_categories
-    GROUP BY manga_id
-) AS MC ON MC.manga_id = M._id
 WHERE M.favorite = 1;
-
--- Experimental: same projection as libraryGrid but paged per category + content type so a very
--- large library can be loaded with a memory ceiling, with the DB-expressible filters/sort applied
--- so each page is the globally-correct slice (the rest of the filtering stays in memory).
--- Filter tri-states: 0 = ignore, 1 = must match, 2 = must NOT match. :categoryId = 0 is the
--- system/uncategorized bucket. :excludedSourceIds is padded by the caller so it is never empty.
--- :searchTerm = '' disables search. Sort columns not in the table fall back to date_added.
-libraryPageFiltered:
-SELECT
-    M._id,
-    M.source,
-    M.url,
-    NULL AS artist,
-    NULL AS author,
-    NULL AS description,
-    M.genre,
-    M.title,
-    NULL AS alternative_titles,
-    M.status,
-    M.thumbnail_url,
-    M.favorite,
-    M.last_update,
-    M.next_update,
-    0 AS initialized,
-    0 AS viewer,
-    0 AS chapter_flags,
-    M.cover_last_modified,
-    M.date_added,
-    0 AS update_strategy,
-    M.calculate_interval,
-    0 AS last_modified_at,
-    NULL AS favorite_modified_at,
-    0 AS version,
-    0 AS is_syncing,
-    '' AS notes,
-    M.is_novel,
-    M.total_count AS totalCount,
-    CAST(M.read_count AS REAL) AS readCount,
-    M.latest_upload AS latestUpload,
-    M.chapter_fetched_at AS chapterFetchedAt,
-    M.last_read AS lastRead,
-    CAST(M.bookmark_count AS REAL) AS bookmarkCount,
-    coalesce(MC.categories, '0') AS categories
-FROM mangas M
-LEFT JOIN (
-    SELECT manga_id, group_concat(category_id) AS categories
-    FROM mangas_categories
-    GROUP BY manga_id
-) AS MC ON MC.manga_id = M._id
-WHERE M.favorite = 1
-  AND M.is_novel = :isNovel
-  AND (
-    (:categoryId = 0 AND NOT EXISTS (
-        SELECT 1 FROM mangas_categories MCX WHERE MCX.manga_id = M._id
-    ))
-    OR EXISTS (
-        SELECT 1 FROM mangas_categories MCY WHERE MCY.manga_id = M._id AND MCY.category_id = :categoryId
-    )
-  )
-  AND (:filterUnread = 0 OR (:filterUnread = 1 AND (M.total_count - M.read_count) > 0) OR (:filterUnread = 2 AND (M.total_count - M.read_count) <= 0))
-  AND (:filterStarted = 0 OR (:filterStarted = 1 AND M.read_count > 0) OR (:filterStarted = 2 AND M.read_count = 0))
-  AND (:filterBookmarked = 0 OR (:filterBookmarked = 1 AND M.bookmark_count > 0) OR (:filterBookmarked = 2 AND M.bookmark_count = 0))
-  AND (:filterCompleted = 0 OR (:filterCompleted = 1 AND M.status = 2) OR (:filterCompleted = 2 AND M.status != 2))
-  AND (:filterIntervalCustom = 0 OR (:filterIntervalCustom = 1 AND M.calculate_interval < 0) OR (:filterIntervalCustom = 2 AND M.calculate_interval >= 0))
-  AND (:filterChapterCount = 0 OR (:filterChapterCount = 1 AND M.total_count >= :chapterCountThreshold) OR (:filterChapterCount = 2 AND M.total_count < :chapterCountThreshold))
-  AND M.source NOT IN :excludedSourceIds
-  AND (
-    :searchTerm = ''
-    OR M.title LIKE '%' || :searchTerm || '%' ESCAPE '\'
-    OR M.url LIKE '%' || :searchTerm || '%' ESCAPE '\'
-    OR coalesce(M.genre, '') LIKE '%' || :searchTerm || '%' ESCAPE '\'
-    OR (:searchAltTitles = 1 AND coalesce(M.alternative_titles, '') LIKE '%' || :searchTerm || '%' ESCAPE '\')
-  )
-  -- Included-tag prefilter (superset of the exact in-memory match): keep rows whose genre
-  -- contains ANY of the U+001F-joined lowercased tags. The CTE splits the param into rows so an
-  -- arbitrary number of tags works in one static query; matching is a case-insensitive substring
-  -- on lower(genre) (ASCII fold), so the in-memory pass still does the precise filtering.
-  AND (
-    :includedTagsCsv = ''
-    OR EXISTS (
-      WITH RECURSIVE inc(tag, rest) AS (
-        SELECT NULL, :includedTagsCsv || char(31)
-        UNION ALL
-        SELECT substr(rest, 1, instr(rest, char(31)) - 1), substr(rest, instr(rest, char(31)) + 1)
-        FROM inc WHERE rest <> ''
-      )
-      SELECT 1 FROM inc
-      WHERE inc.tag IS NOT NULL AND inc.tag <> ''
-        AND lower(coalesce(M.genre, '')) LIKE '%' || inc.tag || '%'
-    )
-  )
--- M._id is the final tiebreaker so the order is total and stable across pages. A row whose mutable
--- sort key (last_read, unread, total_count, latest_upload, chapter_fetched_at) changes between page
--- fetches can shift position and be skipped until the next reset; acceptable for this mode.
-ORDER BY
-    CASE WHEN :sortType = 0 AND :sortAscending = 1 THEN M.title END COLLATE NOCASE ASC,
-    CASE WHEN :sortType = 0 AND :sortAscending = 0 THEN M.title END COLLATE NOCASE DESC,
-    CASE WHEN :sortType = 1 AND :sortAscending = 1 THEN M.last_read END ASC,
-    CASE WHEN :sortType = 1 AND :sortAscending = 0 THEN M.last_read END DESC,
-    CASE WHEN :sortType = 2 AND :sortAscending = 1 THEN M.last_update END ASC,
-    CASE WHEN :sortType = 2 AND :sortAscending = 0 THEN M.last_update END DESC,
-    CASE WHEN :sortType = 3 AND :sortAscending = 1 THEN (M.total_count - M.read_count) END ASC,
-    CASE WHEN :sortType = 3 AND :sortAscending = 0 THEN (M.total_count - M.read_count) END DESC,
-    CASE WHEN :sortType = 4 AND :sortAscending = 1 THEN M.total_count END ASC,
-    CASE WHEN :sortType = 4 AND :sortAscending = 0 THEN M.total_count END DESC,
-    CASE WHEN :sortType = 5 AND :sortAscending = 1 THEN M.latest_upload END ASC,
-    CASE WHEN :sortType = 5 AND :sortAscending = 0 THEN M.latest_upload END DESC,
-    CASE WHEN :sortType = 6 AND :sortAscending = 1 THEN M.chapter_fetched_at END ASC,
-    CASE WHEN :sortType = 6 AND :sortAscending = 0 THEN M.chapter_fetched_at END DESC,
-    CASE WHEN :sortAscending = 1 THEN M.date_added END ASC,
-    M.date_added DESC,
-    M._id DESC
-LIMIT :limit OFFSET :offset;
 
 -- Fetch a single library item by manga ID
 libraryGridById:
@@ -908,13 +790,8 @@ SELECT
     M.update_strategy,
     M.total_count AS totalCount,
     CAST(M.read_count AS REAL) AS readCount,
-    coalesce(MC.categories, '0') AS categories
+    coalesce((SELECT group_concat(category_id) FROM mangas_categories WHERE manga_id = M._id), '0') AS categories
 FROM mangas M
-LEFT JOIN (
-    SELECT manga_id, group_concat(category_id) AS categories
-    FROM mangas_categories
-    GROUP BY manga_id
-) AS MC ON MC.manga_id = M._id
 WHERE M.favorite = 1;
 
 recomputeAggregatesForManga:
@@ -965,53 +842,11 @@ SET
     )
 WHERE _id = :mangaId;
 
-recomputeAggregatesForMangas:
+-- Zeroes ids first so mangas with no chapters are not skipped by the grouped fill.
+resetAggregatesForIds:
 UPDATE mangas
-SET
-    total_count = coalesce((
-        SELECT count(*)
-        FROM chapters
-        LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
-            AND chapters.scanlator = excluded_scanlators.scanlator
-        WHERE chapters.manga_id = mangas._id AND excluded_scanlators.scanlator IS NULL
-    ), 0),
-    read_count = coalesce((
-        SELECT sum(chapters.read)
-        FROM chapters
-        LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
-            AND chapters.scanlator = excluded_scanlators.scanlator
-        WHERE chapters.manga_id = mangas._id AND excluded_scanlators.scanlator IS NULL
-    ), 0),
-    latest_upload = coalesce((
-        SELECT max(chapters.date_upload)
-        FROM chapters
-        LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
-            AND chapters.scanlator = excluded_scanlators.scanlator
-        WHERE chapters.manga_id = mangas._id AND excluded_scanlators.scanlator IS NULL
-    ), 0),
-    chapter_fetched_at = coalesce((
-        SELECT max(chapters.date_fetch)
-        FROM chapters
-        LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
-            AND chapters.scanlator = excluded_scanlators.scanlator
-        WHERE chapters.manga_id = mangas._id AND excluded_scanlators.scanlator IS NULL
-    ), 0),
-    last_read = coalesce((
-        SELECT max(history.last_read)
-        FROM chapters
-        LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
-            AND chapters.scanlator = excluded_scanlators.scanlator
-        LEFT JOIN history ON chapters._id = history.chapter_id
-        WHERE chapters.manga_id = mangas._id AND excluded_scanlators.scanlator IS NULL
-    ), 0),
-    bookmark_count = coalesce((
-        SELECT sum(chapters.bookmark)
-        FROM chapters
-        LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
-            AND chapters.scanlator = excluded_scanlators.scanlator
-        WHERE chapters.manga_id = mangas._id AND excluded_scanlators.scanlator IS NULL
-    ), 0)
-WHERE _id IN :mangaIds;
+SET total_count = 0, read_count = 0, bookmark_count = 0, latest_upload = 0, chapter_fetched_at = 0, last_read = 0
+WHERE _id IN :ids;
 
 recomputeAllAggregates:
 UPDATE mangas
@@ -1109,7 +944,7 @@ WHERE _id IN :ids;
 
 -- Ids of favorites matching the cheap/DB-expressible half of the Library screen's active filters
 -- (source exclusion, unread/started/completed/novel/chapter-count columns, and an included-tags
--- SUPERSET prefilter using the same substring technique as libraryPageFiltered). Used to restrict a listing-mode
+-- SUPERSET prefilter using the same substring technique as the paged library query). Used to restrict a listing-mode
 -- candidate set BEFORE it gets truncated for display, so a narrow tag allowlist can't silently zero out
 -- a page whose arbitrary-order slice just didn't happen to contain a match. The caller still runs the
 -- precise in-memory tag/AND-mode/case-sensitivity/downloaded check on the (much smaller) truncated set.

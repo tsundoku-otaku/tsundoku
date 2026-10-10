@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -57,8 +58,8 @@ import mihon.core.common.utils.mutate
 import mihon.core.viewmodel.StateViewModel
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
-import tachiyomi.core.common.preference.toCommonCheckboxState
 import tachiyomi.core.common.preference.TriState
+import tachiyomi.core.common.preference.toCommonCheckboxState
 import tachiyomi.core.common.util.lang.compareToWithCollator
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
@@ -161,12 +162,21 @@ class LibraryViewModel(
                     getLibraryItemPreferencesFlow(),
                     state.map { it.searchQuery }.distinctUntilChanged(),
                     libraryPreferences.useRegexSearch.changes(),
-                ) { categories, prefs, query, useRegex ->
-                    buildPageSpecs(categories, prefs, query, useRegex)
+                    state.map { it.libraryData.showSystemCategory }.distinctUntilChanged(),
+                ) { categories, prefs, query, useRegex, showSystemCategory ->
+                    val pageCategories = categories.filter { showSystemCategory || !it.isSystemCategory }
+                    val lastUsed = pageCategories.getOrNull(libraryPreferences.lastUsedCategory.get())
+                    val fallbackActiveId = (lastUsed ?: pageCategories.firstOrNull())?.id
+                    buildPageSpecs(categories, prefs, query, useRegex) to fallbackActiveId
                 }
-                    .distinctUntilChanged()
-                    .collectLatest {
-                        getLibraryManga.applyPageSpecs(it)
+                    .distinctUntilChangedBy { it.first }
+                    .collectLatest { (specs, fallbackActiveId) ->
+                        val activeId = state.value.activeCategory?.id ?: fallbackActiveId
+                        getLibraryManga.applyPageSpecs(
+                            specs,
+                            activeCategoryId = activeId,
+                            contentTypes = pagedContentTypes(),
+                        )
                         // Filters/sort/search reset paging to page one. Bump the reset token so every
                         // sentinel re-fires and can drain again if the new first page underfills.
                         mutableState.update { st -> st.copy(paginationResetToken = st.paginationResetToken + 1) }
@@ -599,8 +609,15 @@ class LibraryViewModel(
         trackMap: Map<Long, List<Track>>,
         loggedInTrackerIds: Set<Long>,
     ): Map<Category, List</* LibraryItem */ Long>> {
-        val sortAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
-            manga1.libraryManga.manga.title.compareToWithCollator(manga2.libraryManga.manga.title)
+        // Paged rows are ordered by SQLite NOCASE, so match it or later pages reshuffle loaded ones.
+        val sortAlphabetically: (LibraryItem, LibraryItem) -> Int = if (getLibraryManga.isPaginationEnabled()) {
+            { manga1, manga2 ->
+                compareSqliteNoCase(manga1.libraryManga.manga.title, manga2.libraryManga.manga.title)
+            }
+        } else {
+            { manga1, manga2 ->
+                manga1.libraryManga.manga.title.compareToWithCollator(manga2.libraryManga.manga.title)
+            }
         }
 
         val defaultTrackerScoreSortValue = -1.0
@@ -685,6 +702,7 @@ class LibraryViewModel(
             val comparator = key.sort.comparator()
                 .let { if (key.sort.isAscending) it else it.reversed() }
                 .thenComparator(sortAlphabetically)
+                .thenBy { it.id }
 
             manga.sortedWith(comparator).map { it.id }
         }
@@ -1276,6 +1294,12 @@ class LibraryViewModel(
         }
     }
 
+    private fun pagedContentTypes(): Set<Boolean> = when (type) {
+        LibraryType.Manga -> setOf(false)
+        LibraryType.Novel -> setOf(true)
+        LibraryType.All -> setOf(false, true)
+    }
+
     /**
      * Which content types this tab + category should page. A manga/novel tab pages only its own
      * type. The joined ("All") tab pages by the category's content type, loading both for an
@@ -1324,6 +1348,9 @@ class LibraryViewModel(
     fun loadMoreForCategory(category: Category) {
         if (!paginationEnabled) return
         if (!loadingMoreCategories.add(category.id)) return
+        mutableState.update {
+            it.copy(paginationLoadingMoreCategories = it.paginationLoadingMoreCategories + category.id)
+        }
         viewModelScope.launchIO {
             try {
                 var loaded = false
@@ -1333,6 +1360,9 @@ class LibraryViewModel(
                 if (loaded) bumpPaginationGeneration(category.id)
             } finally {
                 loadingMoreCategories.remove(category.id)
+                mutableState.update {
+                    it.copy(paginationLoadingMoreCategories = it.paginationLoadingMoreCategories - category.id)
+                }
             }
         }
     }
@@ -2095,6 +2125,7 @@ class LibraryViewModel(
         // Experimental pagination: categories whose first page is still loading (show a spinner
         // instead of the "no manga" empty screen).
         val paginationLoadingCategories: Set<Long> = emptySet(),
+        val paginationLoadingMoreCategories: Set<Long> = emptySet(),
         // Experimental pagination: per-category load counter, bumped on every fetched page. The
         // load-more sentinel keys on it so it re-fires after each fetch (even when in-memory filters
         // hid the whole page), draining until the category fills or is exhausted.
@@ -2159,5 +2190,25 @@ class LibraryViewModel(
             }
             return LibraryToolbarTitle(title, count)
         }
+    }
+}
+
+// Code point order with ASCII-only case folding, which is what SQLite's NOCASE does on UTF-8.
+private fun compareSqliteNoCase(a: String, b: String): Int {
+    var i = 0
+    var j = 0
+    while (i < a.length && j < b.length) {
+        val ca = a.codePointAt(i)
+        val cb = b.codePointAt(j)
+        val fa = if (ca in 'A'.code..'Z'.code) ca + 32 else ca
+        val fb = if (cb in 'A'.code..'Z'.code) cb + 32 else cb
+        if (fa != fb) return fa.compareTo(fb)
+        i += Character.charCount(ca)
+        j += Character.charCount(cb)
+    }
+    return when {
+        i < a.length -> 1
+        j < b.length -> -1
+        else -> 0
     }
 }
