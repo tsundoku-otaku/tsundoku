@@ -53,7 +53,6 @@ fun LibraryPager(
     getLoadMoreKey: (Category) -> Long = { 0 },
     isCategoryLoading: (Category) -> Boolean = { false },
     isCategoryLoadingMore: (Category) -> Boolean = { false },
-    resetToken: Int = 0,
 ) {
     HorizontalPager(
         modifier = Modifier.fillMaxSize(),
@@ -68,7 +67,7 @@ fun LibraryPager(
         val items = getItemsForCategory(category)
 
         if (paginationEnabled) {
-            LaunchedEffect(category.id, resetToken) { onCategoryFirstVisible(category) }
+            LaunchedEffect(category.id) { onCategoryFirstVisible(category) }
         }
 
         if (items.isEmpty()) {

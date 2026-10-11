@@ -12,7 +12,7 @@ class UpdatesNovelGroupsTest {
     private val day = TimeUnit.DAYS.toMillis(1)
     private val base = 1_700_000_000_000L
 
-    private fun item(mangaId: Long, chapterId: Long, dateFetch: Long) = UpdatesItem(
+    private fun item(mangaId: Long, chapterId: Long, dateFetch: Long, read: Boolean = false) = UpdatesItem(
         update = UpdatesWithRelations(
             mangaId = mangaId,
             mangaTitle = "Novel $mangaId",
@@ -20,7 +20,7 @@ class UpdatesNovelGroupsTest {
             chapterName = "Chapter $chapterId",
             scanlator = null,
             chapterUrl = "/c/$chapterId",
-            read = false,
+            read = read,
             bookmark = false,
             lastPageRead = 0,
             sourceId = 1L,
@@ -32,13 +32,13 @@ class UpdatesNovelGroupsTest {
     )
 
     @Test
-    fun `chapter count only covers the latest update day`() {
+    fun `chapter count only covers the latest update batch`() {
         val state = UpdatesViewModel.State(
             items = listOf(
-                item(1, 1, base + 3 * day),
-                item(1, 2, base + 3 * day),
-                item(1, 3, base + day),
-                item(1, 4, base + day),
+                item(1, 1, base + 3 * day + 2),
+                item(1, 2, base + 3 * day + 1),
+                item(1, 3, base + day + 2),
+                item(1, 4, base + day + 1),
                 item(1, 5, base),
             ),
         )
@@ -50,11 +50,39 @@ class UpdatesNovelGroupsTest {
     }
 
     @Test
+    fun `batch crossing midnight is counted once`() {
+        val midnight = base - base % day + day
+        val state = UpdatesViewModel.State(
+            items = listOf(
+                item(1, 1, midnight + 1),
+                item(1, 2, midnight),
+                item(1, 3, midnight - 1),
+                item(1, 4, midnight - day),
+            ),
+        )
+
+        assertEquals(3, state.getNovelGroups().single().chapterCount)
+    }
+
+    @Test
+    fun `read chapters of the latest batch are not counted`() {
+        val state = UpdatesViewModel.State(
+            items = listOf(
+                item(1, 1, base + 3, read = true),
+                item(1, 2, base + 2),
+                item(1, 3, base + 1),
+            ),
+        )
+
+        assertEquals(2, state.getNovelGroups().single().chapterCount)
+    }
+
+    @Test
     fun `groups are counted independently per novel`() {
         val state = UpdatesViewModel.State(
             items = listOf(
                 item(1, 1, base + 2 * day),
-                item(2, 2, base + day),
+                item(2, 2, base + day + 1),
                 item(2, 3, base + day),
                 item(2, 4, base),
             ),

@@ -1,8 +1,11 @@
 package tachiyomi.domain.manga.interactor
 
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.mockk.coEvery
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.runs
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
@@ -20,9 +23,9 @@ class GetLibraryMangaPagingTest {
     private val specA = LibraryPageSpec(sortAscending = false)
     private val specB = LibraryPageSpec(sortAscending = true)
 
-    private fun libraryManga(id: Long, categoryId: Long) = LibraryManga(
+    private fun libraryManga(id: Long, categories: List<Long>) = LibraryManga(
         manga = Manga.create().copy(id = id),
-        categories = listOf(categoryId),
+        categories = categories,
         totalChapters = 0,
         readCount = 0,
         bookmarkCount = 0,
@@ -31,8 +34,12 @@ class GetLibraryMangaPagingTest {
         lastRead = 0,
     )
 
-    // Rows per (category, isNovel). specA pages them as listed, specB in reverse.
-    private suspend fun create(rows: Map<Pair<Long, Boolean>, List<Long>>): GetLibraryManga {
+    // Rows per (category, isNovel), mutable to simulate DB changes. specA pages them as listed,
+    // specB in reverse.
+    private suspend fun create(
+        rows: MutableMap<Pair<Long, Boolean>, MutableList<Long>>,
+    ): GetLibraryManga {
+        fun categoriesOf(id: Long) = rows.filterValues { id in it }.keys.map { it.first }.distinct()
         val repository = mockk<MangaRepository>()
         coEvery { repository.getLibraryMangaPage(any(), any(), any(), any(), any()) } answers {
             val categoryId = arg<Long>(0)
@@ -42,7 +49,17 @@ class GetLibraryMangaPagingTest {
             val spec = arg<LibraryPageSpec>(4)
             val ids = rows[categoryId to isNovel].orEmpty()
             val ordered = if (spec.sortAscending) ids.reversed() else ids
-            ordered.drop(offset.toInt()).take(limit.toInt()).map { libraryManga(it, categoryId) }
+            val window = ordered.drop(offset.toInt())
+            (if (limit < 0) window else window.take(limit.toInt())).map { libraryManga(it, categoriesOf(it)) }
+        }
+        coEvery { repository.refreshLibraryCacheForManga(any()) } just runs
+        coEvery { repository.refreshLibraryCacheForMangas(any()) } just runs
+        coEvery { repository.getLibraryMangaById(any()) } answers {
+            val id = arg<Long>(0)
+            libraryManga(id, categoriesOf(id))
+        }
+        coEvery { repository.getLibraryMangaByIds(any()) } answers {
+            arg<List<Long>>(0).map { libraryManga(it, categoriesOf(it)) }
         }
         val preferences = LibraryPreferences(InMemoryPreferenceStore())
         preferences.experimentalLibraryPagination.set(true)
@@ -50,11 +67,14 @@ class GetLibraryMangaPagingTest {
         return GetLibraryManga(repository, preferences).also { it.awaitRefresh() }
     }
 
+    private fun rows(vararg pairs: Pair<Pair<Long, Boolean>, List<Long>>) =
+        pairs.associateTo(mutableMapOf()) { (key, ids) -> key to ids.toMutableList() }
+
     private suspend fun GetLibraryManga.residentIds() = await().map { it.id }
 
     @Test
     fun `changing a key spec drops rows loaded under the old spec`() = runTest {
-        val getLibraryManga = create(mapOf((1L to false) to listOf(1L, 2L, 3L, 4L, 5L, 6L)))
+        val getLibraryManga = create(rows((1L to false) to listOf(1L, 2L, 3L, 4L, 5L, 6L)))
 
         getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
         getLibraryManga.loadCategoryNextPage(1L, false)
@@ -67,7 +87,7 @@ class GetLibraryMangaPagingTest {
     @Test
     fun `stale key rows are evicted`() = runTest {
         val getLibraryManga = create(
-            mapOf(
+            rows(
                 (1L to false) to listOf(1L, 2L),
                 (2L to false) to listOf(10L, 11L),
             ),
@@ -83,7 +103,7 @@ class GetLibraryMangaPagingTest {
     @Test
     fun `empty specs with an explicit scope evict that content type only`() = runTest {
         val getLibraryManga = create(
-            mapOf(
+            rows(
                 (1L to false) to listOf(1L, 2L),
                 (1L to true) to listOf(20L, 21L),
             ),
@@ -100,7 +120,7 @@ class GetLibraryMangaPagingTest {
     @Test
     fun `other content type rows are untouched`() = runTest {
         val getLibraryManga = create(
-            mapOf(
+            rows(
                 (1L to false) to listOf(1L, 2L, 3L, 4L),
                 (1L to true) to listOf(20L, 21L),
             ),
@@ -116,7 +136,7 @@ class GetLibraryMangaPagingTest {
     @Test
     fun `manga owned by another key survives eviction`() = runTest {
         val getLibraryManga = create(
-            mapOf(
+            rows(
                 (1L to false) to listOf(1L, 100L),
                 (2L to false) to listOf(100L, 10L),
             ),
@@ -129,33 +149,66 @@ class GetLibraryMangaPagingTest {
     }
 
     @Test
-    fun `active category restricts the eager load`() = runTest {
+    fun `every key gets its first page even when another is empty`() = runTest {
         val getLibraryManga = create(
-            mapOf(
-                (1L to false) to listOf(1L, 2L),
+            rows(
+                (0L to false) to emptyList(),
+                (1L to false) to listOf(1L, 2L, 3L),
                 (2L to false) to listOf(10L, 11L),
             ),
         )
 
         getLibraryManga.applyPageSpecs(
-            mapOf((1L to false) to specA, (2L to false) to specA),
-            activeCategoryId = 2L,
+            mapOf((0L to false) to specA, (1L to false) to specA, (2L to false) to specA),
         )
 
-        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(10L, 11L)
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(1L, 2L, 10L, 11L)
     }
 
     @Test
-    fun `no active category loads every key`() = runTest {
-        val getLibraryManga = create(
-            mapOf(
-                (1L to false) to listOf(1L, 2L),
-                (2L to false) to listOf(10L, 11L),
-            ),
-        )
+    fun `unpaged spec loads the whole key`() = runTest {
+        val getLibraryManga = create(rows((1L to false) to listOf(1L, 2L, 3L, 4L, 5L)))
 
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA.copy(unpaged = true)))
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(1L, 2L, 3L, 4L, 5L)
+
+        getLibraryManga.loadCategoryNextPage(1L, false)
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(1L, 2L, 3L, 4L, 5L)
+    }
+
+    @Test
+    fun `added manga follow page bounds and are evicted with their key`() = runTest {
+        val data = rows((1L to false) to listOf(1L, 2L, 3L))
+        val getLibraryManga = create(data)
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
+
+        data.getValue(1L to false).add(50L)
+        getLibraryManga.addToLibrary(50L)
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(1L, 2L)
+
+        data.getValue(1L to false).add(0, 60L)
+        getLibraryManga.addToLibraryBulk(listOf(60L))
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(60L, 1L)
+
+        getLibraryManga.applyPageSpecs(emptyMap(), contentTypes = setOf(false))
+        getLibraryManga.residentIds().shouldBeEmpty()
+    }
+
+    @Test
+    fun `moved manga stays when its old category is reset`() = runTest {
+        val data = rows(
+            (1L to false) to listOf(1L, 2L),
+            (2L to false) to listOf(10L),
+        )
+        val getLibraryManga = create(data)
         getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA, (2L to false) to specA))
 
-        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(1L, 2L, 10L, 11L)
+        data.getValue(1L to false).remove(1L)
+        data.getValue(2L to false).add(0, 1L)
+        getLibraryManga.setCategoriesForManga(listOf(1L), listOf(2L))
+
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specB, (2L to false) to specA))
+
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(2L, 1L, 10L)
     }
 }

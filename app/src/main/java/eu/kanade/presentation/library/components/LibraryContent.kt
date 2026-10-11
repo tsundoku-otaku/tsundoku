@@ -56,7 +56,6 @@ fun LibraryContent(
     getLoadMoreKey: (Category) -> Long = { 0 },
     isCategoryLoading: (Category) -> Boolean = { false },
     isCategoryLoadingMore: (Category) -> Boolean = { false },
-    resetToken: Int = 0,
 ) {
     Column(
         modifier = Modifier.padding(
@@ -130,7 +129,6 @@ fun LibraryContent(
                 getLoadMoreKey = getLoadMoreKey,
                 isCategoryLoading = isCategoryLoading,
                 isCategoryLoadingMore = isCategoryLoadingMore,
-                resetToken = resetToken,
             )
         }
 

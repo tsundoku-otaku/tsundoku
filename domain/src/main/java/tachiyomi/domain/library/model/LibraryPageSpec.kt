@@ -33,10 +33,12 @@ data class LibraryPageSpec(
     // so it only narrows and never drops a row. Blank = skip. Populated only when every tag is
     // ASCII (SQLite lower() folds ASCII only).
     val includedTagsCsv: String = "",
+    // Sort with no DB equivalent: the key is loaded whole so the in-memory order is complete.
+    val unpaged: Boolean = false,
 ) {
     companion object {
-        // Sort columns that exist in the mangas table. Anything else maps to date_added and is
-        // re-sorted in memory per page.
+        // Sort columns that exist in the mangas table. Anything else maps to date_added with
+        // [unpaged] set.
         const val SORT_ALPHABETICAL = 0
         const val SORT_LAST_READ = 1
         const val SORT_LAST_UPDATE = 2

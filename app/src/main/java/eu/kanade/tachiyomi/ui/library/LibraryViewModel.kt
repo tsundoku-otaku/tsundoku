@@ -43,7 +43,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -162,21 +161,12 @@ class LibraryViewModel(
                     getLibraryItemPreferencesFlow(),
                     state.map { it.searchQuery }.distinctUntilChanged(),
                     libraryPreferences.useRegexSearch.changes(),
-                    state.map { it.libraryData.showSystemCategory }.distinctUntilChanged(),
-                ) { categories, prefs, query, useRegex, showSystemCategory ->
-                    val pageCategories = categories.filter { showSystemCategory || !it.isSystemCategory }
-                    val lastUsed = pageCategories.getOrNull(libraryPreferences.lastUsedCategory.get())
-                    val fallbackActiveId = (lastUsed ?: pageCategories.firstOrNull())?.id
-                    buildPageSpecs(categories, prefs, query, useRegex) to fallbackActiveId
+                ) { categories, prefs, query, useRegex ->
+                    buildPageSpecs(categories, prefs, query, useRegex)
                 }
-                    .distinctUntilChangedBy { it.first }
-                    .collectLatest { (specs, fallbackActiveId) ->
-                        val activeId = state.value.activeCategory?.id ?: fallbackActiveId
-                        getLibraryManga.applyPageSpecs(
-                            specs,
-                            activeCategoryId = activeId,
-                            contentTypes = pagedContentTypes(),
-                        )
+                    .distinctUntilChanged()
+                    .collectLatest { specs ->
+                        getLibraryManga.applyPageSpecs(specs, contentTypes = pagedContentTypes())
                         // Filters/sort/search reset paging to page one. Bump the reset token so every
                         // sentinel re-fires and can drain again if the new first page underfills.
                         mutableState.update { st -> st.copy(paginationResetToken = st.paginationResetToken + 1) }
@@ -1210,21 +1200,18 @@ class LibraryViewModel(
         TriState.ENABLED_NOT -> 2
     }
 
-    /** Map a library sort to the spec sort id. Non-DB sorts (source name, tracker, downloaded,
-     *  random) fall back to date_added and are re-sorted in memory per loaded page. */
-    private fun mapSort(sort: LibrarySort): Pair<Int, Boolean> {
-        val type = when (sort.type) {
-            LibrarySort.Type.Alphabetical -> LibraryPageSpec.SORT_ALPHABETICAL
-            LibrarySort.Type.LastRead -> LibraryPageSpec.SORT_LAST_READ
-            LibrarySort.Type.LastUpdate -> LibraryPageSpec.SORT_LAST_UPDATE
-            LibrarySort.Type.UnreadCount -> LibraryPageSpec.SORT_UNREAD_COUNT
-            LibrarySort.Type.TotalChapters -> LibraryPageSpec.SORT_TOTAL_CHAPTERS
-            LibrarySort.Type.LatestChapter -> LibraryPageSpec.SORT_LATEST_CHAPTER
-            LibrarySort.Type.ChapterFetchDate -> LibraryPageSpec.SORT_CHAPTER_FETCH_DATE
-            LibrarySort.Type.DateAdded -> LibraryPageSpec.SORT_DATE_ADDED
-            else -> LibraryPageSpec.SORT_DATE_ADDED
-        }
-        return type to sort.isAscending
+    /** Map a library sort to the spec sort id, or null when it has no DB equivalent (source name,
+     *  tracker, downloaded, random). Those can't page consistently, so their keys load unpaged. */
+    private fun mapSort(sort: LibrarySort): Int? = when (sort.type) {
+        LibrarySort.Type.Alphabetical -> LibraryPageSpec.SORT_ALPHABETICAL
+        LibrarySort.Type.LastRead -> LibraryPageSpec.SORT_LAST_READ
+        LibrarySort.Type.LastUpdate -> LibraryPageSpec.SORT_LAST_UPDATE
+        LibrarySort.Type.UnreadCount -> LibraryPageSpec.SORT_UNREAD_COUNT
+        LibrarySort.Type.TotalChapters -> LibraryPageSpec.SORT_TOTAL_CHAPTERS
+        LibrarySort.Type.LatestChapter -> LibraryPageSpec.SORT_LATEST_CHAPTER
+        LibrarySort.Type.ChapterFetchDate -> LibraryPageSpec.SORT_CHAPTER_FETCH_DATE
+        LibrarySort.Type.DateAdded -> LibraryPageSpec.SORT_DATE_ADDED
+        else -> null
     }
 
     /**
@@ -1265,8 +1252,12 @@ class LibraryViewModel(
         )
         val map = HashMap<Pair<Long, Boolean>, LibraryPageSpec>()
         for (category in categories) {
-            val (sortType, asc) = mapSort(category.sort)
-            val spec = base.copy(sortType = sortType, sortAscending = asc)
+            val sortType = mapSort(category.sort)
+            val spec = base.copy(
+                sortType = sortType ?: LibraryPageSpec.SORT_DATE_ADDED,
+                sortAscending = category.sort.isAscending,
+                unpaged = sortType == null,
+            )
             for (isNovel in novelFlagsFor(category)) {
                 map[category.id to isNovel] = spec
             }
@@ -1322,9 +1313,12 @@ class LibraryViewModel(
         mutableState.update { it.copy(paginationLoadingCategories = it.paginationLoadingCategories + category.id) }
         viewModelScope.launchIO {
             try {
-                flags.forEach { isNovel -> getLibraryManga.loadCategoryPageIfNeeded(category.id, isNovel) }
+                var loaded = false
+                flags.forEach { isNovel ->
+                    if (getLibraryManga.loadCategoryPageIfNeeded(category.id, isNovel)) loaded = true
+                }
                 // Give the sentinel a baseline key so it can start draining if the first page underfills.
-                bumpPaginationGeneration(category.id)
+                if (loaded) bumpPaginationGeneration(category.id)
             } finally {
                 mutableState.update {
                     it.copy(paginationLoadingCategories = it.paginationLoadingCategories - category.id)
