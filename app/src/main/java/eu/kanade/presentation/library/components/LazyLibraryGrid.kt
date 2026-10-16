@@ -46,7 +46,7 @@ internal fun LazyGridScope.loadMoreSentinel(loadKey: Long, onLoadMore: (() -> Un
     if (onLoadMore == null) return
     item(
         span = { GridItemSpan(maxLineSpan) },
-        contentType = { "library_load_more" },
+        contentType = "library_load_more",
     ) {
         LaunchedEffect(loadKey) { onLoadMore() }
     }
@@ -63,7 +63,7 @@ internal fun LazyGridScope.loadMoreFooter(isLoading: Boolean) {
     if (!isLoading) return
     item(
         span = { GridItemSpan(maxLineSpan) },
-        contentType = { "library_load_more_footer" },
+        contentType = "library_load_more_footer",
     ) {
         LoadMoreFooterRow()
     }
@@ -95,7 +95,7 @@ internal fun LazyGridScope.globalSearchItem(
     if (!searchQuery.isNullOrEmpty()) {
         item(
             span = { GridItemSpan(maxLineSpan) },
-            contentType = { "library_global_search_item" },
+            contentType = "library_global_search_item",
         ) {
             GlobalSearchItem(
                 searchQuery = searchQuery,

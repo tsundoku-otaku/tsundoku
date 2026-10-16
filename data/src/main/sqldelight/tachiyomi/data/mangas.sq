@@ -707,6 +707,7 @@ SELECT
     M.next_update,
     M.cover_last_modified,
     M.date_added,
+    M.calculate_interval,
     M.is_novel,
     M.total_count AS totalCount,
     CAST(M.read_count AS REAL) AS readCount,
@@ -934,12 +935,6 @@ SET
         WHERE chapters.manga_id = :mangaId AND excluded_scanlators.scanlator IS NULL
     )
 WHERE _id = :mangaId;
-
--- Zeroes ids first so mangas with no chapters are not skipped by the grouped fill.
-resetAggregatesForIds:
-UPDATE mangas
-SET total_count = 0, read_count = 0, bookmark_count = 0, latest_upload = 0, chapter_fetched_at = 0, last_read = 0
-WHERE _id IN :ids;
 
 recomputeAllAggregates:
 UPDATE mangas

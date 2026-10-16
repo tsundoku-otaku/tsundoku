@@ -749,7 +749,7 @@ class MangaRepositoryImpl(
                 coverLastModified,
                 dateAdded,
                 _,
-                _,
+                calculateInterval,
                 _,
                 _,
                 _,
@@ -785,7 +785,7 @@ class MangaRepositoryImpl(
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
                 updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -853,6 +853,7 @@ class MangaRepositoryImpl(
                 nextUpdate,
                 coverLastModified,
                 dateAdded,
+                calculateInterval,
                 isNovel,
                 totalCount,
                 readCount,
@@ -883,7 +884,7 @@ class MangaRepositoryImpl(
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
                 updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -923,7 +924,7 @@ class MangaRepositoryImpl(
                 coverLastModified,
                 dateAdded,
                 _,
-                _,
+                calculateInterval,
                 _,
                 _,
                 _,
@@ -959,7 +960,7 @@ class MangaRepositoryImpl(
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
                 updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -1000,7 +1001,7 @@ class MangaRepositoryImpl(
                 coverLastModified,
                 dateAdded,
                 _,
-                _,
+                calculateInterval,
                 _,
                 _,
                 _,
@@ -1036,7 +1037,7 @@ class MangaRepositoryImpl(
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
                 updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -1117,7 +1118,7 @@ class MangaRepositoryImpl(
                 coverLastModified,
                 dateAdded,
                 _,
-                _,
+                calculateInterval,
                 _,
                 _,
                 _,
@@ -1153,7 +1154,7 @@ class MangaRepositoryImpl(
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
                 updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -2208,9 +2209,8 @@ class MangaRepositoryImpl(
         }
         database.transaction {
             mangaIds.chunked(AGGREGATE_CHUNK_SIZE).forEach { chunk ->
-                database.mangasQueries.resetAggregatesForIds(chunk)
-
-                // SQLDelight can't compile UPDATE ... FROM, so this one goes through the driver.
+                // SQLDelight can't compile UPDATE ... FROM, so this one goes through the driver. The
+                // LEFT JOIN zeroes ids with no chapters in the same single write per row.
                 val idPlaceholders = chunk.joinToString(", ") { "?" }
                 val sql = """
                     |UPDATE mangas
@@ -2219,21 +2219,33 @@ class MangaRepositoryImpl(
                     |    last_read = agg.last_read, bookmark_count = agg.bookmark_count
                     |FROM (
                     |    SELECT
-                    |        chapters.manga_id AS id,
-                    |        count(*) AS total_count,
-                    |        coalesce(sum(chapters.read), 0) AS read_count,
-                    |        coalesce(max(chapters.date_upload), 0) AS latest_upload,
-                    |        coalesce(max(chapters.date_fetch), 0) AS chapter_fetched_at,
-                    |        coalesce(max(history.last_read), 0) AS last_read,
-                    |        coalesce(sum(chapters.bookmark), 0) AS bookmark_count
-                    |    FROM chapters
-                    |    LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
-                    |        AND chapters.scanlator = excluded_scanlators.scanlator
-                    |    LEFT JOIN history ON chapters._id = history.chapter_id
-                    |    WHERE chapters.manga_id IN ($idPlaceholders) AND excluded_scanlators.scanlator IS NULL
-                    |    GROUP BY chapters.manga_id
+                    |        ids._id AS id,
+                    |        coalesce(c.total_count, 0) AS total_count,
+                    |        coalesce(c.read_count, 0) AS read_count,
+                    |        coalesce(c.latest_upload, 0) AS latest_upload,
+                    |        coalesce(c.chapter_fetched_at, 0) AS chapter_fetched_at,
+                    |        coalesce(c.last_read, 0) AS last_read,
+                    |        coalesce(c.bookmark_count, 0) AS bookmark_count
+                    |    FROM mangas ids
+                    |    LEFT JOIN (
+                    |        SELECT
+                    |            chapters.manga_id AS id,
+                    |            count(*) AS total_count,
+                    |            sum(chapters.read) AS read_count,
+                    |            max(chapters.date_upload) AS latest_upload,
+                    |            max(chapters.date_fetch) AS chapter_fetched_at,
+                    |            max(history.last_read) AS last_read,
+                    |            sum(chapters.bookmark) AS bookmark_count
+                    |        FROM chapters
+                    |        LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
+                    |            AND chapters.scanlator = excluded_scanlators.scanlator
+                    |        LEFT JOIN history ON chapters._id = history.chapter_id
+                    |        WHERE chapters.manga_id IN ($idPlaceholders) AND excluded_scanlators.scanlator IS NULL
+                    |        GROUP BY chapters.manga_id
+                    |    ) AS c ON c.id = ids._id
+                    |    WHERE ids._id IN ($idPlaceholders)
                     |) AS agg
-                    |WHERE mangas._id = agg.id AND mangas._id IN ($idPlaceholders)
+                    |WHERE mangas._id = agg.id
                 """.trimMargin()
                 driver.execute(null, sql, chunk.size * 2) {
                     var i = 0

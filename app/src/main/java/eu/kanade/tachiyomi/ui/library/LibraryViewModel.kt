@@ -175,6 +175,8 @@ class LibraryViewModel(
             }
             viewModelScope.launchIO {
                 getLibraryManga.pagingInvalidations().drop(1).collect {
+                    // An emptied category shows the empty screen, which has no sentinel to retry.
+                    getLibraryManga.loadMissingFirstPages()
                     mutableState.update { st -> st.copy(paginationResetToken = st.paginationResetToken + 1) }
                 }
             }
@@ -284,10 +286,9 @@ class LibraryViewModel(
                 getFavoritesFlow(displayPreferencesFlow),
                 combine(getTracksPerManga.subscribe(), getTrackingFiltersFlow(), ::Pair),
                 itemPreferencesFlow,
-                combine(getLibraryManga.isLoading(), getLibraryManga.ownedIdsByCategory(), ::Pair),
-            ) { categories, favorites, tracksAndFilters, itemPreferences, loadingAndOwnership ->
+                getLibraryManga.isLoading(),
+            ) { categories, favorites, tracksAndFilters, itemPreferences, isLoading ->
                 val (tracksMap, trackingFilters) = tracksAndFilters
-                val (isLoading, ownedIds) = loadingAndOwnership
 
                 val showSystemCategory = favorites.any { it.libraryManga.categories.contains(0L) }
 
@@ -301,7 +302,6 @@ class LibraryViewModel(
                     favorites = filteredFavorites,
                     tracksMap = tracksMap,
                     loggedInTrackerIds = trackingFilters.keys,
-                    ownedIdsByCategory = ownedIds.takeIf { getLibraryManga.isPaginationEnabled() },
                 )
             }
 
@@ -330,18 +330,28 @@ class LibraryViewModel(
         }
 
         viewModelScope.launchIO {
-            state
-                .dropWhile { !it.libraryData.isInitialized }
-                .map { it.libraryData }
-                .distinctUntilChanged()
+            // Ownership joins here, not in the filter stage, so a page load doesn't refilter twice.
+            val ownershipFlow = if (getLibraryManga.isPaginationEnabled()) {
+                getLibraryManga.ownedIdsByCategory()
+            } else {
+                flowOf(null)
+            }
+            combine(
+                state
+                    .dropWhile { !it.libraryData.isInitialized }
+                    .map { it.libraryData }
+                    .distinctUntilChanged(),
+                ownershipFlow,
+                ::Pair,
+            )
                 .onEach {
                     mutableState.update { state ->
                         if (state.isLoading) state else state.copy(isQueryRunning = true)
                     }
                 }
-                .map { data ->
+                .map { (data, ownedIds) ->
                     data.favorites
-                        .applyGrouping(data.categories, data.showSystemCategory, data.ownedIdsByCategory)
+                        .applyGrouping(data.categories, data.showSystemCategory, ownedIds)
                         .applySort(itemCache, data.tracksMap, data.loggedInTrackerIds)
                 }
                 .collectLatest {
@@ -1350,6 +1360,9 @@ class LibraryViewModel(
      */
     fun loadMoreForCategory(category: Category) {
         if (!paginationEnabled) return
+        val flags = novelFlagsFor(category)
+        // An exhausted category would only flash the footer.
+        if (flags.none { getLibraryManga.mayHaveMorePages(category.id, it) }) return
         var claimed = false
         mutableState.update {
             claimed = category.id !in it.paginationLoadingMoreCategories
@@ -1363,7 +1376,7 @@ class LibraryViewModel(
         viewModelScope.launchIO {
             try {
                 var loaded = false
-                novelFlagsFor(category).forEach { isNovel ->
+                flags.forEach { isNovel ->
                     if (getLibraryManga.loadCategoryNextPage(category.id, isNovel)) loaded = true
                 }
                 if (loaded) bumpPaginationGeneration(category.id)
@@ -2108,8 +2121,6 @@ class LibraryViewModel(
         val favorites: List<LibraryItem> = emptyList(),
         val tracksMap: Map</* Manga */ Long, List<Track>> = emptyMap(),
         val loggedInTrackerIds: Set<Long> = emptySet(),
-        // Paged mode only: category id to the ids its loaded pages own.
-        val ownedIdsByCategory: Map<Long, Set<Long>>? = null,
     ) {
         val favoritesById: Map<Long, LibraryItem> by lazy {
             HashMap<Long, LibraryItem>(favorites.size * 2).also { map ->

@@ -20,6 +20,7 @@ import tachiyomi.domain.library.model.LibraryMangaForUpdate
 import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.repository.MangaRepository
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Interactor for getting library manga.
@@ -38,7 +39,8 @@ class GetLibraryManga(
     // restart-gated, so it isn't observed.
     private data class PageKey(val categoryId: Long, val isNovel: Boolean)
     private val loadedPageCount = mutableMapOf<PageKey, Int>()
-    private val pageHasMore = mutableMapOf<PageKey, Boolean>()
+    // Concurrent so [mayHaveMorePages] can read it without the mutex.
+    private val pageHasMore = ConcurrentHashMap<PageKey, Boolean>()
 
     // Per-key query spec (global filters/search + that category's sort), reconciled by
     // [applyPageSpecs]. A changed or removed key has its rows evicted and restarts from page one.
@@ -197,9 +199,12 @@ class GetLibraryManga(
             }
             if (changed) _libraryState.value = result
             if (paginationEnabled) {
-                // A manga that isn't resident sits past every loaded window, so only becoming
-                // uncategorized can shift one.
-                if (touched.residentCount < idSet.size && removeCategories.isNotEmpty()) touched.unknown = true
+                // A manga that isn't resident sits past every loaded window, so leaving a category
+                // can't shift one, but joining one (uncategorized included) can.
+                if (touched.residentCount < idSet.size) {
+                    touched.typesUnknown = true
+                    if (removeCategories.isNotEmpty()) touched.mayBeUncategorized = true
+                }
                 reloadKeysLocked(touched.keysFor(addCategories + removeCategories))
             }
         }
@@ -233,7 +238,7 @@ class GetLibraryManga(
             }
             if (changed) _libraryState.value = result
             if (paginationEnabled) {
-                if (touched.residentCount < idSet.size) touched.unknown = true
+                if (touched.residentCount < idSet.size) touched.typesUnknown = true
                 reloadKeysLocked(touched.keysFor(previousCategories + effectiveCategories))
             }
         }
@@ -495,6 +500,7 @@ class GetLibraryManga(
                     "GetLibraryManga: Refresh complete in ${duration}ms, ${_libraryState.value.size} items (paginated=$paginated)"
                 }
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 logcat(LogPriority.ERROR, e) { "GetLibraryManga: Failed to refresh library" }
             } finally {
                 _isLoading.value = false
@@ -509,6 +515,23 @@ class GetLibraryManga(
     fun ownedIdsByCategory(): StateFlow<Map<Long, Set<Long>>> = _ownedIdsByCategory.asStateFlow()
 
     fun pagingInvalidations(): StateFlow<Int> = _pagingInvalidations.asStateFlow()
+
+    /** False only once a (category, content type) is known to be exhausted. Lock-free. */
+    fun mayHaveMorePages(categoryId: Long, isNovel: Boolean): Boolean =
+        pageHasMore[PageKey(categoryId, isNovel)] != false
+
+    /**
+     * Loads the first page of every known key that has none, e.g. after a failed reload dropped it.
+     * Returns true if anything was fetched.
+     */
+    suspend fun loadMissingFirstPages(): Boolean {
+        if (!paginationEnabled) return false
+        return mutex.withLock {
+            val missing = keySpec.keys.filter { !loadedPageCount.containsKey(it) }
+            missing.forEach { loadPageLocked(it) }
+            missing.any { loadedPageCount.containsKey(it) }
+        }
+    }
 
     /**
      * Reconciles the desired page specs for the caller's content-type scope only (the cache is
@@ -666,21 +689,31 @@ class GetLibraryManga(
     private suspend fun reloadLoadedPagesLocked() {
         val rebuilt = ArrayList<LibraryManga>()
         val seen = HashSet<Long>()
-        keyOwnedIds.clear()
+        // Built aside and swapped in at the end so a cancelled reload leaves ownership intact.
+        val owned = HashMap<PageKey, MutableSet<Long>>()
         for (key in loadedPageCount.keys.toList()) {
             val rows = refetchLoadedPagesLocked(key)
             if (rows == null) {
-                // Its rows are gone, so restart it from page one rather than resume past them.
-                loadedPageCount.remove(key)
-                pageHasMore.remove(key)
-                _pagingInvalidations.value++
+                forgetKeyLocked(key)
                 continue
             }
-            keyOwnedIds[key] = rows.mapTo(HashSet()) { it.id }
+            owned[key] = rows.mapTo(HashSet()) { it.id }
             for (m in rows) if (seen.add(m.id)) rebuilt.add(m)
         }
+        keyOwnedIds.clear()
+        keyOwnedIds.putAll(owned)
         publishOwnershipLocked()
         _libraryState.value = rebuilt
+    }
+
+    /**
+     * Caller must hold [mutex]. A key whose first page couldn't be refetched restarts from page one
+     * instead of resuming past rows it no longer holds; the UI is told so it can retry.
+     */
+    private fun forgetKeyLocked(key: PageKey) {
+        loadedPageCount.remove(key)
+        pageHasMore.remove(key)
+        _pagingInvalidations.value++
     }
 
     /**
@@ -692,7 +725,12 @@ class GetLibraryManga(
         val fresh = LinkedHashMap<Long, LibraryManga>()
         val dropped = HashSet<Long>()
         for (key in keys) {
-            val rows = refetchLoadedPagesLocked(key) ?: continue
+            val rows = refetchLoadedPagesLocked(key)
+            if (rows == null) {
+                forgetKeyLocked(key)
+                keyOwnedIds.remove(key)?.let(dropped::addAll)
+                continue
+            }
             keyOwnedIds.remove(key)?.let(dropped::addAll)
             keyOwnedIds[key] = rows.mapTo(HashSet()) { it.id }
             for (m in rows) fresh[m.id] = m
@@ -717,12 +755,14 @@ class GetLibraryManga(
 
     /**
      * Loaded keys a category edit can shift: the edited categories for the edited content types,
-     * plus the uncategorized bucket only when an item leaves or enters it. [unknown] is set when some
-     * items weren't resident, so their type and categories can't narrow the set.
+     * plus the uncategorized bucket only when an item leaves or enters it. Items that weren't
+     * resident leave their content type ([typesUnknown]) and whether they end up uncategorized
+     * ([mayBeUncategorized]) unknown.
      */
     private inner class CategoryEditScope {
         var residentCount = 0
-        var unknown = false
+        var typesUnknown = false
+        var mayBeUncategorized = false
         private val types = HashSet<Boolean>()
         private var uncategorized = false
         private val counted = HashSet<Long>()
@@ -735,8 +775,8 @@ class GetLibraryManga(
 
         fun keysFor(categoryIds: Collection<Long>): List<PageKey> {
             val wanted = categoryIds.toHashSet()
-            if (uncategorized || unknown) wanted.add(0L)
-            return loadedPageCount.keys.filter { it.categoryId in wanted && (unknown || it.isNovel in types) }
+            if (uncategorized || mayBeUncategorized) wanted.add(0L)
+            return loadedPageCount.keys.filter { it.categoryId in wanted && (typesUnknown || it.isNovel in types) }
         }
     }
 

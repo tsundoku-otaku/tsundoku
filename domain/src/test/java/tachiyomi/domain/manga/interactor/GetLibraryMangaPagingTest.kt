@@ -275,4 +275,49 @@ class GetLibraryMangaPagingTest {
         owned.getValue(1L) shouldBe setOf(100L, 1L)
         owned.getValue(2L) shouldBe setOf(10L, 11L)
     }
+
+    @Test
+    fun `adding a non resident manga to a category reloads that category`() = runTest {
+        val data = rows(
+            (1L to false) to listOf(1L, 2L),
+            (2L to false) to listOf(10L, 11L),
+        )
+        val getLibraryManga = create(data)
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA, (2L to false) to specA))
+
+        data.getValue(2L to false).add(0, 50L)
+        getLibraryManga.applyCategoryUpdates(listOf(50L), addCategories = listOf(2L), removeCategories = emptyList())
+
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(1L, 2L, 50L, 10L)
+    }
+
+    @Test
+    fun `failed key reload is retried from page one`() = runTest {
+        var failing = false
+        val data = rows((1L to false) to listOf(1L, 2L, 3L, 4L, 5L))
+        val getLibraryManga = create(data) { failing }
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
+        getLibraryManga.loadCategoryNextPage(1L, false)
+        val before = getLibraryManga.pagingInvalidations().value
+
+        failing = true
+        data.getValue(1L to false).remove(1L)
+        getLibraryManga.removeFromLibrary(1L)
+        getLibraryManga.pagingInvalidations().value shouldNotBe before
+        getLibraryManga.residentIds().shouldBeEmpty()
+
+        failing = false
+        getLibraryManga.loadMissingFirstPages() shouldBe true
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(2L, 3L)
+    }
+
+    @Test
+    fun `exhausted key reports no more pages`() = runTest {
+        val getLibraryManga = create(rows((1L to false) to listOf(1L, 2L, 3L)))
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
+        getLibraryManga.mayHaveMorePages(1L, false) shouldBe true
+
+        getLibraryManga.loadCategoryNextPage(1L, false)
+        getLibraryManga.mayHaveMorePages(1L, false) shouldBe false
+    }
 }
