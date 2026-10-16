@@ -2,6 +2,8 @@ package tachiyomi.domain.manga.interactor
 
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.mockk.coEvery
 import io.mockk.just
 import io.mockk.mockk
@@ -38,6 +40,7 @@ class GetLibraryMangaPagingTest {
     // specB in reverse.
     private suspend fun create(
         rows: MutableMap<Pair<Long, Boolean>, MutableList<Long>>,
+        failPages: () -> Boolean = { false },
     ): GetLibraryManga {
         fun categoriesOf(id: Long) = rows.filterValues { id in it }.keys.map { it.first }.distinct()
         val repository = mockk<MangaRepository>()
@@ -47,6 +50,7 @@ class GetLibraryMangaPagingTest {
             val limit = arg<Long>(2)
             val offset = arg<Long>(3)
             val spec = arg<LibraryPageSpec>(4)
+            if (failPages()) error("page fetch failed")
             val ids = rows[categoryId to isNovel].orEmpty()
             val ordered = if (spec.sortAscending) ids.reversed() else ids
             val window = ordered.drop(offset.toInt())
@@ -210,5 +214,65 @@ class GetLibraryMangaPagingTest {
         getLibraryManga.applyPageSpecs(mapOf((1L to false) to specB, (2L to false) to specA))
 
         getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(2L, 1L, 10L)
+    }
+
+    @Test
+    fun `unfavorited manga does not make the next page skip a row`() = runTest {
+        val data = rows((1L to false) to listOf(1L, 2L, 3L, 4L, 5L))
+        val getLibraryManga = create(data)
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
+
+        data.getValue(1L to false).remove(1L)
+        getLibraryManga.removeFromLibrary(1L)
+        getLibraryManga.loadCategoryNextPage(1L, false)
+
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(2L, 3L, 4L, 5L)
+    }
+
+    @Test
+    fun `reopening an exhausted key signals the sentinel`() = runTest {
+        val data = rows((1L to false) to listOf(1L, 2L))
+        val getLibraryManga = create(data)
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
+        getLibraryManga.loadCategoryNextPage(1L, false) shouldBe false
+        val before = getLibraryManga.pagingInvalidations().value
+
+        data.getValue(1L to false).add(0, 3L)
+        getLibraryManga.addToLibrary(3L)
+
+        getLibraryManga.pagingInvalidations().value shouldNotBe before
+        getLibraryManga.loadCategoryNextPage(1L, false) shouldBe true
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(3L, 1L, 2L)
+    }
+
+    @Test
+    fun `failed first page reload restarts the key from page one`() = runTest {
+        var failing = false
+        val getLibraryManga = create(rows((1L to false) to listOf(1L, 2L, 3L, 4L, 5L))) { failing }
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
+        getLibraryManga.loadCategoryNextPage(1L, false)
+
+        failing = true
+        getLibraryManga.refreshForced()
+        getLibraryManga.residentIds().shouldBeEmpty()
+
+        failing = false
+        getLibraryManga.loadCategoryPageIfNeeded(1L, false) shouldBe true
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(1L, 2L)
+    }
+
+    @Test
+    fun `ownership only lists rows a category loaded itself`() = runTest {
+        val getLibraryManga = create(
+            rows(
+                (1L to false) to listOf(100L, 1L),
+                (2L to false) to listOf(10L, 11L, 100L),
+            ),
+        )
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA, (2L to false) to specA))
+
+        val owned = getLibraryManga.ownedIdsByCategory().value
+        owned.getValue(1L) shouldBe setOf(100L, 1L)
+        owned.getValue(2L) shouldBe setOf(10L, 11L)
     }
 }

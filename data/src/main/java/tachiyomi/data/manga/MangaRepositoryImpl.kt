@@ -2210,6 +2210,7 @@ class MangaRepositoryImpl(
             mangaIds.chunked(AGGREGATE_CHUNK_SIZE).forEach { chunk ->
                 database.mangasQueries.resetAggregatesForIds(chunk)
 
+                // SQLDelight can't compile UPDATE ... FROM, so this one goes through the driver.
                 val idPlaceholders = chunk.joinToString(", ") { "?" }
                 val sql = """
                     |UPDATE mangas

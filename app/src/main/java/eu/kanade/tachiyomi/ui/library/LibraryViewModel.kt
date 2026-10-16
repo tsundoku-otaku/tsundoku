@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -172,6 +173,11 @@ class LibraryViewModel(
                         mutableState.update { st -> st.copy(paginationResetToken = st.paginationResetToken + 1) }
                     }
             }
+            viewModelScope.launchIO {
+                getLibraryManga.pagingInvalidations().drop(1).collect {
+                    mutableState.update { st -> st.copy(paginationResetToken = st.paginationResetToken + 1) }
+                }
+            }
         }
 
         viewModelScope.launchIO {
@@ -278,9 +284,10 @@ class LibraryViewModel(
                 getFavoritesFlow(displayPreferencesFlow),
                 combine(getTracksPerManga.subscribe(), getTrackingFiltersFlow(), ::Pair),
                 itemPreferencesFlow,
-                getLibraryManga.isLoading(),
-            ) { categories, favorites, tracksAndFilters, itemPreferences, isLoading ->
+                combine(getLibraryManga.isLoading(), getLibraryManga.ownedIdsByCategory(), ::Pair),
+            ) { categories, favorites, tracksAndFilters, itemPreferences, loadingAndOwnership ->
                 val (tracksMap, trackingFilters) = tracksAndFilters
+                val (isLoading, ownedIds) = loadingAndOwnership
 
                 val showSystemCategory = favorites.any { it.libraryManga.categories.contains(0L) }
 
@@ -294,6 +301,7 @@ class LibraryViewModel(
                     favorites = filteredFavorites,
                     tracksMap = tracksMap,
                     loggedInTrackerIds = trackingFilters.keys,
+                    ownedIdsByCategory = ownedIds.takeIf { getLibraryManga.isPaginationEnabled() },
                 )
             }
 
@@ -333,7 +341,7 @@ class LibraryViewModel(
                 }
                 .map { data ->
                     data.favorites
-                        .applyGrouping(data.categories, data.showSystemCategory)
+                        .applyGrouping(data.categories, data.showSystemCategory, data.ownedIdsByCategory)
                         .applySort(itemCache, data.tracksMap, data.loggedInTrackerIds)
                 }
                 .collectLatest {
@@ -568,6 +576,7 @@ class LibraryViewModel(
     private fun List<LibraryItem>.applyGrouping(
         categories: List<Category>,
         showSystemCategory: Boolean,
+        ownedIdsByCategory: Map<Long, Set<Long>>? = null,
     ): Map<Category, List</* LibraryItem */ Long>> {
         val visibleCategories = ArrayList<Category>(categories.size)
         for (category in categories) {
@@ -587,6 +596,9 @@ class LibraryViewModel(
         for (item in this) {
             for (categoryId in item.libraryManga.categories) {
                 val category = visibleCategoryById[categoryId] ?: continue
+                // Paged: a row another category loaded sits past this category's window, and
+                // showing it early would let later pages land above it.
+                if (ownedIdsByCategory != null && ownedIdsByCategory[categoryId]?.contains(item.id) != true) continue
                 groupedItems[category]?.add(item.id)
             }
         }
@@ -1327,9 +1339,6 @@ class LibraryViewModel(
         }
     }
 
-    // Categories with a load-more drain in flight, so the sentinel can't stack concurrent loads.
-    private val loadingMoreCategories = java.util.Collections.synchronizedSet(HashSet<Long>())
-
     /**
      * Load the next page of a category when the user scrolls to the bottom (paginated mode only).
      *
@@ -1341,10 +1350,16 @@ class LibraryViewModel(
      */
     fun loadMoreForCategory(category: Category) {
         if (!paginationEnabled) return
-        if (!loadingMoreCategories.add(category.id)) return
+        var claimed = false
         mutableState.update {
-            it.copy(paginationLoadingMoreCategories = it.paginationLoadingMoreCategories + category.id)
+            claimed = category.id !in it.paginationLoadingMoreCategories
+            if (claimed) {
+                it.copy(paginationLoadingMoreCategories = it.paginationLoadingMoreCategories + category.id)
+            } else {
+                it
+            }
         }
+        if (!claimed) return
         viewModelScope.launchIO {
             try {
                 var loaded = false
@@ -1353,7 +1368,6 @@ class LibraryViewModel(
                 }
                 if (loaded) bumpPaginationGeneration(category.id)
             } finally {
-                loadingMoreCategories.remove(category.id)
                 mutableState.update {
                     it.copy(paginationLoadingMoreCategories = it.paginationLoadingMoreCategories - category.id)
                 }
@@ -2094,6 +2108,8 @@ class LibraryViewModel(
         val favorites: List<LibraryItem> = emptyList(),
         val tracksMap: Map</* Manga */ Long, List<Track>> = emptyMap(),
         val loggedInTrackerIds: Set<Long> = emptySet(),
+        // Paged mode only: category id to the ids its loaded pages own.
+        val ownedIdsByCategory: Map<Long, Set<Long>>? = null,
     ) {
         val favoritesById: Map<Long, LibraryItem> by lazy {
             HashMap<Long, LibraryItem>(favorites.size * 2).also { map ->
@@ -2119,6 +2135,8 @@ class LibraryViewModel(
         // Experimental pagination: categories whose first page is still loading (show a spinner
         // instead of the "no manga" empty screen).
         val paginationLoadingCategories: Set<Long> = emptySet(),
+        // Experimental pagination: categories with a load-more fetch in flight. Also the guard that
+        // keeps the sentinel from stacking concurrent loads.
         val paginationLoadingMoreCategories: Set<Long> = emptySet(),
         // Experimental pagination: per-category load counter, bumped on every fetched page. The
         // load-more sentinel keys on it so it re-fires after each fetch (even when in-memory filters

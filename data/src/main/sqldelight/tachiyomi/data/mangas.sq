@@ -754,6 +754,9 @@ WHERE M.favorite = 1
         AND lower(coalesce(M.genre, '')) LIKE '%' || inc.tag || '%'
     )
   )
+-- A row whose mutable sort key (last_read, unread, total_count, latest_upload, chapter_fetched_at)
+-- changes between page fetches can shift position and be skipped until the next reset; acceptable
+-- for this mode.
 ORDER BY
     CASE WHEN :sortType = 3 THEN (M.total_count - M.read_count) = 0 END ASC,
     CASE WHEN :sortType = 0 AND :sortAscending = 1 THEN M.title END COLLATE NOCASE ASC,

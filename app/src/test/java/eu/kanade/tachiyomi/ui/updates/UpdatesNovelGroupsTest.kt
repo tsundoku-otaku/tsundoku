@@ -65,12 +65,26 @@ class UpdatesNovelGroupsTest {
     }
 
     @Test
-    fun `read chapters of the latest batch are not counted`() {
+    fun `read chapters of the latest batch are still counted`() {
         val state = UpdatesViewModel.State(
             items = listOf(
                 item(1, 1, base + 3, read = true),
                 item(1, 2, base + 2),
                 item(1, 3, base + 1),
+            ),
+        )
+
+        assertEquals(3, state.getNovelGroups().single().chapterCount)
+    }
+
+    @Test
+    fun `refreshes seconds apart are separate batches`() {
+        val state = UpdatesViewModel.State(
+            items = listOf(
+                item(1, 1, base + 10_001),
+                item(1, 2, base + 10_000),
+                item(1, 3, base + 1),
+                item(1, 4, base),
             ),
         )
 
