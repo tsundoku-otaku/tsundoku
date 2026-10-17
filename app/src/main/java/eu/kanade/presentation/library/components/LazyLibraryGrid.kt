@@ -1,21 +1,16 @@
 package eu.kanade.presentation.library.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.browse.components.BrowseSourceLoadingItem
 import tachiyomi.presentation.core.components.FastScrollLazyVerticalGrid
 import tachiyomi.presentation.core.util.plus
 
@@ -65,26 +60,14 @@ internal fun LazyGridScope.loadMoreFooter(isLoading: Boolean) {
         span = { GridItemSpan(maxLineSpan) },
         contentType = "library_load_more_footer",
     ) {
-        LoadMoreFooterRow()
+        BrowseSourceLoadingItem()
     }
 }
 
 internal fun LazyListScope.loadMoreFooter(isLoading: Boolean) {
     if (!isLoading) return
     item(contentType = "library_load_more_footer") {
-        LoadMoreFooterRow()
-    }
-}
-
-@Composable
-private fun LoadMoreFooterRow() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+        BrowseSourceLoadingItem()
     }
 }
 

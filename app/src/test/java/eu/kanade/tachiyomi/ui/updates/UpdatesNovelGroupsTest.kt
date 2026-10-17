@@ -92,6 +92,24 @@ class UpdatesNovelGroupsTest {
     }
 
     @Test
+    fun `chapters out of fetch order still count the latest batch`() {
+        val group = UpdatesNovelGroup(
+            mangaId = 1,
+            mangaTitle = "",
+            coverUrl = null,
+            sourceId = 1L,
+            latestChapterDate = base + day + 1,
+            chapters = listOf(
+                item(1, 1, base),
+                item(1, 2, base + day + 1),
+                item(1, 3, base + day),
+            ),
+        )
+
+        assertEquals(2, group.chapterCount)
+    }
+
+    @Test
     fun `groups are counted independently per novel`() {
         val state = UpdatesViewModel.State(
             items = listOf(

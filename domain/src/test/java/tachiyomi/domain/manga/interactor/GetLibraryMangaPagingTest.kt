@@ -8,6 +8,8 @@ import io.mockk.coEvery
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.parallel.Execution
@@ -38,9 +40,11 @@ class GetLibraryMangaPagingTest {
 
     // Rows per (category, isNovel), mutable to simulate DB changes. specA pages them as listed,
     // specB in reverse.
-    private suspend fun create(
+    // The test dispatcher runs the constructor's initial refresh eagerly, so nothing is left running
+    // in the background.
+    private fun TestScope.create(
         rows: MutableMap<Pair<Long, Boolean>, MutableList<Long>>,
-        failPages: () -> Boolean = { false },
+        failPages: (offset: Long) -> Boolean = { false },
     ): GetLibraryManga {
         fun categoriesOf(id: Long) = rows.filterValues { id in it }.keys.map { it.first }.distinct()
         val repository = mockk<MangaRepository>()
@@ -50,7 +54,7 @@ class GetLibraryMangaPagingTest {
             val limit = arg<Long>(2)
             val offset = arg<Long>(3)
             val spec = arg<LibraryPageSpec>(4)
-            if (failPages()) error("page fetch failed")
+            if (failPages(offset)) error("page fetch failed")
             val ids = rows[categoryId to isNovel].orEmpty()
             val ordered = if (spec.sortAscending) ids.reversed() else ids
             val window = ordered.drop(offset.toInt())
@@ -68,7 +72,7 @@ class GetLibraryMangaPagingTest {
         val preferences = LibraryPreferences(InMemoryPreferenceStore())
         preferences.experimentalLibraryPagination.set(true)
         preferences.experimentalLibraryPageSize.set(2)
-        return GetLibraryManga(repository, preferences).also { it.awaitRefresh() }
+        return GetLibraryManga(repository, preferences, UnconfinedTestDispatcher(testScheduler))
     }
 
     private fun rows(vararg pairs: Pair<Pair<Long, Boolean>, List<Long>>) =
@@ -271,7 +275,7 @@ class GetLibraryMangaPagingTest {
         )
         getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA, (2L to false) to specA))
 
-        val owned = getLibraryManga.ownedIdsByCategory().value
+        val owned = getLibraryManga.pagingSnapshot().value.ownedIds
         owned.getValue(1L) shouldBe setOf(100L, 1L)
         owned.getValue(2L) shouldBe setOf(10L, 11L)
     }
@@ -319,5 +323,40 @@ class GetLibraryMangaPagingTest {
 
         getLibraryManga.loadCategoryNextPage(1L, false)
         getLibraryManga.mayHaveMorePages(1L, false) shouldBe false
+    }
+
+    @Test
+    fun `frontier tracks the last row of keys with more pages`() = runTest {
+        val getLibraryManga = create(
+            rows(
+                (1L to false) to listOf(1L, 2L, 3L, 4L),
+                (1L to true) to listOf(20L),
+            ),
+        )
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA, (1L to true) to specA))
+        getLibraryManga.pagingSnapshot().value.frontiers.getValue(1L) shouldBe listOf(2L)
+
+        getLibraryManga.loadCategoryNextPage(1L, false)
+        getLibraryManga.pagingSnapshot().value.frontiers[1L] shouldBe null
+    }
+
+    @Test
+    fun `reload cut short by a failed later page signals the sentinel`() = runTest {
+        var failing = false
+        val data = rows((1L to false) to listOf(1L, 2L, 3L, 4L, 5L))
+        val getLibraryManga = create(data) { offset -> failing && offset > 0 }
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
+        getLibraryManga.loadCategoryNextPage(1L, false)
+        val before = getLibraryManga.pagingInvalidations().value
+
+        failing = true
+        data.getValue(1L to false).remove(1L)
+        getLibraryManga.removeFromLibrary(1L)
+        getLibraryManga.pagingInvalidations().value shouldNotBe before
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(2L, 3L)
+
+        failing = false
+        getLibraryManga.loadCategoryNextPage(1L, false) shouldBe true
+        getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(2L, 3L, 4L, 5L)
     }
 }

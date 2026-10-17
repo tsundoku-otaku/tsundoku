@@ -71,7 +71,12 @@ fun LibraryPager(
         }
 
         if (items.isEmpty()) {
-            if (paginationEnabled && isCategoryLoading(category)) {
+            if (paginationEnabled) {
+                // In-memory filters can hide a whole page, and the empty screen has no sentinel.
+                val loadMoreKey = getLoadMoreKey(category)
+                LaunchedEffect(category.id, loadMoreKey) { onLoadMore(category) }
+            }
+            if (paginationEnabled && (isCategoryLoading(category) || isCategoryLoadingMore(category))) {
                 Box(
                     modifier = Modifier
                         .padding(contentPadding)

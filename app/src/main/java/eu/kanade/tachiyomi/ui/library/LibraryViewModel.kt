@@ -331,8 +331,8 @@ class LibraryViewModel(
 
         viewModelScope.launchIO {
             // Ownership joins here, not in the filter stage, so a page load doesn't refilter twice.
-            val ownershipFlow = if (getLibraryManga.isPaginationEnabled()) {
-                getLibraryManga.ownedIdsByCategory()
+            val pagingFlow = if (getLibraryManga.isPaginationEnabled()) {
+                getLibraryManga.pagingSnapshot()
             } else {
                 flowOf(null)
             }
@@ -341,7 +341,7 @@ class LibraryViewModel(
                     .dropWhile { !it.libraryData.isInitialized }
                     .map { it.libraryData }
                     .distinctUntilChanged(),
-                ownershipFlow,
+                pagingFlow,
                 ::Pair,
             )
                 .onEach {
@@ -349,10 +349,10 @@ class LibraryViewModel(
                         if (state.isLoading) state else state.copy(isQueryRunning = true)
                     }
                 }
-                .map { (data, ownedIds) ->
+                .map { (data, paging) ->
                     data.favorites
-                        .applyGrouping(data.categories, data.showSystemCategory, ownedIds)
-                        .applySort(itemCache, data.tracksMap, data.loggedInTrackerIds)
+                        .applyGrouping(data.categories, data.showSystemCategory, paging?.ownedIds)
+                        .applySort(itemCache, data.tracksMap, data.loggedInTrackerIds, paging?.frontiers)
                 }
                 .collectLatest {
                     mutableState.update { state ->
@@ -620,6 +620,7 @@ class LibraryViewModel(
         favoritesById: Map<Long, LibraryItem>,
         trackMap: Map<Long, List<Track>>,
         loggedInTrackerIds: Set<Long>,
+        frontiersByCategory: Map<Long, List<Long>>? = null,
     ): Map<Category, List</* LibraryItem */ Long>> {
         // Paged rows are ordered by SQLite NOCASE, so match it or later pages reshuffle loaded ones.
         val sortAlphabetically: (LibraryItem, LibraryItem) -> Int = if (getLibraryManga.isPaginationEnabled()) {
@@ -716,7 +717,16 @@ class LibraryViewModel(
                 .thenComparator(sortAlphabetically)
                 .thenBy { it.id }
 
-            manga.sortedWith(comparator).map { it.id }
+            val sorted = manga.sortedWith(comparator)
+            // Paged with both content types: stop at the first row past another key's frontier, or
+            // that key's next page would land above rows already shown.
+            val bounds = frontiersByCategory?.get(key.id)?.mapNotNull { favoritesById[it] }
+            val cut = if (bounds.isNullOrEmpty()) {
+                -1
+            } else {
+                sorted.indexOfFirst { item -> bounds.any { comparator.compare(item, it) > 0 } }
+            }
+            (if (cut >= 0) sorted.subList(0, cut) else sorted).map { it.id }
         }
     }
 

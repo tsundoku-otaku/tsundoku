@@ -84,9 +84,13 @@ data class UpdatesNovelGroup(
 ) {
     // Chapters of the latest update batch, read or not, so the label never says 0. A sync stamps
     // its chapters with consecutive date_fetch millis, so the batch is the run of close fetch times
-    // ending at the newest one. [chapters] arrive newest first (date_fetch DESC).
+    // ending at the newest one. [chapters] normally arrive newest first, so only sort when they don't.
     val chapterCount: Int by lazy {
-        val byFetch = chapters
+        val byFetch = if (chapters.zipWithNext().all { (a, b) -> a.update.dateFetch >= b.update.dateFetch }) {
+            chapters
+        } else {
+            chapters.sortedByDescending { it.update.dateFetch }
+        }
         var batchSize = byFetch.size
         for (i in 1 until byFetch.size) {
             if (byFetch[i - 1].update.dateFetch - byFetch[i].update.dateFetch > UPDATE_BATCH_GAP_MS) {

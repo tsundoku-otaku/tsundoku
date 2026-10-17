@@ -2254,6 +2254,8 @@ class MangaRepositoryImpl(
                 }.await()
             }
         }
+        // Raw driver writes skip SQLDelight's query notifications.
+        driver.notifyListeners("mangas")
     }
 
     /**
