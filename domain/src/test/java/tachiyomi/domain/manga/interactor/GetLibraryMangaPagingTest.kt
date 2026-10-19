@@ -178,6 +178,9 @@ class GetLibraryMangaPagingTest {
         val getLibraryManga = create(rows((1L to false) to listOf(1L, 2L, 3L, 4L, 5L)))
 
         getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA.copy(unpaged = true)))
+        getLibraryManga.residentIds().shouldBeEmpty()
+
+        getLibraryManga.loadCategoryPageIfNeeded(1L, false) shouldBe true
         getLibraryManga.residentIds() shouldContainExactlyInAnyOrder listOf(1L, 2L, 3L, 4L, 5L)
 
         getLibraryManga.loadCategoryNextPage(1L, false)
@@ -316,6 +319,19 @@ class GetLibraryMangaPagingTest {
     }
 
     @Test
+    fun `failed page load reports nothing loaded`() = runTest {
+        var failing = false
+        val getLibraryManga = create(rows((1L to false) to listOf(1L, 2L, 3L))) { failing }
+        getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
+
+        failing = true
+        getLibraryManga.loadCategoryNextPage(1L, false) shouldBe false
+
+        failing = false
+        getLibraryManga.loadCategoryNextPage(1L, false) shouldBe true
+    }
+
+    @Test
     fun `exhausted key reports no more pages`() = runTest {
         val getLibraryManga = create(rows((1L to false) to listOf(1L, 2L, 3L)))
         getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA))
@@ -334,7 +350,7 @@ class GetLibraryMangaPagingTest {
             ),
         )
         getLibraryManga.applyPageSpecs(mapOf((1L to false) to specA, (1L to true) to specA))
-        getLibraryManga.pagingSnapshot().value.frontiers.getValue(1L) shouldBe listOf(2L)
+        getLibraryManga.pagingSnapshot().value.frontiers.getValue(1L) shouldBe mapOf(false to 2L)
 
         getLibraryManga.loadCategoryNextPage(1L, false)
         getLibraryManga.pagingSnapshot().value.frontiers[1L] shouldBe null

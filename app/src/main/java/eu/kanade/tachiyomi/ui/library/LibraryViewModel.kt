@@ -620,18 +620,16 @@ class LibraryViewModel(
         favoritesById: Map<Long, LibraryItem>,
         trackMap: Map<Long, List<Track>>,
         loggedInTrackerIds: Set<Long>,
-        frontiersByCategory: Map<Long, List<Long>>? = null,
+        frontiersByCategory: Map<Long, Map<Boolean, Long>>? = null,
     ): Map<Category, List</* LibraryItem */ Long>> {
-        // Paged rows are ordered by SQLite NOCASE, so match it or later pages reshuffle loaded ones.
-        val sortAlphabetically: (LibraryItem, LibraryItem) -> Int = if (getLibraryManga.isPaginationEnabled()) {
-            { manga1, manga2 ->
-                compareSqliteNoCase(manga1.libraryManga.manga.title, manga2.libraryManga.manga.title)
-            }
-        } else {
-            { manga1, manga2 ->
-                manga1.libraryManga.manga.title.compareToWithCollator(manga2.libraryManga.manga.title)
-            }
+        val collatorAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
+            manga1.libraryManga.manga.title.compareToWithCollator(manga2.libraryManga.manga.title)
         }
+        // Paged rows are ordered by SQLite NOCASE, so match it or later pages reshuffle loaded ones.
+        val noCaseAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
+            compareSqliteNoCase(manga1.libraryManga.manga.title, manga2.libraryManga.manga.title)
+        }
+        val paged = getLibraryManga.isPaginationEnabled()
 
         val defaultTrackerScoreSortValue = -1.0
         val needsSourceName = keys.any { it.sort.type == LibrarySort.Type.SourceName }
@@ -652,7 +650,9 @@ class LibraryViewModel(
             emptyMap()
         }
 
-        fun LibrarySort.comparator(): Comparator<LibraryItem> = Comparator { manga1, manga2 ->
+        fun LibrarySort.comparator(
+            sortAlphabetically: (LibraryItem, LibraryItem) -> Int,
+        ): Comparator<LibraryItem> = Comparator { manga1, manga2 ->
             when (this.type) {
                 LibrarySort.Type.Alphabetical -> {
                     sortAlphabetically(manga1, manga2)
@@ -712,19 +712,29 @@ class LibraryViewModel(
 
             val manga = value.mapNotNull { favoritesById[it] }
 
-            val comparator = key.sort.comparator()
+            val sortAlphabetically = if (paged && mapSort(key.sort) != null) {
+                noCaseAlphabetically
+            } else {
+                collatorAlphabetically
+            }
+            val comparator = key.sort.comparator(sortAlphabetically)
                 .let { if (key.sort.isAscending) it else it.reversed() }
                 .thenComparator(sortAlphabetically)
                 .thenBy { it.id }
 
             val sorted = manga.sortedWith(comparator)
-            // Paged with both content types: stop at the first row past another key's frontier, or
-            // that key's next page would land above rows already shown.
-            val bounds = frontiersByCategory?.get(key.id)?.mapNotNull { favoritesById[it] }
+            // Paged with both content types: stop at the first row past another content type's
+            // frontier, or that key's next page would land above rows already shown.
+            val bounds = frontiersByCategory?.get(key.id)
+                ?.mapNotNull { (isNovel, id) -> favoritesById[id]?.let { isNovel to it } }
             val cut = if (bounds.isNullOrEmpty()) {
                 -1
             } else {
-                sorted.indexOfFirst { item -> bounds.any { comparator.compare(item, it) > 0 } }
+                sorted.indexOfFirst { item ->
+                    bounds.any { (isNovel, frontier) ->
+                        isNovel != item.libraryManga.manga.isNovel && comparator.compare(item, frontier) > 0
+                    }
+                }
             }
             (if (cut >= 0) sorted.subList(0, cut) else sorted).map { it.id }
         }

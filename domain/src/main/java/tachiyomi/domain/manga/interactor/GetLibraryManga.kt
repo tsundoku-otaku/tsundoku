@@ -184,13 +184,13 @@ class GetLibraryManga(
             val idSet = mangaIds.toSet()
             val current = _libraryState.value
             val result = ArrayList<LibraryManga>(current.size)
-            val touched = CategoryEditScope()
+            val touched = if (paginationEnabled) CategoryEditScope() else null
             var changed = false
             for (item in current) {
                 if (item.id !in idSet) {
                     result.add(item)
                 } else {
-                    touched.record(item, item.categories)
+                    touched?.record(item, item.categories)
                     val updated = item.categories.toMutableSet()
                     addCategories.forEach { updated.add(it) }
                     removeCategories.forEach { updated.remove(it) }
@@ -201,13 +201,13 @@ class GetLibraryManga(
                         updated.clear()
                         updated.add(0L)
                     }
-                    touched.record(item, updated)
+                    touched?.record(item, updated)
                     result.add(item.copy(categories = updated.toList()))
                     changed = true
                 }
             }
             if (changed) _libraryState.value = result
-            if (paginationEnabled) {
+            if (touched != null) {
                 touched.accountForNonResident(idSet.size, mayLeaveAllCategories = removeCategories.isNotEmpty())
                 reloadKeysLocked(touched.keysFor(addCategories + removeCategories))
             }
@@ -226,22 +226,24 @@ class GetLibraryManga(
             val idSet = mangaIds.toSet()
             val current = _libraryState.value
             val result = ArrayList<LibraryManga>(current.size)
+            val touched = if (paginationEnabled) CategoryEditScope() else null
             val previousCategories = HashSet<Long>()
-            val touched = CategoryEditScope()
             var changed = false
             for (item in current) {
                 if (item.id !in idSet) {
                     result.add(item)
                 } else {
-                    previousCategories.addAll(item.categories)
-                    touched.record(item, item.categories)
-                    touched.record(item, effectiveCategories)
+                    if (touched != null) {
+                        previousCategories.addAll(item.categories)
+                        touched.record(item, item.categories)
+                        touched.record(item, effectiveCategories)
+                    }
                     result.add(item.copy(categories = effectiveCategories))
                     changed = true
                 }
             }
             if (changed) _libraryState.value = result
-            if (paginationEnabled) {
+            if (touched != null) {
                 touched.accountForNonResident(idSet.size, mayLeaveAllCategories = false)
                 reloadKeysLocked(touched.keysFor(previousCategories + effectiveCategories))
             }
@@ -495,7 +497,7 @@ class GetLibraryManga(
                         publishPagingLocked()
                         _libraryState.value = emptyList()
                     } else {
-                        reloadLoadedPagesLocked()
+                        reloadKeysLocked(loadedPageCount.keys.toList())
                     }
                 } else {
                     _libraryState.value = mangaRepository.getLibraryManga()
@@ -523,11 +525,11 @@ class GetLibraryManga(
      * Paged mode, per category id. [ownedIds] are the ids its loaded pages own, so grouping can skip
      * rows other keys loaded. [frontiers] are the last loaded rows of its keys that have more pages:
      * rows of another content type that sort past one aren't final, since that key's next page can
-     * land above them.
+     * land above them. Each frontier is keyed by its content type (isNovel).
      */
     data class PagingSnapshot(
         val ownedIds: Map<Long, Set<Long>> = emptyMap(),
-        val frontiers: Map<Long, List<Long>> = emptyMap(),
+        val frontiers: Map<Long, Map<Boolean, Long>> = emptyMap(),
     )
 
     fun pagingSnapshot(): StateFlow<PagingSnapshot> = _pagingSnapshot.asStateFlow()
@@ -545,7 +547,7 @@ class GetLibraryManga(
     suspend fun loadMissingFirstPages(): Boolean {
         if (!paginationEnabled) return false
         return mutex.withLock {
-            val missing = keySpec.keys.filter { !loadedPageCount.containsKey(it) }
+            val missing = keySpec.filter { (key, spec) -> !spec.unpaged && !loadedPageCount.containsKey(key) }.keys
             missing.forEach { loadPageLocked(it) }
             flushPagesLocked()
             missing.any { loadedPageCount.containsKey(it) }
@@ -555,7 +557,8 @@ class GetLibraryManga(
     /**
      * Reconciles the desired page specs for the caller's content-type scope only (the cache is
      * shared by the manga and novel screens). Keys with a new or changed spec reload from page one,
-     * and every key gets its first page so the pager and tab counts never start empty.
+     * and every paged key gets its first page so the pager and tab counts never start empty. Unpaged
+     * keys load whole, so they wait for [loadCategoryPageIfNeeded] when their category is shown.
      * [contentTypes] is the caller's scope (isNovel values); null derives it from [desired], so an
      * empty map can only evict when the scope is given.
      */
@@ -580,8 +583,8 @@ class GetLibraryManga(
                 pageHasMore.remove(key)
             }
             evictKeysLocked(staleKeys + changedKeys)
-            for (key in desiredKeys.keys) {
-                if (!loadedPageCount.containsKey(key)) loadPageLocked(key)
+            for ((key, spec) in desiredKeys) {
+                if (!spec.unpaged && !loadedPageCount.containsKey(key)) loadPageLocked(key)
             }
             flushPagesLocked()
             isInitialized = true
@@ -599,9 +602,9 @@ class GetLibraryManga(
         return mutex.withLock {
             val key = PageKey(categoryId, isNovel)
             if (keySpec.containsKey(key) && !loadedPageCount.containsKey(key)) {
-                loadPageLocked(key)
+                val loaded = loadPageLocked(key)
                 flushPagesLocked()
-                true
+                loaded
             } else {
                 false
             }
@@ -617,9 +620,9 @@ class GetLibraryManga(
         return mutex.withLock {
             val key = PageKey(categoryId, isNovel)
             if (keySpec.containsKey(key) && pageHasMore[key] != false) {
-                loadPageLocked(key)
+                val loaded = loadPageLocked(key)
                 flushPagesLocked()
-                true
+                loaded
             } else {
                 false
             }
@@ -650,9 +653,9 @@ class GetLibraryManga(
 
     /**
      * Caller must hold [mutex] and call [flushPagesLocked] afterwards. Loads the next unread page
-     * for [key] into [pendingRows].
+     * for [key] into [pendingRows]. Returns false if the fetch failed.
      */
-    private suspend fun loadPageLocked(key: PageKey) {
+    private suspend fun loadPageLocked(key: PageKey): Boolean {
         val loaded = loadedPageCount[key] ?: 0
         val (page, hasMore) = try {
             fetchPageLocked(key, loaded)
@@ -663,7 +666,7 @@ class GetLibraryManga(
                 "GetLibraryManga: page load failed (category=${key.categoryId}, novel=${key.isNovel})"
             }
             _isLoading.value = false
-            return
+            return false
         }
         loadedPageCount[key] = loaded + 1
         pageHasMore[key] = hasMore
@@ -672,14 +675,17 @@ class GetLibraryManga(
         pendingRows.addAll(page)
         isInitialized = true
         _isLoading.value = false
+        return true
     }
 
     /** Caller must hold [mutex]. Publishes rows and ownership from [loadPageLocked] in one emission each. */
     private fun flushPagesLocked() {
         if (pendingRows.isNotEmpty()) {
             val existing = _libraryState.value.mapTo(HashSet(_libraryState.value.size)) { it.id }
+            val latest = LinkedHashMap<Long, LibraryManga>()
+            for (row in pendingRows) latest[row.id] = row
             // Rows left pending by a cancelled op may have been evicted since.
-            val fresh = pendingRows.filter { row ->
+            val fresh = latest.values.filter { row ->
                 existing.add(row.id) && keyOwnedIds.values.any { row.id in it }
             }
             pendingRows.clear()
@@ -692,12 +698,19 @@ class GetLibraryManga(
         if (hasMore && lastId != null) keyFrontier[key] = lastId else keyFrontier.remove(key)
     }
 
+    private class Refetched(
+        val rows: List<LibraryManga>,
+        val pages: Int,
+        val hasMore: Boolean,
+        val reopened: Boolean,
+    )
+
     /**
      * Caller must hold [mutex]. Refetches as many pages of [key] as were loaded, in page-sized
-     * chunks so the per-page memory ceiling still holds while restoring a deep scroll. Returns the
-     * rows, or null if nothing could be fetched.
+     * chunks so the per-page memory ceiling still holds while restoring a deep scroll. Touches no
+     * paging state, see [reloadKeysLocked]. Returns null if nothing could be fetched.
      */
-    private suspend fun refetchLoadedPagesLocked(key: PageKey): List<LibraryManga>? {
+    private suspend fun refetchLoadedPagesLocked(key: PageKey): Refetched? {
         val count = loadedPageCount[key] ?: return null
         val rows = ArrayList<LibraryManga>()
         var page = 0
@@ -719,79 +732,50 @@ class GetLibraryManga(
         }
         // A reopened exhausted key, or a reload cut short by a failed page, leaves rows past the
         // last loaded one that the sentinel has to fetch again.
-        if ((pageHasMore[key] == false || page < count) && hasMore) _pagingInvalidations.value++
-        loadedPageCount[key] = page
-        pageHasMore[key] = hasMore
-        updateFrontierLocked(key, rows.lastOrNull()?.id, hasMore)
-        return rows
-    }
-
-    /** Caller must hold [mutex]. Rebuilds the resident list from all previously loaded pages. */
-    private suspend fun reloadLoadedPagesLocked() {
-        val rebuilt = ArrayList<LibraryManga>()
-        val seen = HashSet<Long>()
-        // Built aside and swapped in at the end so a cancelled reload leaves ownership intact.
-        val owned = HashMap<PageKey, MutableSet<Long>>()
-        for (key in loadedPageCount.keys.toList()) {
-            val rows = refetchLoadedPagesLocked(key)
-            if (rows == null) {
-                forgetKeyLocked(key)
-                continue
-            }
-            owned[key] = rows.mapTo(HashSet()) { it.id }
-            for (m in rows) if (seen.add(m.id)) rebuilt.add(m)
-        }
-        keyOwnedIds.clear()
-        keyOwnedIds.putAll(owned)
-        pendingRows.clear()
-        publishPagingLocked()
-        _libraryState.value = rebuilt
+        val reopened = (pageHasMore[key] == false || page < count) && hasMore
+        return Refetched(rows, page, hasMore, reopened)
     }
 
     /**
-     * Caller must hold [mutex]. A key whose first page couldn't be refetched restarts from page one
-     * instead of resuming past rows it no longer holds; the UI is told so it can retry.
-     */
-    private fun forgetKeyLocked(key: PageKey) {
-        loadedPageCount.remove(key)
-        pageHasMore.remove(key)
-        keyFrontier.remove(key)
-        _pagingInvalidations.value++
-    }
-
-    /**
-     * Caller must hold [mutex]. Refetches the loaded pages of [keys] in place, so ownership and page
-     * boundaries follow the DB. Rows the keys no longer return are dropped unless another key owns them.
+     * Caller must hold [mutex]. Refetches the loaded pages of [keys] and only then swaps the result
+     * in, so a cancelled reload leaves paging state and ownership intact. A key whose first page
+     * couldn't be refetched restarts from page one instead of resuming past rows it no longer holds;
+     * the UI is told so it can retry. Rows the keys no longer return are dropped unless another key
+     * owns them.
      */
     private suspend fun reloadKeysLocked(keys: Collection<PageKey>) {
         if (keys.isEmpty()) return
+        val refetched = LinkedHashMap<PageKey, Refetched?>()
+        for (key in keys) refetched[key] = refetchLoadedPagesLocked(key)
+
         val fresh = LinkedHashMap<Long, LibraryManga>()
-        // Built aside and swapped in at the end so a cancelled reload leaves ownership intact.
-        val owned = HashMap<PageKey, MutableSet<Long>?>()
-        for (key in keys) {
-            val rows = refetchLoadedPagesLocked(key)
-            if (rows == null) {
-                forgetKeyLocked(key)
-                owned[key] = null
+        val dropped = HashSet<Long>()
+        for ((key, result) in refetched) {
+            if (result == null) {
+                loadedPageCount.remove(key)
+                pageHasMore.remove(key)
+                keyFrontier.remove(key)
+                keyOwnedIds.remove(key)?.let(dropped::addAll)
+                _pagingInvalidations.value++
                 continue
             }
-            owned[key] = rows.mapTo(HashSet()) { it.id }
-            for (m in rows) fresh[m.id] = m
-        }
-        val dropped = HashSet<Long>()
-        for ((key, ids) in owned) {
-            val previous = if (ids == null) keyOwnedIds.remove(key) else keyOwnedIds.put(key, ids)
-            previous?.let(dropped::addAll)
+            if (result.reopened) _pagingInvalidations.value++
+            loadedPageCount[key] = result.pages
+            pageHasMore[key] = result.hasMore
+            updateFrontierLocked(key, result.rows.lastOrNull()?.id, result.hasMore)
+            keyOwnedIds.put(key, result.rows.mapTo(HashSet()) { it.id })?.let(dropped::addAll)
+            for (m in result.rows) fresh[m.id] = m
         }
         dropped.removeAll { id -> keyOwnedIds.values.any { id in it } }
+        pendingRows.clear()
         publishPagingLocked()
-        val result = ArrayList<LibraryManga>(_libraryState.value.size + fresh.size)
+        val merged = ArrayList<LibraryManga>(_libraryState.value.size + fresh.size)
         for (item in _libraryState.value) {
             if (item.id in dropped) continue
-            result.add(fresh.remove(item.id) ?: item)
+            merged.add(fresh.remove(item.id) ?: item)
         }
-        result.addAll(fresh.values)
-        _libraryState.value = result
+        merged.addAll(fresh.values)
+        _libraryState.value = merged
     }
 
     private fun loadedKeysFor(items: List<LibraryManga>): List<PageKey> {
@@ -840,8 +824,8 @@ class GetLibraryManga(
     private fun publishPagingLocked() {
         val byCategory = HashMap<Long, MutableSet<Long>>()
         for ((key, ids) in keyOwnedIds) byCategory.getOrPut(key.categoryId) { HashSet() }.addAll(ids)
-        val frontiers = HashMap<Long, MutableList<Long>>()
-        for ((key, id) in keyFrontier) frontiers.getOrPut(key.categoryId) { ArrayList() }.add(id)
+        val frontiers = HashMap<Long, MutableMap<Boolean, Long>>()
+        for ((key, id) in keyFrontier) frontiers.getOrPut(key.categoryId) { HashMap() }[key.isNovel] = id
         _pagingSnapshot.value = PagingSnapshot(byCategory, frontiers)
     }
 
