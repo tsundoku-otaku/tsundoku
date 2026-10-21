@@ -262,6 +262,7 @@ data object LibraryTab : Tab {
                                 isInMemory = { state.pagedPlans[it.id]?.inMemory == true },
                                 toItem = viewModel::pagedItem,
                                 badgeVersion = state.pagedBadgeVersion,
+                                buildingIndexes = state.pagedBuildingIndexes,
                                 onActiveChange = viewModel::setPagedActive,
                                 onLongClick = { category, manga, loaded ->
                                     viewModel.toggleRangeSelection(category, manga, loaded)

@@ -202,6 +202,36 @@ class LibraryPageSqlTest {
         plan shouldNotContain "TEMP B-TREE"
     }
 
+    @ParameterizedTest
+    @MethodSource("sorts")
+    fun `a small category is read through its members in the same order`(sortType: Int, ascending: Boolean) {
+        insert(
+            (1L..3_000L).map {
+                Row(
+                    it,
+                    "Title ${it % 97}",
+                    lastRead = it % 13,
+                    total = it % 7,
+                    read = it % 5,
+                    categories = if (it % 300 == 0L) listOf(8L) else emptyList(),
+                )
+            },
+        )
+        db.createStatement().use { it.executeUpdate("ANALYZE") }
+        val spec = spec(sortType, ascending)
+
+        val walked = ids(LibraryPageSql.page(8L, false, spec, limit = null, offset = 0))
+        val lookup = LibraryPageSql.page(8L, false, spec, limit = null, offset = 0, smallCategory = true)
+
+        ids(lookup) shouldContainExactly walked
+        walked.size shouldBe 10
+        plan(lookup) shouldContain "mangas_categories"
+        single(LibraryPageSql.count(8L, false, spec)) shouldBe 10L
+        single(LibraryPageSql.count(8L, false, spec, smallCategory = true)) shouldBe 10L
+        single(LibraryPageSql.count(0L, false, spec)) shouldBe 2_990L
+        single(LibraryPageSql.categoryMembers(8L)) shouldBe 10L
+    }
+
     @Test
     fun `pages concatenate to the full order with id tiebreaks in the sort direction`() {
         insert(

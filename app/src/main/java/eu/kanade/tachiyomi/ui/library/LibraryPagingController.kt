@@ -19,6 +19,7 @@ import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.library.paging.coalesceInvalidations
 import tachiyomi.domain.manga.interactor.GetLibraryMangaPaged
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -67,6 +68,9 @@ class LibraryPagingController(
         scope.launch(Dispatchers.IO) { getLibraryMangaPaged.ensureIndexes() }
     }
 
+    /** [invalidations] thinned further, for work that is too expensive to redo on every one. */
+    fun slowInvalidations(window: Duration): Flow<Unit> = invalidations.coalesceInvalidations(active, window)
+
     fun setActive(isActive: Boolean) {
         active.value = isActive
     }
@@ -88,8 +92,10 @@ class LibraryPagingController(
     private fun build(plan: LibraryPagedPlan): Flow<PagingData<LibraryManga>> {
         if (plan.inMemory) {
             // Each reload reads the whole category, so it follows changes more slowly.
-            val slower = invalidations.coalesceInvalidations(active, IN_MEMORY_INVALIDATION_WINDOW)
-            return getLibraryMangaPaged.subscribeLoaded(slower, plan.loadInMemory)
+            return getLibraryMangaPaged.subscribeLoaded(
+                slowInvalidations(IN_MEMORY_INVALIDATION_WINDOW),
+                plan.loadInMemory,
+            )
         }
         val paged = getLibraryMangaPaged.subscribe(plan.categoryId, plan.isNovel, plan.spec, invalidations)
         val filter = plan.filter ?: return paged

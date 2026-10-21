@@ -44,6 +44,7 @@ import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.dropWhile
@@ -51,6 +52,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.runningFold
@@ -102,6 +104,7 @@ import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.seconds
 
 class LibraryViewModel(
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
@@ -147,6 +150,8 @@ class LibraryViewModel(
         // Above this many DB-resolved search matches the id list is too big to bind, so search runs
         // in memory instead.
         private const val MAX_SQL_SEARCH_IDS = 5000
+
+        private val COUNT_INVALIDATION_WINDOW = 10.seconds
 
         val Factory = viewModelFactory {
             initializer {
@@ -473,19 +478,35 @@ class LibraryViewModel(
                 }
         }
 
+        // Counting a big category scans it, so counts are published one by one as they finish and
+        // only redone on the slow invalidation window, not restarted by every page reload.
         viewModelScope.launchIO {
             combine(
                 state.map { it.pagedPlans }.distinctUntilChanged(),
                 state.map { it.showMangaCount || !it.searchQuery.isNullOrEmpty() }.distinctUntilChanged(),
-                controller.invalidations.onStart { emit(Unit) },
-            ) { plans, wanted, _ -> plans.takeIf { wanted } }
+            ) { plans, wanted -> plans.takeIf { wanted } }
                 .collectLatest { plans ->
-                    val counts = plans?.values
+                    mutableState.update { it.copy(pagedCounts = emptyMap()) }
+                    // The uncategorized bucket has to be scanned, so it goes last.
+                    val exact = plans?.values
                         ?.filter { it.hasExactCount }
-                        ?.associate { it.categoryId to getLibraryMangaPaged.awaitCount(it.categoryId, it.isNovel, it.spec) }
-                        .orEmpty()
-                    mutableState.update { it.copy(pagedCounts = counts) }
+                        ?.sortedBy { it.categoryId == 0L }
+                        ?: return@collectLatest
+                    merge(flowOf(Unit), controller.slowInvalidations(COUNT_INVALIDATION_WINDOW))
+                        .conflate()
+                        .collect {
+                            for (plan in exact) {
+                                val count = getLibraryMangaPaged.awaitCount(plan.categoryId, plan.isNovel, plan.spec)
+                                mutableState.update { it.copy(pagedCounts = it.pagedCounts + (plan.categoryId to count)) }
+                            }
+                        }
                 }
+        }
+
+        viewModelScope.launchIO {
+            getLibraryMangaPaged.buildingIndexes().collect { building ->
+                mutableState.update { it.copy(pagedBuildingIndexes = building) }
+            }
         }
 
         viewModelScope.launchIO {
@@ -2413,6 +2434,7 @@ class LibraryViewModel(
         val pagedCounts: Map<Long, Long> = emptyMap(),
         val pagedSelection: Map<Long, Manga> = emptyMap(),
         val pagedBadgeVersion: Int = 0,
+        val pagedBuildingIndexes: Boolean = false,
         private val activeCategoryIndex: Int = 0,
         private val groupedFavorites: Map<Category, List</* LibraryItem */ Long>> = emptyMap(),
     ) {

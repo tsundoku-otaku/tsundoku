@@ -826,13 +826,24 @@ class MangaRepositoryImpl(
         limit: Long?,
         offset: Long,
         spec: LibraryPageSpec,
+        smallCategory: Boolean,
     ): List<LibraryManga> {
-        return RawQuery(driver, LibraryPageSql.page(categoryId, isNovel, spec, limit, offset), ::mapLibraryPageRow)
-            .awaitAsList()
+        val query = LibraryPageSql.page(categoryId, isNovel, spec, limit, offset, smallCategory)
+        return RawQuery(driver, query, ::mapLibraryPageRow).awaitAsList()
     }
 
-    override suspend fun countLibraryMangaPage(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): Long {
-        return RawQuery(driver, LibraryPageSql.count(categoryId, isNovel, spec)) { it.getLong(0)!! }.awaitAsOne()
+    override suspend fun countCategoryMembers(categoryId: Long): Long {
+        return RawQuery(driver, LibraryPageSql.categoryMembers(categoryId)) { it.getLong(0)!! }.awaitAsOne()
+    }
+
+    override suspend fun countLibraryMangaPage(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean,
+    ): Long {
+        val query = LibraryPageSql.count(categoryId, isNovel, spec, smallCategory)
+        return RawQuery(driver, query) { it.getLong(0)!! }.awaitAsOne()
     }
 
     override suspend fun countFavorites(isNovel: Boolean?): Long {
@@ -849,8 +860,19 @@ class MangaRepositoryImpl(
         awaitClose { driver.removeListener("mangas", "mangas_categories", listener = listener) }
     }.conflate()
 
-    override suspend fun ensureLibraryPagingIndexes() {
-        LibraryPageSql.createIndexStatements().forEach { driver.execute(null, it, 0).await() }
+    override suspend fun ensureLibraryPagingIndexes(): Boolean {
+        val existing = RawQuery(
+            driver,
+            LibraryPageQuery("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mangas'", emptyList()),
+        ) { it.getString(0)!! }.awaitAsList().toSet()
+        val missing = LibraryPageSql.indexes.indices.filter { LibraryPageSql.indexes[it].first !in existing }
+        if (missing.isEmpty()) return false
+        val statements = LibraryPageSql.createIndexStatements()
+        missing.forEach { driver.execute(null, statements[it], 0).await() }
+        // Building the indexes on a large library leaves a WAL of comparable size behind.
+        RawQuery(driver, LibraryPageQuery("PRAGMA wal_checkpoint(TRUNCATE)", emptyList())) { it.getLong(0) ?: 0L }
+            .awaitAsList()
+        return true
     }
 
     override suspend fun dropLibraryPagingIndexes() {

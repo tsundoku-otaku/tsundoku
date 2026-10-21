@@ -11,6 +11,10 @@ internal class LibraryPageQuery(val sql: String, val args: List<Any>)
  *
  * Ties break on _id in the sort direction, so an index on (is_novel, key) serves both directions
  * with its implicit rowid suffix.
+ *
+ * Walking the sort index only pays off when the category is a good share of the library: for a small
+ * one every page would scan the whole index to find a handful of members. Those are read through
+ * their membership rows instead and sorted, which is cheap at their size.
  */
 internal object LibraryPageSql {
 
@@ -53,9 +57,11 @@ internal object LibraryPageSql {
         spec: LibraryPageSpec,
         limit: Long?,
         offset: Long,
+        smallCategory: Boolean = false,
     ): LibraryPageQuery {
         val args = ArrayList<Any>()
-        val where = where(categoryId, isNovel, spec, args)
+        val membership = if (smallCategory) Membership.LOOKUP else Membership.WALK
+        val where = where(categoryId, isNovel, spec, args, membership)
         val direction = if (spec.sortAscending) "ASC" else "DESC"
         val sql = buildString {
             append("SELECT ").append(COLUMNS).append(" FROM mangas M WHERE ").append(where)
@@ -70,9 +76,17 @@ internal object LibraryPageSql {
         return LibraryPageQuery(sql, args)
     }
 
-    fun count(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): LibraryPageQuery {
+    fun count(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean = false,
+    ): LibraryPageQuery {
         val args = ArrayList<Any>()
-        val where = where(categoryId, isNovel, spec, args)
+        // Probing the membership index per row is far cheaper than random row lookups for every
+        // member of a big category, so only small ones count through their members.
+        val membership = if (smallCategory || categoryId == 0L) Membership.LOOKUP else Membership.WALK
+        val where = where(categoryId, isNovel, spec, args, membership)
         return LibraryPageQuery("SELECT count(*) FROM mangas M WHERE $where", args)
     }
 
@@ -88,6 +102,9 @@ internal object LibraryPageSql {
         return LibraryPageQuery(sql, args)
     }
 
+    fun categoryMembers(categoryId: Long): LibraryPageQuery =
+        LibraryPageQuery("SELECT count(*) FROM mangas_categories WHERE category_id = ?", listOf(categoryId))
+
     fun hasUncategorized(isNovel: Boolean?): LibraryPageQuery {
         val args = ArrayList<Any>()
         val sql = buildString {
@@ -96,7 +113,7 @@ internal object LibraryPageSql {
                 append(" AND M.is_novel = ?")
                 args.add(isNovel.toLong())
             }
-            append(" AND ").append(membership(0L, args)).append(")")
+            append(" AND ").append(membership(0L, args, Membership.WALK)).append(")")
         }
         return LibraryPageQuery(sql, args)
     }
@@ -112,14 +129,29 @@ internal object LibraryPageSql {
         else -> "M.date_added"
     }
 
-    // A correlated EXISTS can't drive the scan, so the planner walks the sort index and checks
-    // membership per row instead of materializing and sorting the whole category.
-    private fun membership(categoryId: Long, args: MutableList<Any>): String {
-        return if (categoryId == 0L) {
-            "NOT EXISTS (SELECT 1 FROM mangas_categories MC WHERE MC.manga_id = M._id AND MC.category_id <> 0)"
-        } else {
-            args.add(categoryId)
-            "EXISTS (SELECT 1 FROM mangas_categories MC WHERE MC.manga_id = M._id AND MC.category_id = ?)"
+    private enum class Membership {
+        // A correlated EXISTS can't drive the scan, so the planner walks the sort index and checks
+        // membership per row.
+        WALK,
+
+        // An IN list drives the query from the category's membership rows.
+        LOOKUP,
+    }
+
+    private fun membership(categoryId: Long, args: MutableList<Any>, mode: Membership): String {
+        return when {
+            categoryId == 0L && mode == Membership.WALK ->
+                "NOT EXISTS (SELECT 1 FROM mangas_categories MC WHERE MC.manga_id = M._id AND MC.category_id <> 0)"
+            // The membership set is built once instead of probed per row.
+            categoryId == 0L -> "M._id NOT IN (SELECT manga_id FROM mangas_categories WHERE category_id <> 0)"
+            mode == Membership.WALK -> {
+                args.add(categoryId)
+                "EXISTS (SELECT 1 FROM mangas_categories MC WHERE MC.manga_id = M._id AND MC.category_id = ?)"
+            }
+            else -> {
+                args.add(categoryId)
+                "M._id IN (SELECT manga_id FROM mangas_categories WHERE category_id = ?)"
+            }
         }
     }
 
@@ -128,6 +160,7 @@ internal object LibraryPageSql {
         isNovel: Boolean?,
         spec: LibraryPageSpec,
         args: MutableList<Any>,
+        mode: Membership,
     ): String {
         val clauses = ArrayList<String>()
         clauses.add("M.favorite = 1")
@@ -135,7 +168,7 @@ internal object LibraryPageSql {
             clauses.add("M.is_novel = ?")
             args.add(isNovel.toLong())
         }
-        clauses.add(membership(categoryId, args))
+        clauses.add(membership(categoryId, args, mode))
 
         triState(spec.filterUnread, "$UNREAD > 0")?.let(clauses::add)
         triState(spec.filterStarted, "M.read_count > 0")?.let(clauses::add)

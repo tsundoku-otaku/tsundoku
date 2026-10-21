@@ -94,7 +94,8 @@ interface MangaRepository {
     /**
      * Experimental paged library: one page of favorites for a single category, with the
      * DB-expressible filters/sort in [spec] applied. [categoryId] 0 is the uncategorized bucket, a
-     * null [isNovel] covers both content types and a null [limit] returns every row.
+     * null [isNovel] covers both content types and a null [limit] returns every row. A
+     * [smallCategory] is read through its membership rows instead of walking the sort index.
      */
     suspend fun getLibraryMangaPage(
         categoryId: Long,
@@ -102,9 +103,17 @@ interface MangaRepository {
         limit: Long?,
         offset: Long,
         spec: LibraryPageSpec,
+        smallCategory: Boolean = false,
     ): List<LibraryManga>
 
-    suspend fun countLibraryMangaPage(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): Long
+    suspend fun countCategoryMembers(categoryId: Long): Long
+
+    suspend fun countLibraryMangaPage(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean = false,
+    ): Long
 
     suspend fun countFavorites(isNovel: Boolean?): Long
 
@@ -113,7 +122,8 @@ interface MangaRepository {
     /** Emits whenever the tables behind the paged library queries change. */
     fun libraryTableChanges(): Flow<Unit>
 
-    suspend fun ensureLibraryPagingIndexes()
+    /** Returns true when an index had to be built. */
+    suspend fun ensureLibraryPagingIndexes(): Boolean
 
     suspend fun dropLibraryPagingIndexes()
 
