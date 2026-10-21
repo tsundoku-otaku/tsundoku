@@ -23,8 +23,7 @@ internal fun LibraryList(
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
     showUrl: Boolean = false,
-    onLoadMore: (() -> Unit)? = null,
-    loadMoreKey: Long = 0,
+    isLoadingMore: Boolean = false,
 ) {
     FastScrollLazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -42,7 +41,7 @@ internal fun LibraryList(
 
         items(
             count = items.size,
-            key = { index -> items[index].id },
+            key = { index -> items.libraryItemKey(index) },
             contentType = { "library_list_item" },
         ) { index ->
             val libraryItem = items[index]
@@ -77,6 +76,6 @@ internal fun LibraryList(
             )
         }
 
-        loadMoreSentinel(loadMoreKey, onLoadMore)
+        loadMoreFooter(isLoadingMore)
     }
 }

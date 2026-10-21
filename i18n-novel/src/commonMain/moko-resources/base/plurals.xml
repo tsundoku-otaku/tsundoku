@@ -14,4 +14,9 @@
         <item quantity="one">%d chapter could not be read</item>
         <item quantity="other">%d chapters could not be read</item>
     </plurals>
+
+    <plurals name="updates_new_chapters_latest_batch">
+        <item quantity="one">%d new chapter</item>
+        <item quantity="other">%d new chapters</item>
+    </plurals>
 </resources>

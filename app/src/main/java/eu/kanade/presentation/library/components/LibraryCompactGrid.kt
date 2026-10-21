@@ -2,7 +2,6 @@ package eu.kanade.presentation.library.components
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import eu.kanade.tachiyomi.ui.library.LibraryItem
@@ -21,8 +20,7 @@ internal fun LibraryCompactGrid(
     onClickContinueReading: ((LibraryManga) -> Unit)?,
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
-    onLoadMore: (() -> Unit)? = null,
-    loadMoreKey: Long = 0,
+    isLoadingMore: Boolean = false,
 ) {
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),
@@ -32,9 +30,11 @@ internal fun LibraryCompactGrid(
         globalSearchItem(searchQuery, onGlobalSearchClicked)
 
         items(
-            items = items,
+            count = items.size,
+            key = { items.libraryItemKey(it) },
             contentType = { "library_compact_grid_item" },
-        ) { libraryItem ->
+        ) { index ->
+            val libraryItem = items[index]
             val manga = libraryItem.libraryManga.manga
             MangaCompactGridItem(
                 isSelected = manga.id in selection,
@@ -66,6 +66,6 @@ internal fun LibraryCompactGrid(
             )
         }
 
-        loadMoreSentinel(loadMoreKey, onLoadMore)
+        loadMoreFooter(isLoadingMore)
     }
 }

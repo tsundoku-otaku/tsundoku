@@ -34,6 +34,7 @@ import eu.kanade.presentation.library.LibrarySettingsDialog
 import eu.kanade.presentation.library.MarkReadConfirmationDialog
 import eu.kanade.presentation.library.UpdateSelectedDialog
 import eu.kanade.presentation.library.components.LibraryContent
+import eu.kanade.presentation.library.components.LibraryPaging
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.MassImportDialog
 import eu.kanade.presentation.manga.components.LibraryBottomActionMenu
@@ -275,11 +276,22 @@ data object NovelsTab : Tab {
                         getItemsForCategory = { state.getItemsForCategory(it) },
                         titleMaxLines = titleMaxLines,
                         showUrlInList = showUrlInList,
-                        paginationEnabled = viewModel.paginationEnabled,
-                        onCategoryFirstVisible = viewModel::onCategoryFirstVisible,
-                        onLoadMore = viewModel::loadMoreForCategory,
-                        getLoadMoreKey = { state.categoryLoadKey(it) },
-                        isCategoryLoading = { state.paginationLoadingCategories.contains(it.id) },
+                        paging = if (viewModel.paginationEnabled) {
+                            LibraryPaging(
+                                items = viewModel::pagedItems,
+                                isInMemory = { state.pagedPlans[it.id]?.inMemory == true },
+                                toItem = viewModel::pagedItem,
+                                badgeVersion = state.pagedBadgeVersion,
+                                buildingIndexes = state.pagedBuildingIndexes,
+                                onActiveChange = viewModel::setPagedActive,
+                                onLongClick = { category, manga, loaded ->
+                                    viewModel.toggleRangeSelection(category, manga, loaded)
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                            )
+                        } else {
+                            null
+                        },
                     )
                 }
             }

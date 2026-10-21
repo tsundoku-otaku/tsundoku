@@ -7,9 +7,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.browse.components.BrowseSourceLoadingItem
 import tachiyomi.presentation.core.components.FastScrollLazyVerticalGrid
 import tachiyomi.presentation.core.util.plus
 
@@ -30,26 +30,20 @@ internal fun LazyLibraryGrid(
     )
 }
 
-/**
- * Invisible trailing item that fires [onLoadMore] when it enters composition (scrolled to end).
- * Keyed on [loadKey] (the per-category pagination generation) so it re-fires on every fetched page
- * even when in-memory filters hid the whole page, so a filtered-out page can't dead-end the
- * category. The key stops changing once the category is exhausted. No-op when [onLoadMore] null.
- */
-internal fun LazyGridScope.loadMoreSentinel(loadKey: Long, onLoadMore: (() -> Unit)?) {
-    if (onLoadMore == null) return
+internal fun LazyGridScope.loadMoreFooter(isLoading: Boolean) {
+    if (!isLoading) return
     item(
         span = { GridItemSpan(maxLineSpan) },
-        contentType = { "library_load_more" },
+        contentType = "library_load_more_footer",
     ) {
-        LaunchedEffect(loadKey) { onLoadMore() }
+        BrowseSourceLoadingItem()
     }
 }
 
-internal fun LazyListScope.loadMoreSentinel(loadKey: Long, onLoadMore: (() -> Unit)?) {
-    if (onLoadMore == null) return
-    item(contentType = "library_load_more") {
-        LaunchedEffect(loadKey) { onLoadMore() }
+internal fun LazyListScope.loadMoreFooter(isLoading: Boolean) {
+    if (!isLoading) return
+    item(contentType = "library_load_more_footer") {
+        BrowseSourceLoadingItem()
     }
 }
 
@@ -60,7 +54,7 @@ internal fun LazyGridScope.globalSearchItem(
     if (!searchQuery.isNullOrEmpty()) {
         item(
             span = { GridItemSpan(maxLineSpan) },
-            contentType = { "library_global_search_item" },
+            contentType = "library_global_search_item",
         ) {
             GlobalSearchItem(
                 searchQuery = searchQuery,

@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonObject
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
+import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaSelectionMetric
 import tachiyomi.domain.manga.model.MangaUpdate
@@ -91,17 +92,54 @@ interface MangaRepository {
     suspend fun getLibraryManga(): List<LibraryManga>
 
     /**
-     * Experimental memory-capped library load: one page of favorites for a single category and
-     * content type, with the DB-expressible filters/sort in [spec] applied so the page is the
-     * globally-correct slice. [categoryId] 0 is the uncategorized bucket.
+     * Experimental paged library: one page of a category. [categoryId] 0 is the uncategorized bucket,
+     * a null [isNovel] covers both content types and a null [limit] returns every row.
      */
     suspend fun getLibraryMangaPage(
         categoryId: Long,
-        isNovel: Boolean,
-        limit: Long,
+        isNovel: Boolean?,
+        limit: Long?,
         offset: Long,
-        spec: tachiyomi.domain.library.model.LibraryPageSpec,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean = false,
     ): List<LibraryManga>
+
+    suspend fun getLibraryMangaPageIds(
+        categoryId: Long,
+        isNovel: Boolean?,
+        limit: Long,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean = false,
+        bySource: Boolean = false,
+    ): List<Long>
+
+    suspend fun getLibraryMangaPageRows(ids: List<Long>): List<LibraryManga>
+
+    /** Whether [spec] is pinned to sources with at most [maxRows] rows, read best by source index. */
+    suspend fun isLibraryPageSourceDriven(spec: LibraryPageSpec, maxRows: Long): Boolean
+
+    suspend fun countCategoryMembers(categoryId: Long): Long
+
+    suspend fun countLibraryMangaPage(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean = false,
+        bySource: Boolean = false,
+    ): Long
+
+    suspend fun countFavorites(isNovel: Boolean?): Long
+
+    suspend fun hasUncategorizedFavorites(isNovel: Boolean?): Boolean
+
+    fun libraryTableChanges(): Flow<Unit>
+
+    /** Returns true when an index had to be built. */
+    suspend fun ensureLibraryPagingIndexes(): Boolean
+
+    suspend fun dropLibraryPagingIndexes()
+
+    suspend fun markFavoritesAsNovel(sourceIds: List<Long>)
 
     /**
      * Get a single LibraryManga by ID from the library cache.
