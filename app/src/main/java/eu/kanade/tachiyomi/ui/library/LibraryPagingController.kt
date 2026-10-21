@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
@@ -36,6 +37,8 @@ class LibraryPagedPlan(
     val inMemory: Boolean,
     /** In-memory filters left after the SQL ones; null when SQL already filters everything. */
     val filter: ((LibraryManga) -> Boolean)?,
+    /** What is shown depends on downloads, so the pager reloads when they change. */
+    val reloadOnDownloads: Boolean,
     val loadInMemory: suspend () -> List<LibraryManga>,
 ) {
     /** The SQL count matches what is shown. */
@@ -53,10 +56,15 @@ class LibraryPagedPlan(
 class LibraryPagingController(
     private val scope: CoroutineScope,
     private val getLibraryMangaPaged: GetLibraryMangaPaged,
+    downloadChanges: Flow<Unit>,
 ) {
     private val active = MutableStateFlow(false)
 
     val invalidations: SharedFlow<Unit> = getLibraryMangaPaged.changes()
+        .coalesceInvalidations(active, INVALIDATION_WINDOW)
+        .shareIn(scope, SharingStarted.Eagerly)
+
+    private val downloadInvalidations: SharedFlow<Unit> = downloadChanges
         .coalesceInvalidations(active, INVALIDATION_WINDOW)
         .shareIn(scope, SharingStarted.Eagerly)
 
@@ -69,7 +77,8 @@ class LibraryPagingController(
     }
 
     /** [invalidations] thinned further, for work that is too expensive to redo on every one. */
-    fun slowInvalidations(window: Duration): Flow<Unit> = invalidations.coalesceInvalidations(active, window)
+    fun slowInvalidations(window: Duration, source: Flow<Unit> = invalidations): Flow<Unit> =
+        source.coalesceInvalidations(active, window)
 
     fun setActive(isActive: Boolean) {
         active.value = isActive
@@ -90,14 +99,15 @@ class LibraryPagingController(
     }
 
     private fun build(plan: LibraryPagedPlan): Flow<PagingData<LibraryManga>> {
+        val changes = if (plan.reloadOnDownloads) merge(invalidations, downloadInvalidations) else invalidations
         if (plan.inMemory) {
             // Each reload reads the whole category, so it follows changes more slowly.
             return getLibraryMangaPaged.subscribeLoaded(
-                slowInvalidations(IN_MEMORY_INVALIDATION_WINDOW),
+                slowInvalidations(IN_MEMORY_INVALIDATION_WINDOW, changes),
                 plan.loadInMemory,
             )
         }
-        val paged = getLibraryMangaPaged.subscribe(plan.categoryId, plan.isNovel, plan.spec, invalidations)
+        val paged = getLibraryMangaPaged.subscribe(plan.categoryId, plan.isNovel, plan.spec, changes)
         val filter = plan.filter ?: return paged
         return paged.map { data -> data.filter { filter(it) } }
     }

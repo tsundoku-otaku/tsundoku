@@ -42,11 +42,13 @@ import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -163,8 +165,18 @@ class LibraryViewModel(
     /** Experimental: whether per-category DB pagination is active for this library. */
     val paginationEnabled: Boolean = getLibraryManga.isPaginationEnabled()
 
-    private val paging: LibraryPagingController? =
-        if (paginationEnabled) LibraryPagingController(viewModelScope, getLibraryMangaPaged) else null
+    // The download cache emits through a channel, so it is read once and shared.
+    private val downloadVersions: SharedFlow<Int> by lazy {
+        downloadCache.changes
+            .runningFold(0) { version, _ -> version + 1 }
+            .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
+    }
+
+    private val paging: LibraryPagingController? = if (paginationEnabled) {
+        LibraryPagingController(viewModelScope, getLibraryMangaPaged, downloadVersions.drop(1).map { })
+    } else {
+        null
+    }
 
     @Volatile
     private var pagedDisplayPreferences = DisplayPreferences(
@@ -427,28 +439,21 @@ class LibraryViewModel(
             mangaRepository.markFavoritesAsNovel(novelSources)
         }
 
-        // The download cache emits through a channel, so it is read once and shared.
-        val downloadVersionFlow = downloadCache.changes
-            .runningFold(0) { version, _ -> version + 1 }
-            .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
-
         viewModelScope.launchIO {
             combine(
                 categoriesForType(),
                 getLibraryItemPreferencesFlow(),
                 searchConfigFlow(),
                 combine(getTracksPerManga.subscribe(), getTrackingFiltersFlow(), ::Pair),
-                combine(metaFlow, downloadVersionFlow, ::Pair),
-            ) { categories, prefs, search, tracksAndFilters, metaAndDownloads ->
+                metaFlow,
+            ) { categories, prefs, search, tracksAndFilters, meta ->
                 val (tracks, trackingFilters) = tracksAndFilters
-                val (meta, downloadVersion) = metaAndDownloads
                 val inputs = PagedInputs(
                     prefs = prefs,
                     search = search,
                     searchSourceIds = search.spec?.let { searchSourceIds(it) }.orEmpty(),
                     tracks = tracks,
                     trackingFilters = trackingFilters,
-                    downloadVersion = downloadVersion,
                 )
                 val visible = categories.filter { meta.hasUncategorized || !it.isSystemCategory }
                 PagedLibrary(
@@ -510,7 +515,7 @@ class LibraryViewModel(
         }
 
         viewModelScope.launchIO {
-            combine(getLibraryDisplayPreferencesFlow(), downloadVersionFlow) { prefs, _ -> prefs }
+            combine(getLibraryDisplayPreferencesFlow(), downloadVersions) { prefs, _ -> prefs }
                 .collect { prefs ->
                     pagedDisplayPreferences = prefs
                     mutableState.update { it.copy(pagedBadgeVersion = it.pagedBadgeVersion + 1) }
@@ -563,7 +568,6 @@ class LibraryViewModel(
             prefs = prefs.takeIf { inMemory || needsItemFilter },
             trackingFilters = inputs.trackingFilters.takeIf { inMemory || needsItemFilter },
             tracks = inputs.tracks.takeIf { inMemory || needsItemFilter },
-            downloadVersion = inputs.downloadVersion.takeIf { dependsOnDownloads },
             search = inputs.search.takeIf { searchInMemory },
         )
 
@@ -584,6 +588,7 @@ class LibraryViewModel(
             spec = spec,
             inMemory = inMemory,
             filter = filter,
+            reloadOnDownloads = dependsOnDownloads,
             loadInMemory = { loadCategoryInMemory(category, isNovel, spec, inputs, searchInMemory) },
         )
     }
@@ -765,7 +770,6 @@ class LibraryViewModel(
         val searchSourceIds: Set<Long>,
         val tracks: Map<Long, List<Track>>,
         val trackingFilters: Map<Long, TriState>,
-        val downloadVersion: Int,
     )
 
     private data class PagedPlanKey(
@@ -777,7 +781,6 @@ class LibraryViewModel(
         val prefs: ItemPreferences?,
         val trackingFilters: Map<Long, TriState>?,
         val tracks: Map<Long, List<Track>>?,
-        val downloadVersion: Int?,
         val search: SearchConfig?,
     )
 
