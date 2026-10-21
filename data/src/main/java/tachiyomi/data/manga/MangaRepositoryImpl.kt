@@ -2,12 +2,19 @@
 
 package tachiyomi.data.manga
 
+import app.cash.sqldelight.ExecutableQuery
+import app.cash.sqldelight.Query
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onEach
@@ -815,91 +822,108 @@ class MangaRepositoryImpl(
 
     override suspend fun getLibraryMangaPage(
         categoryId: Long,
-        isNovel: Boolean,
-        limit: Long,
+        isNovel: Boolean?,
+        limit: Long?,
         offset: Long,
         spec: LibraryPageSpec,
     ): List<LibraryManga> {
-        // NOT IN () is invalid, so pad an empty exclusion list with a non-existent source id.
-        val excluded = spec.excludedSourceIds.ifEmpty { listOf(-1L) }
-        return database.mangasQueries.libraryPageFiltered(
-            isNovel = isNovel,
-            categoryId = categoryId,
-            filterUnread = spec.filterUnread.toLong(),
-            filterStarted = spec.filterStarted.toLong(),
-            filterBookmarked = spec.filterBookmarked.toLong(),
-            filterCompleted = spec.filterCompleted.toLong(),
-            filterIntervalCustom = spec.filterIntervalCustom.toLong(),
-            filterChapterCount = spec.filterChapterCount.toLong(),
-            chapterCountThreshold = spec.filterChapterCountThreshold.toLong(),
-            excludedSourceIds = excluded,
-            searchTerm = spec.searchTerm,
-            searchAltTitles = if (spec.searchAlternativeTitles) 1L else 0L,
-            includedTagsCsv = spec.includedTagsCsv,
-            sortType = spec.sortType.toLong(),
-            sortAscending = if (spec.sortAscending) 1L else 0L,
-            limit = limit,
-            offset = offset,
+        return RawQuery(driver, LibraryPageSql.page(categoryId, isNovel, spec, limit, offset), ::mapLibraryPageRow)
+            .awaitAsList()
+    }
+
+    override suspend fun countLibraryMangaPage(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): Long {
+        return RawQuery(driver, LibraryPageSql.count(categoryId, isNovel, spec)) { it.getLong(0)!! }.awaitAsOne()
+    }
+
+    override suspend fun countFavorites(isNovel: Boolean?): Long {
+        return RawQuery(driver, LibraryPageSql.countFavorites(isNovel)) { it.getLong(0)!! }.awaitAsOne()
+    }
+
+    override suspend fun hasUncategorizedFavorites(isNovel: Boolean?): Boolean {
+        return RawQuery(driver, LibraryPageSql.hasUncategorized(isNovel)) { it.getLong(0)!! }.awaitAsOne() != 0L
+    }
+
+    override fun libraryTableChanges(): Flow<Unit> = callbackFlow {
+        val listener = Query.Listener { trySend(Unit) }
+        driver.addListener("mangas", "mangas_categories", listener = listener)
+        awaitClose { driver.removeListener("mangas", "mangas_categories", listener = listener) }
+    }.conflate()
+
+    override suspend fun ensureLibraryPagingIndexes() {
+        LibraryPageSql.createIndexStatements().forEach { driver.execute(null, it, 0).await() }
+    }
+
+    override suspend fun dropLibraryPagingIndexes() {
+        LibraryPageSql.dropIndexStatements().forEach { driver.execute(null, it, 0).await() }
+    }
+
+    override suspend fun markFavoritesAsNovel(sourceIds: List<Long>) {
+        if (sourceIds.isEmpty()) return
+        val placeholders = sourceIds.joinToString(", ") { "?" }
+        val changed = driver.execute(
+            null,
+            "UPDATE mangas SET is_novel = 1 WHERE favorite = 1 AND is_novel = 0 AND source IN ($placeholders)",
+            sourceIds.size,
         ) {
-                id,
-                source,
-                url,
-                genre,
-                title,
-                status,
-                thumbnailUrl,
-                favorite,
-                lastUpdate,
-                nextUpdate,
-                coverLastModified,
-                dateAdded,
-                calculateInterval,
-                isNovel,
-                totalCount,
-                readCount,
-                latestUpload,
-                chapterFetchedAt,
-                lastRead,
-                bookmarkCount,
-                categories,
-            ->
-            MangaMapper.mapLibraryManga(
-                id = id,
-                source = source,
-                url = url,
-                artist = null,
-                author = null,
-                description = null,
-                genre = genre,
-                title = title,
-                alternativeTitles = null,
-                status = status,
-                thumbnailUrl = thumbnailUrl,
-                favorite = favorite,
-                lastUpdate = lastUpdate,
-                nextUpdate = nextUpdate,
-                initialized = false,
-                viewerFlags = 0,
-                chapterFlags = 0,
-                coverLastModified = coverLastModified,
-                dateAdded = dateAdded,
-                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = calculateInterval,
-                lastModifiedAt = 0,
-                favoriteModifiedAt = null,
-                version = 0,
-                isSyncing = 0,
-                notes = "",
-                isNovel = isNovel,
-                totalCount = totalCount,
-                readCount = readCount,
-                latestUpload = latestUpload,
-                chapterFetchedAt = chapterFetchedAt,
-                lastRead = lastRead,
-                bookmarkCount = bookmarkCount,
-                categories = categories,
-            )
-        }.awaitAsList()
+            sourceIds.forEachIndexed { index, id -> bindLong(index, id) }
+        }.await()
+        // Raw driver writes skip SQLDelight's query notifications.
+        if (changed > 0) driver.notifyListeners("mangas")
+    }
+
+    private fun mapLibraryPageRow(cursor: SqlCursor): LibraryManga = MangaMapper.mapLibraryManga(
+        id = cursor.getLong(0)!!,
+        source = cursor.getLong(1)!!,
+        url = cursor.getString(2)!!,
+        artist = null,
+        author = null,
+        description = null,
+        genre = cursor.getString(3)?.let(StringListColumnAdapter::decode),
+        title = cursor.getString(4)!!,
+        alternativeTitles = null,
+        status = cursor.getLong(5)!!,
+        thumbnailUrl = cursor.getString(6),
+        favorite = cursor.getLong(7)!! != 0L,
+        lastUpdate = cursor.getLong(8),
+        nextUpdate = cursor.getLong(9),
+        initialized = false,
+        viewerFlags = 0,
+        chapterFlags = 0,
+        coverLastModified = cursor.getLong(10)!!,
+        dateAdded = cursor.getLong(11)!!,
+        updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+        calculateInterval = cursor.getLong(12)!!,
+        lastModifiedAt = 0,
+        favoriteModifiedAt = null,
+        version = 0,
+        isSyncing = 0,
+        notes = "",
+        isNovel = cursor.getLong(13)!! != 0L,
+        totalCount = cursor.getLong(14)!!,
+        readCount = cursor.getLong(15)!!.toDouble(),
+        latestUpload = cursor.getLong(16)!!,
+        chapterFetchedAt = cursor.getLong(17)!!,
+        lastRead = cursor.getLong(18)!!,
+        bookmarkCount = cursor.getLong(19)!!.toDouble(),
+        categories = cursor.getString(20)!!,
+    )
+
+    private class RawQuery<T : Any>(
+        private val driver: SqlDriver,
+        private val query: LibraryPageQuery,
+        mapper: (SqlCursor) -> T,
+    ) : ExecutableQuery<T>(mapper) {
+        override fun <R> execute(mapper: (SqlCursor) -> QueryResult<R>): QueryResult<R> {
+            return driver.executeQuery(null, query.sql, mapper, query.args.size) {
+                query.args.forEachIndexed { index, arg ->
+                    when (arg) {
+                        is Long -> bindLong(index, arg)
+                        is String -> bindString(index, arg)
+                        else -> error("Unsupported argument type ${arg::class}")
+                    }
+                }
+            }
+        }
     }
 
     override suspend fun getLibraryMangaById(mangaId: Long): LibraryManga? {

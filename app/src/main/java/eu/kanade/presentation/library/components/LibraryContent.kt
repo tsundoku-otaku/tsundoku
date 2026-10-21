@@ -50,12 +50,7 @@ fun LibraryContent(
     getItemsForCategory: (Category) -> List<LibraryItem>,
     titleMaxLines: Int = 2,
     showUrlInList: Boolean = false,
-    paginationEnabled: Boolean = false,
-    onCategoryFirstVisible: (Category) -> Unit = {},
-    onLoadMore: (Category) -> Unit = {},
-    getLoadMoreKey: (Category) -> Long = { 0 },
-    isCategoryLoading: (Category) -> Boolean = { false },
-    isCategoryLoadingMore: (Category) -> Boolean = { false },
+    paging: LibraryPaging? = null,
 ) {
     Column(
         modifier = Modifier.padding(
@@ -123,12 +118,7 @@ fun LibraryContent(
                 onClickContinueReading = onContinueReadingClicked,
                 titleMaxLines = titleMaxLines,
                 showUrlInList = showUrlInList,
-                paginationEnabled = paginationEnabled,
-                onCategoryFirstVisible = onCategoryFirstVisible,
-                onLoadMore = onLoadMore,
-                getLoadMoreKey = getLoadMoreKey,
-                isCategoryLoading = isCategoryLoading,
-                isCategoryLoadingMore = isCategoryLoadingMore,
+                paging = paging,
             )
         }
 

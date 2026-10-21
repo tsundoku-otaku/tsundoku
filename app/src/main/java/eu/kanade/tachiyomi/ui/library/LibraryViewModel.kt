@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.paging.PagingData
 import eu.kanade.core.preference.PreferenceMutableState
 import eu.kanade.core.preference.asState
 import eu.kanade.core.util.fastFilterNot
@@ -32,6 +33,7 @@ import eu.kanade.tachiyomi.data.library.LibraryUpdateJob
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.translation.TranslationJob
 import eu.kanade.tachiyomi.data.translation.TranslationService
+import eu.kanade.tachiyomi.source.getNameForMangaInfo
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -40,10 +42,10 @@ import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -51,6 +53,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.runningFold
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import logcat.LogPriority
@@ -81,6 +85,7 @@ import tachiyomi.domain.library.model.LibrarySort
 import tachiyomi.domain.library.model.sort
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.GetLibraryMangaPaged
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.SearchMangaMetadata
 import tachiyomi.domain.manga.model.Manga
@@ -100,6 +105,7 @@ import kotlin.random.Random
 
 class LibraryViewModel(
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
+    private val getLibraryMangaPaged: GetLibraryMangaPaged = Injekt.get(),
     private val getCategories: GetCategories = Injekt.get(),
     private val getTracksPerManga: GetTracksPerManga = Injekt.get(),
     private val getNextChapters: GetNextChapters = Injekt.get(),
@@ -138,6 +144,10 @@ class LibraryViewModel(
     companion object {
         val TYPE_KEY = CreationExtras.Key<LibraryType>()
 
+        // Above this many DB-resolved search matches the id list is too big to bind, so search runs
+        // in memory instead.
+        private const val MAX_SQL_SEARCH_IDS = 5000
+
         val Factory = viewModelFactory {
             initializer {
                 LibraryViewModel(type = get(TYPE_KEY) ?: LibraryType.All)
@@ -145,43 +155,77 @@ class LibraryViewModel(
         }
     }
 
+    /** Experimental: whether per-category DB pagination is active for this library. */
+    val paginationEnabled: Boolean = getLibraryManga.isPaginationEnabled()
+
+    private val paging: LibraryPagingController? =
+        if (paginationEnabled) LibraryPagingController(viewModelScope, getLibraryMangaPaged) else null
+
+    @Volatile
+    private var pagedDisplayPreferences = DisplayPreferences(
+        downloadBadge = false,
+        unreadBadge = false,
+        localBadge = false,
+        languageBadge = false,
+    )
+
     init {
         mutableState.update { state ->
             state.copy(activeCategoryIndex = libraryPreferences.lastUsedCategory.get())
         }
-        // Experimental pagination: nothing is resident at startup, so the category pager (which
-        // normally drives lazy loading) never composes while the library looks empty. Drive the
-        // DB-side paging from here: feed GetLibraryManga the desired per-category page specs (global
-        // filters/search + each category's sort) so it loads the first page and re-pages on change.
-        // NB: read isPaginationEnabled() directly. The `paginationEnabled` val is initialized after
-        // this init block runs.
-        if (getLibraryManga.isPaginationEnabled()) {
-            viewModelScope.launchIO {
-                combine(
-                    categoriesForType(),
-                    getLibraryItemPreferencesFlow(),
-                    state.map { it.searchQuery }.distinctUntilChanged(),
-                    libraryPreferences.useRegexSearch.changes(),
-                ) { categories, prefs, query, useRegex ->
-                    buildPageSpecs(categories, prefs, query, useRegex)
-                }
-                    .distinctUntilChanged()
-                    .collectLatest { specs ->
-                        getLibraryManga.applyPageSpecs(specs, contentTypes = pagedContentTypes())
-                        // Filters/sort/search reset paging to page one. Bump the reset token so every
-                        // sentinel re-fires and can drain again if the new first page underfills.
-                        mutableState.update { st -> st.copy(paginationResetToken = st.paginationResetToken + 1) }
-                    }
-            }
-            viewModelScope.launchIO {
-                getLibraryManga.pagingInvalidations().drop(1).collect {
-                    // An emptied category shows the empty screen, which has no sentinel to retry.
-                    getLibraryManga.loadMissingFirstPages()
-                    mutableState.update { st -> st.copy(paginationResetToken = st.paginationResetToken + 1) }
-                }
-            }
+
+        if (paging != null) {
+            initPaged(paging)
+        } else {
+            initResident()
         }
 
+        combine(
+            libraryPreferences.categoryTabs.changes(),
+            libraryPreferences.categoryNumberOfItems.changes(),
+            libraryPreferences.showContinueReadingButton.changes(),
+        ) { a, b, c -> arrayOf(a, b, c) }
+            .onEach { (showCategoryTabs, showMangaCount, showMangaContinueButton) ->
+                mutableState.update { state ->
+                    state.copy(
+                        showCategoryTabs = showCategoryTabs,
+                        showMangaCount = showMangaCount,
+                        showMangaContinueButton = showMangaContinueButton,
+                    )
+                }
+            }
+            .launchIn(viewModelScope)
+
+        combine(
+            getLibraryItemPreferencesFlow(),
+            getTrackingFiltersFlow(),
+        ) { prefs, trackFilters ->
+            listOf(
+                prefs.filterDownloaded,
+                prefs.filterUnread,
+                prefs.filterStarted,
+                prefs.filterBookmarked,
+                prefs.filterCompleted,
+                prefs.filterIntervalCustom,
+                prefs.filterNoTags,
+                prefs.filterNovel,
+                prefs.filterChapterCount,
+                *trackFilters.values.toTypedArray(),
+            )
+                .any { it != TriState.DISABLED } ||
+                prefs.includedTags.isNotEmpty() ||
+                prefs.excludedTags.isNotEmpty()
+        }
+            .distinctUntilChanged()
+            .onEach {
+                mutableState.update { state ->
+                    state.copy(hasActiveFilters = it)
+                }
+            }
+            .launchIn(viewModelScope)
+    }
+
+    private fun initResident() {
         viewModelScope.launchIO {
             val itemPreferencesFlow = getLibraryItemPreferencesFlow()
             val displayPreferencesFlow = getLibraryDisplayPreferencesFlow()
@@ -189,97 +233,7 @@ class LibraryViewModel(
             // Subscribe to categories filtered by content type based on library type
             val categoriesFlow = categoriesForType()
 
-            // Flow that emits manga IDs with matching chapter names when search is active
-            // No debounce needed since search is committed on Enter key press
-            val searchQueryFlow = state.map { it.searchQuery }.distinctUntilChanged()
-
-            val chapterMatchIdsFlow = combine(
-                searchQueryFlow,
-                libraryPreferences.searchChapterNames.changes(),
-            ) { query, searchChapters ->
-                if (query.isNullOrEmpty() || !searchChapters) {
-                    emptySet()
-                } else {
-                    // For "chapter:" prefix, extract the actual query
-                    val actualQuery = if (query.startsWith("chapter:", true)) {
-                        query.substringAfter("chapter:").trim()
-                    } else {
-                        query
-                    }
-                    if (actualQuery.isNotEmpty()) {
-                        withIOContext { searchChapterNames.await(actualQuery).toSet() }
-                    } else {
-                        emptySet()
-                    }
-                }
-            }
-
-            // Author/artist/description aren't loaded into the in-memory library list (they'd add
-            // strings per favorite on a 200k library), so resolve those matches by streaming the
-            // DB cursor. Author and artist are always searchable; description stays gated behind
-            // the content pref in default search.
-            val metadataMatchIdsFlow = combine(
-                searchQueryFlow,
-                libraryPreferences.searchChapterContent.changes(),
-                libraryPreferences.useRegexSearch.changes(),
-                libraryPreferences.searchAlternativeTitles.changes(),
-            ) { query, searchContent, useRegex, searchAltTitles ->
-                if (query.isNullOrEmpty()) {
-                    MetadataMatchIds()
-                } else {
-                    val parsed = LibrarySearchSpec.parse(query, useRegex, searchByUrl = false)
-                    suspend fun ids(
-                        author: Boolean = false,
-                        artist: Boolean = false,
-                        description: Boolean = false,
-                        altTitle: Boolean = false,
-                    ): MetadataMatchIds {
-                        val matches = withIOContext {
-                            searchMangaMetadata.await(
-                                term = parsed.term,
-                                regex = parsed.termRegex,
-                                searchAuthor = author,
-                                searchArtist = artist,
-                                searchDescription = description,
-                                searchAltTitle = altTitle,
-                            )
-                        }
-                        return MetadataMatchIds(
-                            author = matches.author,
-                            artist = matches.artist,
-                            description = matches.description,
-                            altTitle = matches.altTitle,
-                        )
-                    }
-                    when (parsed.field) {
-                        LibrarySearchSpec.Field.AUTHOR -> ids(author = true)
-                        LibrarySearchSpec.Field.ARTIST -> ids(artist = true)
-                        // Explicit desc:/description: prefix is an unambiguous request, so it runs
-                        // regardless of the content checkbox. The checkbox only gates description in
-                        // default (non-prefixed) search, where it adds an expensive full-text scan.
-                        LibrarySearchSpec.Field.DESCRIPTION -> ids(description = true)
-                        LibrarySearchSpec.Field.DEFAULT ->
-                            ids(author = true, artist = true, description = searchContent, altTitle = searchAltTitles)
-                        else -> MetadataMatchIds()
-                    }
-                }
-            }
-
-            val searchWithChapterMatchesFlow = combine(
-                searchQueryFlow,
-                chapterMatchIdsFlow,
-                metadataMatchIdsFlow,
-                libraryPreferences.searchByUrl.changes(),
-                combine(
-                    libraryPreferences.useRegexSearch.changes(),
-                    libraryPreferences.searchChapterContent.changes(),
-                    ::Pair,
-                ),
-            ) { query, chapterMatchIds, metadataMatchIds, searchByUrl, regexAndContent ->
-                val (useRegex, searchContent) = regexAndContent
-                val spec = query?.let { LibrarySearchSpec.parse(it, useRegex, searchByUrl) }
-                SearchConfig(spec, chapterMatchIds, metadataMatchIds, searchContent)
-            }
+            val searchWithChapterMatchesFlow = searchConfigFlow()
 
             val filteredLibraryDataFlow = combine(
                 categoriesFlow,
@@ -330,29 +284,19 @@ class LibraryViewModel(
         }
 
         viewModelScope.launchIO {
-            // Ownership joins here, not in the filter stage, so a page load doesn't refilter twice.
-            val pagingFlow = if (getLibraryManga.isPaginationEnabled()) {
-                getLibraryManga.pagingSnapshot()
-            } else {
-                flowOf(null)
-            }
-            combine(
-                state
-                    .dropWhile { !it.libraryData.isInitialized }
-                    .map { it.libraryData }
-                    .distinctUntilChanged(),
-                pagingFlow,
-                ::Pair,
-            )
+            state
+                .dropWhile { !it.libraryData.isInitialized }
+                .map { it.libraryData }
+                .distinctUntilChanged()
                 .onEach {
                     mutableState.update { state ->
                         if (state.isLoading) state else state.copy(isQueryRunning = true)
                     }
                 }
-                .map { (data, paging) ->
+                .map { data ->
                     data.favorites
-                        .applyGrouping(data.categories, data.showSystemCategory, paging?.ownedIds)
-                        .applySort(itemCache, data.tracksMap, data.loggedInTrackerIds, paging?.frontiers)
+                        .applyGrouping(data.categories, data.showSystemCategory)
+                        .applySort(itemCache, data.tracksMap, data.loggedInTrackerIds)
                 }
                 .collectLatest {
                     mutableState.update { state ->
@@ -364,50 +308,462 @@ class LibraryViewModel(
                     }
                 }
         }
+    }
 
-        combine(
-            libraryPreferences.categoryTabs.changes(),
-            libraryPreferences.categoryNumberOfItems.changes(),
-            libraryPreferences.showContinueReadingButton.changes(),
-        ) { a, b, c -> arrayOf(a, b, c) }
-            .onEach { (showCategoryTabs, showMangaCount, showMangaContinueButton) ->
-                mutableState.update { state ->
-                    state.copy(
-                        showCategoryTabs = showCategoryTabs,
-                        showMangaCount = showMangaCount,
-                        showMangaContinueButton = showMangaContinueButton,
+    private fun searchConfigFlow(): Flow<SearchConfig> {
+        // Flow that emits manga IDs with matching chapter names when search is active
+        // No debounce needed since search is committed on Enter key press
+        val searchQueryFlow = state.map { it.searchQuery }.distinctUntilChanged()
+
+        val chapterMatchIdsFlow = combine(
+            searchQueryFlow,
+            libraryPreferences.searchChapterNames.changes(),
+        ) { query, searchChapters ->
+            if (query.isNullOrEmpty() || !searchChapters) {
+                emptySet()
+            } else {
+                // For "chapter:" prefix, extract the actual query
+                val actualQuery = if (query.startsWith("chapter:", true)) {
+                    query.substringAfter("chapter:").trim()
+                } else {
+                    query
+                }
+                if (actualQuery.isNotEmpty()) {
+                    withIOContext { searchChapterNames.await(actualQuery).toSet() }
+                } else {
+                    emptySet()
+                }
+            }
+        }
+
+        // Author/artist/description aren't loaded into the in-memory library list (they'd add
+        // strings per favorite on a 200k library), so resolve those matches by streaming the
+        // DB cursor. Author and artist are always searchable; description stays gated behind
+        // the content pref in default search.
+        val metadataMatchIdsFlow = combine(
+            searchQueryFlow,
+            libraryPreferences.searchChapterContent.changes(),
+            libraryPreferences.useRegexSearch.changes(),
+            libraryPreferences.searchAlternativeTitles.changes(),
+        ) { query, searchContent, useRegex, searchAltTitles ->
+            if (query.isNullOrEmpty()) {
+                MetadataMatchIds()
+            } else {
+                val parsed = LibrarySearchSpec.parse(query, useRegex, searchByUrl = false)
+                suspend fun ids(
+                    author: Boolean = false,
+                    artist: Boolean = false,
+                    description: Boolean = false,
+                    altTitle: Boolean = false,
+                ): MetadataMatchIds {
+                    val matches = withIOContext {
+                        searchMangaMetadata.await(
+                            term = parsed.term,
+                            regex = parsed.termRegex,
+                            searchAuthor = author,
+                            searchArtist = artist,
+                            searchDescription = description,
+                            searchAltTitle = altTitle,
+                        )
+                    }
+                    return MetadataMatchIds(
+                        author = matches.author,
+                        artist = matches.artist,
+                        description = matches.description,
+                        altTitle = matches.altTitle,
                     )
                 }
-            }
-            .launchIn(viewModelScope)
-
-        combine(
-            getLibraryItemPreferencesFlow(),
-            getTrackingFiltersFlow(),
-        ) { prefs, trackFilters ->
-            listOf(
-                prefs.filterDownloaded,
-                prefs.filterUnread,
-                prefs.filterStarted,
-                prefs.filterBookmarked,
-                prefs.filterCompleted,
-                prefs.filterIntervalCustom,
-                prefs.filterNoTags,
-                prefs.filterNovel,
-                prefs.filterChapterCount,
-                *trackFilters.values.toTypedArray(),
-            )
-                .any { it != TriState.DISABLED } ||
-                prefs.includedTags.isNotEmpty() ||
-                prefs.excludedTags.isNotEmpty()
-        }
-            .distinctUntilChanged()
-            .onEach {
-                mutableState.update { state ->
-                    state.copy(hasActiveFilters = it)
+                when (parsed.field) {
+                    LibrarySearchSpec.Field.AUTHOR -> ids(author = true)
+                    LibrarySearchSpec.Field.ARTIST -> ids(artist = true)
+                    // Explicit desc:/description: prefix is an unambiguous request, so it runs
+                    // regardless of the content checkbox. The checkbox only gates description in
+                    // default (non-prefixed) search, where it adds an expensive full-text scan.
+                    LibrarySearchSpec.Field.DESCRIPTION -> ids(description = true)
+                    LibrarySearchSpec.Field.DEFAULT ->
+                        ids(author = true, artist = true, description = searchContent, altTitle = searchAltTitles)
+                    else -> MetadataMatchIds()
                 }
             }
-            .launchIn(viewModelScope)
+        }
+
+        return combine(
+            searchQueryFlow,
+            chapterMatchIdsFlow,
+            metadataMatchIdsFlow,
+            libraryPreferences.searchByUrl.changes(),
+            combine(
+                libraryPreferences.useRegexSearch.changes(),
+                libraryPreferences.searchChapterContent.changes(),
+                ::Pair,
+            ),
+        ) { query, chapterMatchIds, metadataMatchIds, searchByUrl, regexAndContent ->
+            val (useRegex, searchContent) = regexAndContent
+            val spec = query?.let { LibrarySearchSpec.parse(it, useRegex, searchByUrl) }
+            SearchConfig(spec, chapterMatchIds, metadataMatchIds, searchContent)
+        }
+    }
+
+    private fun initPaged(controller: LibraryPagingController) {
+        val isNovel = pagedTypeIsNovel()
+        val metaFlow = controller.invalidations
+            .onStart { emit(Unit) }
+            .map {
+                PagedMeta(
+                    total = getLibraryMangaPaged.awaitFavoriteCount(isNovel),
+                    hasUncategorized = getLibraryMangaPaged.awaitHasUncategorized(isNovel),
+                )
+            }
+            .distinctUntilChanged()
+        // Paged mode never sees the whole list the resident path backfills is_novel from.
+        viewModelScope.launchIO {
+            val novelSources = getLibraryManga.awaitSourceIds()
+                .filter { sourceManager.get(it)?.isNovelSource() == true }
+            mangaRepository.markFavoritesAsNovel(novelSources)
+        }
+
+        // The download cache emits through a channel, so it is read once and shared.
+        val downloadVersionFlow = downloadCache.changes
+            .runningFold(0) { version, _ -> version + 1 }
+            .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
+
+        viewModelScope.launchIO {
+            combine(
+                categoriesForType(),
+                getLibraryItemPreferencesFlow(),
+                searchConfigFlow(),
+                combine(getTracksPerManga.subscribe(), getTrackingFiltersFlow(), ::Pair),
+                combine(metaFlow, downloadVersionFlow, ::Pair),
+            ) { categories, prefs, search, tracksAndFilters, metaAndDownloads ->
+                val (tracks, trackingFilters) = tracksAndFilters
+                val (meta, downloadVersion) = metaAndDownloads
+                val inputs = PagedInputs(
+                    prefs = prefs,
+                    search = search,
+                    searchSourceIds = search.spec?.let { searchSourceIds(it) }.orEmpty(),
+                    tracks = tracks,
+                    trackingFilters = trackingFilters,
+                    downloadVersion = downloadVersion,
+                )
+                val visible = categories.filter { meta.hasUncategorized || !it.isSystemCategory }
+                PagedLibrary(
+                    data = LibraryData(
+                        isInitialized = true,
+                        showSystemCategory = meta.hasUncategorized,
+                        categories = categories,
+                        tracksMap = tracks,
+                        loggedInTrackerIds = trackingFilters.keys,
+                    ),
+                    grouped = visible.associateWith { emptyList() },
+                    plans = visible.associate { it.id to pagedPlan(it, inputs) },
+                    total = meta.total,
+                )
+            }
+                .collectLatest { paged ->
+                    mutableState.update { state ->
+                        state.copy(
+                            isLoading = false,
+                            isQueryRunning = false,
+                            libraryData = paged.data,
+                            groupedFavorites = paged.grouped,
+                            pagedPlans = paged.plans,
+                            pagedTotal = paged.total,
+                        )
+                    }
+                }
+        }
+
+        viewModelScope.launchIO {
+            combine(
+                state.map { it.pagedPlans }.distinctUntilChanged(),
+                state.map { it.showMangaCount || !it.searchQuery.isNullOrEmpty() }.distinctUntilChanged(),
+                controller.invalidations.onStart { emit(Unit) },
+            ) { plans, wanted, _ -> plans.takeIf { wanted } }
+                .collectLatest { plans ->
+                    val counts = plans?.values
+                        ?.filter { it.hasExactCount }
+                        ?.associate { it.categoryId to getLibraryMangaPaged.awaitCount(it.categoryId, it.isNovel, it.spec) }
+                        .orEmpty()
+                    mutableState.update { it.copy(pagedCounts = counts) }
+                }
+        }
+
+        viewModelScope.launchIO {
+            combine(getLibraryDisplayPreferencesFlow(), downloadVersionFlow) { prefs, _ -> prefs }
+                .collect { prefs ->
+                    pagedDisplayPreferences = prefs
+                    mutableState.update { it.copy(pagedBadgeVersion = it.pagedBadgeVersion + 1) }
+                }
+        }
+    }
+
+    private fun pagedTypeIsNovel(): Boolean? = when (type) {
+        LibraryType.Manga -> false
+        LibraryType.Novel -> true
+        LibraryType.All -> null
+    }
+
+    private fun pagedPlan(category: Category, inputs: PagedInputs): LibraryPagedPlan {
+        val prefs = inputs.prefs
+        val isNovel = pagedTypeIsNovel() ?: when (category.contentType) {
+            Category.CONTENT_TYPE_MANGA -> false
+            Category.CONTENT_TYPE_NOVEL -> true
+            else -> null
+        }
+        val sortType = mapSort(category.sort)
+        val search = inputs.search.spec?.let { pagedSearch(it, inputs) }
+        val searchInMemory = search == PagedSearch.Unsupported
+        val inMemory = sortType == null || searchInMemory
+        val spec = LibraryPageSpec(
+            sortType = sortType ?: LibraryPageSpec.SORT_DATE_ADDED,
+            sortAscending = category.sort.isAscending,
+            filterUnread = prefs.filterUnread.toSpecInt(),
+            filterStarted = prefs.filterStarted.toSpecInt(),
+            filterBookmarked = prefs.filterBookmarked.toSpecInt(),
+            filterCompleted = prefs.filterCompleted.toSpecInt(),
+            filterIntervalCustom = if (prefs.skipOutsideReleasePeriod) prefs.filterIntervalCustom.toSpecInt() else 0,
+            filterChapterCount = prefs.filterChapterCount.toSpecInt(),
+            filterChapterCountThreshold = prefs.filterChapterCountThreshold,
+            excludedSourceIds = prefs.excludedExtensions.mapNotNull { it.toLongOrNull() },
+            includedTags = sqlIncludedTags(prefs),
+            search = (search as? PagedSearch.Sql)?.search,
+        )
+
+        val needsItemFilter = hasInMemoryFilters(prefs, inputs.trackingFilters)
+        val dependsOnDownloads = prefs.globalFilterDownloaded ||
+            prefs.filterDownloaded != TriState.DISABLED ||
+            (inMemory && category.sort.type == LibrarySort.Type.DownloadedChapters)
+        val key = PagedPlanKey(
+            categoryId = category.id,
+            sort = category.sort,
+            isNovel = isNovel,
+            spec = spec,
+            inMemory = inMemory,
+            prefs = prefs.takeIf { inMemory || needsItemFilter },
+            trackingFilters = inputs.trackingFilters.takeIf { inMemory || needsItemFilter },
+            tracks = inputs.tracks.takeIf { inMemory || needsItemFilter },
+            downloadVersion = inputs.downloadVersion.takeIf { dependsOnDownloads },
+            search = inputs.search.takeIf { searchInMemory },
+        )
+
+        val filter = if (needsItemFilter && !inMemory) {
+            val passes = itemFilter(inputs.tracks, inputs.trackingFilters, prefs) {
+                downloadManager.getDownloadCount(it.libraryManga.manga)
+            }
+            val predicate: (LibraryManga) -> Boolean = { passes(LibraryItem(it)) }
+            predicate
+        } else {
+            null
+        }
+
+        return LibraryPagedPlan(
+            key = key,
+            categoryId = category.id,
+            isNovel = isNovel,
+            spec = spec,
+            inMemory = inMemory,
+            filter = filter,
+            loadInMemory = { loadCategoryInMemory(category, isNovel, spec, inputs, searchInMemory) },
+        )
+    }
+
+    /** Everything the plan shows, in display order. Used by select all and the random pick. */
+    private suspend fun loadPlanFully(plan: LibraryPagedPlan): List<LibraryManga> {
+        if (plan.inMemory) return plan.loadInMemory()
+        val rows = getLibraryMangaPaged.awaitAll(plan.categoryId, plan.isNovel, plan.spec)
+        val filter = plan.filter ?: return rows
+        return rows.filter(filter)
+    }
+
+    /**
+     * Unpaged fallback for a sort or search the DB can't express: load the category whole (SQL filters
+     * still apply) and run the same in-memory filter, search and sort as the resident library.
+     */
+    private suspend fun loadCategoryInMemory(
+        category: Category,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        inputs: PagedInputs,
+        searchInMemory: Boolean,
+    ): List<LibraryManga> {
+        val rows = getLibraryMangaPaged.awaitAll(category.id, isNovel, spec)
+        val displayPreferences = pagedDisplayPreferences
+        val downloadCounts = if (displayPreferences.downloadBadge) {
+            downloadManager.getDownloadCounts(rows.map { it.manga })
+        } else {
+            emptyMap()
+        }
+        var items = rows
+            .map { buildLibraryItem(it, displayPreferences, (downloadCounts[it.id] ?: 0).toLong()) }
+            .applyFilters(inputs.tracks, inputs.trackingFilters, inputs.prefs)
+        val searchSpec = inputs.search.spec
+        if (searchInMemory && searchSpec != null) {
+            items = items.fastFilter {
+                it.matches(
+                    searchSpec,
+                    inputs.search.chapterMatchIds,
+                    inputs.search.metadataMatchIds,
+                    inputs.search.searchContent,
+                )
+            }
+        }
+        val byId = items.associateBy { it.id }
+        val order = mapOf(category to items.map { it.id })
+            .applySort(byId, inputs.tracks, inputs.trackingFilters.keys)[category]
+            .orEmpty()
+        return order.mapNotNull { byId[it]?.libraryManga }
+    }
+
+    // Filters the page query can't apply. The SQL ones are re-checked too, which is harmless.
+    private fun hasInMemoryFilters(prefs: ItemPreferences, trackingFilters: Map<Long, TriState>): Boolean {
+        return prefs.globalFilterDownloaded ||
+            prefs.filterDownloaded != TriState.DISABLED ||
+            prefs.filterNovel != TriState.DISABLED ||
+            prefs.filterNoTags != TriState.DISABLED ||
+            prefs.includedTags.isNotEmpty() ||
+            prefs.excludedTags.isNotEmpty() ||
+            trackingFilters.values.any { it != TriState.DISABLED }
+    }
+
+    /**
+     * Included tags as an SQL superset prefilter. Only when every tag is ASCII, since SQLite lower()
+     * folds ASCII only. Lowercasing is safe in case-sensitive mode too: the in-memory pass narrows it.
+     */
+    private fun sqlIncludedTags(prefs: ItemPreferences): List<String> {
+        val tags = prefs.includedTags.map { it.trim() }.filter { it.isNotEmpty() }
+        return if (tags.all { tag -> tag.isAscii() }) tags.map { it.lowercase() } else emptyList()
+    }
+
+    private suspend fun searchSourceIds(spec: LibrarySearchSpec): Set<Long> {
+        val terms = when (spec.field) {
+            LibrarySearchSpec.Field.SOURCE -> listOf(spec.term)
+            LibrarySearchSpec.Field.DEFAULT -> spec.subTerms.map { it.text }
+            else -> return emptySet()
+        }
+        return getLibraryManga.awaitSourceIds()
+            .filterTo(HashSet()) { id ->
+                val name = sourceManager.getOrStub(id).getNameForMangaInfo()
+                terms.any { name.contains(it, ignoreCase = true) }
+            }
+    }
+
+    /**
+     * Translates a library search into SQL when the result is the same as the in-memory match.
+     * Regex, comma-separated, negated and non-ASCII searches are left to the in-memory path.
+     */
+    private fun pagedSearch(spec: LibrarySearchSpec, inputs: PagedInputs): PagedSearch {
+        if (spec.useRegex) return PagedSearch.Unsupported
+        val config = inputs.search
+        val metadata = config.metadataMatchIds
+        fun like(text: String): String? = text.takeIf { it.isAscii() }?.let(::escapeLike)
+        fun ids(ids: Collection<Long>): PagedSearch =
+            if (ids.size > MAX_SQL_SEARCH_IDS) {
+                PagedSearch.Unsupported
+            } else {
+                PagedSearch.Sql(LibraryPageSpec.Search(mangaIds = ids.toList()))
+            }
+
+        return when (spec.field) {
+            LibrarySearchSpec.Field.ID -> ids(listOfNotNull(spec.term.toLongOrNull()))
+            LibrarySearchSpec.Field.TITLE -> like(spec.term)
+                ?.let { PagedSearch.Sql(LibraryPageSpec.Search(likeTerm = it, matchTitle = true)) }
+                ?: PagedSearch.Unsupported
+            LibrarySearchSpec.Field.URL -> like(spec.term)
+                ?.let { PagedSearch.Sql(LibraryPageSpec.Search(likeTerm = it, matchUrl = true)) }
+                ?: PagedSearch.Unsupported
+            LibrarySearchSpec.Field.TAG -> like(spec.term)
+                ?.let { PagedSearch.Sql(LibraryPageSpec.Search(likeTerm = it, matchGenre = true)) }
+                ?: PagedSearch.Unsupported
+            LibrarySearchSpec.Field.SOURCE ->
+                PagedSearch.Sql(LibraryPageSpec.Search(sourceIds = inputs.searchSourceIds.toList()))
+            LibrarySearchSpec.Field.AUTHOR -> ids(metadata.author)
+            LibrarySearchSpec.Field.ARTIST -> ids(metadata.artist)
+            LibrarySearchSpec.Field.DESCRIPTION -> ids(metadata.description)
+            LibrarySearchSpec.Field.CHAPTER -> ids(config.chapterMatchIds)
+            LibrarySearchSpec.Field.DEFAULT -> {
+                if (spec.subTerms.isEmpty()) return PagedSearch.None
+                val term = spec.subTerms.singleOrNull()?.takeIf { !it.negate } ?: return PagedSearch.Unsupported
+                val likeTerm = like(term.text) ?: return PagedSearch.Unsupported
+                val extraIds = HashSet<Long>()
+                extraIds.addAll(metadata.author)
+                extraIds.addAll(metadata.artist)
+                extraIds.addAll(metadata.description)
+                extraIds.addAll(metadata.altTitle)
+                extraIds.addAll(config.chapterMatchIds)
+                if (extraIds.size > MAX_SQL_SEARCH_IDS) return PagedSearch.Unsupported
+                PagedSearch.Sql(
+                    LibraryPageSpec.Search(
+                        likeTerm = likeTerm,
+                        matchTitle = true,
+                        matchUrl = spec.searchByUrl,
+                        matchGenre = config.searchContent,
+                        sourceIds = inputs.searchSourceIds.toList(),
+                        mangaIds = extraIds.toList(),
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun String.isAscii(): Boolean = all { it.code < 128 }
+
+    fun setPagedActive(active: Boolean) {
+        paging?.setActive(active)
+    }
+
+    /** The paged items of [category], or null while its plan isn't known yet. */
+    fun pagedItems(category: Category): Flow<PagingData<LibraryManga>>? {
+        val controller = paging ?: return null
+        val plan = state.value.pagedPlans[category.id] ?: return null
+        return controller.flowFor(plan)
+    }
+
+    /** Decorates a paged row with the current badges. */
+    fun pagedItem(manga: LibraryManga): LibraryItem {
+        val preferences = pagedDisplayPreferences
+        val downloadCount = if (preferences.downloadBadge) {
+            downloadManager.getDownloadCount(manga.manga).toLong()
+        } else {
+            0L
+        }
+        return buildLibraryItem(manga, preferences, downloadCount)
+    }
+
+    private data class PagedMeta(val total: Long, val hasUncategorized: Boolean)
+
+    private class PagedLibrary(
+        val data: LibraryData,
+        val grouped: Map<Category, List<Long>>,
+        val plans: Map<Long, LibraryPagedPlan>,
+        val total: Long,
+    )
+
+    private data class PagedInputs(
+        val prefs: ItemPreferences,
+        val search: SearchConfig,
+        val searchSourceIds: Set<Long>,
+        val tracks: Map<Long, List<Track>>,
+        val trackingFilters: Map<Long, TriState>,
+        val downloadVersion: Int,
+    )
+
+    private data class PagedPlanKey(
+        val categoryId: Long,
+        val sort: LibrarySort,
+        val isNovel: Boolean?,
+        val spec: LibraryPageSpec,
+        val inMemory: Boolean,
+        val prefs: ItemPreferences?,
+        val trackingFilters: Map<Long, TriState>?,
+        val tracks: Map<Long, List<Track>>?,
+        val downloadVersion: Int?,
+        val search: SearchConfig?,
+    )
+
+    private sealed interface PagedSearch {
+        data object None : PagedSearch
+        data object Unsupported : PagedSearch
+        data class Sql(val search: LibraryPageSpec.Search) : PagedSearch
     }
 
     private fun List<LibraryItem>.applyFilters(
@@ -415,6 +771,23 @@ class LibraryViewModel(
         trackingFilter: Map<Long, TriState>,
         preferences: ItemPreferences,
     ): List<LibraryItem> {
+        val downloadedOnly = preferences.globalFilterDownloaded
+        val filterDownloaded = if (downloadedOnly) TriState.ENABLED_IS else preferences.filterDownloaded
+        val downloadCounts = if (filterDownloaded != TriState.DISABLED) {
+            downloadManager.getDownloadCounts(map { it.libraryManga.manga })
+        } else {
+            emptyMap()
+        }
+        val passes = itemFilter(trackMap, trackingFilter, preferences) { downloadCounts[it.id] ?: 0 }
+        return fastFilter(passes)
+    }
+
+    private fun itemFilter(
+        trackMap: Map<Long, List<Track>>,
+        trackingFilter: Map<Long, TriState>,
+        preferences: ItemPreferences,
+        downloadCount: (LibraryItem) -> Int,
+    ): (LibraryItem) -> Boolean {
         val downloadedOnly = preferences.globalFilterDownloaded
         val skipOutsideReleasePeriod = preferences.skipOutsideReleasePeriod
         val filterDownloaded = if (downloadedOnly) TriState.ENABLED_IS else preferences.filterDownloaded
@@ -461,42 +834,36 @@ class LibraryViewModel(
             ?.mapNotNullTo(HashSet()) { it.toLongOrNull() }
             .orEmpty()
 
-        val downloadCounts = if (filterDownloaded != TriState.DISABLED) {
-            downloadManager.getDownloadCounts(map { it.libraryManga.manga })
-        } else {
-            emptyMap()
-        }
-
-        val result = fastFilter {
+        return filter@{
             // Quick exit for some checks that are fast
             val downloadPasses = applyFilter(filterDownloaded) {
                 it.libraryManga.manga.isLocal() ||
                     it.libraryManga.manga.isLocalNovel() ||
                     it.downloadCount > 0 ||
-                    (downloadCounts[it.id] ?: 0) > 0
+                    downloadCount(it) > 0
             }
-            if (!downloadPasses) return@fastFilter false
+            if (!downloadPasses) return@filter false
 
             val unreadPasses = applyFilter(filterUnread) { it.libraryManga.unreadCount > 0 }
-            if (!unreadPasses) return@fastFilter false
+            if (!unreadPasses) return@filter false
 
             val startedPasses = applyFilter(filterStarted) { it.libraryManga.hasStarted }
-            if (!startedPasses) return@fastFilter false
+            if (!startedPasses) return@filter false
 
             val bookmarkedPasses = applyFilter(filterBookmarked) { it.libraryManga.hasBookmarks }
-            if (!bookmarkedPasses) return@fastFilter false
+            if (!bookmarkedPasses) return@filter false
 
             val completedPasses = applyFilter(filterCompleted) {
                 it.libraryManga.manga.status.toInt() == SManga.COMPLETED
             }
-            if (!completedPasses) return@fastFilter false
+            if (!completedPasses) return@filter false
 
             val intervalPasses = if (skipOutsideReleasePeriod) {
                 applyFilter(filterIntervalCustom) { it.libraryManga.manga.fetchInterval < 0 }
             } else {
                 true
             }
-            if (!intervalPasses) return@fastFilter false
+            if (!intervalPasses) return@filter false
 
             // Tracking filter
             val trackingPasses = if (isNotLoggedInAnyTrack || trackFiltersIsIgnored) {
@@ -513,16 +880,16 @@ class LibraryViewModel(
                     includedTracks.isEmpty() || mangaTracks.fastAny { track -> track.trackerId in includedTracks }
                 !isExcluded && isIncluded
             }
-            if (!trackingPasses) return@fastFilter false
+            if (!trackingPasses) return@filter false
 
             // Extension filter
             val extensionPasses = excludedSourceIds.isEmpty() ||
                 it.libraryManga.manga.source !in excludedSourceIds
-            if (!extensionPasses) return@fastFilter false
+            if (!extensionPasses) return@filter false
 
             // Novel filter
             val novelPasses = applyFilter(preferences.filterNovel) { it.libraryManga.manga.isNovel }
-            if (!novelPasses) return@fastFilter false
+            if (!novelPasses) return@filter false
 
             // Tags filter (more expensive, so do it last)
             if (
@@ -538,8 +905,8 @@ class LibraryViewModel(
                 if (noTagsFilter != TriState.DISABLED) {
                     val hasNoTags = mangaTags.none { tag -> tag.isNotBlank() }
                     when (noTagsFilter) {
-                        TriState.ENABLED_IS -> if (!hasNoTags) return@fastFilter false
-                        TriState.ENABLED_NOT -> if (hasNoTags) return@fastFilter false
+                        TriState.ENABLED_IS -> if (!hasNoTags) return@filter false
+                        TriState.ENABLED_NOT -> if (hasNoTags) return@filter false
                     }
                 }
 
@@ -551,7 +918,7 @@ class LibraryViewModel(
                     } else {
                         mangaTags.any { tag -> normalizeTag(tag, tagCaseSensitive) in normalizedExcluded }
                     }
-                    if (hasExcludedTag) return@fastFilter false
+                    if (hasExcludedTag) return@filter false
                 }
 
                 if (normalizedIncluded.isNotEmpty()) {
@@ -562,7 +929,7 @@ class LibraryViewModel(
                     } else {
                         mangaTags.any { tag -> normalizeTag(tag, tagCaseSensitive) in normalizedIncluded }
                     }
-                    if (!hasIncludedTag) return@fastFilter false
+                    if (!hasIncludedTag) return@filter false
                 }
 
                 true
@@ -574,8 +941,6 @@ class LibraryViewModel(
             }
             chapterCountPasses
         }
-
-        return result
     }
 
     private fun normalizeTag(tag: String, caseSensitive: Boolean): String {
@@ -586,7 +951,6 @@ class LibraryViewModel(
     private fun List<LibraryItem>.applyGrouping(
         categories: List<Category>,
         showSystemCategory: Boolean,
-        ownedIdsByCategory: Map<Long, Set<Long>>? = null,
     ): Map<Category, List</* LibraryItem */ Long>> {
         val visibleCategories = ArrayList<Category>(categories.size)
         for (category in categories) {
@@ -606,9 +970,6 @@ class LibraryViewModel(
         for (item in this) {
             for (categoryId in item.libraryManga.categories) {
                 val category = visibleCategoryById[categoryId] ?: continue
-                // Paged: a row another category loaded sits past this category's window, and
-                // showing it early would let later pages land above it.
-                if (ownedIdsByCategory != null && ownedIdsByCategory[categoryId]?.contains(item.id) != true) continue
                 groupedItems[category]?.add(item.id)
             }
         }
@@ -620,16 +981,10 @@ class LibraryViewModel(
         favoritesById: Map<Long, LibraryItem>,
         trackMap: Map<Long, List<Track>>,
         loggedInTrackerIds: Set<Long>,
-        frontiersByCategory: Map<Long, Map<Boolean, Long>>? = null,
     ): Map<Category, List</* LibraryItem */ Long>> {
-        val collatorAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
+        val sortAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
             manga1.libraryManga.manga.title.compareToWithCollator(manga2.libraryManga.manga.title)
         }
-        // Paged rows are ordered by SQLite NOCASE, so match it or later pages reshuffle loaded ones.
-        val noCaseAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
-            compareSqliteNoCase(manga1.libraryManga.manga.title, manga2.libraryManga.manga.title)
-        }
-        val paged = getLibraryManga.isPaginationEnabled()
 
         val defaultTrackerScoreSortValue = -1.0
         val needsSourceName = keys.any { it.sort.type == LibrarySort.Type.SourceName }
@@ -650,9 +1005,7 @@ class LibraryViewModel(
             emptyMap()
         }
 
-        fun LibrarySort.comparator(
-            sortAlphabetically: (LibraryItem, LibraryItem) -> Int,
-        ): Comparator<LibraryItem> = Comparator { manga1, manga2 ->
+        fun LibrarySort.comparator(): Comparator<LibraryItem> = Comparator { manga1, manga2 ->
             when (this.type) {
                 LibrarySort.Type.Alphabetical -> {
                     sortAlphabetically(manga1, manga2)
@@ -712,31 +1065,12 @@ class LibraryViewModel(
 
             val manga = value.mapNotNull { favoritesById[it] }
 
-            val sortAlphabetically = if (paged && mapSort(key.sort) != null) {
-                noCaseAlphabetically
-            } else {
-                collatorAlphabetically
-            }
-            val comparator = key.sort.comparator(sortAlphabetically)
+            val comparator = key.sort.comparator()
                 .let { if (key.sort.isAscending) it else it.reversed() }
                 .thenComparator(sortAlphabetically)
                 .thenBy { it.id }
 
-            val sorted = manga.sortedWith(comparator)
-            // Paged with both content types: stop at the first row past another content type's
-            // frontier, or that key's next page would land above rows already shown.
-            val bounds = frontiersByCategory?.get(key.id)
-                ?.mapNotNull { (isNovel, id) -> favoritesById[id]?.let { isNovel to it } }
-            val cut = if (bounds.isNullOrEmpty()) {
-                -1
-            } else {
-                sorted.indexOfFirst { item ->
-                    bounds.any { (isNovel, frontier) ->
-                        isNovel != item.libraryManga.manga.isNovel && comparator.compare(item, frontier) > 0
-                    }
-                }
-            }
-            (if (cut >= 0) sorted.subList(0, cut) else sorted).map { it.id }
+            manga.sortedWith(comparator).map { it.id }
         }
     }
 
@@ -854,25 +1188,7 @@ class LibraryViewModel(
                     continue
                 }
 
-                val item = LibraryItem(
-                    libraryManga = manga,
-                    downloadCount = dlCount,
-                    unreadCount = if (preferences.unreadBadge) {
-                        manga.unreadCount
-                    } else {
-                        0
-                    },
-                    isLocal = if (preferences.localBadge) {
-                        manga.manga.isLocal()
-                    } else {
-                        false
-                    },
-                    sourceLanguage = if (preferences.languageBadge) {
-                        sourceManager.getOrStub(manga.manga.source).lang
-                    } else {
-                        ""
-                    },
-                )
+                val item = buildLibraryItem(manga, preferences, dlCount)
                 itemCache[manga.id] = item
                 itemCacheMangaRef[manga.id] = manga
                 result.add(item)
@@ -887,6 +1203,30 @@ class LibraryViewModel(
             result
         }
     }
+
+    private fun buildLibraryItem(
+        manga: LibraryManga,
+        preferences: DisplayPreferences,
+        downloadCount: Long,
+    ): LibraryItem = LibraryItem(
+        libraryManga = manga,
+        downloadCount = downloadCount,
+        unreadCount = if (preferences.unreadBadge) {
+            manga.unreadCount
+        } else {
+            0
+        },
+        isLocal = if (preferences.localBadge) {
+            manga.manga.isLocal()
+        } else {
+            false
+        },
+        sourceLanguage = if (preferences.languageBadge) {
+            sourceManager.getOrStub(manga.manga.source).lang
+        } else {
+            ""
+        },
+    )
 
     private fun getLibraryDisplayPreferencesFlow(): Flow<DisplayPreferences> {
         return combine(
@@ -1207,13 +1547,21 @@ class LibraryViewModel(
             .asState(viewModelScope)
     }
 
-    fun getRandomLibraryItemForCurrentCategory(): LibraryItem? {
+    suspend fun getRandomLibraryItemForCurrentCategory(): LibraryItem? {
         val state = state.value
+        if (paging != null) {
+            val plan = state.activeCategory?.let { state.pagedPlans[it.id] } ?: return null
+            val manga = withIOContext {
+                if (plan.hasExactCount) {
+                    getLibraryMangaPaged.awaitRandom(plan.categoryId, plan.isNovel, plan.spec)
+                } else {
+                    loadPlanFully(plan).randomOrNull()
+                }
+            }
+            return manga?.let(::pagedItem)
+        }
         return state.getItemsForCategoryId(state.activeCategory?.id).randomOrNull()
     }
-
-    /** Experimental: whether per-category DB pagination is active for this library. */
-    val paginationEnabled: Boolean = getLibraryManga.isPaginationEnabled()
 
     /** Categories visible in this tab, filtered by the tab's content type. */
     private fun categoriesForType(): kotlinx.coroutines.flow.Flow<List<Category>> = when (type) {
@@ -1243,7 +1591,7 @@ class LibraryViewModel(
     }
 
     /** Map a library sort to the spec sort id, or null when it has no DB equivalent (source name,
-     *  tracker, downloaded, random). Those can't page consistently, so their keys load unpaged. */
+     *  tracker, downloaded, random). Those categories load whole and sort in memory. */
     private fun mapSort(sort: LibrarySort): Int? = when (sort.type) {
         LibrarySort.Type.Alphabetical -> LibraryPageSpec.SORT_ALPHABETICAL
         LibrarySort.Type.LastRead -> LibraryPageSpec.SORT_LAST_READ
@@ -1256,164 +1604,9 @@ class LibraryViewModel(
         else -> null
     }
 
-    /**
-     * Build the desired per-(category, content type) page specs. Filters/search are global, sort is
-     * per category. Only a single positive default-field search term is pushed to SQL as a LIKE.
-     * Regex / multi-term / field-prefixed / negated searches stay page-local. Tags, downloaded,
-     * source-name and tracker filters are applied in memory (hybrid).
-     */
-    private fun buildPageSpecs(
-        categories: List<Category>,
-        prefs: ItemPreferences,
-        query: String?,
-        useRegex: Boolean,
-    ): Map<Pair<Long, Boolean>, LibraryPageSpec> {
-        val term = if (query.isNullOrEmpty() || useRegex) {
-            ""
-        } else {
-            val parsed = LibrarySearchSpec.parse(query, useRegex = false, searchByUrl = false)
-            val single = parsed.subTerms.singleOrNull()
-            if (parsed.field == LibrarySearchSpec.Field.DEFAULT && single != null && !single.negate) {
-                escapeLike(single.text)
-            } else {
-                ""
-            }
-        }
-        val base = LibraryPageSpec(
-            filterUnread = prefs.filterUnread.toSpecInt(),
-            filterStarted = prefs.filterStarted.toSpecInt(),
-            filterBookmarked = prefs.filterBookmarked.toSpecInt(),
-            filterCompleted = prefs.filterCompleted.toSpecInt(),
-            filterIntervalCustom = if (prefs.skipOutsideReleasePeriod) prefs.filterIntervalCustom.toSpecInt() else 0,
-            filterChapterCount = prefs.filterChapterCount.toSpecInt(),
-            filterChapterCountThreshold = prefs.filterChapterCountThreshold,
-            excludedSourceIds = prefs.excludedExtensions.mapNotNull { it.toLongOrNull() },
-            searchTerm = term,
-            searchAlternativeTitles = libraryPreferences.searchAlternativeTitles.get(),
-            includedTagsCsv = includedTagsCsvFor(prefs),
-        )
-        val map = HashMap<Pair<Long, Boolean>, LibraryPageSpec>()
-        for (category in categories) {
-            val sortType = mapSort(category.sort)
-            val spec = base.copy(
-                sortType = sortType ?: LibraryPageSpec.SORT_DATE_ADDED,
-                sortAscending = category.sort.isAscending,
-                unpaged = sortType == null,
-            )
-            for (isNovel in novelFlagsFor(category)) {
-                map[category.id to isNovel] = spec
-            }
-        }
-        return map
-    }
-
-    /** Escape LIKE wildcards so a literal term doesn't widen the SQL prefilter (pairs with ESCAPE '\'). */
+    /** Escape LIKE wildcards so a literal term doesn't widen the SQL match (pairs with ESCAPE '\'). */
     private fun escapeLike(text: String): String =
         text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-
-    /**
-     * Included-tag prefilter for the SQL page query: U+001F-joined, lowercased tags. Only emitted
-     * when every tag is ASCII (SQLite lower() folds ASCII only; non-ASCII tags stay purely
-     * in-memory). Lowercasing is safe in case-sensitive mode too: the DB match is a superset the
-     * in-memory pass narrows.
-     */
-    private fun includedTagsCsvFor(prefs: ItemPreferences): String {
-        val incTags = prefs.includedTags.map { it.trim() }.filter { it.isNotEmpty() }
-        val allAscii = incTags.all { tag -> tag.all { it.code < 128 } }
-        return if (incTags.isNotEmpty() && allAscii) {
-            incTags.joinToString("") { it.lowercase() }
-        } else {
-            ""
-        }
-    }
-
-    private fun pagedContentTypes(): Set<Boolean> = when (type) {
-        LibraryType.Manga -> setOf(false)
-        LibraryType.Novel -> setOf(true)
-        LibraryType.All -> setOf(false, true)
-    }
-
-    /**
-     * Which content types this tab + category should page. A manga/novel tab pages only its own
-     * type. The joined ("All") tab pages by the category's content type, loading both for an
-     * all-content category.
-     */
-    private fun novelFlagsFor(category: Category): List<Boolean> = when (type) {
-        LibraryType.Manga -> listOf(false)
-        LibraryType.Novel -> listOf(true)
-        LibraryType.All -> when (category.contentType) {
-            Category.CONTENT_TYPE_MANGA -> listOf(false)
-            Category.CONTENT_TYPE_NOVEL -> listOf(true)
-            else -> listOf(false, true)
-        }
-    }
-
-    /** Load the first page of a category when it scrolls into view (paginated mode only). */
-    fun onCategoryFirstVisible(category: Category) {
-        if (!paginationEnabled) return
-        val flags = novelFlagsFor(category)
-        mutableState.update { it.copy(paginationLoadingCategories = it.paginationLoadingCategories + category.id) }
-        viewModelScope.launchIO {
-            try {
-                var loaded = false
-                flags.forEach { isNovel ->
-                    if (getLibraryManga.loadCategoryPageIfNeeded(category.id, isNovel)) loaded = true
-                }
-                // Give the sentinel a baseline key so it can start draining if the first page underfills.
-                if (loaded) bumpPaginationGeneration(category.id)
-            } finally {
-                mutableState.update {
-                    it.copy(paginationLoadingCategories = it.paginationLoadingCategories - category.id)
-                }
-            }
-        }
-    }
-
-    /**
-     * Load the next page of a category when the user scrolls to the bottom (paginated mode only).
-     *
-     * The visible list is the DB page minus in-memory filters (downloaded / tracker / exact tag /
-     * source-name), so a fetched page can yield few or zero visible rows. Bumping the pagination
-     * generation re-fires the sentinel after every real fetch even when the visible count didn't
-     * change, so a fully-filtered-out page can't dead-end the category. Draining stops when a fetch
-     * reports no progress (exhausted) or the filled list pushes the sentinel off-screen.
-     */
-    fun loadMoreForCategory(category: Category) {
-        if (!paginationEnabled) return
-        val flags = novelFlagsFor(category)
-        // An exhausted category would only flash the footer.
-        if (flags.none { getLibraryManga.mayHaveMorePages(category.id, it) }) return
-        var claimed = false
-        mutableState.update {
-            claimed = category.id !in it.paginationLoadingMoreCategories
-            if (claimed) {
-                it.copy(paginationLoadingMoreCategories = it.paginationLoadingMoreCategories + category.id)
-            } else {
-                it
-            }
-        }
-        if (!claimed) return
-        viewModelScope.launchIO {
-            try {
-                var loaded = false
-                flags.forEach { isNovel ->
-                    if (getLibraryManga.loadCategoryNextPage(category.id, isNovel)) loaded = true
-                }
-                if (loaded) bumpPaginationGeneration(category.id)
-            } finally {
-                mutableState.update {
-                    it.copy(paginationLoadingMoreCategories = it.paginationLoadingMoreCategories - category.id)
-                }
-            }
-        }
-    }
-
-    private fun bumpPaginationGeneration(categoryId: Long) {
-        mutableState.update { st ->
-            val next = (st.paginationGeneration[categoryId] ?: 0) + 1
-            st.copy(paginationGeneration = st.paginationGeneration + (categoryId to next))
-        }
-    }
 
     fun showSettingsDialog() {
         mutableState.update { it.copy(dialog = Dialog.SettingsSheet) }
@@ -1423,7 +1616,7 @@ class LibraryViewModel(
 
     fun clearSelection() {
         lastSelectionCategory = null
-        mutableState.update { it.copy(selection = setOf()) }
+        mutableState.update { it.copy(selection = setOf(), pagedSelection = emptyMap()) }
     }
 
     fun toggleSelection(category: Category, manga: LibraryManga) {
@@ -1432,7 +1625,10 @@ class LibraryViewModel(
                 if (!set.remove(manga.id)) set.add(manga.id)
             }
             lastSelectionCategory = category.id.takeIf { newSelection.isNotEmpty() }
-            state.copy(selection = newSelection)
+            state.copy(
+                selection = newSelection,
+                pagedSelection = state.pagedSelection.withPaged(newSelection, listOf(manga)),
+            )
         }
     }
 
@@ -1440,7 +1636,7 @@ class LibraryViewModel(
      * Selects all mangas between and including the given manga and the last pressed manga from the
      * same category as the given manga
      */
-    fun toggleRangeSelection(category: Category, manga: LibraryManga) {
+    fun toggleRangeSelection(category: Category, manga: LibraryManga, loaded: List<LibraryManga>? = null) {
         mutableState.update { state ->
             val newSelection = state.selection.mutate { list ->
                 val lastSelected = list.lastOrNull()
@@ -1449,7 +1645,7 @@ class LibraryViewModel(
                     return@mutate
                 }
 
-                val items = state.getItemsForCategoryId(category.id).fastMap { it.id }
+                val items = loaded?.fastMap { it.id } ?: state.getItemsForCategoryId(category.id).fastMap { it.id }
                 val lastMangaIndex = items.indexOf(lastSelected)
                 val curMangaIndex = items.indexOf(manga.id)
 
@@ -1462,11 +1658,52 @@ class LibraryViewModel(
                 selectionRange.mapNotNull { items[it] }.let(list::addAll)
             }
             lastSelectionCategory = category.id
-            state.copy(selection = newSelection)
+            state.copy(
+                selection = newSelection,
+                pagedSelection = state.pagedSelection.withPaged(newSelection, loaded ?: listOf(manga)),
+            )
+        }
+    }
+
+    // Paged mode has no resident list to resolve selected ids against, so the selected entries are
+    // kept alongside the ids.
+    private fun Map<Long, Manga>.withPaged(selection: Set<Long>, seen: List<LibraryManga>): Map<Long, Manga> {
+        if (paging == null) return this
+        val result = HashMap<Long, Manga>(selection.size)
+        for (id in selection) this[id]?.let { result[id] = it }
+        for (item in seen) if (item.id in selection) result[item.id] = item.manga
+        return result
+    }
+
+    private fun selectAllPaged(invert: Boolean) {
+        val category = state.value.activeCategory ?: return
+        val plan = state.value.pagedPlans[category.id] ?: return
+        viewModelScope.launchIO {
+            val all = loadPlanFully(plan)
+            mutableState.update { state ->
+                val newSelection = state.selection.mutate { set ->
+                    if (invert) {
+                        val (toRemove, toAdd) = all.map { it.id }.partition { it in set }
+                        set.removeAll(toRemove.toSet())
+                        set.addAll(toAdd)
+                    } else {
+                        all.mapTo(set) { it.id }
+                    }
+                }
+                state.copy(
+                    selection = newSelection,
+                    pagedSelection = state.pagedSelection.withPaged(newSelection, all),
+                )
+            }
         }
     }
 
     fun selectAll() {
+        if (paging != null) {
+            lastSelectionCategory = null
+            selectAllPaged(invert = false)
+            return
+        }
         lastSelectionCategory = null
         mutableState.update { state ->
             val newSelection = state.selection.mutate { list ->
@@ -1477,6 +1714,11 @@ class LibraryViewModel(
     }
 
     fun invertSelection() {
+        if (paging != null) {
+            lastSelectionCategory = null
+            selectAllPaged(invert = true)
+            return
+        }
         lastSelectionCategory = null
         mutableState.update { state ->
             val newSelection = state.selection.mutate { list ->
@@ -2163,18 +2405,14 @@ class LibraryViewModel(
         val showMangaContinueButton: Boolean = false,
         val dialog: Dialog? = null,
         val libraryData: LibraryData = LibraryData(),
-        // Experimental pagination: categories whose first page is still loading (show a spinner
-        // instead of the "no manga" empty screen).
-        val paginationLoadingCategories: Set<Long> = emptySet(),
-        // Experimental pagination: categories with a load-more fetch in flight. Also the guard that
-        // keeps the sentinel from stacking concurrent loads.
-        val paginationLoadingMoreCategories: Set<Long> = emptySet(),
-        // Experimental pagination: per-category load counter, bumped on every fetched page. The
-        // load-more sentinel keys on it so it re-fires after each fetch (even when in-memory filters
-        // hid the whole page), draining until the category fills or is exhausted.
-        val paginationGeneration: Map<Long, Int> = emptyMap(),
-        // Bumped whenever filters/sort/search reset paging to page one, so sentinels re-fire.
-        val paginationResetToken: Int = 0,
+        // Experimental pagination: how each category loads, the library size, the exact per-category
+        // counts where SQL knows them, the selected entries and a counter that changes whenever item
+        // badges must be rebuilt.
+        val pagedPlans: Map<Long, LibraryPagedPlan> = emptyMap(),
+        val pagedTotal: Long? = null,
+        val pagedCounts: Map<Long, Long> = emptyMap(),
+        val pagedSelection: Map<Long, Manga> = emptyMap(),
+        val pagedBadgeVersion: Int = 0,
         private val activeCategoryIndex: Int = 0,
         private val groupedFavorites: Map<Category, List</* LibraryItem */ Long>> = emptyMap(),
     ) {
@@ -2187,11 +2425,13 @@ class LibraryViewModel(
 
         val activeCategory: Category? = displayedCategories.getOrNull(coercedActiveCategoryIndex)
 
-        val isLibraryEmpty = libraryData.favorites.isEmpty()
+        val isLibraryEmpty = pagedTotal?.let { it == 0L } ?: libraryData.favorites.isEmpty()
 
         val selectionMode = selection.isNotEmpty()
 
-        val selectedManga by lazy { selection.mapNotNull { libraryData.favoritesById[it]?.libraryManga?.manga } }
+        val selectedManga by lazy {
+            selection.mapNotNull { libraryData.favoritesById[it]?.libraryManga?.manga ?: pagedSelection[it] }
+        }
 
         fun getItemsForCategoryId(categoryId: Long?): List<LibraryItem> {
             if (categoryId == null) return emptyList()
@@ -2204,16 +2444,10 @@ class LibraryViewModel(
         }
 
         fun getItemCountForCategory(category: Category): Int? {
-            return if (showMangaCount || !searchQuery.isNullOrEmpty()) groupedFavorites[category]?.size else null
+            if (!showMangaCount && searchQuery.isNullOrEmpty()) return null
+            if (pagedTotal != null) return pagedCounts[category.id]?.toInt()
+            return groupedFavorites[category]?.size
         }
-
-        // Sentinel re-fire key: changes on every per-category fetch (paginationGeneration) and on
-        // every filter/sort/search reset (paginationResetToken), so the sentinel keeps draining
-        // until the category fills or is exhausted.
-        fun categoryLoadKey(category: Category): Long =
-            // Long + wide multiplier so a high per-category generation (deep drain) can't collide
-            // with a later reset token and silence the sentinel.
-            (paginationResetToken.toLong() * 10_000_019L) + (paginationGeneration[category.id] ?: 0)
 
         fun getToolbarTitle(
             defaultTitle: String,
@@ -2229,29 +2463,9 @@ class LibraryViewModel(
                 !showMangaCount -> null
                 !showCategoryTabs -> getItemCountForCategory(category)
                 // Whole library count
-                else -> libraryData.favorites.size
+                else -> pagedTotal?.toInt() ?: libraryData.favorites.size
             }
             return LibraryToolbarTitle(title, count)
         }
-    }
-}
-
-// Code point order with ASCII-only case folding, which is what SQLite's NOCASE does on UTF-8.
-private fun compareSqliteNoCase(a: String, b: String): Int {
-    var i = 0
-    var j = 0
-    while (i < a.length && j < b.length) {
-        val ca = a.codePointAt(i)
-        val cb = b.codePointAt(j)
-        val fa = if (ca in 'A'.code..'Z'.code) ca + 32 else ca
-        val fb = if (cb in 'A'.code..'Z'.code) cb + 32 else cb
-        if (fa != fb) return fa.compareTo(fb)
-        i += Character.charCount(ca)
-        j += Character.charCount(cb)
-    }
-    return when {
-        i < a.length -> 1
-        j < b.length -> -1
-        else -> 0
     }
 }

@@ -21,8 +21,6 @@ internal fun LibraryComfortableGrid(
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
     titleMaxLines: Int = 2,
-    onLoadMore: (() -> Unit)? = null,
-    loadMoreKey: Long = 0,
     isLoadingMore: Boolean = false,
 ) {
     LazyLibraryGrid(
@@ -34,6 +32,7 @@ internal fun LibraryComfortableGrid(
 
         items(
             items = items,
+            key = { it.id },
             contentType = { "library_comfortable_grid_item" },
         ) { libraryItem ->
             val manga = libraryItem.libraryManga.manga
@@ -68,7 +67,6 @@ internal fun LibraryComfortableGrid(
             )
         }
 
-        loadMoreSentinel(loadMoreKey, onLoadMore)
         loadMoreFooter(isLoadingMore)
     }
 }

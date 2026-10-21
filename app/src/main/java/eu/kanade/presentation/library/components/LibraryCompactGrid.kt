@@ -21,8 +21,6 @@ internal fun LibraryCompactGrid(
     onClickContinueReading: ((LibraryManga) -> Unit)?,
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
-    onLoadMore: (() -> Unit)? = null,
-    loadMoreKey: Long = 0,
     isLoadingMore: Boolean = false,
 ) {
     LazyLibraryGrid(
@@ -34,6 +32,7 @@ internal fun LibraryCompactGrid(
 
         items(
             items = items,
+            key = { it.id },
             contentType = { "library_compact_grid_item" },
         ) { libraryItem ->
             val manga = libraryItem.libraryManga.manga
@@ -67,7 +66,6 @@ internal fun LibraryCompactGrid(
             )
         }
 
-        loadMoreSentinel(loadMoreKey, onLoadMore)
         loadMoreFooter(isLoadingMore)
     }
 }
