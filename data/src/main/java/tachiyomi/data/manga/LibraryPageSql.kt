@@ -5,16 +5,9 @@ import tachiyomi.domain.library.model.LibraryPageSpec
 internal class LibraryPageQuery(val sql: String, val args: List<Any>)
 
 /**
- * SQL for the experimental paged library. Built per call instead of one generic query so the
- * WHERE only carries active filters and each sort has a static ORDER BY that the matching index in
- * [indexes] can walk in order and stop at the LIMIT, instead of sorting the whole category per page.
- *
- * Ties break on _id in the sort direction, so an index on (is_novel, key) serves both directions
- * with its implicit rowid suffix.
- *
- * Walking the sort index only pays off when the category is a good share of the library: for a small
- * one every page would scan the whole index to find a handful of members. Those are read through
- * their membership rows instead and sorted, which is cheap at their size.
+ * Paged library SQL. Each sort gets a static ORDER BY that its index in [indexes] can walk and stop
+ * at the LIMIT. Ties break on _id in the sort direction so one (is_novel, key) index serves both
+ * directions.
  */
 internal object LibraryPageSql {
 
@@ -60,10 +53,7 @@ internal object LibraryPageSql {
         smallCategory: Boolean = false,
     ): LibraryPageQuery = select(COLUMNS, categoryId, isNovel, spec, limit, offset, smallCategory, bySource = false)
 
-    /**
-     * The ids of [page] in the same order. With [bySource] the rows are read through the source index,
-     * for a search pinned to sources with few entries that the sort index would have to walk past.
-     */
+    /** The ids of [page] in the same order. */
     fun ids(
         categoryId: Long,
         isNovel: Boolean?,
@@ -76,7 +66,7 @@ internal object LibraryPageSql {
     fun rows(ids: List<Long>): LibraryPageQuery =
         LibraryPageQuery("SELECT $COLUMNS FROM mangas M WHERE M._id IN (${placeholders(ids.size)})", ids)
 
-    /** Rows of [sourceIds], favorite or not, counted from the source index alone and capped at [limit]. */
+    /** Rows of [sourceIds], favorite or not, capped at [limit]. */
     fun sourceRows(sourceIds: List<Long>, limit: Long): LibraryPageQuery = LibraryPageQuery(
         "SELECT count(*) FROM (SELECT 1 FROM mangas INDEXED BY idx_mangas_source " +
             "WHERE source IN (${placeholders(sourceIds.size)}) LIMIT ?)",
@@ -98,8 +88,7 @@ internal object LibraryPageSql {
         bySource: Boolean = false,
     ): LibraryPageQuery {
         val args = ArrayList<Any>()
-        // Probing the membership index per row is far cheaper than random row lookups for every
-        // member of a big category, so only small ones count through their members.
+        // Probing membership per row beats random row lookups for every member of a big category.
         val membership = if (smallCategory || categoryId == 0L) Membership.LOOKUP else Membership.WALK
         val where = where(categoryId, isNovel, spec, args, membership)
         return LibraryPageQuery("SELECT count(*) FROM ${from(bySource)} WHERE $where", args)
@@ -175,8 +164,7 @@ internal object LibraryPageSql {
     }
 
     private enum class Membership {
-        // A correlated EXISTS can't drive the scan, so the planner walks the sort index and checks
-        // membership per row.
+        // A correlated EXISTS can't drive the scan, so the planner walks the sort index.
         WALK,
 
         // An IN list drives the query from the category's membership rows.
@@ -187,7 +175,6 @@ internal object LibraryPageSql {
         return when {
             categoryId == 0L && mode == Membership.WALK ->
                 "NOT EXISTS (SELECT 1 FROM mangas_categories MC WHERE MC.manga_id = M._id AND MC.category_id <> 0)"
-            // The membership set is built once instead of probed per row.
             categoryId == 0L -> "M._id NOT IN (SELECT manga_id FROM mangas_categories WHERE category_id <> 0)"
             mode == Membership.WALK -> {
                 args.add(categoryId)

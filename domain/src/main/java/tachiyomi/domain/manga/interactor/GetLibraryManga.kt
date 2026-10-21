@@ -38,9 +38,8 @@ class GetLibraryManga(
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private val mutex = Mutex()
 
-    // Experimental pagination: the library screen pages straight from the DB, so the resident list
-    // stays empty and explicit reloads are signalled to the pagers instead. The enable pref is
-    // restart-gated, so it isn't observed.
+    // Experimental pagination keeps nothing resident and signals reloads to the pagers. The enable
+    // pref is restart-gated, so it isn't observed.
     private val _pagedChanges = MutableSharedFlow<Unit>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -86,7 +85,6 @@ class GetLibraryManga(
         val caller =
             Thread.currentThread().stackTrace.getOrNull(3)?.let { "${it.className}.${it.methodName}" } ?: "unknown"
         logcat(LogPriority.DEBUG) { "GetLibraryManga.await() called by: $caller" }
-        // Paged mode keeps nothing resident, so callers that need the whole library read it once.
         if (paginationEnabled) {
             return mangaRepository.getLibraryManga().also { mangaRepository.invalidateLibraryCache() }
         }
@@ -473,7 +471,6 @@ class GetLibraryManga(
     /** Whether the experimental per-category pagination mode is active. */
     fun isPaginationEnabled(): Boolean = paginationEnabled
 
-    /** Paged mode: explicit library reloads, for pagers to refresh on. */
     fun pagedChanges(): Flow<Unit> = _pagedChanges.asSharedFlow()
 
     /**

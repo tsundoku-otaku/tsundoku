@@ -75,7 +75,7 @@ class LibraryPageSqlTest {
                 )
                 """.trimIndent(),
             )
-            // Indexes the real schema already has, so the planner sees the same alternatives.
+            // Same alternatives the real schema gives the planner.
             st.executeUpdate("CREATE INDEX library_favorite_index ON mangas(favorite) WHERE favorite = 1")
             st.executeUpdate("CREATE INDEX idx_mangas_library_is_novel ON mangas(is_novel) WHERE favorite = 1")
             st.executeUpdate("CREATE INDEX idx_mangas_source ON mangas(source)")

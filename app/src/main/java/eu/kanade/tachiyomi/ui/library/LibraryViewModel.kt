@@ -149,8 +149,7 @@ class LibraryViewModel(
     companion object {
         val TYPE_KEY = CreationExtras.Key<LibraryType>()
 
-        // Above this many DB-resolved search matches the id list is too big to bind, so search runs
-        // in memory instead.
+        // Larger id lists are searched in memory instead of bound.
         private const val MAX_SQL_SEARCH_IDS = 5000
 
         private val COUNT_INVALIDATION_WINDOW = 10.seconds
@@ -353,10 +352,8 @@ class LibraryViewModel(
             }
         }
 
-        // Author/artist/description aren't loaded into the in-memory library list (they'd add
-        // strings per favorite on a 200k library), so resolve those matches by streaming the
-        // DB cursor. Author and artist are always searchable; description stays gated behind
-        // the content pref in default search.
+        // Author/artist/description aren't in the library list, so their matches come from the DB.
+        // Description stays gated behind the content pref in default search.
         val metadataMatchIdsFlow = combine(
             searchQueryFlow,
             libraryPreferences.searchChapterContent.changes(),
@@ -483,8 +480,7 @@ class LibraryViewModel(
                 }
         }
 
-        // Counting a big category scans it, so counts are published one by one as they finish and
-        // only redone on the slow invalidation window, not restarted by every page reload.
+        // Counts scan big categories, so they only refresh on the slow window.
         viewModelScope.launchIO {
             combine(
                 state.map { it.pagedPlans }.distinctUntilChanged(),
@@ -492,7 +488,6 @@ class LibraryViewModel(
             ) { plans, wanted -> plans.takeIf { wanted } }
                 .collectLatest { plans ->
                     mutableState.update { it.copy(pagedCounts = emptyMap()) }
-                    // The uncategorized bucket has to be scanned, so it goes last.
                     val exact = plans?.values
                         ?.filter { it.hasExactCount }
                         ?.sortedBy { it.categoryId == 0L }
@@ -593,7 +588,6 @@ class LibraryViewModel(
         )
     }
 
-    /** Everything the plan shows, in display order. Used by select all and the random pick. */
     private suspend fun loadPlanFully(plan: LibraryPagedPlan): List<LibraryManga> {
         if (plan.inMemory) return plan.loadInMemory()
         val rows = getLibraryMangaPaged.awaitAll(plan.categoryId, plan.isNovel, plan.spec)
@@ -601,10 +595,6 @@ class LibraryViewModel(
         return rows.filter(filter)
     }
 
-    /**
-     * Unpaged fallback for a sort or search the DB can't express: load the category whole (SQL filters
-     * still apply) and run the same in-memory filter, search and sort as the resident library.
-     */
     private suspend fun loadCategoryInMemory(
         category: Category,
         isNovel: Boolean?,
@@ -640,7 +630,6 @@ class LibraryViewModel(
         return order.mapNotNull { byId[it]?.libraryManga }
     }
 
-    // Filters the page query can't apply. The SQL ones are re-checked too, which is harmless.
     private fun hasInMemoryFilters(prefs: ItemPreferences, trackingFilters: Map<Long, TriState>): Boolean {
         return prefs.globalFilterDownloaded ||
             prefs.filterDownloaded != TriState.DISABLED ||
@@ -651,10 +640,7 @@ class LibraryViewModel(
             trackingFilters.values.any { it != TriState.DISABLED }
     }
 
-    /**
-     * Included tags as an SQL superset prefilter. Only when every tag is ASCII, since SQLite lower()
-     * folds ASCII only. Lowercasing is safe in case-sensitive mode too: the in-memory pass narrows it.
-     */
+    // SQLite lower() folds ASCII only, so non-ASCII tags are matched in memory alone.
     private fun sqlIncludedTags(prefs: ItemPreferences): List<String> {
         val tags = prefs.includedTags.map { it.trim() }.filter { it.isNotEmpty() }
         return if (tags.all { tag -> tag.isAscii() }) tags.map { it.lowercase() } else emptyList()
@@ -673,10 +659,6 @@ class LibraryViewModel(
             }
     }
 
-    /**
-     * Translates a library search into SQL when the result is the same as the in-memory match.
-     * Regex, comma-separated, negated and non-ASCII searches are left to the in-memory path.
-     */
     private fun pagedSearch(spec: LibrarySearchSpec, inputs: PagedInputs): PagedSearch {
         if (spec.useRegex) return PagedSearch.Unsupported
         val config = inputs.search
@@ -737,14 +719,12 @@ class LibraryViewModel(
         paging?.setActive(active)
     }
 
-    /** The paged items of [category], or null while its plan isn't known yet. */
     fun pagedItems(category: Category): Flow<PagingData<LibraryManga>>? {
         val controller = paging ?: return null
         val plan = state.value.pagedPlans[category.id] ?: return null
         return controller.flowFor(plan)
     }
 
-    /** Decorates a paged row with the current badges. */
     fun pagedItem(manga: LibraryManga): LibraryItem {
         val preferences = pagedDisplayPreferences
         val downloadCount = if (preferences.downloadBadge) {
@@ -1614,8 +1594,7 @@ class LibraryViewModel(
         TriState.ENABLED_NOT -> 2
     }
 
-    /** Map a library sort to the spec sort id, or null when it has no DB equivalent (source name,
-     *  tracker, downloaded, random). Those categories load whole and sort in memory. */
+    /** Null for sorts SQL can't express (source name, tracker, downloaded, random). */
     private fun mapSort(sort: LibrarySort): Int? = when (sort.type) {
         LibrarySort.Type.Alphabetical -> LibraryPageSpec.SORT_ALPHABETICAL
         LibrarySort.Type.LastRead -> LibraryPageSpec.SORT_LAST_READ
@@ -1628,7 +1607,7 @@ class LibraryViewModel(
         else -> null
     }
 
-    /** Escape LIKE wildcards so a literal term doesn't widen the SQL match (pairs with ESCAPE '\'). */
+    /** Escape LIKE wildcards so a literal term doesn't widen the SQL prefilter (pairs with ESCAPE '\'). */
     private fun escapeLike(text: String): String =
         text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -1693,8 +1672,7 @@ class LibraryViewModel(
         }
     }
 
-    // Paged mode has no resident list to resolve selected ids against, so the selected entries are
-    // kept alongside the ids.
+    // No resident list in paged mode, so selected entries are kept with their ids.
     private fun Map<Long, Manga>.withPaged(selection: Set<Long>, seen: List<LibraryManga>): Map<Long, Manga> {
         if (paging == null) return this
         val result = HashMap<Long, Manga>(selection.size)
@@ -2433,9 +2411,6 @@ class LibraryViewModel(
         val showMangaContinueButton: Boolean = false,
         val dialog: Dialog? = null,
         val libraryData: LibraryData = LibraryData(),
-        // Experimental pagination: how each category loads, the library size, the exact per-category
-        // counts where SQL knows them, the selected entries and a counter that changes whenever item
-        // badges must be rebuilt.
         val pagedPlans: Map<Long, LibraryPagedPlan> = emptyMap(),
         val pagedTotal: Long? = null,
         val pagedCounts: Map<Long, Long> = emptyMap(),

@@ -6,12 +6,9 @@ import kotlinx.coroutines.CancellationException
 import tachiyomi.domain.library.model.LibraryManga
 
 /**
- * Offset-keyed source over one library query generation. Keys are row offsets: an append or refresh
- * key is where the page starts, a prepend key is where the already loaded rows start.
- *
- * No count query: [fetch] says where the next page starts, or null at the end. A row whose sort key
- * changed between two page loads can come back at a second offset; only its first position is kept,
- * since lazy lists crash on duplicate keys. The next invalidation reloads a consistent snapshot.
+ * Offset-keyed source over one library query generation. A row whose sort key changed between two
+ * loads can come back at a second offset; only its first position is kept, since lazy lists crash
+ * on duplicate keys.
  */
 class LibraryPagingSource(
     private val fetch: suspend (limit: Int, offset: Int) -> Chunk,
@@ -19,13 +16,11 @@ class LibraryPagingSource(
 
     class Chunk(val rows: List<LibraryManga>, val nextOffset: Int?) {
         companion object {
-            /** A chunk read straight from the query, which ends with the first short page. */
             fun of(rows: List<LibraryManga>, limit: Int, offset: Int) =
                 Chunk(rows, if (rows.size < limit) null else offset + rows.size)
         }
     }
 
-    // id -> offset it was first loaded at
     private val firstSeenAt = HashMap<Long, Int>()
 
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, LibraryManga> {
@@ -62,7 +57,6 @@ class LibraryPagingSource(
     override fun getRefreshKey(state: PagingState<Int, LibraryManga>): Int? {
         val anchor = state.anchorPosition ?: return null
         val page = state.closestPageToPosition(anchor) ?: return null
-        // Start a bit above the anchor so the reloaded window still covers what was on screen.
         val pageStart = page.prevKey ?: 0
         return (pageStart - state.config.pageSize / 2).coerceAtLeast(0)
     }

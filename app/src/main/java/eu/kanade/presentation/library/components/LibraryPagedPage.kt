@@ -33,20 +33,18 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.EmptyScreen
 import tachiyomi.presentation.core.screens.EmptyScreenAction
 
-/** What the library pager needs to show categories from the experimental paged library. */
 @Immutable
 class LibraryPaging(
     val items: (Category) -> Flow<PagingData<LibraryManga>>?,
     val isInMemory: (Category) -> Boolean,
     val toItem: (LibraryManga) -> LibraryItem,
-    // Changes whenever badges must be rebuilt, since rows are decorated while rendering.
+    // Rows are decorated while rendering, so this forces a redecorate.
     val badgeVersion: Int,
     val buildingIndexes: Boolean,
     val onActiveChange: (Boolean) -> Unit,
     val onLongClick: (Category, LibraryManga, loaded: List<LibraryManga>) -> Unit,
 )
 
-/** Lets the pagers reload only while the library is on screen. */
 @Composable
 internal fun LibraryPagingActiveEffect(paging: LibraryPaging) {
     LifecycleStartEffect(paging.onActiveChange) {
@@ -152,22 +150,14 @@ private fun LibraryPagedLoading(contentPadding: PaddingValues, buildingIndexes: 
     }
 }
 
-/**
- * Item key that doesn't count as an access: lazy lists compute keys well past the viewport, and
- * reading those rows through Paging would load pages nobody is looking at.
- */
+// Keys use peek: lazy lists compute keys past the viewport, and get() would load those pages.
 internal fun List<LibraryItem>.libraryItemKey(index: Int): Any =
     (this as? PagedLibraryItems)?.keyAt(index) ?: this[index].id
 
-/**
- * The loaded rows as a list for the shared grids. Reading an index goes through [LazyPagingItems.get],
- * which is what tells Paging where the user is and triggers the next load.
- */
 internal class PagedLibraryItems(
     private val items: LazyPagingItems<LibraryManga>,
     private val toItem: (LibraryManga) -> LibraryItem,
 ) : AbstractList<LibraryItem>() {
-    // Bounded so a deep scroll doesn't keep every row it passed alive after Paging drops it.
     private val decorated = object : LinkedHashMap<Long, Pair<LibraryManga, LibraryItem>>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Pair<LibraryManga, LibraryItem>>) =
             size > DECORATED_CACHE_SIZE

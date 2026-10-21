@@ -896,7 +896,7 @@ class MangaRepositoryImpl(
         if (missing.isEmpty()) return false
         val statements = LibraryPageSql.createIndexStatements()
         missing.forEach { driver.execute(null, statements[it], 0).await() }
-        // Building the indexes on a large library leaves a WAL of comparable size behind.
+        // The index build leaves a WAL about as big as the indexes.
         RawQuery(driver, LibraryPageQuery("PRAGMA wal_checkpoint(TRUNCATE)", emptyList())) { it.getLong(0) ?: 0L }
             .awaitAsList()
         return true
@@ -2282,8 +2282,7 @@ class MangaRepositoryImpl(
         }
         database.transaction {
             mangaIds.chunked(AGGREGATE_CHUNK_SIZE).forEach { chunk ->
-                // SQLDelight can't compile UPDATE ... FROM, so this one goes through the driver. The
-                // LEFT JOIN zeroes ids with no chapters in the same single write per row.
+                // SQLDelight can't compile UPDATE ... FROM.
                 val idPlaceholders = chunk.joinToString(", ") { "?" }
                 val sql = """
                     |UPDATE mangas

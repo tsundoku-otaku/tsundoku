@@ -9,11 +9,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.time.Duration
 
-/**
- * Turns a stream of change signals into at most one emission per [window], each trailing the burst
- * that caused it. While [active] is false emissions are held back, and everything that arrived in
- * the meantime collapses into a single emission once it turns true again.
- */
+/** At most one trailing emission per [window], held back while [active] is false. */
 fun Flow<Unit>.coalesceInvalidations(active: StateFlow<Boolean>, window: Duration): Flow<Unit> = channelFlow {
     val pending = Channel<Unit>(Channel.CONFLATED)
     launch {
@@ -23,7 +19,6 @@ fun Flow<Unit>.coalesceInvalidations(active: StateFlow<Boolean>, window: Duratio
     for (signal in pending) {
         delay(window)
         active.first { it }
-        // This emission reloads the current state, so it covers whatever arrived while waiting.
         pending.tryReceive()
         send(Unit)
     }

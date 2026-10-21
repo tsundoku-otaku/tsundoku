@@ -27,10 +27,6 @@ import tachiyomi.domain.manga.repository.MangaRepository
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
 
-/**
- * Experimental paged library: Paging 3 flows over the per-category library query. Only the library
- * screen uses this; everything else keeps reading [GetLibraryManga].
- */
 class GetLibraryMangaPaged(
     private val mangaRepository: MangaRepository,
     private val getLibraryManga: GetLibraryManga,
@@ -44,7 +40,6 @@ class GetLibraryMangaPaged(
     val pageSize: Int
         get() = libraryPreferences.experimentalLibraryPageSize.get().coerceAtLeast(MIN_PAGE_SIZE)
 
-    /** Raw change signals for the paged queries: DB writes plus explicit library reloads. */
     fun changes(): Flow<Unit> = merge(mangaRepository.libraryTableChanges(), getLibraryManga.pagedChanges())
 
     fun subscribe(
@@ -54,10 +49,7 @@ class GetLibraryMangaPaged(
         invalidations: Flow<Unit>,
     ): Flow<PagingData<LibraryManga>> = subscribe(invalidations) { QueryGeneration(categoryId, isNovel, spec)::fetch }
 
-    /**
-     * Pages a list that can't be queried page by page (a sort or search the DB can't express). Each
-     * source generation calls [load] once and serves its pages from the result.
-     */
+    /** Pages a list SQL can't order or filter. [load] runs once per generation. */
     fun subscribeLoaded(
         invalidations: Flow<Unit>,
         load: suspend () -> List<LibraryManga>,
@@ -83,12 +75,8 @@ class GetLibraryMangaPaged(
     }
 
     /**
-     * Reads one paging generation. Walking the sort index stops at the LIMIT, which is ideal until a
-     * filter leaves few matches: then every page walks past everything before it, up to the whole
-     * category for the last one. Those generations take the ids of the first [SNAPSHOT_SIZE] matches
-     * in one walk and read pages by id, walking again only past them. The first page still walks,
-     * since a full one is cheap and a short one is the end anyway. A search pinned to a few small
-     * sources starts from the snapshot, read through the source index.
+     * With few matches every walked page passes everything before it, so a filtered generation walks
+     * its first page, then reads up to [SNAPSHOT_SIZE] ids in one walk and pages through them.
      */
     internal inner class QueryGeneration(
         private val categoryId: Long,
@@ -147,7 +135,6 @@ class GetLibraryMangaPaged(
 
     private enum class Mode { SMALL, SOURCE, NARROWED, WALK }
 
-    /** The first ids of a generation in order; [complete] when no rows follow them. */
     private class Snapshot(val ids: List<Long>, val complete: Boolean)
 
     suspend fun awaitAll(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): List<LibraryManga> {
@@ -194,10 +181,7 @@ class GetLibraryMangaPaged(
     suspend fun awaitHasUncategorized(isNovel: Boolean?): Boolean =
         mangaRepository.hasUncategorizedFavorites(isNovel)
 
-    /**
-     * Creates the per-sort indexes the paged queries walk. Built lazily so only paged mode pays. On a
-     * large library the first build takes minutes and holds up every other query meanwhile.
-     */
+    // Built lazily so only paged mode pays for the indexes.
     suspend fun ensureIndexes() {
         indexMutex.withLock {
             if (indexesReady) return
@@ -238,19 +222,14 @@ class GetLibraryMangaPaged(
     companion object {
         private const val MIN_PAGE_SIZE = 20
 
-        // Room for a full screen of large-column grid plus prefetch, so small page sizes don't drop
-        // pages that are still on screen.
+        // Keeps small page sizes from dropping pages still on screen.
         private const val MIN_MAX_SIZE = 500
 
-        // Above this many members a category is a big enough share of the library that walking the
-        // sort index beats reading and sorting all its members per page.
+        // Above this, walking the sort index beats reading and sorting all members per page.
         private const val SMALL_CATEGORY_MEMBERS = 30_000L
 
-        // Ids kept per narrowed generation: enough pages that walking past them only happens when
-        // matches aren't rare.
         internal const val SNAPSHOT_SIZE = 10_000
 
-        // Source rows that are still cheap to read and sort, against walking the sort index.
         private const val SOURCE_DRIVEN_ROWS = 50_000L
 
         private const val ROWS_PER_QUERY = 5_000

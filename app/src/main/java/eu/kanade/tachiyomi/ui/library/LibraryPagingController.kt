@@ -24,24 +24,17 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * How one category of the paged library is loaded. Equality is by [key] only, so rebuilding a plan
- * from unchanged inputs keeps the existing pager.
- */
+// Equality is by key only, so a plan rebuilt from unchanged inputs keeps its pager.
 class LibraryPagedPlan(
     private val key: Any,
     val categoryId: Long,
     val isNovel: Boolean?,
     val spec: LibraryPageSpec,
-    /** Sort or search the DB can't express: the category is loaded whole by [loadInMemory]. */
     val inMemory: Boolean,
-    /** In-memory filters left after the SQL ones; null when SQL already filters everything. */
     val filter: ((LibraryManga) -> Boolean)?,
-    /** What is shown depends on downloads, so the pager reloads when they change. */
     val reloadOnDownloads: Boolean,
     val loadInMemory: suspend () -> List<LibraryManga>,
 ) {
-    /** The SQL count matches what is shown. */
     val hasExactCount: Boolean get() = !inMemory && filter == null
 
     override fun equals(other: Any?): Boolean = other is LibraryPagedPlan && other.key == key
@@ -49,10 +42,6 @@ class LibraryPagedPlan(
     override fun hashCode(): Int = key.hashCode()
 }
 
-/**
- * Owns the Paging 3 flows of one library screen. Pagers are kept for the few most recently shown
- * categories only, and table changes reach them coalesced and only while the screen is visible.
- */
 class LibraryPagingController(
     private val scope: CoroutineScope,
     private val getLibraryMangaPaged: GetLibraryMangaPaged,
@@ -76,7 +65,6 @@ class LibraryPagingController(
         scope.launch(Dispatchers.IO) { getLibraryMangaPaged.ensureIndexes() }
     }
 
-    /** [invalidations] thinned further, for work that is too expensive to redo on every one. */
     fun slowInvalidations(window: Duration, source: Flow<Unit> = invalidations): Flow<Unit> =
         source.coalesceInvalidations(active, window)
 
@@ -101,7 +89,6 @@ class LibraryPagingController(
     private fun build(plan: LibraryPagedPlan): Flow<PagingData<LibraryManga>> {
         val changes = if (plan.reloadOnDownloads) merge(invalidations, downloadInvalidations) else invalidations
         if (plan.inMemory) {
-            // Each reload reads the whole category, so it follows changes more slowly.
             return getLibraryMangaPaged.subscribeLoaded(
                 slowInvalidations(IN_MEMORY_INVALIDATION_WINDOW, changes),
                 plan.loadInMemory,
@@ -113,8 +100,7 @@ class LibraryPagingController(
     }
 
     companion object {
-        // The pager composes the current category and its two neighbours; one spare keeps a page that
-        // is still on screen during a swipe from being evicted.
+        // Current page, its two neighbours, and one spare for a page still visible mid-swipe.
         private const val MAX_PAGERS = 4
         private val INVALIDATION_WINDOW = 750.milliseconds
         private val IN_MEMORY_INVALIDATION_WINDOW = 5.seconds

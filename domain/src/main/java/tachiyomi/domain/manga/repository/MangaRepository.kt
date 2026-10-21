@@ -92,10 +92,8 @@ interface MangaRepository {
     suspend fun getLibraryManga(): List<LibraryManga>
 
     /**
-     * Experimental paged library: one page of favorites for a single category, with the
-     * DB-expressible filters/sort in [spec] applied. [categoryId] 0 is the uncategorized bucket, a
-     * null [isNovel] covers both content types and a null [limit] returns every row. A
-     * [smallCategory] is read through its membership rows instead of walking the sort index.
+     * Experimental paged library: one page of a category. [categoryId] 0 is the uncategorized bucket,
+     * a null [isNovel] covers both content types and a null [limit] returns every row.
      */
     suspend fun getLibraryMangaPage(
         categoryId: Long,
@@ -106,7 +104,6 @@ interface MangaRepository {
         smallCategory: Boolean = false,
     ): List<LibraryManga>
 
-    /** The ids of [getLibraryMangaPage] from the start, in order. [bySource]: see [isLibraryPageSourceDriven]. */
     suspend fun getLibraryMangaPageIds(
         categoryId: Long,
         isNovel: Boolean?,
@@ -116,13 +113,9 @@ interface MangaRepository {
         bySource: Boolean = false,
     ): List<Long>
 
-    /** The paged library rows of [ids], in no particular order. */
     suspend fun getLibraryMangaPageRows(ids: List<Long>): List<LibraryManga>
 
-    /**
-     * Whether [spec] only matches a few sources with at most [maxRows] entries, so its rows are best
-     * found through the source index instead of walking the sort index past everything else.
-     */
+    /** Whether [spec] is pinned to sources with at most [maxRows] rows, read best by source index. */
     suspend fun isLibraryPageSourceDriven(spec: LibraryPageSpec, maxRows: Long): Boolean
 
     suspend fun countCategoryMembers(categoryId: Long): Long
@@ -139,7 +132,6 @@ interface MangaRepository {
 
     suspend fun hasUncategorizedFavorites(isNovel: Boolean?): Boolean
 
-    /** Emits whenever the tables behind the paged library queries change. */
     fun libraryTableChanges(): Flow<Unit>
 
     /** Returns true when an index had to be built. */
@@ -147,7 +139,6 @@ interface MangaRepository {
 
     suspend fun dropLibraryPagingIndexes()
 
-    /** Flags favorites from [sourceIds] as novels where they aren't yet. */
     suspend fun markFavoritesAsNovel(sourceIds: List<Long>)
 
     /**

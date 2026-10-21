@@ -20,21 +20,16 @@ data class LibraryPageSpec(
     val filterChapterCount: Int = 0,
     val filterChapterCountThreshold: Int = 0,
     val excludedSourceIds: List<Long> = emptyList(),
-    // Lowercased ASCII tags. The DB keeps rows whose genre contains ANY of them (case-insensitive
-    // substring), a superset of the exact in-memory match, so it only narrows and never drops a row.
+    // Lowercased ASCII tags, matched as substrings: a superset the in-memory filter narrows.
     val includedTags: List<String> = emptyList(),
     val search: Search? = null,
 ) {
-    /** Whether anything beyond category and content type limits the rows. */
     val isNarrowed: Boolean
         get() = filterUnread != 0 || filterStarted != 0 || filterBookmarked != 0 || filterCompleted != 0 ||
             filterIntervalCustom != 0 || filterChapterCount != 0 || excludedSourceIds.isNotEmpty() ||
             includedTags.isNotEmpty() || search != null
 
-    /**
-     * A search the DB can answer: a row matches when any enabled part matches. [likeTerm] is already
-     * LIKE-escaped (pairs with ESCAPE '\') and ASCII, since SQLite LIKE folds ASCII only.
-     */
+    // Parts are OR'ed. likeTerm is already LIKE-escaped and ASCII.
     data class Search(
         val likeTerm: String = "",
         val matchTitle: Boolean = false,

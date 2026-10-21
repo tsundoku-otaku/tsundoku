@@ -82,9 +82,8 @@ data class UpdatesNovelGroup(
     val chapters: List<UpdatesItem>,
     val isNovel: Boolean = false,
 ) {
-    // Chapters of the latest update batch, read or not, so the label never says 0. A sync stamps
-    // its chapters with consecutive date_fetch millis, so the batch is the run of close fetch times
-    // ending at the newest one.
+    // A sync stamps its chapters with consecutive date_fetch millis, so the latest batch is the run
+    // of close fetch times ending at the newest one.
     val chapterCount: Int by lazy {
         val byFetch = chapters.sortedByDescending { it.update.dateFetch }
         var batchSize = byFetch.size
