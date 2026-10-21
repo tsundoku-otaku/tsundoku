@@ -78,7 +78,10 @@ class LibraryPageSqlTest {
             // Indexes the real schema already has, so the planner sees the same alternatives.
             st.executeUpdate("CREATE INDEX library_favorite_index ON mangas(favorite) WHERE favorite = 1")
             st.executeUpdate("CREATE INDEX idx_mangas_library_is_novel ON mangas(is_novel) WHERE favorite = 1")
-            st.executeUpdate("CREATE INDEX mangas_categories_manga_category_index ON mangas_categories(manga_id, category_id)")
+            st.executeUpdate("CREATE INDEX idx_mangas_source ON mangas(source)")
+            st.executeUpdate(
+                "CREATE INDEX mangas_categories_manga_category_index ON mangas_categories(manga_id, category_id)",
+            )
             st.executeUpdate("CREATE INDEX idx_mangas_categories_category_id ON mangas_categories(category_id)")
             LibraryPageSql.createIndexStatements().forEach(st::executeUpdate)
         }
@@ -191,7 +194,18 @@ class LibraryPageSqlTest {
     fun `the sort index is still chosen once the database is analyzed`(sortType: Int, ascending: Boolean) {
         insert(
             (1L..5_000L).map {
-                Row(it, "Title $it", isNovel = it % 20 != 0L, categories = if (it % 50 == 0L) listOf(3L) else emptyList())
+                Row(
+                    it,
+                    "Title $it",
+                    isNovel = it % 20 != 0L,
+                    categories = if (it % 50 ==
+                        0L
+                    ) {
+                        listOf(3L)
+                    } else {
+                        emptyList()
+                    },
+                )
             },
         )
         db.createStatement().use { it.executeUpdate("ANALYZE") }
@@ -250,7 +264,9 @@ class LibraryPageSqlTest {
         }
 
         pages shouldContainExactly listOf(3L, 5L, 2L, 1L, 4L)
-        ids(LibraryPageSql.page(0L, false, desc.copy(sortAscending = true), limit = null, offset = 0)) shouldContainExactly
+        ids(
+            LibraryPageSql.page(0L, false, desc.copy(sortAscending = true), limit = null, offset = 0),
+        ) shouldContainExactly
             listOf(4L, 1L, 2L, 5L, 3L)
     }
 
@@ -332,13 +348,18 @@ class LibraryPageSqlTest {
             ),
         )
         val base = spec(LibraryPageSpec.SORT_DATE_ADDED, true)
-        fun search(search: LibraryPageSpec.Search) = ids(LibraryPageSql.page(0L, false, base.copy(search = search), null, 0))
+        fun search(
+            search: LibraryPageSpec.Search,
+        ) = ids(LibraryPageSql.page(0L, false, base.copy(search = search), null, 0))
 
         search(LibraryPageSpec.Search(likeTerm = "sword", matchTitle = true)) shouldContainExactly listOf(1L, 6L)
-        search(LibraryPageSpec.Search(likeTerm = "sword", matchTitle = true, matchUrl = true, matchGenre = true)) shouldContainExactly
+        search(
+            LibraryPageSpec.Search(likeTerm = "sword", matchTitle = true, matchUrl = true, matchGenre = true),
+        ) shouldContainExactly
             listOf(1L, 2L, 3L, 6L)
         search(LibraryPageSpec.Search(likeTerm = "100\\%", matchTitle = true)) shouldContainExactly listOf(1L)
-        search(LibraryPageSpec.Search(sourceIds = listOf(9L), mangaIds = listOf(5L))) shouldContainExactlyInAnyOrder listOf(4L, 5L)
+        search(LibraryPageSpec.Search(sourceIds = listOf(9L), mangaIds = listOf(5L))) shouldContainExactlyInAnyOrder
+            listOf(4L, 5L)
         search(LibraryPageSpec.Search()) shouldContainExactly emptyList()
     }
 
@@ -355,12 +376,86 @@ class LibraryPageSqlTest {
 
         ids(LibraryPageSql.page(0L, false, base.copy(includedTags = listOf("action")), null, 0)) shouldContainExactly
             listOf(1L, 3L)
-        ids(LibraryPageSql.page(0L, false, base.copy(includedTags = listOf("action"), excludedSourceIds = listOf(4L)), null, 0)) shouldContainExactly
+        ids(
+            LibraryPageSql.page(
+                0L,
+                false,
+                base.copy(includedTags = listOf("action"), excludedSourceIds = listOf(4L)),
+                null,
+                0,
+            ),
+        ) shouldContainExactly
             listOf(1L)
+    }
+
+    @ParameterizedTest
+    @MethodSource("sorts")
+    fun `ids follow the page order, also when read through the source index`(sortType: Int, ascending: Boolean) {
+        insert(
+            (1L..400L).map {
+                Row(
+                    it,
+                    "Title ${it % 37}",
+                    source = it % 4,
+                    lastRead = it % 11,
+                    total = it % 6,
+                    read = it % 3,
+                    categories = if (it % 2 == 0L) listOf(6L) else emptyList(),
+                )
+            },
+        )
+        val spec = spec(sortType, ascending).copy(search = LibraryPageSpec.Search(sourceIds = listOf(1L, 3L)))
+
+        for (category in listOf(0L, 6L)) {
+            val pages = ids(LibraryPageSql.page(category, false, spec, limit = null, offset = 0))
+            val bySource = LibraryPageSql.ids(category, false, spec, limit = -1, bySource = true)
+
+            ids(LibraryPageSql.ids(category, false, spec, limit = -1)) shouldContainExactly pages
+            ids(bySource) shouldContainExactly pages
+            ids(LibraryPageSql.ids(category, false, spec, limit = 7)) shouldContainExactly pages.take(7)
+            plan(bySource) shouldContain "idx_mangas_source"
+            single(LibraryPageSql.count(category, false, spec, bySource = true)) shouldBe pages.size.toLong()
+        }
+    }
+
+    @Test
+    fun `rows reads the given ids`() {
+        insert((1L..5L).map { Row(it, "Title $it") })
+
+        ids(LibraryPageSql.rows(listOf(4L, 2L))) shouldContainExactlyInAnyOrder listOf(2L, 4L)
+    }
+
+    @Test
+    fun `source rows count every entry of the sources up to the limit`() {
+        insert((1L..10L).map { Row(it, "Title $it", source = it % 3, favorite = it % 2 == 0L) })
+
+        single(LibraryPageSql.sourceRows(listOf(1L, 2L), limit = 100)) shouldBe 7L
+        single(LibraryPageSql.sourceRows(listOf(1L, 2L), limit = 5)) shouldBe 5L
+    }
+
+    @Test
+    fun `only a search matching nothing but sources is pinned to them`() {
+        val base = LibraryPageSpec()
+
+        LibraryPageSql.pinnedSources(base) shouldBe null
+        LibraryPageSql.pinnedSources(base.copy(search = LibraryPageSpec.Search(sourceIds = listOf(1L)))) shouldBe
+            listOf(1L)
+        LibraryPageSql.pinnedSources(
+            base.copy(search = LibraryPageSpec.Search(likeTerm = "x", sourceIds = listOf(1L))),
+        ) shouldBe listOf(1L)
+        LibraryPageSql.pinnedSources(
+            base.copy(search = LibraryPageSpec.Search(likeTerm = "x", matchTitle = true, sourceIds = listOf(1L))),
+        ) shouldBe null
+        LibraryPageSql.pinnedSources(
+            base.copy(search = LibraryPageSpec.Search(sourceIds = listOf(1L), mangaIds = listOf(5L))),
+        ) shouldBe null
+        LibraryPageSql.pinnedSources(base.copy(search = LibraryPageSpec.Search())) shouldBe null
     }
 
     companion object {
         @JvmStatic
-        fun sorts(): List<Array<Any>> = (0..7).flatMap { sort -> listOf(arrayOf<Any>(sort, true), arrayOf<Any>(sort, false)) }
+        fun sorts(): List<Array<Any>> = (0..7).flatMap { sort ->
+            listOf(arrayOf<Any>(sort, true), arrayOf<Any>(sort, false))
+        }
     }
 }

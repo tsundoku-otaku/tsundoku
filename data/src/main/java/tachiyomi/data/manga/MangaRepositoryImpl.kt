@@ -832,6 +832,29 @@ class MangaRepositoryImpl(
         return RawQuery(driver, query, ::mapLibraryPageRow).awaitAsList()
     }
 
+    override suspend fun getLibraryMangaPageIds(
+        categoryId: Long,
+        isNovel: Boolean?,
+        limit: Long,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean,
+        bySource: Boolean,
+    ): List<Long> {
+        val query = LibraryPageSql.ids(categoryId, isNovel, spec, limit, smallCategory, bySource)
+        return RawQuery(driver, query) { it.getLong(0)!! }.awaitAsList()
+    }
+
+    override suspend fun getLibraryMangaPageRows(ids: List<Long>): List<LibraryManga> {
+        if (ids.isEmpty()) return emptyList()
+        return RawQuery(driver, LibraryPageSql.rows(ids), ::mapLibraryPageRow).awaitAsList()
+    }
+
+    override suspend fun isLibraryPageSourceDriven(spec: LibraryPageSpec, maxRows: Long): Boolean {
+        val sources = LibraryPageSql.pinnedSources(spec) ?: return false
+        val rows = RawQuery(driver, LibraryPageSql.sourceRows(sources, maxRows + 1)) { it.getLong(0)!! }.awaitAsOne()
+        return rows <= maxRows
+    }
+
     override suspend fun countCategoryMembers(categoryId: Long): Long {
         return RawQuery(driver, LibraryPageSql.categoryMembers(categoryId)) { it.getLong(0)!! }.awaitAsOne()
     }
@@ -841,8 +864,9 @@ class MangaRepositoryImpl(
         isNovel: Boolean?,
         spec: LibraryPageSpec,
         smallCategory: Boolean,
+        bySource: Boolean,
     ): Long {
-        val query = LibraryPageSql.count(categoryId, isNovel, spec, smallCategory)
+        val query = LibraryPageSql.count(categoryId, isNovel, spec, smallCategory, bySource)
         return RawQuery(driver, query) { it.getLong(0)!! }.awaitAsOne()
     }
 
@@ -863,7 +887,10 @@ class MangaRepositoryImpl(
     override suspend fun ensureLibraryPagingIndexes(): Boolean {
         val existing = RawQuery(
             driver,
-            LibraryPageQuery("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mangas'", emptyList()),
+            LibraryPageQuery(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mangas'",
+                emptyList(),
+            ),
         ) { it.getString(0)!! }.awaitAsList().toSet()
         val missing = LibraryPageSql.indexes.indices.filter { LibraryPageSql.indexes[it].first !in existing }
         if (missing.isEmpty()) return false

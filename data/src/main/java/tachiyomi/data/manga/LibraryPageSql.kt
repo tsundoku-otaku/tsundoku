@@ -58,13 +58,69 @@ internal object LibraryPageSql {
         limit: Long?,
         offset: Long,
         smallCategory: Boolean = false,
+    ): LibraryPageQuery = select(COLUMNS, categoryId, isNovel, spec, limit, offset, smallCategory, bySource = false)
+
+    /**
+     * The ids of [page] in the same order. With [bySource] the rows are read through the source index,
+     * for a search pinned to sources with few entries that the sort index would have to walk past.
+     */
+    fun ids(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        limit: Long,
+        smallCategory: Boolean = false,
+        bySource: Boolean = false,
+    ): LibraryPageQuery = select("M._id", categoryId, isNovel, spec, limit, 0, smallCategory, bySource)
+
+    fun rows(ids: List<Long>): LibraryPageQuery =
+        LibraryPageQuery("SELECT $COLUMNS FROM mangas M WHERE M._id IN (${placeholders(ids.size)})", ids)
+
+    /** Rows of [sourceIds], favorite or not, counted from the source index alone and capped at [limit]. */
+    fun sourceRows(sourceIds: List<Long>, limit: Long): LibraryPageQuery = LibraryPageQuery(
+        "SELECT count(*) FROM (SELECT 1 FROM mangas INDEXED BY idx_mangas_source " +
+            "WHERE source IN (${placeholders(sourceIds.size)}) LIMIT ?)",
+        sourceIds + limit,
+    )
+
+    /** The sources a search is pinned to, when it matches nothing but them. */
+    fun pinnedSources(spec: LibraryPageSpec): List<Long>? {
+        val search = spec.search ?: return null
+        val matchesText = search.likeTerm.isNotEmpty() && (search.matchTitle || search.matchUrl || search.matchGenre)
+        return search.sourceIds.takeIf { it.isNotEmpty() && search.mangaIds.isEmpty() && !matchesText }
+    }
+
+    fun count(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean = false,
+        bySource: Boolean = false,
+    ): LibraryPageQuery {
+        val args = ArrayList<Any>()
+        // Probing the membership index per row is far cheaper than random row lookups for every
+        // member of a big category, so only small ones count through their members.
+        val membership = if (smallCategory || categoryId == 0L) Membership.LOOKUP else Membership.WALK
+        val where = where(categoryId, isNovel, spec, args, membership)
+        return LibraryPageQuery("SELECT count(*) FROM ${from(bySource)} WHERE $where", args)
+    }
+
+    private fun select(
+        columns: String,
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        limit: Long?,
+        offset: Long,
+        smallCategory: Boolean,
+        bySource: Boolean,
     ): LibraryPageQuery {
         val args = ArrayList<Any>()
         val membership = if (smallCategory) Membership.LOOKUP else Membership.WALK
         val where = where(categoryId, isNovel, spec, args, membership)
         val direction = if (spec.sortAscending) "ASC" else "DESC"
         val sql = buildString {
-            append("SELECT ").append(COLUMNS).append(" FROM mangas M WHERE ").append(where)
+            append("SELECT ").append(columns).append(" FROM ").append(from(bySource)).append(" WHERE ").append(where)
             append(" ORDER BY ").append(sortKey(spec)).append(' ').append(direction)
             append(", M._id ").append(direction)
             if (limit != null) {
@@ -76,19 +132,8 @@ internal object LibraryPageSql {
         return LibraryPageQuery(sql, args)
     }
 
-    fun count(
-        categoryId: Long,
-        isNovel: Boolean?,
-        spec: LibraryPageSpec,
-        smallCategory: Boolean = false,
-    ): LibraryPageQuery {
-        val args = ArrayList<Any>()
-        // Probing the membership index per row is far cheaper than random row lookups for every
-        // member of a big category, so only small ones count through their members.
-        val membership = if (smallCategory || categoryId == 0L) Membership.LOOKUP else Membership.WALK
-        val where = where(categoryId, isNovel, spec, args, membership)
-        return LibraryPageQuery("SELECT count(*) FROM mangas M WHERE $where", args)
-    }
+    private fun from(bySource: Boolean): String =
+        if (bySource) "mangas M INDEXED BY idx_mangas_source" else "mangas M"
 
     fun countFavorites(isNovel: Boolean?): LibraryPageQuery {
         val args = ArrayList<Any>()

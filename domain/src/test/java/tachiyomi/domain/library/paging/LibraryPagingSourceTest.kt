@@ -25,7 +25,7 @@ class LibraryPagingSourceTest {
     )
 
     private fun sourceOver(rows: () -> List<Long>) = LibraryPagingSource { limit, offset ->
-        rows().drop(offset).take(limit).map(::row)
+        LibraryPagingSource.Chunk.of(rows().drop(offset).take(limit).map(::row), limit, offset)
     }
 
     private suspend fun PagingSource<Int, LibraryManga>.page(params: PagingSource.LoadParams<Int>) =
@@ -63,7 +63,8 @@ class LibraryPagingSourceTest {
         var rows = listOf(1L, 2L, 3L, 4L)
         val source = sourceOver { rows }
 
-        source.page(PagingSource.LoadParams.Refresh(null, 2, false)).data.map { it.id } shouldContainExactly listOf(1L, 2L)
+        source.page(PagingSource.LoadParams.Refresh(null, 2, false)).data.map { it.id } shouldContainExactly
+            listOf(1L, 2L)
         // Entry 1 got a new sort key and now sorts after 3, without an invalidation yet.
         rows = listOf(2L, 3L, 1L, 4L)
 
@@ -81,6 +82,18 @@ class LibraryPagingSourceTest {
     }
 
     @Test
+    fun `the next key comes from the fetched chunk`() = runTest {
+        val source = LibraryPagingSource { _, offset ->
+            LibraryPagingSource.Chunk(listOf(row(offset + 1L)), nextOffset = offset + 3)
+        }
+
+        val page = source.page(PagingSource.LoadParams.Refresh(null, 3, false))
+
+        page.data.map { it.id } shouldContainExactly listOf(1L)
+        page.nextKey shouldBe 3
+    }
+
+    @Test
     fun `fetch errors become load errors`() = runTest {
         val source = LibraryPagingSource { _, _ -> error("boom") }
 
@@ -95,7 +108,8 @@ class LibraryPagingSourceTest {
             PagingSource.LoadResult.Page(data = (1L..20L).map(::row), prevKey = null, nextKey = 20),
             PagingSource.LoadResult.Page(data = (21L..40L).map(::row), prevKey = 20, nextKey = 40),
         )
-        val state = PagingState(pages, anchorPosition = 30, config = PagingConfig(pageSize = 20), leadingPlaceholderCount = 0)
+        val state =
+            PagingState(pages, anchorPosition = 30, config = PagingConfig(pageSize = 20), leadingPlaceholderCount = 0)
 
         source.getRefreshKey(state) shouldBe 10
     }

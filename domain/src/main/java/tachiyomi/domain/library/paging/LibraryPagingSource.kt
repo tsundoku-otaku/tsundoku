@@ -9,13 +9,21 @@ import tachiyomi.domain.library.model.LibraryManga
  * Offset-keyed source over one library query generation. Keys are row offsets: an append or refresh
  * key is where the page starts, a prepend key is where the already loaded rows start.
  *
- * No count query: the end is reached when a page comes back short. A row whose sort key changed
- * between two page loads can come back at a second offset; only its first position is kept, since
- * lazy lists crash on duplicate keys. The next invalidation reloads a consistent snapshot.
+ * No count query: [fetch] says where the next page starts, or null at the end. A row whose sort key
+ * changed between two page loads can come back at a second offset; only its first position is kept,
+ * since lazy lists crash on duplicate keys. The next invalidation reloads a consistent snapshot.
  */
 class LibraryPagingSource(
-    private val fetch: suspend (limit: Int, offset: Int) -> List<LibraryManga>,
+    private val fetch: suspend (limit: Int, offset: Int) -> Chunk,
 ) : PagingSource<Int, LibraryManga>() {
+
+    class Chunk(val rows: List<LibraryManga>, val nextOffset: Int?) {
+        companion object {
+            /** A chunk read straight from the query, which ends with the first short page. */
+            fun of(rows: List<LibraryManga>, limit: Int, offset: Int) =
+                Chunk(rows, if (rows.size < limit) null else offset + rows.size)
+        }
+    }
 
     // id -> offset it was first loaded at
     private val firstSeenAt = HashMap<Long, Int>()
@@ -28,7 +36,7 @@ class LibraryPagingSource(
         }
         if (limit <= 0) return LoadResult.Page(emptyList(), prevKey = null, nextKey = null)
 
-        val rows = try {
+        val chunk = try {
             fetch(limit, offset)
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -36,7 +44,7 @@ class LibraryPagingSource(
         }
 
         val data = synchronized(firstSeenAt) {
-            rows.filterIndexed { index, row ->
+            chunk.rows.filterIndexed { index, row ->
                 val at = offset + index
                 val seen = firstSeenAt.getOrPut(row.id) { at }
                 // A dropped page loaded again keeps its rows.
@@ -47,7 +55,7 @@ class LibraryPagingSource(
         return LoadResult.Page(
             data = data,
             prevKey = offset.takeIf { it > 0 },
-            nextKey = if (rows.size < limit) null else offset + rows.size,
+            nextKey = chunk.nextOffset,
         )
     }
 
