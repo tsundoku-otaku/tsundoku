@@ -561,12 +561,14 @@ class MainActivity : BaseActivity() {
                 }
                 null
             }
-            INTENT_SEARCH -> {
+            INTENT_SEARCH, INTENT_SEARCH_NOVEL -> {
                 val query = intent.getStringExtra(INTENT_SEARCH_QUERY)
                 if (!query.isNullOrEmpty()) {
                     val filter = intent.getStringExtra(INTENT_SEARCH_FILTER)
                     navigator.popUntilRoot()
-                    if (filter != null && isNovelExtensionPackage(filter)) {
+                    val isNovel = intent.action == INTENT_SEARCH_NOVEL ||
+                        (filter != null && isNovelExtensionPackage(filter))
+                    if (isNovel) {
                         navigator.push(NovelGlobalSearchScreen(query, filter))
                     } else {
                         navigator.push(GlobalSearchScreen(query, filter))
@@ -708,6 +710,7 @@ class MainActivity : BaseActivity() {
 
     companion object {
         const val INTENT_SEARCH = "eu.kanade.tachiyomi.SEARCH"
+        const val INTENT_SEARCH_NOVEL = "eu.kanade.tachiyomi.novel.SEARCH"
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"
     }
