@@ -661,6 +661,7 @@
     <string name="licenses">Open source licenses</string>
     <string name="privacy_policy">Privacy policy</string>
     <string name="check_for_updates">Check for updates</string>
+    <string name="based_on_mihon">Based on Mihon</string>
 
     <!-- ACRA -->
     <string name="pref_enable_acra">Send crash reports</string>
