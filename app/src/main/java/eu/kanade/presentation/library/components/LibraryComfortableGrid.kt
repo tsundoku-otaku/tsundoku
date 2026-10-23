@@ -21,6 +21,7 @@ internal fun LibraryComfortableGrid(
     onGlobalSearchClicked: () -> Unit,
     titleMaxLines: Int = 2,
     isLoadingMore: Boolean = false,
+    onRetryLoadMore: (() -> Unit)? = null,
 ) {
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),
@@ -67,6 +68,6 @@ internal fun LibraryComfortableGrid(
             )
         }
 
-        loadMoreFooter(isLoadingMore)
+        loadMoreFooter(isLoadingMore, onRetryLoadMore)
     }
 }

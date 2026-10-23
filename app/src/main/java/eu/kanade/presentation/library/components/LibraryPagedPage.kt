@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
@@ -41,17 +40,8 @@ class LibraryPaging(
     // Rows are decorated while rendering, so this forces a redecorate.
     val badgeVersion: Int,
     val buildingIndexes: Boolean,
-    val onActiveChange: (Boolean) -> Unit,
     val onLongClick: (Category, LibraryManga, loaded: List<LibraryManga>) -> Unit,
 )
-
-@Composable
-internal fun LibraryPagingActiveEffect(paging: LibraryPaging) {
-    LifecycleStartEffect(paging.onActiveChange) {
-        paging.onActiveChange(true)
-        onStopOrDispose { paging.onActiveChange(false) }
-    }
-}
 
 @Composable
 internal fun LibraryPagedPage(
@@ -64,6 +54,7 @@ internal fun LibraryPagedPage(
     content: @Composable (
         items: List<LibraryItem>,
         isLoadingMore: Boolean,
+        onRetryLoadMore: (() -> Unit)?,
         onLongClick: (Category, LibraryManga) -> Unit,
     ) -> Unit,
 ) {
@@ -95,7 +86,9 @@ internal fun LibraryPagedPage(
                 )
             }
             // In-memory filters can empty whole pages while later ones still have rows.
-            refresh is LoadState.Loading || !loadState.append.endOfPaginationReached -> {
+            refresh is LoadState.Loading ||
+                !loadState.append.endOfPaginationReached ||
+                !loadState.prepend.endOfPaginationReached -> {
                 LibraryPagedLoading(contentPadding, paging.buildingIndexes)
             }
             else -> {
@@ -124,6 +117,7 @@ internal fun LibraryPagedPage(
         content(
             items,
             loadState.append is LoadState.Loading,
+            lazyItems::retry.takeIf { loadState.append is LoadState.Error },
         ) { cat, manga -> paging.onLongClick(cat, manga, lazyItems.itemSnapshotList.items) }
     }
 }

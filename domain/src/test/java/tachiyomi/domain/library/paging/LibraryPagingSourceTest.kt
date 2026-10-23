@@ -102,15 +102,39 @@ class LibraryPagingSourceTest {
     }
 
     @Test
-    fun `refresh key starts half a page above the anchored page`() {
+    fun `refresh key centers the initial load on the anchored row`() {
         val source = sourceOver { emptyList() }
         val pages = listOf(
             PagingSource.LoadResult.Page(data = (1L..20L).map(::row), prevKey = null, nextKey = 20),
             PagingSource.LoadResult.Page(data = (21L..40L).map(::row), prevKey = 20, nextKey = 40),
         )
-        val state =
-            PagingState(pages, anchorPosition = 30, config = PagingConfig(pageSize = 20), leadingPlaceholderCount = 0)
+        val config = PagingConfig(pageSize = 20, initialLoadSize = 20)
+        val state = PagingState(pages, anchorPosition = 30, config = config, leadingPlaceholderCount = 0)
 
-        source.getRefreshKey(state) shouldBe 10
+        source.getRefreshKey(state) shouldBe 20
+    }
+
+    @Test
+    fun `refreshing from the refresh key keeps the same anchor`() = runTest {
+        val source = sourceOver { (1L..200L).toList() }
+        val config = PagingConfig(pageSize = 20, initialLoadSize = 40)
+        val first = source.page(PagingSource.LoadParams.Refresh(100, 40, false))
+        val state = PagingState(listOf(first), anchorPosition = 20, config = config, leadingPlaceholderCount = 0)
+
+        val key = source.getRefreshKey(state)!!
+        val second = source.page(PagingSource.LoadParams.Refresh(key, 40, false))
+
+        key shouldBe 100
+        second.data.map { it.id } shouldContainExactly first.data.map { it.id }
+    }
+
+    @Test
+    fun `a refresh past the new end restarts from the top`() = runTest {
+        val source = sourceOver { (1L..5L).toList() }
+
+        val page = source.page(PagingSource.LoadParams.Refresh(50, 4, false))
+
+        page.data.map { it.id } shouldContainExactly listOf(1L, 2L, 3L, 4L)
+        page.prevKey shouldBe null
     }
 }

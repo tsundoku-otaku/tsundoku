@@ -21,6 +21,7 @@ internal fun LibraryCompactGrid(
     searchQuery: String?,
     onGlobalSearchClicked: () -> Unit,
     isLoadingMore: Boolean = false,
+    onRetryLoadMore: (() -> Unit)? = null,
 ) {
     LazyLibraryGrid(
         modifier = Modifier.fillMaxSize(),
@@ -66,6 +67,6 @@ internal fun LibraryCompactGrid(
             )
         }
 
-        loadMoreFooter(isLoadingMore)
+        loadMoreFooter(isLoadingMore, onRetryLoadMore)
     }
 }

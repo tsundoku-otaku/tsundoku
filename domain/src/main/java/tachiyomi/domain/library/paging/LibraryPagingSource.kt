@@ -25,14 +25,19 @@ class LibraryPagingSource(
 
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, LibraryManga> {
         val key = params.key ?: 0
-        val (offset, limit) = when (params) {
+        var (offset, limit) = when (params) {
             is LoadParams.Prepend -> (key - params.loadSize).coerceAtLeast(0).let { it to key - it }
             else -> key to params.loadSize
         }
         if (limit <= 0) return LoadResult.Page(emptyList(), prevKey = null, nextKey = null)
 
         val chunk = try {
-            fetch(limit, offset)
+            fetch(limit, offset).takeUnless { params is LoadParams.Refresh && it.rows.isEmpty() && offset > 0 }
+                // Rows were deleted past the saved position, so restart from the top instead of showing nothing.
+                ?: fetch(limit, 0).also {
+                    offset = 0
+                    synchronized(firstSeenAt) { firstSeenAt.clear() }
+                }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             return LoadResult.Error(e)
@@ -57,7 +62,8 @@ class LibraryPagingSource(
     override fun getRefreshKey(state: PagingState<Int, LibraryManga>): Int? {
         val anchor = state.anchorPosition ?: return null
         val page = state.closestPageToPosition(anchor) ?: return null
-        val pageStart = page.prevKey ?: 0
-        return (pageStart - state.config.pageSize / 2).coerceAtLeast(0)
+        val loadedBefore = state.pages.takeWhile { it !== page }.sumOf { it.data.size }
+        val anchorOffset = (page.prevKey ?: 0) + (anchor - loadedBefore)
+        return (anchorOffset - state.config.initialLoadSize / 2).coerceAtLeast(0)
     }
 }

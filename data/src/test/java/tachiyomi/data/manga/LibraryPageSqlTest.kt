@@ -295,6 +295,42 @@ class LibraryPageSqlTest {
             listOf(3L, 2L, 4L, 1L)
     }
 
+    @ParameterizedTest
+    @MethodSource("sorts")
+    fun `a mixed library pages like one ordered list and still walks the sort index`(
+        sortType: Int,
+        ascending: Boolean,
+    ) {
+        insert(
+            (1L..600L).map {
+                Row(it, "Title ${it % 31}", isNovel = it % 3 == 0L, lastRead = it % 11, total = it % 7, read = it % 5)
+            },
+        )
+        val spec = spec(sortType, ascending)
+
+        val everything = ids(LibraryPageSql.page(0L, null, spec, limit = null, offset = 0))
+        val paged = (0L until 600L step 50).flatMap { ids(LibraryPageSql.page(0L, null, spec, limit = 50, offset = it)) }
+
+        paged shouldContainExactly everything
+        plan(LibraryPageSql.page(0L, null, spec, limit = 50, offset = 100)) shouldContain "idx_library_page_"
+    }
+
+    @Test
+    fun `outdated paging index definitions are detectable`() {
+        val expected = LibraryPageSql.createIndexStatements().first()
+
+        LibraryPageSql.normalizeDdl(expected) shouldBe
+            LibraryPageSql.normalizeDdl(expected.replace("IF NOT EXISTS ", "").replace(" ON ", "  ON "))
+        LibraryPageSql.normalizeDdl(expected) shouldBe LibraryPageSql.normalizeDdl(
+            db.createStatement().use { st ->
+                st.executeQuery("SELECT sql FROM sqlite_master WHERE name = 'idx_library_page_title'").use {
+                    it.next()
+                    it.getString(1)
+                }
+            },
+        )
+    }
+
     @Test
     fun `uncategorized bucket excludes entries with a real category`() {
         insert(

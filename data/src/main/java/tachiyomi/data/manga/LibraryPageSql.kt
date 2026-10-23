@@ -1,5 +1,6 @@
 package tachiyomi.data.manga
 
+import tachiyomi.core.common.util.lang.toLong
 import tachiyomi.domain.library.model.LibraryPageSpec
 
 internal class LibraryPageQuery(val sql: String, val args: List<Any>)
@@ -37,6 +38,8 @@ internal object LibraryPageSql {
         "idx_library_page_fetched_at" to "chapter_fetched_at",
         "idx_library_page_date_added" to "date_added",
     )
+
+    fun normalizeDdl(sql: String): String = sql.replace("IF NOT EXISTS ", "").replace(Regex("""\s+"""), " ").trim()
 
     fun createIndexStatements(): List<String> = indexes.map { (name, key) ->
         "CREATE INDEX IF NOT EXISTS $name ON mangas(is_novel, $key) WHERE favorite = 1"
@@ -106,8 +109,11 @@ internal object LibraryPageSql {
     ): LibraryPageQuery {
         val args = ArrayList<Any>()
         val membership = if (smallCategory) Membership.LOOKUP else Membership.WALK
-        val where = where(categoryId, isNovel, spec, args, membership)
         val direction = if (spec.sortAscending) "ASC" else "DESC"
+        if (isNovel == null && limit != null) {
+            return mergedSelect(columns, categoryId, spec, limit, offset, membership, bySource, direction)
+        }
+        val where = where(categoryId, isNovel, spec, args, membership)
         val sql = buildString {
             append("SELECT ").append(columns).append(" FROM ").append(from(bySource)).append(" WHERE ").append(where)
             append(" ORDER BY ").append(sortKey(spec)).append(' ').append(direction)
@@ -119,6 +125,33 @@ internal object LibraryPageSql {
             }
         }
         return LibraryPageQuery(sql, args)
+    }
+
+    // The indexes lead with is_novel, so a mixed library walks each half separately and merges the heads.
+    private fun mergedSelect(
+        columns: String,
+        categoryId: Long,
+        spec: LibraryPageSpec,
+        limit: Long,
+        offset: Long,
+        membership: Membership,
+        bySource: Boolean,
+        direction: String,
+    ): LibraryPageQuery {
+        val args = ArrayList<Any>()
+        val key = sortKey(spec)
+        val branches = listOf(false, true).joinToString(" UNION ALL ") { novel ->
+            val where = where(categoryId, novel, spec, args, membership)
+            args.add(limit + offset)
+            "SELECT * FROM (SELECT $columns, $key AS _k FROM ${from(bySource)} WHERE $where " +
+                "ORDER BY $key $direction, M._id $direction LIMIT ?)"
+        }
+        args.add(limit)
+        args.add(offset)
+        return LibraryPageQuery(
+            "SELECT * FROM ($branches) ORDER BY _k $direction, _id $direction LIMIT ? OFFSET ?",
+            args,
+        )
     }
 
     private fun from(bySource: Boolean): String =
@@ -261,9 +294,7 @@ internal object LibraryPageSql {
         else -> null
     }
 
-    private fun placeholders(count: Int): String = List(count) { "?" }.joinToString(", ")
+    internal fun placeholders(count: Int): String = List(count) { "?" }.joinToString(", ")
 
     private fun String.unqualified(): String = replace("M.", "")
-
-    private fun Boolean.toLong(): Long = if (this) 1L else 0L
 }

@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.util.fastAll
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -114,6 +115,13 @@ data object NovelsTab : Tab {
             },
         )
         val state by viewModel.state.collectAsState()
+
+        if (viewModel.paginationEnabled) {
+            LifecycleStartEffect(viewModel) {
+                viewModel.setPagedActive(true)
+                onStopOrDispose { viewModel.setPagedActive(false) }
+            }
+        }
         val titleMaxLines by settingsViewModel.libraryPreferences.titleMaxLines.changes().collectAsState(
             settingsViewModel.libraryPreferences.titleMaxLines.get(),
         )
@@ -283,7 +291,6 @@ data object NovelsTab : Tab {
                                 toItem = viewModel::pagedItem,
                                 badgeVersion = state.pagedBadgeVersion,
                                 buildingIndexes = state.pagedBuildingIndexes,
-                                onActiveChange = viewModel::setPagedActive,
                                 onLongClick = { category, manga, loaded ->
                                     viewModel.toggleRangeSelection(category, manga, loaded)
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)

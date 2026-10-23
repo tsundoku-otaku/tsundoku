@@ -75,7 +75,7 @@ class LibraryPagingController(
     fun flowFor(plan: LibraryPagedPlan): Flow<PagingData<LibraryManga>> = synchronized(entries) {
         entries[plan.categoryId]?.takeIf { it.plan == plan }?.let { return it.flow }
         entries.remove(plan.categoryId)?.scope?.cancel()
-        val entryScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext.job))
+        val entryScope = CoroutineScope(scope.coroutineContext + Dispatchers.Default + SupervisorJob(scope.coroutineContext.job))
         val entry = Entry(plan, entryScope, build(plan).cachedIn(entryScope))
         entries[plan.categoryId] = entry
         while (entries.size > MAX_PAGERS) {
@@ -84,6 +84,14 @@ class LibraryPagingController(
             eldest.value.scope.cancel()
         }
         entry.flow
+    }
+
+    fun retainPlans(plans: Collection<LibraryPagedPlan>) = synchronized(entries) {
+        val stale = entries.values.filter { entry -> plans.none { it == entry.plan } }
+        for (entry in stale) {
+            entries.remove(entry.plan.categoryId)
+            entry.scope.cancel()
+        }
     }
 
     private fun build(plan: LibraryPagedPlan): Flow<PagingData<LibraryManga>> {

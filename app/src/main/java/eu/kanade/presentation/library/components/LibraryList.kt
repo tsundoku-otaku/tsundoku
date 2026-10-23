@@ -24,6 +24,7 @@ internal fun LibraryList(
     onGlobalSearchClicked: () -> Unit,
     showUrl: Boolean = false,
     isLoadingMore: Boolean = false,
+    onRetryLoadMore: (() -> Unit)? = null,
 ) {
     FastScrollLazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -76,6 +77,6 @@ internal fun LibraryList(
             )
         }
 
-        loadMoreFooter(isLoadingMore)
+        loadMoreFooter(isLoadingMore, onRetryLoadMore)
     }
 }

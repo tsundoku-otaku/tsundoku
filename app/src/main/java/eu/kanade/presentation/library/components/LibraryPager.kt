@@ -46,8 +46,6 @@ fun LibraryPager(
     showUrlInList: Boolean = false,
     paging: LibraryPaging? = null,
 ) {
-    if (paging != null) LibraryPagingActiveEffect(paging)
-
     HorizontalPager(
         modifier = Modifier.fillMaxSize(),
         state = state,
@@ -67,12 +65,13 @@ fun LibraryPager(
                 hasActiveFilters = hasActiveFilters,
                 searchQuery = searchQuery,
                 onGlobalSearchClicked = onGlobalSearchClicked,
-            ) { items, isLoadingMore, onLongClick ->
+            ) { items, isLoadingMore, onRetryLoadMore, onLongClick ->
                 LibraryPageContent(
                     page = page,
                     category = category,
                     items = items,
                     isLoadingMore = isLoadingMore,
+                    onRetryLoadMore = onRetryLoadMore,
                     contentPadding = contentPadding,
                     selection = selection,
                     searchQuery = searchQuery,
@@ -106,6 +105,7 @@ fun LibraryPager(
             category = category,
             items = items,
             isLoadingMore = false,
+            onRetryLoadMore = null,
             contentPadding = contentPadding,
             selection = selection,
             searchQuery = searchQuery,
@@ -127,6 +127,7 @@ private fun LibraryPageContent(
     category: Category,
     items: List<LibraryItem>,
     isLoadingMore: Boolean,
+    onRetryLoadMore: (() -> Unit)?,
     contentPadding: PaddingValues,
     selection: Set<Long>,
     searchQuery: String?,
@@ -165,6 +166,7 @@ private fun LibraryPageContent(
                 onGlobalSearchClicked = onGlobalSearchClicked,
                 showUrl = showUrlInList,
                 isLoadingMore = isLoadingMore,
+                onRetryLoadMore = onRetryLoadMore,
             )
         }
         LibraryDisplayMode.CompactGrid, LibraryDisplayMode.CoverOnlyGrid -> {
@@ -180,6 +182,7 @@ private fun LibraryPageContent(
                 searchQuery = searchQuery,
                 onGlobalSearchClicked = onGlobalSearchClicked,
                 isLoadingMore = isLoadingMore,
+                onRetryLoadMore = onRetryLoadMore,
             )
         }
         LibraryDisplayMode.ComfortableGrid -> {
@@ -195,6 +198,7 @@ private fun LibraryPageContent(
                 onGlobalSearchClicked = onGlobalSearchClicked,
                 titleMaxLines = titleMaxLines,
                 isLoadingMore = isLoadingMore,
+                onRetryLoadMore = onRetryLoadMore,
             )
         }
     }

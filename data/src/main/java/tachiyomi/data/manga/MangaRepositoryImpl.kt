@@ -888,14 +888,21 @@ class MangaRepositoryImpl(
         val existing = RawQuery(
             driver,
             LibraryPageQuery(
-                "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mangas'",
+                "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mangas'",
                 emptyList(),
             ),
-        ) { it.getString(0)!! }.awaitAsList().toSet()
-        val missing = LibraryPageSql.indexes.indices.filter { LibraryPageSql.indexes[it].first !in existing }
-        if (missing.isEmpty()) return false
+        ) { it.getString(0)!! to it.getString(1) }.awaitAsList().toMap()
         val statements = LibraryPageSql.createIndexStatements()
-        missing.forEach { driver.execute(null, statements[it], 0).await() }
+        val outdated = LibraryPageSql.indexes.indices.filter { index ->
+            val definition = existing[LibraryPageSql.indexes[index].first]
+            definition == null ||
+                LibraryPageSql.normalizeDdl(definition) != LibraryPageSql.normalizeDdl(statements[index])
+        }
+        if (outdated.isEmpty()) return false
+        outdated.forEach { index ->
+            driver.execute(null, "DROP INDEX IF EXISTS ${LibraryPageSql.indexes[index].first}", 0).await()
+            driver.execute(null, statements[index], 0).await()
+        }
         // The index build leaves a WAL about as big as the indexes.
         RawQuery(driver, LibraryPageQuery("PRAGMA wal_checkpoint(TRUNCATE)", emptyList())) { it.getLong(0) ?: 0L }
             .awaitAsList()
@@ -908,7 +915,7 @@ class MangaRepositoryImpl(
 
     override suspend fun markFavoritesAsNovel(sourceIds: List<Long>) {
         if (sourceIds.isEmpty()) return
-        val placeholders = sourceIds.joinToString(", ") { "?" }
+        val placeholders = LibraryPageSql.placeholders(sourceIds.size)
         val changed = driver.execute(
             null,
             "UPDATE mangas SET is_novel = 1 WHERE favorite = 1 AND is_novel = 0 AND source IN ($placeholders)",
@@ -2283,7 +2290,7 @@ class MangaRepositoryImpl(
         database.transaction {
             mangaIds.chunked(AGGREGATE_CHUNK_SIZE).forEach { chunk ->
                 // SQLDelight can't compile UPDATE ... FROM.
-                val idPlaceholders = chunk.joinToString(", ") { "?" }
+                val idPlaceholders = LibraryPageSql.placeholders(chunk.size)
                 val sql = """
                     |UPDATE mangas
                     |SET total_count = agg.total_count, read_count = agg.read_count,

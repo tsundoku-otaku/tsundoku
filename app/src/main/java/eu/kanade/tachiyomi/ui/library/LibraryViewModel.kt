@@ -179,10 +179,10 @@ class LibraryViewModel(
 
     @Volatile
     private var pagedDisplayPreferences = DisplayPreferences(
-        downloadBadge = false,
-        unreadBadge = false,
-        localBadge = false,
-        languageBadge = false,
+        downloadBadge = libraryPreferences.downloadBadge.get(),
+        unreadBadge = libraryPreferences.unreadBadge.get(),
+        localBadge = libraryPreferences.localBadge.get(),
+        languageBadge = libraryPreferences.languageBadge.get(),
     )
 
     init {
@@ -420,15 +420,16 @@ class LibraryViewModel(
 
     private fun initPaged(controller: LibraryPagingController) {
         val isNovel = pagedTypeIsNovel()
-        val metaFlow = controller.invalidations
+        val totalFlow = controller.invalidations
             .onStart { emit(Unit) }
-            .map {
-                PagedMeta(
-                    total = getLibraryMangaPaged.awaitFavoriteCount(isNovel),
-                    hasUncategorized = getLibraryMangaPaged.awaitHasUncategorized(isNovel),
-                )
-            }
+            .map { getLibraryMangaPaged.awaitFavoriteCount(isNovel) }
             .distinctUntilChanged()
+        // The probe scans every favorite once they are all categorized, so it only follows total changes eagerly.
+        val uncategorizedFlow = merge(totalFlow.map { }, controller.slowInvalidations(COUNT_INVALIDATION_WINDOW))
+            .conflate()
+            .map { getLibraryMangaPaged.awaitHasUncategorized(isNovel) }
+            .distinctUntilChanged()
+        val metaFlow = combine(totalFlow, uncategorizedFlow, ::PagedMeta)
         // Paged mode never sees the whole list the resident path backfills is_novel from.
         viewModelScope.launchIO {
             val novelSources = getLibraryManga.awaitSourceIds()
@@ -477,6 +478,7 @@ class LibraryViewModel(
                             pagedTotal = paged.total,
                         )
                     }
+                    controller.retainPlans(paged.plans.values)
                 }
         }
 
@@ -526,11 +528,7 @@ class LibraryViewModel(
 
     private fun pagedPlan(category: Category, inputs: PagedInputs): LibraryPagedPlan {
         val prefs = inputs.prefs
-        val isNovel = pagedTypeIsNovel() ?: when (category.contentType) {
-            Category.CONTENT_TYPE_MANGA -> false
-            Category.CONTENT_TYPE_NOVEL -> true
-            else -> null
-        }
+        val isNovel = pagedTypeIsNovel()
         val sortType = mapSort(category.sort)
         val search = inputs.search.spec?.let { pagedSearch(it, inputs) }
         val searchInMemory = search == PagedSearch.Unsupported
@@ -670,6 +668,11 @@ class LibraryViewModel(
             } else {
                 PagedSearch.Sql(LibraryPageSpec.Search(mangaIds = ids.toList()))
             }
+
+        val textField = spec.field == LibrarySearchSpec.Field.TITLE ||
+            spec.field == LibrarySearchSpec.Field.URL ||
+            spec.field == LibrarySearchSpec.Field.TAG
+        if (textField && spec.term.isEmpty()) return PagedSearch.None
 
         return when (spec.field) {
             LibrarySearchSpec.Field.ID -> ids(listOfNotNull(spec.term.toLongOrNull()))
@@ -972,7 +975,7 @@ class LibraryViewModel(
         }
 
         for (item in this) {
-            for (categoryId in item.libraryManga.categories) {
+            for (categoryId in item.libraryManga.categories.distinct()) {
                 val category = visibleCategoryById[categoryId] ?: continue
                 groupedItems[category]?.add(item.id)
             }
@@ -2466,8 +2469,9 @@ class LibraryViewModel(
             val count = when {
                 !showMangaCount -> null
                 !showCategoryTabs -> getItemCountForCategory(category)
-                // Whole library count
-                else -> pagedTotal?.toInt() ?: libraryData.favorites.size
+                // Whole library count, but the paged total ignores filters and search
+                pagedTotal != null -> pagedTotal.toInt().takeIf { !hasActiveFilters && searchQuery.isNullOrEmpty() }
+                else -> libraryData.favorites.size
             }
             return LibraryToolbarTitle(title, count)
         }
