@@ -107,6 +107,14 @@ class MassImportTokenizeLineTest {
     }
 
     @Test
+    fun `apostrophe inside or ending an unquoted url is kept`() {
+        assertEquals(
+            listOf("https://a.example.com/wiki/Rock_'n'"),
+            MassImport.urlTokens("https://a.example.com/wiki/Rock_'n'"),
+        )
+    }
+
+    @Test
     fun `parseUrls matches urlTokens and dedups`() {
         val massImport = MassImport(
             sourceManager = mockk(relaxed = true),

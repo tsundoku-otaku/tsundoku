@@ -35,9 +35,9 @@ class MassImport(
     private val missingSourceHostLogCache = ConcurrentHashMap<String, Boolean>()
 
     companion object {
-        private val GLUE_REGEX = Regex("(?<=[^\\s])(?=https?://)", RegexOption.IGNORE_CASE)
+        private val GLUE_REGEX = Regex("(?<=[^\\s\"'<\\uFEFF])(?=https?://)", RegexOption.IGNORE_CASE)
         private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+\\-.]*://")
-        private val TRAILING_JUNK = charArrayOf(',', ';', '\'', '>', '.')
+        private val TRAILING_JUNK = charArrayOf(',', ';', '>', '.')
 
         // Commas/semicolons don't split tokens: titles and wiki URLs contain them.
         fun tokenizeLine(line: String): List<String> {
@@ -55,10 +55,12 @@ class MassImport(
             }
 
         private fun cleanToken(raw: String): String {
+            val singleQuoted = raw.trimStart('"', '\uFEFF', '<').startsWith('\'')
             val unquoted = raw.trimStart('"', '\'', '\uFEFF', '<')
             val quoteAt = unquoted.indexOf('"')
             val cut = if (quoteAt > 0) unquoted.substring(0, quoteAt) else unquoted
             var token = cut.trimEnd(*TRAILING_JUNK).trim()
+            if (singleQuoted) token = token.trimEnd('\'').trimEnd(*TRAILING_JUNK)
             while (token.endsWith(')') && token.count { it == ')' } > token.count { it == '(' }) {
                 token = token.dropLast(1).trimEnd(*TRAILING_JUNK)
             }
