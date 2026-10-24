@@ -86,6 +86,20 @@ internal fun LibraryPagedPage(
                 )
             }
             // In-memory filters can empty whole pages while later ones still have rows.
+            loadState.append is LoadState.Error || loadState.prepend is LoadState.Error -> {
+                val error = (loadState.append as? LoadState.Error ?: loadState.prepend as LoadState.Error).error
+                EmptyScreen(
+                    message = error.message ?: error.toString(),
+                    modifier = Modifier.padding(contentPadding),
+                    actions = listOf(
+                        EmptyScreenAction(
+                            stringRes = MR.strings.action_retry,
+                            icon = Icons.Outlined.Refresh,
+                            onClick = lazyItems::retry,
+                        ),
+                    ),
+                )
+            }
             refresh is LoadState.Loading ||
                 !loadState.append.endOfPaginationReached ||
                 !loadState.prepend.endOfPaginationReached -> {
@@ -117,7 +131,7 @@ internal fun LibraryPagedPage(
         content(
             items,
             loadState.append is LoadState.Loading,
-            lazyItems::retry.takeIf { loadState.append is LoadState.Error },
+            lazyItems::retry.takeIf { loadState.append is LoadState.Error || loadState.refresh is LoadState.Error },
         ) { cat, manga -> paging.onLongClick(cat, manga, lazyItems.itemSnapshotList.items) }
     }
 }

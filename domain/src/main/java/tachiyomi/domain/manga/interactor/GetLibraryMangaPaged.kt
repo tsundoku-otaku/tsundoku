@@ -117,7 +117,7 @@ class GetLibraryMangaPaged(
         private suspend fun resolveMode(): Mode = when {
             isSmallCategory(categoryId) -> Mode.SMALL
             isSourceDriven(spec) -> Mode.SOURCE
-            spec.isNarrowed -> Mode.NARROWED
+            spec.isNarrowed || categoryId == 0L -> Mode.NARROWED
             else -> Mode.WALK
         }
 
@@ -144,6 +144,18 @@ class GetLibraryMangaPaged(
         }
         val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, bySource = true)
         return rowsInOrder(ids)
+    }
+
+    suspend fun awaitFiltered(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        predicate: (LibraryManga) -> Boolean,
+    ): List<LibraryManga> = withContext(ioDispatcher) {
+        val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec)
+        val result = ArrayList<LibraryManga>()
+        ids.chunked(ROWS_PER_QUERY).forEach { chunk -> rowsInOrder(chunk).filterTo(result, predicate) }
+        result
     }
 
     suspend fun awaitCount(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): Long {
@@ -205,7 +217,7 @@ class GetLibraryMangaPaged(
     fun buildingIndexes(): StateFlow<Boolean> = indexBuildState.asStateFlow()
 
     private suspend fun isSmallCategory(categoryId: Long): Boolean =
-        categoryId != 0L && mangaRepository.countCategoryMembers(categoryId) <= SMALL_CATEGORY_MEMBERS
+        categoryId > 0L && mangaRepository.countCategoryMembers(categoryId) <= SMALL_CATEGORY_MEMBERS
 
     private fun config(): PagingConfig {
         val size = pageSize

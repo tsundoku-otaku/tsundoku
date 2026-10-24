@@ -129,4 +129,40 @@ class GetLibraryMangaPagedTest {
         coVerify(exactly = 1) { repository.getLibraryMangaPageIds(3L, true, -1L, spec, false, true) }
         coVerify(exactly = 0) { repository.getLibraryMangaPage(any(), any(), any(), any(), any(), any()) }
     }
+
+    @Test
+    fun `a filtered load keeps only the passing rows in order`() = runTest {
+        val repository = repository((1L..25L).toList())
+        val paged = GetLibraryMangaPaged(repository, mockk(), mockk(), StandardTestDispatcher(testScheduler))
+
+        val rows = paged.awaitFiltered(3L, true, LibraryPageSpec()) { it.id % 2 == 0L }
+
+        rows.map { it.id } shouldContainExactly (2L..24L step 2).toList()
+    }
+
+    @Test
+    fun `the whole library count of a source pinned search reads the source index`() = runTest {
+        val spec = LibraryPageSpec(search = LibraryPageSpec.Search(sourceIds = listOf(1L)))
+        val repository = repository(emptyList(), sourceDriven = true)
+        coEvery { repository.countCategoryMembers(LibraryPageSpec.ALL_CATEGORIES) } returns 0
+        coEvery { repository.countLibraryMangaPage(any(), any(), any(), any(), any()) } returns 7
+        val paged = GetLibraryMangaPaged(repository, mockk(), mockk(), StandardTestDispatcher(testScheduler))
+
+        paged.awaitCount(LibraryPageSpec.ALL_CATEGORIES, null, spec) shouldBe 7
+
+        coVerify { repository.countLibraryMangaPage(LibraryPageSpec.ALL_CATEGORIES, null, spec, false, true) }
+    }
+
+    @Test
+    fun `the uncategorized bucket reads later pages from one snapshot`() = runTest {
+        val repository = repository((1L..25L).toList())
+        val generation = GetLibraryMangaPaged(repository, mockk(), mockk(), StandardTestDispatcher(testScheduler))
+            .QueryGeneration(categoryId = 0L, isNovel = true, spec = LibraryPageSpec())
+
+        generation.fetch(10, 0).ids shouldContainExactly (1L..10L).toList()
+        generation.fetch(10, 10).ids shouldContainExactly (11L..20L).toList()
+
+        coVerify(exactly = 1) { repository.getLibraryMangaPage(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { repository.getLibraryMangaPageIds(any(), any(), any(), any(), any(), any()) }
+    }
 }

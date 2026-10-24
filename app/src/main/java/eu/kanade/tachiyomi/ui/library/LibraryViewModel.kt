@@ -41,6 +41,7 @@ import eu.kanade.tachiyomi.ui.category.failureMessage
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -424,6 +425,7 @@ class LibraryViewModel(
             .onStart { emit(Unit) }
             .map { getLibraryMangaPaged.awaitFavoriteCount(isNovel) }
             .distinctUntilChanged()
+            .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
         // The probe scans every favorite once they are all categorized, so it only follows total changes eagerly.
         val uncategorizedFlow = merge(totalFlow.map { }, controller.slowInvalidations(COUNT_INVALIDATION_WINDOW))
             .conflate()
@@ -493,6 +495,7 @@ class LibraryViewModel(
                     val exact = plans?.values
                         ?.filter { it.hasExactCount }
                         ?.sortedBy { it.categoryId == 0L }
+                        ?.takeIf { it.isNotEmpty() }
                         ?: return@collectLatest
                     merge(flowOf(Unit), controller.slowInvalidations(COUNT_INVALIDATION_WINDOW))
                         .conflate()
@@ -597,9 +600,9 @@ class LibraryViewModel(
 
     private suspend fun loadPlanFully(plan: LibraryPagedPlan): List<LibraryManga> {
         if (plan.inMemory) return plan.loadInMemory()
-        val rows = getLibraryMangaPaged.awaitAll(plan.categoryId, plan.isNovel, plan.spec)
-        val filter = plan.filter ?: return rows
-        return rows.filter(filter)
+        val filter = plan.filter
+            ?: return getLibraryMangaPaged.awaitAll(plan.categoryId, plan.isNovel, plan.spec)
+        return getLibraryMangaPaged.awaitFiltered(plan.categoryId, plan.isNovel, plan.spec, filter)
     }
 
     private suspend fun loadCategoryInMemory(
@@ -681,7 +684,9 @@ class LibraryViewModel(
         val textField = spec.field == LibrarySearchSpec.Field.TITLE ||
             spec.field == LibrarySearchSpec.Field.URL ||
             spec.field == LibrarySearchSpec.Field.TAG
-        if (textField && spec.term.isEmpty()) return PagedSearch.None
+        if (textField && spec.term.isEmpty()) {
+            return if (spec.field == LibrarySearchSpec.Field.TAG) PagedSearch.Unsupported else PagedSearch.None
+        }
 
         return when (spec.field) {
             LibrarySearchSpec.Field.ID -> ids(listOfNotNull(spec.term.toLongOrNull()))
@@ -692,6 +697,7 @@ class LibraryViewModel(
                 ?.let { PagedSearch.Sql(LibraryPageSpec.Search(likeTerm = it, matchUrl = true)) }
                 ?: PagedSearch.Unsupported
             LibrarySearchSpec.Field.TAG -> like(spec.term)
+                ?.takeIf { ',' !in spec.term }
                 ?.let { PagedSearch.Sql(LibraryPageSpec.Search(likeTerm = it, matchGenre = true)) }
                 ?: PagedSearch.Unsupported
             LibrarySearchSpec.Field.SOURCE ->
@@ -984,7 +990,8 @@ class LibraryViewModel(
         }
 
         for (item in this) {
-            for (categoryId in item.libraryManga.categories.distinct()) {
+            val categories = item.libraryManga.categories
+            for (categoryId in if (categories.size > 1) categories.distinct() else categories) {
                 val category = visibleCategoryById[categoryId] ?: continue
                 groupedItems[category]?.add(item.id)
             }
@@ -1628,8 +1635,10 @@ class LibraryViewModel(
     }
 
     private var lastSelectionCategory: Long? = null
+    private var selectAllJob: Job? = null
 
     fun clearSelection() {
+        selectAllJob?.cancel()
         lastSelectionCategory = null
         mutableState.update { it.copy(selection = setOf(), pagedSelection = emptyMap()) }
     }
@@ -1696,7 +1705,8 @@ class LibraryViewModel(
     private fun selectAllPaged(invert: Boolean) {
         val category = state.value.activeCategory ?: return
         val plan = state.value.pagedPlans[category.id] ?: return
-        viewModelScope.launchIO {
+        selectAllJob?.cancel()
+        selectAllJob = viewModelScope.launchIO {
             val all = loadPlanFully(plan)
             mutableState.update { state ->
                 val newSelection = state.selection.mutate { set ->

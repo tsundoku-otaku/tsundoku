@@ -37,6 +37,8 @@ class LibraryPagedPlan(
 ) {
     val hasExactCount: Boolean get() = !inMemory && filter == null
 
+    val loadsWholeCategory: Boolean get() = inMemory || filter != null
+
     override fun equals(other: Any?): Boolean = other is LibraryPagedPlan && other.key == key
 
     override fun hashCode(): Int = key.hashCode()
@@ -102,9 +104,13 @@ class LibraryPagingController(
                 plan.loadInMemory,
             )
         }
-        val paged = getLibraryMangaPaged.subscribe(plan.categoryId, plan.isNovel, plan.spec, changes)
-        val filter = plan.filter ?: return paged
-        return paged.map { data -> data.filter { filter(it) } }
+        val filter = plan.filter
+        if (filter != null) {
+            return getLibraryMangaPaged.subscribeLoaded(
+                slowInvalidations(IN_MEMORY_INVALIDATION_WINDOW, changes),
+            ) { getLibraryMangaPaged.awaitFiltered(plan.categoryId, plan.isNovel, plan.spec, filter) }
+        }
+        return getLibraryMangaPaged.subscribe(plan.categoryId, plan.isNovel, plan.spec, changes)
     }
 
     companion object {

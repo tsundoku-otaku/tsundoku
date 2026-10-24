@@ -137,4 +137,16 @@ class LibraryPagingSourceTest {
         page.data.map { it.id } shouldContainExactly listOf(1L, 2L, 3L, 4L)
         page.prevKey shouldBe null
     }
+
+    @Test
+    fun `a far away row is tracked again once the window moved on`() = runTest {
+        val source = sourceOver { (1L..200_000L).toList() }
+
+        source.page(PagingSource.LoadParams.Refresh(null, 60_000, false))
+        val far = source.page(append(150_000, 10))
+        val back = source.page(PagingSource.LoadParams.Refresh(0, 10, false))
+
+        far.data.map { it.id }.first() shouldBe 150_001L
+        back.data.map { it.id } shouldContainExactly (1L..10L).toList()
+    }
 }

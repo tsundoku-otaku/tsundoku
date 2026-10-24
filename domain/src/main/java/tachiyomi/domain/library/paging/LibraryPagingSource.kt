@@ -44,6 +44,9 @@ class LibraryPagingSource(
         }
 
         val data = synchronized(firstSeenAt) {
+            if (firstSeenAt.size > MAX_TRACKED_ROWS) {
+                firstSeenAt.values.removeAll { it < offset - MAX_TRACKED_ROWS / 2 || it > offset + MAX_TRACKED_ROWS / 2 }
+            }
             chunk.rows.filterIndexed { index, row ->
                 val at = offset + index
                 val seen = firstSeenAt.getOrPut(row.id) { at }
@@ -57,6 +60,10 @@ class LibraryPagingSource(
             prevKey = offset.takeIf { it > 0 },
             nextKey = chunk.nextOffset,
         )
+    }
+
+    private companion object {
+        const val MAX_TRACKED_ROWS = 50_000
     }
 
     override fun getRefreshKey(state: PagingState<Int, LibraryManga>): Int? {

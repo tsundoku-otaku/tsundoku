@@ -287,7 +287,7 @@ data object NovelsTab : Tab {
                         paging = if (viewModel.paginationEnabled) {
                             LibraryPaging(
                                 items = viewModel::pagedItems,
-                                isInMemory = { state.pagedPlans[it.id]?.inMemory == true },
+                                isInMemory = { state.pagedPlans[it.id]?.loadsWholeCategory == true },
                                 toItem = viewModel::pagedItem,
                                 badgeVersion = state.pagedBadgeVersion,
                                 buildingIndexes = state.pagedBuildingIndexes,

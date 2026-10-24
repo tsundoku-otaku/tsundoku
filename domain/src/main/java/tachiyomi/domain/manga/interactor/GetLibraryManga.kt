@@ -6,6 +6,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
@@ -420,7 +421,7 @@ class GetLibraryManga(
     }
 
     private suspend fun <T> withIoLock(block: suspend () -> T): T =
-        withContext(ioDispatcher) { mutex.withLock { block() } }
+        withContext(ioDispatcher + NonCancellable) { mutex.withLock { block() } }
 
     private suspend fun refreshInternal(force: Boolean, recompute: Boolean = force) {
         mutex.withLock {
