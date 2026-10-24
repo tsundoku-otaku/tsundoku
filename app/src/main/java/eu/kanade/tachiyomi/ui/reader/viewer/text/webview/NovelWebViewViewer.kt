@@ -2337,6 +2337,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 val chapters = currentChapters
                 if (page != null && chapters != null && page.status is Page.State.Error) {
                     // reloadChapter() no-ops here (chapter is Loaded); setChapters re-queues the failed page
+                    page.status = Page.State.Queue
                     setChapters(chapters)
                 } else {
                     activity.viewModel.reloadChapter(fromSource = false)
