@@ -35,18 +35,34 @@ class MassImport(
     private val missingSourceHostLogCache = ConcurrentHashMap<String, Boolean>()
 
     companion object {
-        private val GLUE_REGEX = Regex("(?<=[^\\s])(?=https?://)")
+        private val GLUE_REGEX = Regex("(?<=[^\\s])(?=https?://)", RegexOption.IGNORE_CASE)
         private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+\\-.]*://")
+        private val TRAILING_JUNK = charArrayOf(',', ';', '\'', '>', '.')
 
-        // Shared tokenizer for every entry point so the "valid" count matches what the import
-        // walks. Splits on comma/semicolon/space/tab and de-glues separator-less URLs.
+        // Commas/semicolons don't split tokens: titles and wiki URLs contain them.
         fun tokenizeLine(line: String): List<String> {
             val trimmed = line.trim()
             if (trimmed.isEmpty()) return emptyList()
             return trimmed.replace(GLUE_REGEX, "\n")
-                .split('\n', ',', ';', ' ', '\t')
-                .map { it.trim() }
+                .split('\n', ' ', '\t')
+                .map { cleanToken(it) }
                 .filter { it.isNotEmpty() }
+        }
+
+        fun urlTokens(line: String): List<String> =
+            tokenizeLine(line).filter {
+                it.startsWith("http://", ignoreCase = true) || it.startsWith("https://", ignoreCase = true)
+            }
+
+        private fun cleanToken(raw: String): String {
+            val unquoted = raw.trimStart('"', '\'', '\uFEFF', '<')
+            val quoteAt = unquoted.indexOf('"')
+            val cut = if (quoteAt > 0) unquoted.substring(0, quoteAt) else unquoted
+            var token = cut.trimEnd(*TRAILING_JUNK).trim()
+            while (token.endsWith(')') && token.count { it == ')' } > token.count { it == '(' }) {
+                token = token.dropLast(1).trimEnd(*TRAILING_JUNK)
+            }
+            return token
         }
     }
 
@@ -213,8 +229,7 @@ class MassImport(
 
     fun parseUrls(text: String): List<String> {
         return text.lineSequence()
-            .flatMap { tokenizeLine(it).asSequence() }
-            .filter { it.startsWith("http://") || it.startsWith("https://") }
+            .flatMap { urlTokens(it).asSequence() }
             .distinctBy { urlDedupKey(it) }
             .toList()
     }
@@ -237,7 +252,7 @@ class MassImport(
             emptySet()
         }
 
-        val rawLines = text.lineSequence().flatMap { tokenizeLine(it).asSequence() }
+        val rawLines = text.lineSequence().flatMap { urlTokens(it).asSequence() }
         val validUrls = mutableListOf<String>()
         val invalidUrls = mutableListOf<Pair<String, String>>()
         val duplicateUrls = mutableListOf<String>()
@@ -245,11 +260,6 @@ class MassImport(
         val seenKeys = mutableSetOf<String>()
 
         for (line in rawLines) {
-            if (!line.startsWith("http://") && !line.startsWith("https://")) {
-                invalidUrls.add(line to "Not a valid URL")
-                continue
-            }
-
             val key = urlDedupKey(line)
             if (key in seenKeys) {
                 duplicateUrls.add(line)

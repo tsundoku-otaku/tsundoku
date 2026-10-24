@@ -214,7 +214,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     // Streaming count for the progress denominator; materializing would OOM.
                     // Same tokenizer as the flow below so the denominator matches what is walked.
                     val totalCount = file.bufferedReader().useLines { lines ->
-                        lines.sumOf { raw -> MassImport.tokenizeLine(raw).size }
+                        lines.sumOf { raw -> MassImport.urlTokens(raw).size }
                     }
 
                     // Cold flow re-reads the file on collection; O(1) memory. No dedup: the
@@ -222,7 +222,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     val urlFlow = kotlinx.coroutines.flow.flow {
                         file.bufferedReader().useLines { lines ->
                             for (raw in lines) {
-                                for (t in MassImport.tokenizeLine(raw)) emit(t)
+                                for (t in MassImport.urlTokens(raw)) emit(t)
                             }
                         }
                     }
@@ -1410,7 +1410,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // Lazy, no dedup: persisted count and the worker's progress total must agree, so both
         // tokenize identically. Never materializes the full list.
         private fun rawTextTokenSequence(rawText: String): Sequence<String> {
-            return rawText.lineSequence().flatMap { MassImport.tokenizeLine(it).asSequence() }
+            return rawText.lineSequence().flatMap { MassImport.urlTokens(it).asSequence() }
         }
 
         fun restoreActiveJobsFromWorkManager(context: Context) {
@@ -1697,7 +1697,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 val count = runCatching {
                     staged.bufferedReader().useLines { lines ->
                         val tokens = lines
-                            .flatMap { MassImport.tokenizeLine(it).asSequence() }
+                            .flatMap { MassImport.urlTokens(it).asSequence() }
                             .onEach { if (preview.size < URL_PREVIEW_LIMIT) preview.add(it) }
                         MassImportStore.saveUrlsStreaming(appContext, batchId, tokens)
                     }
@@ -1829,7 +1829,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     for (raw in lines) {
                         // Tokenize first so multi-URL lines route per-host instead of failing URI
                         // parse and spilling to overflow.
-                        for (line in MassImport.tokenizeLine(raw)) {
+                        for (line in MassImport.urlTokens(raw)) {
                             val host = splitHostKey(line)
                             val writer = if (host == null) overflowWriter() else writerFor(host)
                             writer.write(line)
