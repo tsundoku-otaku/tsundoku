@@ -2536,12 +2536,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             if (ttsPrefetchAnchorId == anchorId) return
             ttsPrefetchAnchorId = anchorId
         }
-        val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor) ?: return
-        val nextId = preparedChapter.chapter.id ?: return
-        if (loadedChapterIds.contains(nextId)) return
+        fun release() {
+            if (ttsPrefetchAnchorId == anchorId) ttsPrefetchAnchorId = null
+        }
+        val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor) ?: return release()
+        val nextId = preparedChapter.chapter.id ?: return release()
+        if (loadedChapterIds.contains(nextId)) return release()
 
-        val page = preparedChapter.pages?.firstOrNull() ?: return
-        val loader = page.chapter.pageLoader ?: return
+        val page = preparedChapter.pages?.firstOrNull() ?: return release()
+        val loader = page.chapter.pageLoader ?: return release()
 
         handoffState = TtsHandoffState.PreFetching(anchorChapterId = anchor.chapter.id)
         logcat(LogPriority.DEBUG) { "TTS (WebView): Pre-fetching next chapter ${preparedChapter.chapter.name}" }
