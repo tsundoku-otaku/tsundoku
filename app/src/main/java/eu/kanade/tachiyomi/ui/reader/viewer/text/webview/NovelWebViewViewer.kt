@@ -220,6 +220,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private var handoffState: TtsHandoffState<Pair<ReaderChapter, ReaderPage>> = TtsHandoffState.Idle
 
+    private var ttsPrefetchAnchorId: Long? = null
     private val prefetchCompletedSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     // Survives ttsController.stop() - set when TTS triggers a non-inf-scroll chapter load.
@@ -351,6 +352,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 override fun onHighlightChunk(chunkIndex: Int, chunk: String, startOffset: Int, paragraphIndex: Int) {
                     applyTtsHighlight(chunkIndex, paragraphIndex)
                     saveTtsProgressForChunk(chunkIndex)
+                    val chunkCount = ttsController.ttsChunks.size
+                    if (preferences.novelInfiniteScroll.get() &&
+                        !isPagedModeActive() &&
+                        handoffState.isIdle &&
+                        chunkIndex >= chunkCount / 2 &&
+                        loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) == null
+                    ) {
+                        scope.launch { preFetchNextChapterForTts() }
+                    }
                 }
 
                 override fun onClearHighlights() {
@@ -2521,6 +2531,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private suspend fun preFetchNextChapterForTts() {
         if (!handoffState.isIdle) return
         val anchor = loadedChapters.lastOrNull() ?: currentChapters?.currChapter ?: return
+        val anchorId = anchor.chapter.id
+        if (anchorId != null) {
+            if (ttsPrefetchAnchorId == anchorId) return
+            ttsPrefetchAnchorId = anchorId
+        }
         val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor) ?: return
         val nextId = preparedChapter.chapter.id ?: return
         if (loadedChapterIds.contains(nextId)) return
@@ -2547,7 +2562,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             logcat(LogPriority.WARN) { "TTS (WebView): Pre-fetch failed: ${e.message}" }
         } finally {
             // Drop back to Idle if we never reached Cached (e.g. load failed).
-            if (handoffState.isPreFetching) handoffState = TtsHandoffState.Idle
+            if (handoffState.isPreFetching) {
+                handoffState = TtsHandoffState.Idle
+                if (ttsPrefetchAnchorId == anchorId) ttsPrefetchAnchorId = null
+            }
         }
     }
 
@@ -3035,7 +3053,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // instead of stalling on a cold fetch. Idempotent via the handoffState guard.
                 if (preferences.novelInfiniteScroll.get() &&
                     handoffState.isIdle &&
-                    loadedChapters.getOrNull(currentChapterIndex + 1) == null
+                    loadedChapters.getOrNull(chapterIdx + 1) == null
                 ) {
                     scope.launch { preFetchNextChapterForTts() }
                 }
@@ -3055,6 +3073,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         if (docState == DocState.LOADING_REAL) docState = DocState.LOADING
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
+        ttsPrefetchAnchorId = null
         dispatchTtsState()
         // The loadNextChapter TTS branch skips the JS-latch release, so after a threshold hit during
         // playback runtime.loadingNext stays true and scroll-driven appending never re-fires. Clear
