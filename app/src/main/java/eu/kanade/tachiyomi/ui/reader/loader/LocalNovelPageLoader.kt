@@ -6,6 +6,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import kotlinx.coroutines.CancellationException
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.util.lang.withIOContext
@@ -61,6 +62,10 @@ class LocalNovelPageLoader(
             } else {
                 throw IllegalStateException("Source is not a NovelSource")
             }
+        } catch (e: CancellationException) {
+            // Back to Queue so a later await re-launches the load instead of waiting on LoadPage forever.
+            page.status = Page.State.Queue
+            throw e
         } catch (e: Throwable) {
             logcat(LogPriority.ERROR) {
                 "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}"
