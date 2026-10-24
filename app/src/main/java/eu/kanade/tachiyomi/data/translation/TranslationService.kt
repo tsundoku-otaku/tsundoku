@@ -543,7 +543,8 @@ class TranslationService(
         val allTranslated = mutableListOf<String>()
         // Add previously translated paragraphs
         if (resumeFromChunk > 0) {
-            allTranslated.addAll(existingTmpParagraphs)
+            val skippedParagraphs = chunkParagraphsList.take(resumeFromChunk).sumOf { it.size }
+            allTranslated.addAll(existingTmpParagraphs.take(skippedParagraphs))
         }
 
         var failedChunkIndex = -1
