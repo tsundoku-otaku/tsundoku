@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
 import android.webkit.WebResourceResponse
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -9,10 +10,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import logcat.logcat
 import mihon.core.archive.NOVEL_IMAGE_SCHEME
 import java.io.File
+import java.io.InputStream
 import java.net.URLDecoder
 import java.util.concurrent.ConcurrentHashMap
 
@@ -24,6 +28,12 @@ internal class NovelWebViewImageCache(
     private val cache = ConcurrentHashMap<String, File>()
     private val prefetchJobs = ConcurrentHashMap<String, Job>()
     private val chapterLoaderMap = ConcurrentHashMap<Long, PageLoader>()
+    private val prefetchPermits = Semaphore(MAX_CONCURRENT_PREFETCHES)
+
+    init {
+        val cutoff = System.currentTimeMillis() - STALE_TMP_AGE_MS
+        cacheDir.listFiles { f -> f.name.endsWith(".tmp") && f.lastModified() < cutoff }?.forEach { it.delete() }
+    }
 
     fun intercept(url: String, fallbackChapterId: Long?, fallbackLoader: PageLoader?): WebResourceResponse? {
         if (!url.startsWith(URL_SCHEME_NOVEL_IMAGE)) return null
@@ -63,7 +73,7 @@ internal class NovelWebViewImageCache(
             // Stream source → file (no full-image byte[] held in memory), then serve from the file.
             val wrote = runBlocking {
                 loader.getPageDataStream(imagePath)?.use { input ->
-                    cachedFile.outputStream().use { output -> input.copyTo(output) }
+                    writeAtomically(cachedFile, input)
                     true
                 } ?: false
             }
@@ -110,12 +120,15 @@ internal class NovelWebViewImageCache(
 
         val job = scope.launch(start = CoroutineStart.LAZY, context = Dispatchers.IO) {
             try {
-                val stream = loader.getPageDataStream(imagePath) ?: return@launch
-                val cachedFile = makeCachedFile(cacheKey, imagePath)
-                stream.use { input ->
-                    cachedFile.outputStream().use { output -> input.copyTo(output) }
+                prefetchPermits.withPermit {
+                    if (cache[cacheKey]?.exists() == true) return@withPermit
+                    val stream = loader.getPageDataStream(imagePath) ?: return@withPermit
+                    val cachedFile = makeCachedFile(cacheKey, imagePath)
+                    stream.use { input -> writeAtomically(cachedFile, input) }
+                    if (isActive) cache[cacheKey] = cachedFile else runCatching { cachedFile.delete() }
                 }
-                if (isActive) cache[cacheKey] = cachedFile else runCatching { cachedFile.delete() }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logcat(LogPriority.DEBUG) { "NovelWebViewImageCache: prefetch $imagePath failed: ${e.message}" }
             } finally {
@@ -128,6 +141,21 @@ internal class NovelWebViewImageCache(
             return
         }
         job.start()
+    }
+
+    // A cancelled prefetch keeps copying (blocking IO) while intercept loads the same file, so each
+    // writer fills its own temp file and renames it into place.
+    private fun writeAtomically(target: File, input: InputStream) {
+        val tmp = File.createTempFile(target.name, ".tmp", target.parentFile)
+        try {
+            tmp.outputStream().use { input.copyTo(it) }
+            if (!tmp.renameTo(target)) {
+                target.delete()
+                check(tmp.renameTo(target)) { "rename failed for ${target.name}" }
+            }
+        } finally {
+            tmp.delete()
+        }
     }
 
     private fun buildCacheKey(chapterId: Long?, imagePath: String): String =
@@ -143,6 +171,7 @@ internal class NovelWebViewImageCache(
             .digest(cacheKey.toByteArray())
             .take(16)
             .joinToString("") { "%02x".format(it) }
+        cacheDir.mkdirs()
         return File(cacheDir, "novel-image-$keyHash.$fileSuffix")
     }
 
@@ -173,6 +202,8 @@ internal class NovelWebViewImageCache(
         }
 
     companion object {
+        private const val MAX_CONCURRENT_PREFETCHES = 3
+        private const val STALE_TMP_AGE_MS = 60 * 60 * 1000L
         const val URL_SCHEME_NOVEL_IMAGE = NOVEL_IMAGE_SCHEME
         private val IMAGE_URL_PATTERN = Regex("${Regex.escape(URL_SCHEME_NOVEL_IMAGE)}([^\"'<>\\s]+)")
     }
