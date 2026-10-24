@@ -537,10 +537,11 @@ data class BrowseSourceScreen(
                     onDismissRequest = onDismissRequest,
                     filters = state.pendingFilters, // Use pendingFilters for editing
                     onReset = viewModel::resetFilters,
-                    onFilter = { viewModel.search(filters = state.pendingFilters) }, // Apply pendingFilters on search
+                    onFilter = { viewModel.applyFilters() },
                     onUpdate = viewModel::setFilters,
                     onOpenPresets = viewModel::openPresetSheet,
                     presets = presets,
+                    currentSearchQuery = state.toolbarQuery,
                     onSavePreset = viewModel::saveFilterPreset,
                     onLoadPreset = viewModel::loadFilterPreset,
                     onDeletePreset = viewModel::deleteFilterPreset,
@@ -553,9 +554,10 @@ data class BrowseSourceScreen(
                     onDismissRequest = onDismissRequest,
                     presets = presets,
                     currentFilters = state.filters,
+                    currentSearchQuery = state.toolbarQuery,
                     autoApplyEnabled = autoApplyEnabled,
-                    onSavePreset = { name, setAsDefault ->
-                        viewModel.saveFilterPreset(name, setAsDefault)
+                    onSavePreset = { name, setAsDefault, includeSearchText ->
+                        viewModel.saveFilterPreset(name, setAsDefault, includeSearchText)
                     },
                     onLoadPreset = { presetId ->
                         viewModel.loadFilterPreset(presetId)

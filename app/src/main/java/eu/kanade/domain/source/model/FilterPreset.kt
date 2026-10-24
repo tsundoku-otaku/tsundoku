@@ -9,6 +9,7 @@ data class FilterPreset(
     val name: String,
     val filterState: String, // JSON-encoded filter state
     val isDefault: Boolean = false,
+    val searchQuery: String? = null,
 )
 
 @Serializable

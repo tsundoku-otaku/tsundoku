@@ -3,6 +3,7 @@ package eu.kanade.domain.source.interactor
 import eu.kanade.domain.source.model.FilterPreset
 import eu.kanade.domain.source.model.FilterPresetList
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -23,8 +24,7 @@ class ManageFilterPresets(
     private val preferences: SourcePreferences,
 ) {
     fun getPresets(sourceId: Long): FilterPresetList {
-        val presets = preferences.filterPresets(sourceId).get()
-        return presets
+        return preferences.filterPresets(sourceId).get()
     }
 
     fun getPresetsFlow(sourceId: Long): Flow<List<FilterPreset>> {
@@ -37,6 +37,7 @@ class ManageFilterPresets(
         name: String,
         filters: FilterList,
         setAsDefault: Boolean = false,
+        searchQuery: String? = null,
     ): Result<Unit> {
         return runCatching {
             val filterState = serializeFilters(filters)
@@ -48,6 +49,7 @@ class ManageFilterPresets(
                 name = name,
                 filterState = filterState,
                 isDefault = setAsDefault,
+                searchQuery = searchQuery,
             )
 
             val updatedPresets = if (setAsDefault) {
@@ -65,12 +67,8 @@ class ManageFilterPresets(
         }
     }
 
-    fun loadPresetState(sourceId: Long, presetId: Long): String? {
-        val preset = getPresets(sourceId).presets.find { it.id == presetId }
-        if (preset == null) {
-            logcat(LogPriority.WARN) { "FilterPresets: Preset $presetId not found for sourceId=$sourceId" }
-        }
-        return preset?.filterState
+    fun getPreset(sourceId: Long, presetId: Long): FilterPreset? {
+        return getPresets(sourceId).presets.find { it.id == presetId }
     }
 
     fun deletePreset(sourceId: Long, presetId: Long) {
@@ -86,7 +84,11 @@ class ManageFilterPresets(
     fun setDefaultPreset(sourceId: Long, presetId: Long?) {
         val currentPresets = preferences.filterPresets(sourceId).get()
         val updatedPresets = currentPresets.presets.map { preset ->
-            preset.copy(isDefault = preset.id == presetId)
+            if (preset.id == presetId) {
+                preset.copy(isDefault = true, searchQuery = null)
+            } else {
+                preset.copy(isDefault = false)
+            }
         }
         preferences.filterPresets(sourceId).set(
             FilterPresetList(updatedPresets),
@@ -113,27 +115,26 @@ class ManageFilterPresets(
         fun serializeFilters(filters: FilterList): String {
             val filterStates = filters.mapIndexed { index, filter ->
                 val stateJson = when (filter) {
-                    is eu.kanade.tachiyomi.source.model.Filter.CheckBox -> JsonPrimitive(filter.state)
-                    is eu.kanade.tachiyomi.source.model.Filter.TriState -> JsonPrimitive(filter.state)
-                    is eu.kanade.tachiyomi.source.model.Filter.Text -> JsonPrimitive(filter.state)
-                    is eu.kanade.tachiyomi.source.model.Filter.Select<*> -> JsonPrimitive(filter.state)
-                    is eu.kanade.tachiyomi.source.model.Filter.Sort -> JsonObject(
+                    is Filter.CheckBox -> JsonPrimitive(filter.state)
+                    is Filter.TriState -> JsonPrimitive(filter.state)
+                    is Filter.Text -> JsonPrimitive(filter.state)
+                    is Filter.Select<*> -> JsonPrimitive(filter.state)
+                    is Filter.Sort -> JsonObject(
                         mapOf(
                             "index" to JsonPrimitive(filter.state?.index ?: 0),
                             "ascending" to JsonPrimitive(filter.state?.ascending ?: true),
                         ),
                     )
-                    is eu.kanade.tachiyomi.source.model.Filter.Group<*> -> JsonArray(
+                    is Filter.Group<*> -> JsonArray(
                         filter.state.mapIndexed { i, groupFilter ->
-                            // Break the long conditional into multiple lines to avoid exceeding max line length
-                            val name = if (groupFilter is eu.kanade.tachiyomi.source.model.Filter<*>) {
+                            val name = if (groupFilter is Filter<*>) {
                                 groupFilter.name
                             } else {
                                 ""
                             }
                             val groupState = when (groupFilter) {
-                                is eu.kanade.tachiyomi.source.model.Filter.CheckBox -> JsonPrimitive(groupFilter.state)
-                                is eu.kanade.tachiyomi.source.model.Filter.TriState -> JsonPrimitive(groupFilter.state)
+                                is Filter.CheckBox -> JsonPrimitive(groupFilter.state)
+                                is Filter.TriState -> JsonPrimitive(groupFilter.state)
                                 else -> JsonNull
                             }
                             JsonObject(
@@ -145,8 +146,8 @@ class ManageFilterPresets(
                             )
                         },
                     )
-                    is eu.kanade.tachiyomi.source.model.Filter.Header -> JsonNull
-                    is eu.kanade.tachiyomi.source.model.Filter.Separator -> JsonNull
+                    is Filter.Header -> JsonNull
+                    is Filter.Separator -> JsonNull
                     else -> JsonNull
                 }
                 JsonObject(
@@ -157,8 +158,7 @@ class ManageFilterPresets(
                     ),
                 )
             }
-            val result = JsonArray(filterStates).toString()
-            return result
+            return JsonArray(filterStates).toString()
         }
 
         fun applyPresetState(filters: FilterList, presetState: String) {
@@ -174,30 +174,30 @@ class ManageFilterPresets(
                     val state = stateMap["state"]
 
                     when (filter) {
-                        is eu.kanade.tachiyomi.source.model.Filter.CheckBox -> {
+                        is Filter.CheckBox -> {
                             state?.jsonPrimitive?.booleanOrNull?.let { filter.state = it }
                         }
-                        is eu.kanade.tachiyomi.source.model.Filter.TriState -> {
+                        is Filter.TriState -> {
                             state?.jsonPrimitive?.intOrNull?.let { filter.state = it }
                         }
-                        is eu.kanade.tachiyomi.source.model.Filter.Text -> {
+                        is Filter.Text -> {
                             state?.jsonPrimitive?.content?.let { filter.state = it }
                         }
-                        is eu.kanade.tachiyomi.source.model.Filter.Select<*> -> {
+                        is Filter.Select<*> -> {
                             state?.jsonPrimitive?.intOrNull?.let { filter.state = it }
                         }
-                        is eu.kanade.tachiyomi.source.model.Filter.Sort -> {
+                        is Filter.Sort -> {
                             val sortState = state?.jsonObject
                             if (sortState != null) {
                                 val sortIndex = sortState["index"]?.jsonPrimitive?.intOrNull ?: 0
                                 val ascending = sortState["ascending"]?.jsonPrimitive?.booleanOrNull ?: true
-                                filter.state = eu.kanade.tachiyomi.source.model.Filter.Sort.Selection(
+                                filter.state = Filter.Sort.Selection(
                                     index = sortIndex,
                                     ascending = ascending,
                                 )
                             }
                         }
-                        is eu.kanade.tachiyomi.source.model.Filter.Group<*> -> {
+                        is Filter.Group<*> -> {
                             val groupStates = state?.jsonArray ?: return@forEach
                             groupStates.forEach { groupElement ->
                                 val groupState = groupElement.jsonObject
@@ -208,18 +208,18 @@ class ManageFilterPresets(
                                 val groupFilterState = groupState["state"]
 
                                 when (groupFilter) {
-                                    is eu.kanade.tachiyomi.source.model.Filter.CheckBox -> {
+                                    is Filter.CheckBox -> {
                                         groupFilterState?.jsonPrimitive?.booleanOrNull?.let { groupFilter.state = it }
                                     }
-                                    is eu.kanade.tachiyomi.source.model.Filter.TriState -> {
+                                    is Filter.TriState -> {
                                         groupFilterState?.jsonPrimitive?.intOrNull?.let { groupFilter.state = it }
                                     }
                                     else -> Unit // Ignore other types
                                 }
                             }
                         }
-                        is eu.kanade.tachiyomi.source.model.Filter.Header -> Unit // No state to restore
-                        is eu.kanade.tachiyomi.source.model.Filter.Separator -> Unit // No state to restore
+                        is Filter.Header -> Unit // No state to restore
+                        is Filter.Separator -> Unit // No state to restore
                         else -> Unit
                     }
                 }
