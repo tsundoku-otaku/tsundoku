@@ -4,14 +4,30 @@ import eu.kanade.presentation.reader.settings.RegexReplacement
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import logcat.LogPriority
 import logcat.logcat
+import java.util.Collections
+import java.util.LinkedHashMap
+import java.util.concurrent.ConcurrentHashMap
 
 object RegexReplacementsProcessor {
 
-    private val cache: MutableMap<String, List<Pair<Regex, String>>> =
-        java.util.Collections.synchronizedMap(
-            object : java.util.LinkedHashMap<String, List<Pair<Regex, String>>>(16, 0.75f, true) {
+    private data class CompiledRule(
+        val regex: Regex,
+        val replacement: String,
+        val isRegex: Boolean,
+    ) {
+        val key: String = "${regex.options.sorted()}\u0000${regex.pattern}"
+    }
+
+    @Volatile
+    internal var ruleTimeoutMs: Long = DEFAULT_REGEX_TIMEOUT_MS
+
+    private val timedOutRules: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    private val cache: MutableMap<String, List<CompiledRule>> =
+        Collections.synchronizedMap(
+            object : LinkedHashMap<String, List<CompiledRule>>(16, 0.75f, true) {
                 override fun removeEldestEntry(
-                    eldest: MutableMap.MutableEntry<String, List<Pair<Regex, String>>>,
+                    eldest: MutableMap.MutableEntry<String, List<CompiledRule>>,
                 ) = size > 16
             },
         )
@@ -28,8 +44,8 @@ object RegexReplacementsProcessor {
                         if (!rule.enabled || rule.pattern.isBlank()) return@mapNotNull null
                         try {
                             val options = if (rule.caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-                            if (rule.isRegex) {
-                                Regex(rule.pattern, options) to rule.replacement
+                            val compiledRegex = if (rule.isRegex) {
+                                Regex(rule.pattern, options)
                             } else {
                                 val escapedPattern = Regex.escape(rule.pattern)
                                 val boundedPattern = if (rule.matchWholeWord) {
@@ -37,8 +53,14 @@ object RegexReplacementsProcessor {
                                 } else {
                                     escapedPattern
                                 }
-                                Regex(boundedPattern, options) to rule.replacement
+                                Regex(boundedPattern, options)
                             }
+                            val replacement = if (rule.isRegex) {
+                                rule.replacement
+                            } else {
+                                Regex.escapeReplacement(rule.replacement)
+                            }
+                            CompiledRule(compiledRegex, replacement, rule.isRegex)
                         } catch (e: Exception) {
                             logcat(LogPriority.WARN) { "Failed to compile regex for '${rule.title}': ${e.message}" }
                             null
@@ -52,9 +74,19 @@ object RegexReplacementsProcessor {
         }
 
         var result = content
-        for ((regex, replacement) in compiled) {
+        for (rule in compiled) {
+            if (rule.isRegex && rule.key in timedOutRules) continue
             try {
-                result = regex.replace(result, replacement)
+                result = if (rule.isRegex) {
+                    rule.regex.replaceWithTimeout(result, rule.replacement, ruleTimeoutMs)
+                } else {
+                    rule.regex.replace(result, rule.replacement)
+                }
+            } catch (e: RegexTimeoutException) {
+                timedOutRules.add(rule.key)
+                logcat(LogPriority.WARN) { "Regex '${rule.regex.pattern}' timed out, disabled for this session" }
+            } catch (e: RegexBusyException) {
+                logcat(LogPriority.WARN) { "Regex '${rule.regex.pattern}' skipped, no worker available" }
             } catch (e: Exception) {
                 logcat(LogPriority.WARN) { "Regex replacement failed: ${e.message}" }
             }

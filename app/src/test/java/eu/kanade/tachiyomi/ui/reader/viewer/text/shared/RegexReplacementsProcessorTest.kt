@@ -6,8 +6,13 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 class RegexReplacementsProcessorTest {
 
@@ -140,5 +145,96 @@ class RegexReplacementsProcessorTest {
         val rules = rulesJson(rule("(foo)", "[$1]", isRegex = true))
         val result = RegexReplacementsProcessor.apply("foo", prefs(rules))
         assertEquals("[foo]", result)
+    }
+
+    @Test
+    fun `literal rule treats dollar and backslash in replacement literally`() {
+        val rules = rulesJson(rule("price", "$1 \\o/"))
+        val result = RegexReplacementsProcessor.apply("price tag", prefs(rules))
+        assertEquals("$1 \\o/ tag", result)
+    }
+
+    @Test
+    fun `worker that never finishes times out`() {
+        assertThrows(RegexTimeoutException::class.java) {
+            runWithRegexTimeout(50) { Thread.sleep(10_000) }
+        }
+    }
+
+    @Test
+    fun `worker exceptions are rethrown unwrapped`() {
+        assertThrows(IllegalStateException::class.java) {
+            runWithRegexTimeout(1_000) { error("boom") }
+        }
+    }
+
+    @Test
+    fun `catastrophic pattern times out`() {
+        assertThrows(RegexTimeoutException::class.java) {
+            Regex(CATASTROPHIC_PATTERN).replaceWithTimeout(CATASTROPHIC_INPUT, "x", timeoutMs = 200)
+        }
+    }
+
+    @Test
+    fun `catastrophic rule is skipped and disabled for the session, other rules still apply`() {
+        val rules = rulesJson(
+            rule(CATASTROPHIC_PATTERN, "x", isRegex = true),
+            rule("a", "b"),
+        )
+        val previous = RegexReplacementsProcessor.ruleTimeoutMs
+        try {
+            RegexReplacementsProcessor.ruleTimeoutMs = 200
+            assertEquals("b".repeat(40), RegexReplacementsProcessor.apply(CATASTROPHIC_INPUT, prefs(rules)))
+
+            RegexReplacementsProcessor.ruleTimeoutMs = 60_000
+            val start = System.nanoTime()
+            assertEquals("b".repeat(40), RegexReplacementsProcessor.apply(CATASTROPHIC_INPUT, prefs(rules)))
+            assertTrue(System.nanoTime() - start < 5_000_000_000L)
+        } finally {
+            RegexReplacementsProcessor.ruleTimeoutMs = previous
+        }
+    }
+
+    @Test
+    fun `saturated pool skips a rule without disabling it`() {
+        val rules = rulesJson(rule("x+", "y", isRegex = true))
+        val started = CountDownLatch(MAX_REGEX_WORKERS)
+        val release = CountDownLatch(1)
+        val holders = List(MAX_REGEX_WORKERS) {
+            thread {
+                runCatching {
+                    runWithRegexTimeout(10_000) {
+                        started.countDown()
+                        release.await()
+                    }
+                }
+            }
+        }
+        try {
+            assertTrue(started.await(5, TimeUnit.SECONDS))
+            assertThrows(RegexBusyException::class.java) { runWithRegexTimeout(1_000) {} }
+            assertEquals("axxb", RegexReplacementsProcessor.apply("axxb", prefs(rules)))
+        } finally {
+            release.countDown()
+            holders.forEach { it.join() }
+        }
+        val deadline = System.nanoTime() + 2_000_000_000L
+        var result: String
+        do {
+            result = RegexReplacementsProcessor.apply("axxb", prefs(rules))
+        } while (result != "ayb" && System.nanoTime() < deadline)
+        assertEquals("ayb", result)
+    }
+
+    @Test
+    fun `replaceWithTimeout matches Regex replace for normal input`() {
+        assertEquals("a-b-c", Regex(",").replaceWithTimeout("a,b,c", "-"))
+        assertEquals("A,B", Regex("[a-z]").replaceWithTimeout("a,b") { it.value.uppercase() })
+    }
+
+    private companion object {
+        // The backreference defeats the JDK's loop memoization, so this backtracks exponentially on the JVM too.
+        const val CATASTROPHIC_PATTERN = "(a+)+\\1b"
+        val CATASTROPHIC_INPUT = "a".repeat(40)
     }
 }
