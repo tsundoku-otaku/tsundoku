@@ -36,6 +36,7 @@ import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.translation.model.TranslatedChapter
+import tachiyomi.domain.translation.model.TranslationEngine
 import tachiyomi.domain.translation.model.TranslationLocator
 import tachiyomi.domain.translation.model.TranslationProgress
 import tachiyomi.domain.translation.model.TranslationResult
@@ -450,14 +451,56 @@ class TranslationService(
             }
         }
 
+        // Translate chapter title
+        var translatedTitle: String? = null
+        try {
+            val titleResult = engine.translate(listOf(chapter.name), task.sourceLanguage, task.targetLanguage)
+            if (titleResult is TranslationResult.Success) {
+                translatedTitle = titleResult.translatedTexts.firstOrNull()?.trim()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Failed to translate chapter title: ${chapter.name}" }
+        }
+
+        val translated = translateDocument(
+            content = allContent,
+            locator = locator,
+            task = task,
+            engine = engine,
+            translatedTitle = translatedTitle,
+            progressOf = { PROGRESS_TRANSLATE_START + PROGRESS_TRANSLATE_RANGE * it },
+        )
+        if (!translated) throw IllegalStateException("No translation returned")
+
+        logcat(LogPriority.DEBUG) { "Successfully translated and saved chapter ${chapter.name}" }
+
+        _progressState.update { current ->
+            current.copy(currentChapterProgress = 1f)
+        }
+    }
+
+    /**
+     * Translate one document chunk by chunk and save it under [locator], resuming from a partial
+     * (.tmp) result when allowed. Returns false when the document holds nothing to translate.
+     */
+    private suspend fun translateDocument(
+        content: String,
+        locator: TranslationLocator,
+        task: TranslationTask,
+        engine: TranslationEngine,
+        translatedTitle: String?,
+        progressOf: (Float) -> Float,
+    ): Boolean {
         // Extract and preserve media tags (delegated — fix SRP)
-        val (contentWithoutImages, _) = TranslationHtmlUtils.extractImages(allContent)
+        val (contentWithoutImages, _) = TranslationHtmlUtils.extractImages(content)
 
         // Extract text from HTML (delegated — fix DRY 2.4)
         val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
         val paragraphs = TranslationHtmlUtils.splitParagraphsPreserving(plainText)
 
-        logcat(LogPriority.DEBUG) { "Translating ${paragraphs.size} paragraphs for chapter ${chapter.name}" }
+        logcat(LogPriority.DEBUG) { "Translating ${paragraphs.size} paragraphs for ${locator.chapterName}" }
 
         // Group paragraphs into chunks to improve translation quality
         val chunkSize = translationPreferences.translationChunkSize().get()
@@ -473,6 +516,7 @@ class TranslationService(
         // Check for existing partial translation to resume from
         val existingTmpParagraphs = run {
             val tmp = translatedChapterRepository.getTmpTranslation(locator, task.targetLanguage)
+                ?.takeIf { TranslationCachePolicy.canReuse(it.dateTranslated, task.forceRetranslate, task.createdAt) }
             if (tmp != null) {
                 TranslationHtmlUtils.splitParagraphsPreserving(
                     TranslationHtmlUtils.extractTextFromHtml(tmp.translatedContent),
@@ -482,34 +526,17 @@ class TranslationService(
             }
         }
 
+        // Build per-chunk paragraph lists for context tracking
+        val chunkParagraphsList = chunks.map { c -> TranslationHtmlUtils.splitParagraphsPreserving(c) }
+
         // Determine which chunks were already translated (for resume)
         // We count how many source paragraphs the existing tmp translation covers
-        var resumeFromChunk = 0
-        if (existingTmpParagraphs.isNotEmpty() && !task.forceRetranslate) {
-            var coveredParagraphs = 0
-            for ((i, chunk) in chunks.withIndex()) {
-                val chunkParagraphCount = TranslationHtmlUtils.splitParagraphsPreserving(chunk).size
-                coveredParagraphs += chunkParagraphCount
-                if (coveredParagraphs <= existingTmpParagraphs.size) {
-                    resumeFromChunk = i + 1
-                } else {
-                    break
-                }
-            }
-            if (resumeFromChunk > 0) {
-                logcat(LogPriority.INFO) { "Resuming from chunk $resumeFromChunk/${chunks.size}" }
-            }
-        }
-
-        // Translate chapter title
-        var translatedTitle: String? = null
-        try {
-            val titleResult = engine.translate(listOf(chapter.name), task.sourceLanguage, task.targetLanguage)
-            if (titleResult is TranslationResult.Success) {
-                translatedTitle = titleResult.translatedTexts.firstOrNull()?.trim()
-            }
-        } catch (e: Exception) {
-            logcat(LogPriority.WARN, e) { "Failed to translate chapter title: ${chapter.name}" }
+        val resumeFromChunk = TranslationCachePolicy.resumeChunkCount(
+            chunkParagraphsList.map { it.size },
+            existingTmpParagraphs.size,
+        )
+        if (resumeFromChunk > 0) {
+            logcat(LogPriority.INFO) { "Resuming from chunk $resumeFromChunk/${chunks.size}" }
         }
 
         // Translate chunks and split responses back into paragraphs
@@ -526,8 +553,6 @@ class TranslationService(
         val anchoringParagraphs = translationPreferences.contextualAnchoringParagraphs().get()
         val useAnchoring = isLlmEngine && anchoringEnabled && anchoringParagraphs > 0
 
-        // Build per-chunk paragraph lists for context tracking
-        val chunkParagraphsList = chunks.map { c -> TranslationHtmlUtils.splitParagraphsPreserving(c) }
         // Track the raw paragraphs of the previously translated chunk
         var previousRawParagraphs = emptyList<String>()
         // Track the translated paragraphs of the previous chunk
@@ -547,8 +572,7 @@ class TranslationService(
                 }
                 _progressState.update { current ->
                     current.copy(
-                        currentChapterProgress =
-                        PROGRESS_TRANSLATE_START + PROGRESS_TRANSLATE_RANGE * (chunkIndex + 1f) / chunks.size,
+                        currentChapterProgress = progressOf((chunkIndex + 1f) / chunks.size),
                         currentChunkIndex = chunkIndex + 1,
                     )
                 }
@@ -601,7 +625,8 @@ class TranslationService(
                         }
                         is TranslationResult.Error -> {
                             logcat(LogPriority.ERROR) {
-                                "Translation error chunk ${chunkIndex + 1}/${chunks.size} (attempt $attempt): ${result.message}"
+                                "Translation error chunk ${chunkIndex + 1}/${chunks.size} " +
+                                    "(attempt $attempt): ${result.message}"
                             }
                             if (attempt < MAX_CHUNK_RETRIES) {
                                 delay(RETRY_DELAY_MS)
@@ -634,8 +659,7 @@ class TranslationService(
             // Update sub-progress
             _progressState.update { current ->
                 current.copy(
-                    currentChapterProgress =
-                    PROGRESS_TRANSLATE_START + PROGRESS_TRANSLATE_RANGE * (chunkIndex + 1f) / chunks.size,
+                    currentChapterProgress = progressOf((chunkIndex + 1f) / chunks.size),
                     currentChunkIndex = chunkIndex + 1,
                 )
             }
@@ -652,7 +676,7 @@ class TranslationService(
             if (allTranslated.isNotEmpty()) {
                 savePartialTranslation(locator, task, engine.id.toString(), allTranslated, translatedTitle)
                 logcat(LogPriority.WARN) {
-                    "Saved partial translation (${allTranslated.size} paragraphs) for chapter ${chapter.name}"
+                    "Saved partial translation (${allTranslated.size} paragraphs) for ${locator.chapterName}"
                 }
             }
             throw Exception(
@@ -661,27 +685,31 @@ class TranslationService(
             )
         }
 
-        if (allTranslated.isEmpty()) throw IllegalStateException("No translation returned")
+        if (allTranslated.isEmpty()) return false
 
         // Build final HTML (single source of truth — fix DRY 2.1, HTML escaping — fix 6.5)
         val translatedHtml = TranslationHtmlUtils.buildTranslatedHtml(translatedTitle, allTranslated)
 
         // Save the complete translation
+        saveTranslation(locator, task, engine.id.toString(), translatedHtml)
+        return true
+    }
+
+    private suspend fun saveTranslation(
+        locator: TranslationLocator,
+        task: TranslationTask,
+        engineId: String,
+        html: String,
+    ) {
         val translatedChapter = TranslatedChapter(
             chapterId = task.chapterId,
             mangaId = task.mangaId,
             targetLanguage = task.targetLanguage,
-            engineId = engine.id.toString(),
-            translatedContent = translatedHtml,
+            engineId = engineId,
+            translatedContent = html,
             dateTranslated = System.currentTimeMillis(),
         )
         translatedChapterRepository.upsertTranslation(locator, translatedChapter)
-
-        logcat(LogPriority.DEBUG) { "Successfully translated and saved chapter ${chapter.name}" }
-
-        _progressState.update { current ->
-            current.copy(currentChapterProgress = 1f)
-        }
     }
 
     /** Build the contextual-anchoring prompt sent to LLM engines. */
@@ -931,6 +959,8 @@ class TranslationService(
 
         // Extract plain text from HTML for translation
         val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
+        // Image-only chapters have nothing for the engine.
+        if (plainText.replace(MEDIA_PLACEHOLDER_REGEX, "").isBlank()) return content
 
         logcat(LogPriority.DEBUG) {
             "translateChapterContent: chapter=${locator?.chapterName} srcLang=$srcLang tgtLang=$tgtLang " +
@@ -1088,5 +1118,7 @@ class TranslationService(
 
         /** Number of characters to sample for language detection. */
         private const val DETECT_SAMPLE_SIZE = 500
+
+        private val MEDIA_PLACEHOLDER_REGEX = Regex("""\[IMG_PLACEHOLDER_\d+]""")
     }
 }

@@ -23,4 +23,26 @@ object TranslationCachePolicy {
      * job because one is already cached for the requested target language.
      */
     fun shouldSkipAutoEnqueue(cached: TranslatedChapter?): Boolean = cached != null
+
+    /**
+     * Whether a queued run may reuse a stored translation or partial (.tmp) result
+     * dated [dateTranslated]. A forced run only reuses what it wrote itself, so a retry after
+     * a failure resumes instead of starting the whole book over.
+     */
+    fun canReuse(dateTranslated: Long?, forceRetranslate: Boolean, taskCreatedAt: Long): Boolean =
+        dateTranslated != null && (!forceRetranslate || dateTranslated >= taskCreatedAt)
+
+    /**
+     * Number of leading chunks already covered by [resumedParagraphs] paragraphs of a partial
+     * translation, given each chunk's paragraph count.
+     */
+    fun resumeChunkCount(chunkParagraphCounts: List<Int>, resumedParagraphs: Int): Int {
+        if (resumedParagraphs <= 0) return 0
+        var covered = 0
+        chunkParagraphCounts.forEachIndexed { i, count ->
+            covered += count
+            if (covered > resumedParagraphs) return i
+        }
+        return chunkParagraphCounts.size
+    }
 }
