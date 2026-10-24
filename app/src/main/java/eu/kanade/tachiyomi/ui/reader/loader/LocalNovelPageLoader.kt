@@ -63,7 +63,6 @@ class LocalNovelPageLoader(
                 throw IllegalStateException("Source is not a NovelSource")
             }
         } catch (e: CancellationException) {
-            // Back to Queue so a later await re-launches the load instead of waiting on LoadPage forever.
             page.status = Page.State.Queue
             throw e
         } catch (e: Throwable) {
