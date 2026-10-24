@@ -710,6 +710,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     if (loadedDocumentIsPaged) styler.injectPagedReader()
                     // Fresh DOM lost the --tsundoku-safe-* vars and menuVisible flag; re-apply them.
                     pushReaderChrome()
+                    styler.injectFragmentLinks()
                     restoreScrollPosition()
                     syncShortChapterProgressIfNeeded()
                     // Paged mode's own edge-swipe chevron replaces this button; it would also

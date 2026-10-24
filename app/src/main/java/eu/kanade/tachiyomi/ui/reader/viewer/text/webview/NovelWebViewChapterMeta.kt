@@ -245,6 +245,12 @@ internal object NovelWebViewChapterMeta {
                 resumeTts: function() { Android.requestResumeTts(); },
                 stopTts: function() { Android.requestStopTts(); },
                 setProgress: function(percent) { Android.requestSetProgress(percent); },
+                goToElement: function(el) {
+                    if (!el) return;
+                    var paged = window.$TSUNDOKU_OBJECT_NAME.runtime.$TSUNDOKU_PAGING_ENABLED_KEY;
+                    if (paged && window.__tdPagedGoToElement) window.__tdPagedGoToElement(el);
+                    else el.scrollIntoView({ block: 'start' });
+                },
             };
         """.trimIndent()
     }
