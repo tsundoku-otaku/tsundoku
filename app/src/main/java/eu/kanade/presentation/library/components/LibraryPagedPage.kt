@@ -85,7 +85,6 @@ internal fun LibraryPagedPage(
                     ),
                 )
             }
-            // In-memory filters can empty whole pages while later ones still have rows.
             loadState.append is LoadState.Error || loadState.prepend is LoadState.Error -> {
                 val error = (loadState.append as? LoadState.Error ?: loadState.prepend as LoadState.Error).error
                 EmptyScreen(
@@ -100,6 +99,7 @@ internal fun LibraryPagedPage(
                     ),
                 )
             }
+            // In-memory filters can empty whole pages while later ones still have rows.
             refresh is LoadState.Loading ||
                 !loadState.append.endOfPaginationReached ||
                 !loadState.prepend.endOfPaginationReached -> {
