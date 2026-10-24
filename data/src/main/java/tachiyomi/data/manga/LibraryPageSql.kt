@@ -206,6 +206,7 @@ internal object LibraryPageSql {
 
     private fun membership(categoryId: Long, args: MutableList<Any>, mode: Membership): String {
         return when {
+            categoryId == LibraryPageSpec.ALL_CATEGORIES -> "1"
             categoryId == 0L && mode == Membership.WALK ->
                 "NOT EXISTS (SELECT 1 FROM mangas_categories MC WHERE MC.manga_id = M._id AND MC.category_id <> 0)"
             categoryId == 0L -> "M._id NOT IN (SELECT manga_id FROM mangas_categories WHERE category_id <> 0)"

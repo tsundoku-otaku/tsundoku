@@ -40,6 +40,9 @@ data class LibraryPageSpec(
     )
 
     companion object {
+        // Count scope meaning every category
+        const val ALL_CATEGORIES = -1L
+
         const val SORT_ALPHABETICAL = 0
         const val SORT_LAST_READ = 1
         const val SORT_LAST_UPDATE = 2

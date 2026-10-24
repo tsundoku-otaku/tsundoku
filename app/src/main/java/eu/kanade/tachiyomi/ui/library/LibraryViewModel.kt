@@ -489,7 +489,7 @@ class LibraryViewModel(
                 state.map { it.showMangaCount || !it.searchQuery.isNullOrEmpty() }.distinctUntilChanged(),
             ) { plans, wanted -> plans.takeIf { wanted } }
                 .collectLatest { plans ->
-                    mutableState.update { it.copy(pagedCounts = emptyMap()) }
+                    mutableState.update { it.copy(pagedCounts = emptyMap(), pagedWholeCount = null) }
                     val exact = plans?.values
                         ?.filter { it.hasExactCount }
                         ?.sortedBy { it.categoryId == 0L }
@@ -500,6 +500,15 @@ class LibraryViewModel(
                             for (plan in exact) {
                                 val count = getLibraryMangaPaged.awaitCount(plan.categoryId, plan.isNovel, plan.spec)
                                 mutableState.update { it.copy(pagedCounts = it.pagedCounts + (plan.categoryId to count)) }
+                            }
+                            val first = exact.first()
+                            if (plans.values.all { it.hasExactCount }) {
+                                val whole = getLibraryMangaPaged.awaitCount(
+                                    LibraryPageSpec.ALL_CATEGORIES,
+                                    first.isNovel,
+                                    first.spec,
+                                )
+                                mutableState.update { it.copy(pagedWholeCount = whole) }
                             }
                         }
                 }
@@ -2417,6 +2426,7 @@ class LibraryViewModel(
         val pagedPlans: Map<Long, LibraryPagedPlan> = emptyMap(),
         val pagedTotal: Long? = null,
         val pagedCounts: Map<Long, Long> = emptyMap(),
+        val pagedWholeCount: Long? = null,
         val pagedSelection: Map<Long, Manga> = emptyMap(),
         val pagedBadgeVersion: Int = 0,
         val pagedBuildingIndexes: Boolean = false,
@@ -2469,8 +2479,7 @@ class LibraryViewModel(
             val count = when {
                 !showMangaCount -> null
                 !showCategoryTabs -> getItemCountForCategory(category)
-                // Whole library count, but the paged total ignores filters and search
-                pagedTotal != null -> pagedTotal.toInt().takeIf { !hasActiveFilters && searchQuery.isNullOrEmpty() }
+                pagedTotal != null -> pagedWholeCount?.toInt()
                 else -> libraryData.favorites.size
             }
             return LibraryToolbarTitle(title, count)
