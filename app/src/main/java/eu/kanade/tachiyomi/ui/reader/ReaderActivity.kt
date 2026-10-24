@@ -1222,11 +1222,8 @@ class ReaderActivity : BaseActivity() {
                             isEditing = false
                             (viewer as? NovelWebViewViewer)?.toggleEditMode(isEditing = false, save = false)
                         }
-                    } else {
-                        isEditing = true
-                        if (viewer is NovelWebViewViewer) {
-                            viewer.toggleEditMode(true)
-                        }
+                    } else if (viewer is NovelWebViewViewer) {
+                        isEditing = viewer.toggleEditMode(true)
                     }
                 },
 
