@@ -416,6 +416,14 @@ class BrowseSourceViewModel(
         }
     }
 
+    fun applyFilters() {
+        // Toolbar text may hold a restored preset query that was never submitted
+        search(
+            query = state.value.toolbarQuery?.takeIf { it.isNotBlank() },
+            filters = state.value.pendingFilters,
+        )
+    }
+
     fun searchGenre(genreName: String) {
         val defaultFilters = source.getFilterList()
         var genreExists = false
@@ -604,17 +612,20 @@ class BrowseSourceViewModel(
         _filterPresets.value = manageFilterPresets.getPresets(sourceId).presets
     }
 
-    fun saveFilterPreset(name: String, setAsDefault: Boolean) {
+    fun saveFilterPreset(name: String, setAsDefault: Boolean, includeSearchText: Boolean) {
         if (source !is CatalogueSource) return
 
         logcat(LogPriority.DEBUG) {
-            "BrowseSource: saveFilterPreset name=$name, setAsDefault=$setAsDefault, sourceId=$sourceId"
+            "BrowseSource: saveFilterPreset name=$name, setAsDefault=$setAsDefault, " +
+                "includeSearchText=$includeSearchText, sourceId=$sourceId"
         }
+        val currentQuery = state.value.toolbarQuery?.takeIf { it.isNotBlank() }
         manageFilterPresets.savePreset(
             sourceId = sourceId,
             name = name,
             filters = state.value.pendingFilters, // Save pendingFilters (what user is editing)
             setAsDefault = setAsDefault,
+            searchQuery = if (includeSearchText && !setAsDefault) currentQuery else null,
         )
         // Immediately refresh the presets list
         refreshFilterPresets()
@@ -625,21 +636,22 @@ class BrowseSourceViewModel(
         if (source !is CatalogueSource) return
 
         logcat(LogPriority.DEBUG) { "BrowseSource: loadFilterPreset presetId=$presetId, sourceId=$sourceId" }
-        val presetState = manageFilterPresets.loadPresetState(sourceId, presetId)
-        if (presetState != null) {
+        val preset = manageFilterPresets.getPreset(sourceId, presetId)
+        if (preset != null) {
             logcat(LogPriority.DEBUG) { "BrowseSource: Loaded preset state, applying..." }
             val filters = source.getFilterList()
-            ManageFilterPresets.applyPresetState(filters, presetState)
+            ManageFilterPresets.applyPresetState(filters, preset.filterState)
             // Update pendingFilters directly and open filter dialog
             mutableState.update {
                 it.copy(
                     pendingFilters = filters,
+                    toolbarQuery = preset.searchQuery ?: it.toolbarQuery,
                     dialog = Dialog.Filter,
                 )
             }
             logcat(LogPriority.INFO) { "BrowseSource: Preset applied successfully" }
         } else {
-            logcat(LogPriority.WARN) { "BrowseSource: Preset state is null for presetId=$presetId" }
+            logcat(LogPriority.WARN) { "BrowseSource: Preset not found for presetId=$presetId" }
         }
     }
 
@@ -666,27 +678,6 @@ class BrowseSourceViewModel(
     fun setAutoApplyPresets(enabled: Boolean) {
         logcat(LogPriority.DEBUG) { "BrowseSource: setAutoApplyPresets=$enabled" }
         manageFilterPresets.setAutoApplyEnabled(enabled)
-    }
-
-    private fun applyDefaultPresetIfEnabled() {
-        if (source !is CatalogueSource) return
-        if (!manageFilterPresets.getAutoApplyEnabled()) return
-
-        logcat(LogPriority.DEBUG) { "BrowseSource: applyDefaultPresetIfEnabled sourceId=$sourceId" }
-        val presetState = manageFilterPresets.getDefaultPresetState(sourceId)
-        if (presetState != null) {
-            logcat(LogPriority.DEBUG) { "BrowseSource: Found default preset, applying..." }
-            val filters = source.getFilterList()
-            ManageFilterPresets.applyPresetState(filters, presetState)
-            mutableState.update { it.copy(filters = filters) }
-            // Force a search with the new filters if we are in a search listing
-            if (state.value.listing is Listing.Search) {
-                search(state.value.listing.query, filters)
-            }
-            logcat(LogPriority.INFO) { "BrowseSource: Default preset applied" }
-        } else {
-            logcat(LogPriority.DEBUG) { "BrowseSource: No default preset found" }
-        }
     }
 
     fun setDialog(dialog: Dialog?) {
