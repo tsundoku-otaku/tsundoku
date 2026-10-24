@@ -31,7 +31,9 @@ private val regexExecutor = ThreadPoolExecutor(
     Thread(runnable, "regex-worker-${regexThreadCount.incrementAndGet()}").apply { isDaemon = true }
 }
 
-// Only stops the worker on the JVM; Android's Matcher copies the input to a String and matches natively.
+// Only stops the worker on the JVM; Android's Matcher copies the input to a String and matches natively,
+// so a timed-out match keeps its thread busy until the process ends. After MAX_REGEX_WORKERS of them
+// every regex rule is skipped.
 private class DeadlineCharSequence(
     private val inner: CharSequence,
     private val deadlineNanos: Long,
