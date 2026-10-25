@@ -340,61 +340,13 @@ class BrowseSourceViewModel(
         if (source !is CatalogueSource) return
         // Get fresh filters to avoid reference sharing
         val freshFilters = source.getFilterList()
-        // Copy state from current filters to fresh filters
-        copyFilterState(state.value.filters, freshFilters)
+        ManageFilterPresets.applyPresetState(freshFilters, ManageFilterPresets.serializeFilters(state.value.filters))
 
         mutableState.update {
             it.copy(
                 pendingFilters = freshFilters, // Use fresh filters with copied state
                 dialog = Dialog.Filter,
             )
-        }
-    }
-
-    /**
-     * Copy filter states from source filters to destination filters.
-     * This avoids reference sharing issues where modifying one FilterList affects another.
-     */
-    private fun copyFilterState(source: FilterList, destination: FilterList) {
-        if (source.size != destination.size) return
-
-        source.forEachIndexed { index, srcFilter ->
-            val dstFilter = destination[index]
-
-            when {
-                srcFilter is SourceModelFilter.CheckBox && dstFilter is SourceModelFilter.CheckBox -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.TriState && dstFilter is SourceModelFilter.TriState -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.Text && dstFilter is SourceModelFilter.Text -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.Select<*> && dstFilter is SourceModelFilter.Select<*> -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.Sort && dstFilter is SourceModelFilter.Sort -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.Group<*> && dstFilter is SourceModelFilter.Group<*> -> {
-                    srcFilter.state.forEachIndexed { groupIndex, srcGroupFilter ->
-                        if (groupIndex < dstFilter.state.size) {
-                            val dstGroupFilter = dstFilter.state[groupIndex]
-                            when {
-                                srcGroupFilter is SourceModelFilter.CheckBox &&
-                                    dstGroupFilter is SourceModelFilter.CheckBox -> {
-                                    dstGroupFilter.state = srcGroupFilter.state
-                                }
-                                srcGroupFilter is SourceModelFilter.TriState &&
-                                    dstGroupFilter is SourceModelFilter.TriState -> {
-                                    dstGroupFilter.state = srcGroupFilter.state
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
