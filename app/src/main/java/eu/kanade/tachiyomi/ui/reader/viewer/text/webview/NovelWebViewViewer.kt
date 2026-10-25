@@ -236,6 +236,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     //   READY         real content committed; TTS may read the body and appends may splice onto it
     //   ERROR         error placeholder committed; body counts as ready but has no DOM to append onto
     private enum class DocState { LOADING, LOADING_REAL, READY, ERROR }
+
+    // Set by Retry until the next error page, so a double tap starts one load.
+    private var retryRequested = false
+
+    /** Emits when edit mode ends without the user leaving it, e.g. the chapter failed to load. */
+    val editModeEnded = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private var docState = DocState.LOADING
 
     // Real content or an error placeholder is committed. Error counts as ready so a failed load
@@ -1806,7 +1812,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // transition. ERROR keeps webChapterContentReady true (so a failed load can't block
         // infinite-scroll appends forever) while marking the body un-appendable.
         docState = DocState.ERROR
+        retryRequested = false
         releasePagedChapterSwitchIfPending()
+        if (isEditingMode) {
+            // The error page replaces the edited document, so nothing is left to save.
+            isEditingMode = false
+            activity.viewModel.setHasUnsavedChanges(false)
+            val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.hideSoftInputFromWindow(webView.windowToken, 0)
+            editModeEnded.tryEmit(Unit)
+        }
 
         val theme = preferences.novelTheme.get()
         val backgroundColor = preferences.novelBackgroundColor.get()
@@ -1928,7 +1943,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun toggleEditMode(isEditing: Boolean, save: Boolean = true): Boolean {
-        if (isEditing && docState == DocState.ERROR) {
+        if (isEditing && docState != DocState.READY) {
             activity.toast(activity.stringResource(TDMR.strings.error_cant_edit_error_page))
             return false
         }
@@ -2018,17 +2033,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                             document.head.appendChild(style);
                         }
 
+                        // Only chapter wrappers are editable, since only they are saved.
                         var editTargets = document.querySelectorAll('${CHAPTER_TAG_NAME}');
-                        if (editTargets.length === 0 && document.body) {
-                            document.body.setAttribute('contenteditable', 'true');
-                            document.body.setAttribute('${ATTR_DATA_EDITABLE}', '1');
-                            document.body.setAttribute('tabindex', '0');
-                        } else {
-                            for (var i = 0; i < editTargets.length; i++) {
-                                editTargets[i].setAttribute('contenteditable', 'true');
-                                editTargets[i].setAttribute('${ATTR_DATA_EDITABLE}', '1');
-                                editTargets[i].setAttribute('tabindex', '0');
-                            }
+                        for (var i = 0; i < editTargets.length; i++) {
+                            editTargets[i].setAttribute('contenteditable', 'true');
+                            editTargets[i].setAttribute('${ATTR_DATA_EDITABLE}', '1');
+                            editTargets[i].setAttribute('tabindex', '0');
                         }
 
                         window.$TSUNDOKU_OBJECT_NAME = window.$TSUNDOKU_OBJECT_NAME || {};
@@ -2333,14 +2343,20 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         @JavascriptInterface
         fun retryChapterLoad() {
             activity.runOnUiThread {
-                val page = currentPage
-                val chapters = currentChapters
-                if (page != null && chapters != null && page.status is Page.State.Error) {
-                    // reloadChapter() no-ops here (chapter is Loaded); setChapters re-queues the failed page
-                    page.status = Page.State.Queue
-                    setChapters(chapters)
-                } else {
-                    activity.viewModel.reloadChapter(fromSource = false)
+                if (docState != DocState.ERROR || retryRequested) return@runOnUiThread
+                // The viewer's own copy still points at the previous chapter when the page list failed.
+                val chapters = activity.viewModel.state.value.viewerChapters ?: return@runOnUiThread
+                retryRequested = true
+                isInfiniteScrollPrepend = false
+                val page = chapters.currChapter.pages?.firstOrNull()
+                when {
+                    page?.status is Page.State.Error -> {
+                        page.status = Page.State.Queue
+                        setChapters(chapters)
+                    }
+                    // An empty chapter loaded fine, so only the source can return different text.
+                    page?.status == Page.State.Ready -> activity.viewModel.reloadChapter(fromSource = true)
+                    else -> activity.viewModel.reloadChapter(fromSource = false)
                 }
             }
         }
