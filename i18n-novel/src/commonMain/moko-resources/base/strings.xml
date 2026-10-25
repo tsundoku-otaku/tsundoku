@@ -192,6 +192,8 @@
     <string name="action_edit_appbar">Edit Bottom Bar</string>
     <string name="action_scroll_to_top">Scroll to top</string>
     <string name="action_scroll_to_bottom">Scroll to bottom</string>
+    <string name="action_scroll_to_next_unread">Scroll to next unread</string>
+    <string name="manga_no_unread_chapter">No unread chapter in the list</string>
     <string name="action_translate">Translate</string>
     <string name="action_translate_downloaded">Translate downloaded chapters</string>
     <string name="action_retranslate">Retranslate</string>

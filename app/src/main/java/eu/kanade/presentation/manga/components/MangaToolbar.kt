@@ -124,30 +124,6 @@ fun MangaToolbar(
                             onClick = onClickFilter,
                         ),
                     )
-                    if (onClickScrollToTop != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_scroll_to_top),
-                                onClick = onClickScrollToTop,
-                            ),
-                        )
-                    }
-                    if (onClickScrollToLastRead != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = stringResource(MR.strings.last_read_chapter),
-                                onClick = onClickScrollToLastRead,
-                            ),
-                        )
-                    }
-                    if (onClickScrollToBottom != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_scroll_to_bottom),
-                                onClick = onClickScrollToBottom,
-                            ),
-                        )
-                    }
                     add(
                         AppBar.OverflowAction(
                             title = stringResource(MR.strings.action_webview_refresh),
@@ -256,6 +232,30 @@ fun MangaToolbar(
                             onClick = onClickEditNotes,
                         ),
                     )
+                    if (onClickScrollToTop != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(TDMR.strings.action_scroll_to_top),
+                                onClick = onClickScrollToTop,
+                            ),
+                        )
+                    }
+                    if (onClickScrollToLastRead != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(TDMR.strings.action_scroll_to_next_unread),
+                                onClick = onClickScrollToLastRead,
+                            ),
+                        )
+                    }
+                    if (onClickScrollToBottom != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(TDMR.strings.action_scroll_to_bottom),
+                                onClick = onClickScrollToBottom,
+                            ),
+                        )
+                    }
                 },
             )
         },
