@@ -6,6 +6,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -24,12 +25,21 @@ class ManageFilterPresets(
     private val preferences: SourcePreferences,
 ) {
     fun getPresets(sourceId: Long): FilterPresetList {
-        return preferences.filterPresets(sourceId).get()
+        return withQueries(preferences.filterPresets(sourceId).get(), preferences.filterPresetQueries(sourceId).get())
     }
 
     fun getPresetsFlow(sourceId: Long): Flow<List<FilterPreset>> {
-        return preferences.filterPresets(sourceId).changes()
+        return combine(
+            preferences.filterPresets(sourceId).changes(),
+            preferences.filterPresetQueries(sourceId).changes(),
+            ::withQueries,
+        )
             .map { it.presets }
+    }
+
+    private fun withQueries(list: FilterPresetList, queries: Map<Long, String>): FilterPresetList {
+        if (queries.isEmpty()) return list
+        return FilterPresetList(list.presets.map { it.copy(searchQuery = queries[it.id]) })
     }
 
     fun savePreset(
@@ -49,7 +59,6 @@ class ManageFilterPresets(
                 name = name,
                 filterState = filterState,
                 isDefault = setAsDefault,
-                searchQuery = searchQuery,
             )
 
             val updatedPresets = if (setAsDefault) {
@@ -61,6 +70,10 @@ class ManageFilterPresets(
             preferences.filterPresets(sourceId).set(
                 FilterPresetList(updatedPresets),
             )
+            if (searchQuery != null) {
+                val queries = preferences.filterPresetQueries(sourceId)
+                queries.set(queries.get() + (newPreset.id to searchQuery))
+            }
             logcat(LogPriority.INFO) { "FilterPresets: Saved preset '$name' for sourceId=$sourceId" }
         }.onFailure { error ->
             logcat(LogPriority.ERROR) { "FilterPresets: Failed to save preset: ${error.message}" }
@@ -78,17 +91,15 @@ class ManageFilterPresets(
         preferences.filterPresets(sourceId).set(
             FilterPresetList(updatedPresets),
         )
+        val queries = preferences.filterPresetQueries(sourceId)
+        if (presetId in queries.get()) queries.set(queries.get() - presetId)
         logcat(LogPriority.INFO) { "FilterPresets: Deleted preset ${presetToDelete?.name ?: presetId}" }
     }
 
     fun setDefaultPreset(sourceId: Long, presetId: Long?) {
         val currentPresets = preferences.filterPresets(sourceId).get()
         val updatedPresets = currentPresets.presets.map { preset ->
-            if (preset.id == presetId) {
-                preset.copy(isDefault = true, searchQuery = null)
-            } else {
-                preset.copy(isDefault = false)
-            }
+            preset.copy(isDefault = preset.id == presetId)
         }
         preferences.filterPresets(sourceId).set(
             FilterPresetList(updatedPresets),

@@ -19,14 +19,20 @@ class ManageFilterPresetsTest {
     private class Flag(name: String, state: Boolean = false) : Filter.CheckBox(name, state)
 
     private var stored = FilterPresetList()
+    private var storedQueries = emptyMap<Long, String>()
 
     private val manage = run {
         val pref = mockk<Preference<FilterPresetList>>(relaxed = true)
         every { pref.get() } answers { stored }
         val written = slot<FilterPresetList>()
         every { pref.set(capture(written)) } answers { stored = written.captured }
+        val queries = mockk<Preference<Map<Long, String>>>(relaxed = true)
+        every { queries.get() } answers { storedQueries }
+        val writtenQueries = slot<Map<Long, String>>()
+        every { queries.set(capture(writtenQueries)) } answers { storedQueries = writtenQueries.captured }
         val prefs = mockk<SourcePreferences>(relaxed = true)
         every { prefs.filterPresets(any()) } returns pref
+        every { prefs.filterPresetQueries(any()) } returns queries
         ManageFilterPresets(prefs)
     }
 
@@ -56,15 +62,28 @@ class ManageFilterPresetsTest {
     }
 
     @Test
-    fun `setting a preset as default clears its search query`() {
+    fun `toggling a preset as default keeps its search query`() {
         manage.savePreset(1L, "p", filters(true), searchQuery = "query")
         val id = manage.getPresets(1L).presets.single().id
 
         manage.setDefaultPreset(1L, id)
+        assertTrue(manage.getPresets(1L).presets.single().isDefault)
+        manage.setDefaultPreset(1L, null)
 
-        val preset = manage.getPresets(1L).presets.single()
-        assertTrue(preset.isDefault)
-        assertNull(preset.searchQuery)
+        assertEquals("query", manage.getPresets(1L).presets.single().searchQuery)
+    }
+
+    @Test
+    fun `search queries are stored apart from the presets and dropped on delete`() {
+        manage.savePreset(1L, "p", filters(true), searchQuery = "query")
+        val id = manage.getPresets(1L).presets.single().id
+
+        assertNull(stored.presets.single().searchQuery)
+        assertEquals(mapOf(id to "query"), storedQueries)
+
+        manage.deletePreset(1L, id)
+
+        assertTrue(storedQueries.isEmpty())
     }
 
     @Test
