@@ -95,4 +95,91 @@ class ManageFilterPresetsTest {
         assertFalse(presets.first { it.name == "a" }.isDefault)
         assertTrue(presets.first { it.name == "b" }.isDefault)
     }
+
+    private class Choice(name: String, values: Array<String>, state: Int = 0) : Filter.Select<String>(name, values, state)
+
+    private class Order(values: Array<String>, state: Selection? = null) : Filter.Sort("Order", values, state)
+
+    private class Tags(items: List<Flag>) : Filter.Group<Flag>("Tags", items)
+
+    private fun restore(saved: FilterList, target: FilterList) {
+        ManageFilterPresets.applyPresetState(target, ManageFilterPresets.serializeFilters(saved))
+    }
+
+    @Test
+    fun `restores by name when filters were reordered`() {
+        val target = FilterList(Flag("b"), Flag("a"))
+
+        restore(FilterList(Flag("a", true), Flag("b", false)), target)
+
+        assertTrue((target[1] as Flag).state)
+        assertFalse((target[0] as Flag).state)
+    }
+
+    @Test
+    fun `skips a saved filter the source no longer has`() {
+        val target = FilterList(Flag("b"))
+
+        restore(FilterList(Flag("a", true), Flag("b", true)), target)
+
+        assertTrue((target[0] as Flag).state)
+    }
+
+    @Test
+    fun `select restores its option by name`() {
+        val target = FilterList(Choice("Status", arrayOf("Hiatus", "Ongoing", "Done")))
+
+        restore(FilterList(Choice("Status", arrayOf("All", "Ongoing", "Done"), 1)), target)
+
+        assertEquals(1, (target[0] as Choice).state)
+    }
+
+    @Test
+    fun `select ignores an option that no longer exists`() {
+        val target = FilterList(Choice("Status", arrayOf("All", "Done")))
+
+        restore(FilterList(Choice("Status", arrayOf("All", "Done", "Dropped"), 2)), target)
+
+        assertEquals(0, (target[0] as Choice).state)
+    }
+
+    @Test
+    fun `legacy select index is clamped to the option range`() {
+        val legacy = """[{"index":0,"name":"Status","state":7}]"""
+        val target = FilterList(Choice("Status", arrayOf("All", "Done")))
+
+        ManageFilterPresets.applyPresetState(target, legacy)
+
+        assertEquals(0, (target[0] as Choice).state)
+    }
+
+    @Test
+    fun `sort index outside the options is ignored`() {
+        val target = FilterList(Order(arrayOf("Name")))
+
+        restore(FilterList(Order(arrayOf("Name", "Date", "Rank"), Filter.Sort.Selection(2, false))), target)
+
+        assertNull((target[0] as Order).state)
+    }
+
+    @Test
+    fun `one mismatched entry does not stop later filters`() {
+        val legacy = """[{"index":0,"name":"Tags","state":null},{"index":1,"name":"a","state":true}]"""
+        val target = FilterList(Tags(listOf(Flag("x"))), Flag("a"))
+
+        ManageFilterPresets.applyPresetState(target, legacy)
+
+        assertTrue((target[1] as Flag).state)
+    }
+
+    @Test
+    fun `group items restore by name`() {
+        val target = FilterList(Tags(listOf(Flag("y"), Flag("x"))))
+
+        restore(FilterList(Tags(listOf(Flag("x", true), Flag("y")))), target)
+
+        val items = (target[0] as Tags).state
+        assertTrue(items[1].state)
+        assertFalse(items[0].state)
+    }
 }
