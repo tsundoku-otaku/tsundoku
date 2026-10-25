@@ -66,6 +66,7 @@ internal class NovelWebViewStyler(
 
         val bgColorHex = ThemeUtils.colorToHex(finalBgColor)
         val textColorHex = ThemeUtils.colorToHex(finalTextColor)
+        val linkColorHex = ThemeUtils.colorToHex(ThemeUtils.getLinkColor(activity, finalBgColor, finalTextColor))
 
         val customCss = preferences.novelCustomCss.get()
         val useOriginalFonts = preferences.novelUseOriginalFonts.get()
@@ -122,6 +123,7 @@ internal class NovelWebViewStyler(
                 color: inherit$styleImportance;
                 $fontInheritOverride
             }
+            a:link, a:visited { color: $linkColorHex$styleImportance; }
             $headingSizeRules
             $hideChapterTitleCss
             $hideSeparatorCss
@@ -217,6 +219,7 @@ internal class NovelWebViewStyler(
             ),
         )
         evaluateJs(js)
+        evaluateJs(ThemeUtils.getThemeTokens(activity, preferences, preferences.novelTheme.get()).updateJs)
     }
 
     fun injectScript(

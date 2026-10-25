@@ -348,7 +348,13 @@ internal fun ColumnScope.NovelAppearanceTab(viewModel: ReaderSettingsViewModel, 
         novelThemes.forEach { (labelRes, value) ->
             FilterChip(
                 selected = theme == value,
-                onClick = { viewModel.preferences.novelTheme.set(value) },
+                onClick = {
+                    if (value != "custom") {
+                        viewModel.preferences.novelFontColor.set(0)
+                        viewModel.preferences.novelBackgroundColor.set(0)
+                    }
+                    viewModel.preferences.novelTheme.set(value)
+                },
                 label = { Text(stringResource(labelRes)) },
             )
         }

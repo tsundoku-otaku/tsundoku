@@ -8,61 +8,96 @@ object ThemeUtils {
     data class ThemeTokens(
         val cssVariables: String,
         val jsObject: String,
-    )
+    ) {
+        // Re-applies the tokens to an already-loaded document, which only got them at build time.
+        val updateJs: String
+            get() {
+                val vars = CSS_VAR_REGEX.findAll(cssVariables).joinToString("") {
+                    "r.setProperty('${it.groupValues[1]}','${it.groupValues[2]}');"
+                }
+                return "(function(){var r=document.documentElement.style;$vars" +
+                    "window.TsundokuTheme=$jsObject;})();"
+            }
+    }
+
+    private val CSS_VAR_REGEX = Regex("""(--[\w-]+):\s*(#[0-9A-Fa-f]{6});""")
+
+    internal fun isLight(color: Int): Boolean = readableTextOn(color) == 0xFF000000.toInt()
+
+    private fun luminance(color: Int): Double {
+        fun channel(v: Int): Double {
+            val c = v / 255.0
+            return if (c <= 0.03928) c / 12.92 else Math.pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel((color shr 16) and 0xFF) +
+            0.7152 * channel((color shr 8) and 0xFF) +
+            0.0722 * channel(color and 0xFF)
+    }
+
+    internal fun contrastRatio(a: Int, b: Int): Double {
+        val la = luminance(a)
+        val lb = luminance(b)
+        return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
+    }
+
+    // App accent for links, falling back to the text color when it would be hard to read on the reader bg.
+    fun getLinkColor(activity: Activity, background: Int, text: Int): Int {
+        val accent = resolveColorAttribute(
+            activity.theme,
+            android.util.TypedValue(),
+            com.google.android.material.R.attr.colorPrimary,
+            text.toLong(),
+        )
+        return if (contrastRatio(accent, background) >= 3.0) accent else text
+    }
+
+    internal fun readableTextOn(background: Int): Int {
+        val r = (background shr 16) and 0xFF
+        val g = (background shr 8) and 0xFF
+        val b = background and 0xFF
+        val luma = 0.299 * r + 0.587 * g + 0.114 * b
+        return if (luma < 128) 0xFFE0E0E0.toInt() else 0xFF000000.toInt()
+    }
 
     fun getThemeColors(activity: Activity, preferences: ReaderPreferences, theme: String): Pair<Int, Int> {
         val backgroundColor = preferences.novelBackgroundColor.get()
         val fontColor = preferences.novelFontColor.get()
 
-        return when (theme) {
-            "app" -> {
-                val typedValue = android.util.TypedValue()
-                val actTheme = activity.theme
-                val bgColor = if (actTheme.resolveAttribute(
-                        com.google.android.material.R.attr.colorSurface,
-                        typedValue,
-                        true,
-                    )
-                ) {
-                    typedValue.data
-                } else {
-                    val nightMode = activity.resources.configuration.uiMode and
-                        android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                    if (nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-                        0xFF121212.toInt()
-                    } else {
-                        0xFFFFFFFF.toInt()
-                    }
-                }
-                val textColor = if (actTheme.resolveAttribute(
-                        com.google.android.material.R.attr.colorOnSurface,
-                        typedValue,
-                        true,
-                    )
-                ) {
-                    typedValue.data
-                } else {
-                    val nightMode = activity.resources.configuration.uiMode and
-                        android.content.res.Configuration.UI_MODE_NIGHT_MASK
-                    if (nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES) {
-                        0xFFE0E0E0.toInt()
-                    } else {
-                        0xFF000000.toInt()
-                    }
-                }
-                bgColor to textColor
-            }
+        val (bg, themeText) = when (theme) {
+            "app" -> appColors(activity)
             "dark" -> 0xFF121212.toInt() to 0xFFE0E0E0.toInt()
             "sepia" -> 0xFFF4ECD8.toInt() to 0xFF5B4636.toInt()
             "black" -> 0xFF000000.toInt() to 0xFFCCCCCC.toInt()
             "grey" -> 0xFF292832.toInt() to 0xFFCCCCCC.toInt()
             "custom" -> {
-                val bg = if (backgroundColor != 0) backgroundColor else 0xFFFFFFFF.toInt()
-                val text = if (fontColor != 0) fontColor else 0xFF000000.toInt()
-                bg to text
+                val customBg = if (backgroundColor != 0) backgroundColor else 0xFFFFFFFF.toInt()
+                customBg to readableTextOn(customBg)
             }
             else -> 0xFFFFFFFF.toInt() to 0xFF000000.toInt()
         }
+        return bg to if (fontColor != 0) fontColor else themeText
+    }
+
+    private fun appColors(activity: Activity): Pair<Int, Int> {
+        val typedValue = android.util.TypedValue()
+        val actTheme = activity.theme
+        val isNight = (
+            activity.resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK
+            ) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val bgColor = resolveColorAttribute(
+            actTheme,
+            typedValue,
+            com.google.android.material.R.attr.colorSurface,
+            if (isNight) 0xFF121212 else 0xFFFFFFFF,
+        )
+        val textColor = resolveColorAttribute(
+            actTheme,
+            typedValue,
+            com.google.android.material.R.attr.colorOnSurface,
+            if (isNight) 0xFFE0E0E0 else 0xFF000000,
+        )
+        return bgColor to textColor
     }
 
     fun getThemeTokens(activity: Activity, preferences: ReaderPreferences, theme: String): ThemeTokens {
@@ -146,29 +181,42 @@ object ThemeUtils {
                 com.google.android.material.R.attr.colorOnErrorContainer,
                 0xFF410E0B,
             )
-        val mdSysColorBackground =
+        val followApp = theme == "app"
+        val mdSysColorBackground = if (followApp) {
             resolveColorAttribute(appTheme, typedValue, android.R.attr.colorBackground, readerBgColor.toLong())
-        val mdSysColorOnBackground =
+        } else {
+            readerBgColor
+        }
+        val mdSysColorOnBackground = if (followApp) {
             resolveColorAttribute(
                 appTheme,
                 typedValue,
                 com.google.android.material.R.attr.colorOnBackground,
                 readerTextColor.toLong(),
             )
-        val mdSysColorSurface =
+        } else {
+            readerTextColor
+        }
+        val mdSysColorSurface = if (followApp) {
             resolveColorAttribute(
                 appTheme,
                 typedValue,
                 com.google.android.material.R.attr.colorSurface,
                 readerBgColor.toLong(),
             )
-        val mdSysColorOnSurface =
+        } else {
+            readerBgColor
+        }
+        val mdSysColorOnSurface = if (followApp) {
             resolveColorAttribute(
                 appTheme,
                 typedValue,
                 com.google.android.material.R.attr.colorOnSurface,
                 readerTextColor.toLong(),
             )
+        } else {
+            readerTextColor
+        }
         val mdSysColorSurfaceVariant =
             resolveColorAttribute(
                 appTheme,

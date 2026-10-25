@@ -68,4 +68,39 @@ class ThemeUtilsTest {
         assertEquals("css", tokens.cssVariables)
         assertEquals("js", tokens.jsObject)
     }
+
+    @Test
+    fun `readableTextOn picks light text on dark backgrounds`() {
+        assertEquals(0xFFE0E0E0.toInt(), ThemeUtils.readableTextOn(0xFF000000.toInt()))
+        assertEquals(0xFFE0E0E0.toInt(), ThemeUtils.readableTextOn(0xFF292832.toInt()))
+    }
+
+    @Test
+    fun `readableTextOn picks dark text on light backgrounds`() {
+        assertEquals(0xFF000000.toInt(), ThemeUtils.readableTextOn(0xFFFFFFFF.toInt()))
+        assertEquals(0xFF000000.toInt(), ThemeUtils.readableTextOn(0xFFF4ECD8.toInt()))
+    }
+
+    @Test
+    fun `updateJs re-applies css variables and theme object`() {
+        val tokens = ThemeUtils.ThemeTokens(
+            cssVariables = ":root { --tsundoku-reader-background: #112233; }",
+            jsObject = "{}",
+        )
+        val js = tokens.updateJs
+        assertTrue(js.contains("setProperty('--tsundoku-reader-background','#112233')"), js)
+        assertTrue(js.contains("window.TsundokuTheme={}"), js)
+    }
+
+    @Test
+    fun `contrastRatio is 21 for black on white and 1 for identical colors`() {
+        assertEquals(21.0, ThemeUtils.contrastRatio(0xFF000000.toInt(), 0xFFFFFFFF.toInt()), 0.01)
+        assertEquals(1.0, ThemeUtils.contrastRatio(0xFF336699.toInt(), 0xFF336699.toInt()), 0.001)
+    }
+
+    @Test
+    fun `isLight matches background brightness`() {
+        assertTrue(ThemeUtils.isLight(0xFFF4ECD8.toInt()))
+        assertTrue(!ThemeUtils.isLight(0xFF121212.toInt()))
+    }
 }
