@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import android.app.Activity
+import androidx.core.graphics.ColorUtils
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 
 object ThemeUtils {
@@ -51,12 +52,25 @@ object ThemeUtils {
         return if (contrastRatio(accent, background) >= 3.0) accent else text
     }
 
-    internal fun readableTextOn(background: Int): Int {
-        val r = (background shr 16) and 0xFF
-        val g = (background shr 8) and 0xFF
-        val b = background and 0xFF
-        val luma = 0.299 * r + 0.587 * g + 0.114 * b
-        return if (luma < 128) 0xFFE0E0E0.toInt() else 0xFF000000.toInt()
+    private const val LIGHT_TEXT = 0xFFE0E0E0.toInt()
+    private const val DARK_TEXT = 0xFF000000.toInt()
+
+    // Whichever of the two reader text colors has more contrast, so mid-tone backgrounds don't get the weaker one.
+    internal fun readableTextOn(background: Int): Int =
+        if (contrastRatio(LIGHT_TEXT, background) > contrastRatio(DARK_TEXT, background)) LIGHT_TEXT else DARK_TEXT
+
+    // Below this an explicit font color is treated as unreadable on the background and ignored.
+    private const val MIN_FONT_CONTRAST = 2.0
+
+    fun getErrorColor(background: Int): Int = if (isLight(background)) 0xFFB3261E.toInt() else 0xFFFF6B6B.toInt()
+
+    // Secondary text (headers, separators, hints) as the reader text faded toward its background.
+    fun getMutedColor(background: Int, text: Int): Int = ColorUtils.blendARGB(background, text, 0.6f)
+
+    internal fun colorToCss(color: Int): String {
+        val alpha = (color ushr 24) and 0xFF
+        if (alpha == 0xFF) return colorToHex(color)
+        return "rgba(${(color shr 16) and 0xFF},${(color shr 8) and 0xFF},${color and 0xFF},${"%.3f".format(java.util.Locale.ROOT, alpha / 255.0)})"
     }
 
     fun getThemeColors(activity: Activity, preferences: ReaderPreferences, theme: String): Pair<Int, Int> {
@@ -75,7 +89,8 @@ object ThemeUtils {
             }
             else -> 0xFFFFFFFF.toInt() to 0xFF000000.toInt()
         }
-        return bg to if (fontColor != 0) fontColor else themeText
+        val text = if (fontColor != 0 && contrastRatio(fontColor, bg) >= MIN_FONT_CONTRAST) fontColor else themeText
+        return bg to text
     }
 
     private fun appColors(activity: Activity): Pair<Int, Int> {
@@ -217,22 +232,31 @@ object ThemeUtils {
         } else {
             readerTextColor
         }
-        val mdSysColorSurfaceVariant =
+        val mdSysColorSurfaceVariant = if (followApp) {
             resolveColorAttribute(
                 appTheme,
                 typedValue,
                 com.google.android.material.R.attr.colorSurfaceVariant,
                 0xFFCCC7C0,
             )
-        val mdSysColorOnSurfaceVariant =
+        } else {
+            ColorUtils.blendARGB(readerBgColor, readerTextColor, 0.12f)
+        }
+        val mdSysColorOnSurfaceVariant = if (followApp) {
             resolveColorAttribute(
                 appTheme,
                 typedValue,
                 com.google.android.material.R.attr.colorOnSurfaceVariant,
                 0xFF49454E,
             )
-        val mdSysColorOutline =
+        } else {
+            ColorUtils.blendARGB(readerBgColor, readerTextColor, 0.75f)
+        }
+        val mdSysColorOutline = if (followApp) {
             resolveColorAttribute(appTheme, typedValue, com.google.android.material.R.attr.colorOutline, 0xFF79747E)
+        } else {
+            ColorUtils.blendARGB(readerBgColor, readerTextColor, 0.5f)
+        }
 
         val mdHexColorPrimary = colorToHex(mdSysColorPrimary)
         val mdHexColorOnPrimary = colorToHex(mdSysColorOnPrimary)

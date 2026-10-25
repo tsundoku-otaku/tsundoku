@@ -103,4 +103,16 @@ class ThemeUtilsTest {
         assertTrue(ThemeUtils.isLight(0xFFF4ECD8.toInt()))
         assertTrue(!ThemeUtils.isLight(0xFF121212.toInt()))
     }
+
+    @Test
+    fun `readableTextOn picks the higher contrast text on mid tones`() {
+        assertEquals(0xFF000000.toInt(), ThemeUtils.readableTextOn(0xFF808080.toInt()))
+        assertEquals(0xFFE0E0E0.toInt(), ThemeUtils.readableTextOn(0xFF4A4A4A.toInt()))
+    }
+
+    @Test
+    fun `colorToCss keeps hex for opaque colors and uses rgba otherwise`() {
+        assertEquals("#123456", ThemeUtils.colorToCss(0xFF123456.toInt()))
+        assertEquals("rgba(18,52,86,0.502)", ThemeUtils.colorToCss(0x80123456.toInt()))
+    }
 }

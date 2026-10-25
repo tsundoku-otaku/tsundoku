@@ -349,11 +349,14 @@ internal fun ColumnScope.NovelAppearanceTab(viewModel: ReaderSettingsViewModel, 
             FilterChip(
                 selected = theme == value,
                 onClick = {
-                    if (value != "custom") {
-                        viewModel.preferences.novelFontColor.set(0)
-                        viewModel.preferences.novelBackgroundColor.set(0)
+                    when {
+                        value == "custom" && backgroundColor == 0 -> showBgColorPicker = true
+                        value != "custom" && value != theme -> {
+                            viewModel.preferences.novelFontColor.set(0)
+                            viewModel.preferences.novelBackgroundColor.set(0)
+                        }
                     }
-                    viewModel.preferences.novelTheme.set(value)
+                    if (value != "custom" || backgroundColor != 0) viewModel.preferences.novelTheme.set(value)
                 },
                 label = { Text(stringResource(labelRes)) },
             )
@@ -437,6 +440,8 @@ internal fun ColumnScope.NovelAppearanceTab(viewModel: ReaderSettingsViewModel, 
                         viewModel.preferences.novelBackgroundColor.set(colorValue)
                         if (colorValue != 0) {
                             viewModel.preferences.novelTheme.set("custom")
+                        } else if (theme == "custom") {
+                            viewModel.preferences.novelTheme.set("app")
                         }
                     }
                 },

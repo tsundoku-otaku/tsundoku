@@ -90,6 +90,15 @@ internal class NovelWebViewStyler(
 
         val (fontInheritOverride, headingSizeRules) = fontOverrideCss(sourceCssPriority, useOriginalFonts)
 
+        // Source/inline backgrounds on content blocks would leave light boxes on a dark theme. With
+        // source CSS priority on, the site's look is wanted, so only the contrast guard steps in.
+        val descendantBackgroundReset = if (sourceCssPriority) {
+            ""
+        } else {
+            "p, div, span, section, article, blockquote, font, b, i, em, strong, u, h1, h2, h3, h4, h5, h6, " +
+                "li, ul, ol, table, thead, tbody, tr, td, th, center { background-color: transparent !important; }"
+        }
+
         val hideChapterTitleCss = if (hideChapterTitle) {
             "$CHAPTER_TAG_NAME h1:first-of-type, $CHAPTER_TAG_NAME h2:first-of-type, " +
                 "$CHAPTER_TAG_NAME h3:first-of-type, $CHAPTER_TAG_NAME h4:first-of-type, " +
@@ -124,6 +133,7 @@ internal class NovelWebViewStyler(
                 $fontInheritOverride
             }
             a:link, a:visited { color: $linkColorHex$styleImportance; }
+            $descendantBackgroundReset
             $headingSizeRules
             $hideChapterTitleCss
             $hideSeparatorCss
@@ -220,6 +230,23 @@ internal class NovelWebViewStyler(
         )
         evaluateJs(js)
         evaluateJs(ThemeUtils.getThemeTokens(activity, preferences, preferences.novelTheme.get()).updateJs)
+        injectContrastGuard()
+    }
+
+    fun injectContrastGuard() {
+        if (!preferences.novelSourceCssPriority.get()) return
+        val (bg, text) = ThemeUtils.getThemeColors(activity, preferences, preferences.novelTheme.get())
+        evaluateJs(
+            NovelWebViewJsAssets.loadWith(
+                activity,
+                "contrast-guard.js",
+                mapOf(
+                    "GUARD_ID" to STYLE_ID_CONTRAST_GUARD,
+                    "BG" to ThemeUtils.colorToHex(bg),
+                    "TEXT" to ThemeUtils.colorToHex(text),
+                ),
+            ),
+        )
     }
 
     fun injectScript(
@@ -228,6 +255,7 @@ internal class NovelWebViewStyler(
         buildTsundokuScript: () -> String,
     ) {
         evaluateJs(buildTsundokuScript())
+        if (!isAppend) injectContrastGuard()
 
         // Appends re-run only runOnAppend snippets; one-shot code stays on the initial load so it
         // doesn't fire again on every appended chapter.
@@ -340,6 +368,7 @@ internal class NovelWebViewStyler(
 
     companion object {
         const val STYLE_ID_CUSTOM = "tsundoku-custom-style"
+        const val STYLE_ID_CONTRAST_GUARD = "tsundoku-contrast-guard"
         const val ID_NEXT_CHAPTER_BTN_CONTAINER = "next-chapter-btn-container"
 
         // Sentinel URL the injected @font-face points at; resolved by interceptFont() in the

@@ -968,11 +968,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     }
                     "outline" -> {
                         val outline = RoundedOutlineSpan(highlightColor)
-                        val foreground = ForegroundColorSpan(highlightTextColor)
                         spanned.setSpan(outline, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        spanned.setSpan(foreground, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         ttsSpans.add(spanned to outline)
-                        ttsSpans.add(spanned to foreground)
                     }
                     else -> {
                         val background = BackgroundColorSpan(highlightColor)
@@ -1252,7 +1249,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     val headerView = TextView(activity).apply {
                         text = preparedChapter.chapter.name
                         textSize = 18f
-                        setTextColor(0xFF888888.toInt())
+                        setTextColor(mutedColor())
                         gravity = Gravity.CENTER
                         setPadding(16, 32, 16, 16)
                         isVisible = false
@@ -1300,7 +1297,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             isVisible = !preferences.novelHideChapterSeparator.get()
             text = "──────────"
             textSize = 16f
-            setTextColor(0xFF888888.toInt())
+            setTextColor(mutedColor())
             gravity = Gravity.CENTER
             setPadding(16, 48, 16, 48)
             layoutParams = LinearLayout.LayoutParams(
@@ -1762,7 +1759,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val headerView = TextView(activity).apply {
             text = chapter.chapter.name
             textSize = 18f
-            setTextColor(0xFF888888.toInt())
+            setTextColor(mutedColor())
             gravity = Gravity.CENTER
             setPadding(16, 32, 16, 16)
             // Never show a chapter boundary indicator during infinite scroll.
@@ -2086,6 +2083,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun getThemeColors(theme: String): Pair<Int, Int> =
         ThemeUtils.getThemeColors(activity, preferences, theme)
 
+    private fun mutedColor(): Int {
+        val (bg, text) = getThemeColors(preferences.novelTheme.get())
+        return ThemeUtils.getMutedColor(bg, text)
+    }
+
+    private fun accentColor(): Int {
+        val (bg, text) = getThemeColors(preferences.novelTheme.get())
+        return ThemeUtils.getLinkColor(activity, bg, text)
+    }
+
     private fun setChapterContent(loaded: LoadedChapter, processed: ProcessedContent) {
         textRenderer.render(
             block = loaded.block,
@@ -2145,7 +2152,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             textSize = 16f
             gravity = Gravity.CENTER
             setPadding(32, 64, 32, 64)
-            setTextColor(0xFF888888.toInt())
+            setTextColor(mutedColor())
         }
 
         contentContainer.addView(initialLoadingView)
@@ -2177,7 +2184,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val categoryView = TextView(activity).apply {
             text = fmt.category.localized(activity)
             textSize = 16f
-            setTextColor(0xFFFF5555.toInt())
+            setTextColor(ThemeUtils.getErrorColor(getThemeColors(preferences.novelTheme.get()).first))
             gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(
@@ -2189,7 +2196,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val summaryView = TextView(activity).apply {
             text = fmt.summary
             textSize = 14f
-            setTextColor(0xFF888888.toInt())
+            setTextColor(mutedColor())
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2206,7 +2213,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             text = activity.stringResource(TDMR.strings.novel_error_retry)
             isAllCaps = false
             textSize = 14f
-            setTextColor(0xFF4A90D9.toInt())
+            setTextColor(accentColor())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
