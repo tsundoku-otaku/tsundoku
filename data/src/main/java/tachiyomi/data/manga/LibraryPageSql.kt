@@ -66,8 +66,15 @@ internal object LibraryPageSql {
         bySource: Boolean = false,
     ): LibraryPageQuery = select("M._id", categoryId, isNovel, spec, limit, 0, smallCategory, bySource)
 
-    fun rows(ids: List<Long>): LibraryPageQuery =
-        LibraryPageQuery("SELECT $COLUMNS FROM mangas M WHERE M._id IN (${placeholders(ids.size)})", ids)
+    /** Rows of [ids] that still match the page, so entries changed since a snapshot drop out. */
+    fun rows(ids: List<Long>, categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): LibraryPageQuery {
+        val args = ArrayList<Any>(ids)
+        val where = where(categoryId, isNovel, spec, args, Membership.WALK)
+        return LibraryPageQuery(
+            "SELECT $COLUMNS FROM mangas M WHERE M._id IN (${placeholders(ids.size)}) AND $where",
+            args,
+        )
+    }
 
     /** Rows of [sourceIds], favorite or not, capped at [limit]. */
     fun sourceRows(sourceIds: List<Long>, limit: Long): LibraryPageQuery = LibraryPageQuery(
@@ -143,13 +150,15 @@ internal object LibraryPageSql {
         val branches = listOf(false, true).joinToString(" UNION ALL ") { novel ->
             val where = where(categoryId, novel, spec, args, membership)
             args.add(limit + offset)
-            "SELECT * FROM (SELECT $columns, $key AS _k FROM ${from(bySource)} WHERE $where " +
+            "SELECT * FROM (SELECT M._id, $key AS _k FROM ${from(bySource)} WHERE $where " +
                 "ORDER BY $key $direction, M._id $direction LIMIT ?)"
         }
         args.add(limit)
         args.add(offset)
+        // Only the final page is read whole, so deep offsets skip the category lookup per skipped row.
+        val head = "SELECT _id, _k FROM ($branches) ORDER BY _k $direction, _id $direction LIMIT ? OFFSET ?"
         return LibraryPageQuery(
-            "SELECT * FROM ($branches) ORDER BY _k $direction, _id $direction LIMIT ? OFFSET ?",
+            "SELECT $columns FROM ($head) P JOIN mangas M ON M._id = P._id ORDER BY P._k $direction, P._id $direction",
             args,
         )
     }
@@ -172,15 +181,25 @@ internal object LibraryPageSql {
     fun categoryMembers(categoryId: Long): LibraryPageQuery =
         LibraryPageQuery("SELECT count(*) FROM mangas_categories WHERE category_id = ?", listOf(categoryId))
 
-    fun hasUncategorized(isNovel: Boolean?): LibraryPageQuery {
+    /** With a [scanLimit], only that many favorites are checked. */
+    fun hasUncategorized(isNovel: Boolean?, scanLimit: Long? = null): LibraryPageQuery {
         val args = ArrayList<Any>()
         val sql = buildString {
-            append("SELECT EXISTS (SELECT 1 FROM mangas M WHERE M.favorite = 1")
+            append("SELECT EXISTS (SELECT 1 FROM ")
+            append(if (scanLimit != null) "(SELECT _id FROM mangas M" else "mangas M")
+            append(" WHERE M.favorite = 1")
             if (isNovel != null) {
                 append(" AND M.is_novel = ?")
                 args.add(isNovel.toLong())
             }
-            append(" AND ").append(membership(0L, args, Membership.WALK)).append(")")
+            if (scanLimit != null) {
+                append(" LIMIT ?) M")
+                args.add(scanLimit)
+                append(" WHERE ")
+            } else {
+                append(" AND ")
+            }
+            append(membership(0L, args, Membership.WALK)).append(")")
         }
         return LibraryPageQuery(sql, args)
     }

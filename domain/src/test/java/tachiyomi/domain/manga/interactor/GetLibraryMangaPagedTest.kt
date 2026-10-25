@@ -47,7 +47,7 @@ class GetLibraryMangaPagedTest {
             val limit = arg<Long>(2)
             if (limit < 0) matches else matches.take(limit.toInt())
         }
-        coEvery { repository.getLibraryMangaPageRows(any()) } answers {
+        coEvery { repository.getLibraryMangaPageRows(any(), any(), any(), any()) } answers {
             arg<List<Long>>(0).filterNot { it in deleted }.reversed().map(::row)
         }
         return repository
@@ -71,7 +71,7 @@ class GetLibraryMangaPagedTest {
     }
 
     @Test
-    fun `a narrowed category walks the first page and reads the rest from one snapshot`() = runTest {
+    fun `a narrowed category reads every page from one snapshot`() = runTest {
         val repository = repository((1L..25L).toList())
         val generation = generation(repository, narrowed)
 
@@ -84,7 +84,7 @@ class GetLibraryMangaPagedTest {
         last.ids shouldContainExactly (21L..25L).toList()
         last.nextOffset shouldBe null
         generation.fetch(10, 25).nextOffset shouldBe null
-        coVerify(exactly = 1) { repository.getLibraryMangaPage(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.getLibraryMangaPage(any(), any(), any(), any(), any(), any()) }
         coVerify(exactly = 1) {
             repository.getLibraryMangaPageIds(3L, true, GetLibraryMangaPaged.SNAPSHOT_SIZE + 1L, narrowed, false, false)
         }
@@ -154,7 +154,7 @@ class GetLibraryMangaPagedTest {
     }
 
     @Test
-    fun `the uncategorized bucket reads later pages from one snapshot`() = runTest {
+    fun `the uncategorized bucket reads its pages from one snapshot`() = runTest {
         val repository = repository((1L..25L).toList())
         val generation = GetLibraryMangaPaged(repository, mockk(), mockk(), StandardTestDispatcher(testScheduler))
             .QueryGeneration(categoryId = 0L, isNovel = true, spec = LibraryPageSpec())
@@ -162,7 +162,18 @@ class GetLibraryMangaPagedTest {
         generation.fetch(10, 0).ids shouldContainExactly (1L..10L).toList()
         generation.fetch(10, 10).ids shouldContainExactly (11L..20L).toList()
 
-        coVerify(exactly = 1) { repository.getLibraryMangaPage(any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { repository.getLibraryMangaPage(any(), any(), any(), any(), any(), any()) }
         coVerify(exactly = 1) { repository.getLibraryMangaPageIds(any(), any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `a filtered load of a small category reads its members directly`() = runTest {
+        val repository = repository((1L..5L).toList())
+        coEvery { repository.countCategoryMembers(3L) } returns 5
+        val paged = GetLibraryMangaPaged(repository, mockk(), mockk(), StandardTestDispatcher(testScheduler))
+
+        paged.awaitFiltered(3L, true, LibraryPageSpec()) { true }.map { it.id } shouldContainExactly (1L..5L).toList()
+
+        coVerify { repository.getLibraryMangaPageIds(3L, true, -1L, LibraryPageSpec(), true, false) }
     }
 }

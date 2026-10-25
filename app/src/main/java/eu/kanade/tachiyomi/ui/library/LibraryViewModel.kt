@@ -43,22 +43,21 @@ import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
@@ -155,6 +154,8 @@ class LibraryViewModel(
 
         private val COUNT_INVALIDATION_WINDOW = 10.seconds
 
+        private const val UNCATEGORIZED_QUICK_SCAN = 2_000L
+
         val Factory = viewModelFactory {
             initializer {
                 LibraryViewModel(type = get(TYPE_KEY) ?: LibraryType.All)
@@ -165,15 +166,9 @@ class LibraryViewModel(
     /** Experimental: whether per-category DB pagination is active for this library. */
     val paginationEnabled: Boolean = getLibraryManga.isPaginationEnabled()
 
-    // The download cache emits through a channel, so it is read once and shared.
-    private val downloadVersions: SharedFlow<Int> by lazy {
-        downloadCache.changes
-            .runningFold(0) { version, _ -> version + 1 }
-            .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
-    }
-
     private val paging: LibraryPagingController? = if (paginationEnabled) {
-        LibraryPagingController(viewModelScope, getLibraryMangaPaged, downloadVersions.drop(1).map { })
+        // The download cache replays its latest change to every collector.
+        LibraryPagingController(viewModelScope, getLibraryMangaPaged, downloadCache.changes.drop(1))
     } else {
         null
     }
@@ -426,10 +421,18 @@ class LibraryViewModel(
             .map { getLibraryMangaPaged.awaitFavoriteCount(isNovel) }
             .distinctUntilChanged()
             .shareIn(viewModelScope, SharingStarted.Eagerly, replay = 1)
-        // The probe scans every favorite once they are all categorized, so it only follows total changes eagerly.
-        val uncategorizedFlow = merge(totalFlow.map { }, controller.slowInvalidations(COUNT_INVALIDATION_WINDOW))
-            .conflate()
-            .map { getLibraryMangaPaged.awaitHasUncategorized(isNovel) }
+        // The full probe scans every favorite once they are all categorized, so the first answer checks only a few
+        // and the probe follows only total and category changes eagerly.
+        val uncategorizedFlow = flow {
+            emit(getLibraryMangaPaged.awaitHasUncategorized(isNovel, UNCATEGORIZED_QUICK_SCAN))
+            merge(
+                totalFlow.map { },
+                controller.categoryInvalidations(),
+                controller.slowInvalidations(COUNT_INVALIDATION_WINDOW),
+            )
+                .conflate()
+                .collect { emit(getLibraryMangaPaged.awaitHasUncategorized(isNovel)) }
+        }
             .distinctUntilChanged()
         val metaFlow = combine(totalFlow, uncategorizedFlow, ::PagedMeta)
         // Paged mode never sees the whole list the resident path backfills is_novel from.
@@ -443,15 +446,16 @@ class LibraryViewModel(
             combine(
                 categoriesForType(),
                 getLibraryItemPreferencesFlow(),
-                searchConfigFlow(),
+                searchConfigFlow().map { it to it.spec?.let { spec -> searchSourceIds(spec) }.orEmpty() },
                 combine(getTracksPerManga.subscribe(), getTrackingFiltersFlow(), ::Pair),
                 metaFlow,
-            ) { categories, prefs, search, tracksAndFilters, meta ->
+            ) { categories, prefs, searchAndSources, tracksAndFilters, meta ->
+                val (search, searchSourceIds) = searchAndSources
                 val (tracks, trackingFilters) = tracksAndFilters
                 val inputs = PagedInputs(
                     prefs = prefs,
                     search = search,
-                    searchSourceIds = search.spec?.let { searchSourceIds(it) }.orEmpty(),
+                    searchSourceIds = searchSourceIds,
                     tracks = tracks,
                     trackingFilters = trackingFilters,
                 )
@@ -502,7 +506,9 @@ class LibraryViewModel(
                         .collect {
                             for (plan in exact) {
                                 val count = getLibraryMangaPaged.awaitCount(plan.categoryId, plan.isNovel, plan.spec)
-                                mutableState.update { it.copy(pagedCounts = it.pagedCounts + (plan.categoryId to count)) }
+                                mutableState.update {
+                                    it.copy(pagedCounts = it.pagedCounts + (plan.categoryId to count))
+                                }
                             }
                             val first = exact.first()
                             if (plans.values.all { it.hasExactCount }) {
@@ -524,7 +530,7 @@ class LibraryViewModel(
         }
 
         viewModelScope.launchIO {
-            combine(getLibraryDisplayPreferencesFlow(), downloadVersions) { prefs, _ -> prefs }
+            combine(getLibraryDisplayPreferencesFlow(), downloadCache.changes) { prefs, _ -> prefs }
                 .collect { prefs ->
                     pagedDisplayPreferences = prefs
                     mutableState.update { it.copy(pagedBadgeVersion = it.pagedBadgeVersion + 1) }
@@ -561,8 +567,7 @@ class LibraryViewModel(
         )
 
         val needsItemFilter = hasInMemoryFilters(prefs, inputs.trackingFilters)
-        val dependsOnDownloads = prefs.globalFilterDownloaded ||
-            prefs.filterDownloaded != TriState.DISABLED ||
+        val dependsOnDownloads = prefs.downloadedFilter != TriState.DISABLED ||
             (inMemory && category.sort.type == LibrarySort.Type.DownloadedChapters)
         val key = PagedPlanKey(
             categoryId = category.id,
@@ -586,20 +591,29 @@ class LibraryViewModel(
             null
         }
 
+        val loadInMemory: (suspend () -> List<LibraryManga>)? = if (inMemory) {
+            val search = inputs.search.takeIf { searchInMemory }
+            val load: suspend () -> List<LibraryManga> = {
+                loadCategoryInMemory(category, isNovel, spec, prefs, inputs.tracks, inputs.trackingFilters, search)
+            }
+            load
+        } else {
+            null
+        }
+
         return LibraryPagedPlan(
             key = key,
             categoryId = category.id,
             isNovel = isNovel,
             spec = spec,
-            inMemory = inMemory,
             filter = filter,
             reloadOnDownloads = dependsOnDownloads,
-            loadInMemory = { loadCategoryInMemory(category, isNovel, spec, inputs, searchInMemory) },
+            loadInMemory = loadInMemory,
         )
     }
 
     private suspend fun loadPlanFully(plan: LibraryPagedPlan): List<LibraryManga> {
-        if (plan.inMemory) return plan.loadInMemory()
+        plan.loadInMemory?.let { return it() }
         val filter = plan.filter
             ?: return getLibraryMangaPaged.awaitAll(plan.categoryId, plan.isNovel, plan.spec)
         return getLibraryMangaPaged.awaitFiltered(plan.categoryId, plan.isNovel, plan.spec, filter)
@@ -609,8 +623,10 @@ class LibraryViewModel(
         category: Category,
         isNovel: Boolean?,
         spec: LibraryPageSpec,
-        inputs: PagedInputs,
-        searchInMemory: Boolean,
+        prefs: ItemPreferences,
+        tracks: Map<Long, List<Track>>,
+        trackingFilters: Map<Long, TriState>,
+        search: SearchConfig?,
     ): List<LibraryManga> {
         val rows = getLibraryMangaPaged.awaitAll(category.id, isNovel, spec)
         val displayPreferences = pagedDisplayPreferences
@@ -621,28 +637,22 @@ class LibraryViewModel(
         }
         var items = rows
             .map { buildLibraryItem(it, displayPreferences, (downloadCounts[it.id] ?: 0).toLong()) }
-            .applyFilters(inputs.tracks, inputs.trackingFilters, inputs.prefs)
-        val searchSpec = inputs.search.spec
-        if (searchInMemory && searchSpec != null) {
+            .applyFilters(tracks, trackingFilters, prefs)
+        val searchSpec = search?.spec
+        if (searchSpec != null) {
             items = items.fastFilter {
-                it.matches(
-                    searchSpec,
-                    inputs.search.chapterMatchIds,
-                    inputs.search.metadataMatchIds,
-                    inputs.search.searchContent,
-                )
+                it.matches(searchSpec, search.chapterMatchIds, search.metadataMatchIds, search.searchContent)
             }
         }
         val byId = items.associateBy { it.id }
         val order = mapOf(category to items.map { it.id })
-            .applySort(byId, inputs.tracks, inputs.trackingFilters.keys)[category]
+            .applySort(byId, tracks, trackingFilters.keys)[category]
             .orEmpty()
         return order.mapNotNull { byId[it]?.libraryManga }
     }
 
     private fun hasInMemoryFilters(prefs: ItemPreferences, trackingFilters: Map<Long, TriState>): Boolean {
-        return prefs.globalFilterDownloaded ||
-            prefs.filterDownloaded != TriState.DISABLED ||
+        return prefs.downloadedFilter != TriState.DISABLED ||
             prefs.filterNovel != TriState.DISABLED ||
             prefs.filterNoTags != TriState.DISABLED ||
             prefs.includedTags.isNotEmpty() ||
@@ -793,9 +803,7 @@ class LibraryViewModel(
         trackingFilter: Map<Long, TriState>,
         preferences: ItemPreferences,
     ): List<LibraryItem> {
-        val downloadedOnly = preferences.globalFilterDownloaded
-        val filterDownloaded = if (downloadedOnly) TriState.ENABLED_IS else preferences.filterDownloaded
-        val downloadCounts = if (filterDownloaded != TriState.DISABLED) {
+        val downloadCounts = if (preferences.downloadedFilter != TriState.DISABLED) {
             downloadManager.getDownloadCounts(map { it.libraryManga.manga })
         } else {
             emptyMap()
@@ -810,9 +818,8 @@ class LibraryViewModel(
         preferences: ItemPreferences,
         downloadCount: (LibraryItem) -> Int,
     ): (LibraryItem) -> Boolean {
-        val downloadedOnly = preferences.globalFilterDownloaded
         val skipOutsideReleasePeriod = preferences.skipOutsideReleasePeriod
-        val filterDownloaded = if (downloadedOnly) TriState.ENABLED_IS else preferences.filterDownloaded
+        val filterDownloaded = preferences.downloadedFilter
         val filterUnread = preferences.filterUnread
         val filterStarted = preferences.filterStarted
         val filterBookmarked = preferences.filterBookmarked
@@ -2381,7 +2388,10 @@ class LibraryViewModel(
         val tagCaseSensitive: Boolean,
         val filterChapterCount: TriState = TriState.DISABLED,
         val filterChapterCountThreshold: Int = 10,
-    )
+    ) {
+        val downloadedFilter: TriState
+            get() = if (globalFilterDownloaded) TriState.ENABLED_IS else filterDownloaded
+    }
 
     /**
      * Configuration for library search.

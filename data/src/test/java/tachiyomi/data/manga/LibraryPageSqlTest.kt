@@ -309,7 +309,9 @@ class LibraryPageSqlTest {
         val spec = spec(sortType, ascending)
 
         val everything = ids(LibraryPageSql.page(0L, null, spec, limit = null, offset = 0))
-        val paged = (0L until 600L step 50).flatMap { ids(LibraryPageSql.page(0L, null, spec, limit = 50, offset = it)) }
+        val paged = (0L until 600L step 50).flatMap {
+            ids(LibraryPageSql.page(0L, null, spec, limit = 50, offset = it))
+        }
 
         paged shouldContainExactly everything
         plan(LibraryPageSql.page(0L, null, spec, limit = 50, offset = 100)) shouldContain "idx_library_page_"
@@ -455,10 +457,47 @@ class LibraryPageSqlTest {
     }
 
     @Test
-    fun `rows reads the given ids`() {
-        insert((1L..5L).map { Row(it, "Title $it") })
+    fun `rows reads the given ids that still match the page`() {
+        insert(
+            listOf(
+                Row(1, "a"),
+                Row(2, "b"),
+                Row(3, "c", favorite = false),
+                Row(4, "d", categories = listOf(7L)),
+                Row(5, "e", total = 3, read = 1),
+            ),
+        )
+        val all = (1L..5L).toList()
+        val base = spec(LibraryPageSpec.SORT_DATE_ADDED, true)
 
-        ids(LibraryPageSql.rows(listOf(4L, 2L))) shouldContainExactlyInAnyOrder listOf(2L, 4L)
+        val picked = LibraryPageSql.rows(listOf(4L, 2L), LibraryPageSpec.ALL_CATEGORIES, null, base)
+
+        ids(picked) shouldContainExactlyInAnyOrder listOf(2L, 4L)
+        ids(LibraryPageSql.rows(all, 0L, false, base)) shouldContainExactlyInAnyOrder listOf(1L, 2L, 5L)
+        ids(LibraryPageSql.rows(all, 0L, false, base.copy(filterUnread = 1))) shouldContainExactly listOf(5L)
+        ids(LibraryPageSql.rows(all, 7L, false, base)) shouldContainExactly listOf(4L)
+    }
+
+    @Test
+    fun `a limited uncategorized probe only checks that many favorites`() {
+        insert((1L..10L).map { Row(it, "Title $it", categories = if (it == 10L) emptyList() else listOf(7L)) })
+
+        single(LibraryPageSql.hasUncategorized(isNovel = false)) shouldBe 1L
+        single(LibraryPageSql.hasUncategorized(isNovel = false, scanLimit = 100)) shouldBe 1L
+        single(LibraryPageSql.hasUncategorized(isNovel = false, scanLimit = 5)) shouldBe 0L
+        single(LibraryPageSql.hasUncategorized(isNovel = true, scanLimit = 100)) shouldBe 0L
+    }
+
+    @Test
+    fun `a mixed library folds ASCII case across both halves`() {
+        insert(
+            listOf(Row(1, "beta"), Row(2, "Alpha", isNovel = true), Row(3, "alpha"), Row(4, "Gamma", isNovel = true)),
+        )
+        val spec = spec(LibraryPageSpec.SORT_ALPHABETICAL, true)
+
+        val paged = (0L until 4L step 2).flatMap { ids(LibraryPageSql.page(0L, null, spec, limit = 2, offset = it)) }
+
+        paged shouldContainExactly listOf(2L, 3L, 1L, 4L)
     }
 
     @Test

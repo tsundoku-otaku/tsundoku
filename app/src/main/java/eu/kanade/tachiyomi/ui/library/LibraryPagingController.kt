@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.ui.library
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.filter
+import dev.icerock.moko.resources.StringResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,7 @@ import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.library.paging.coalesceInvalidations
 import tachiyomi.domain.manga.interactor.GetLibraryMangaPaged
+import tachiyomi.i18n.novel.TDMR
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -30,14 +32,20 @@ class LibraryPagedPlan(
     val categoryId: Long,
     val isNovel: Boolean?,
     val spec: LibraryPageSpec,
-    val inMemory: Boolean,
     val filter: ((LibraryManga) -> Boolean)?,
     val reloadOnDownloads: Boolean,
-    val loadInMemory: suspend () -> List<LibraryManga>,
+    val loadInMemory: (suspend () -> List<LibraryManga>)?,
 ) {
+    val inMemory: Boolean get() = loadInMemory != null
+
     val hasExactCount: Boolean get() = !inMemory && filter == null
 
-    val loadsWholeCategory: Boolean get() = inMemory || filter != null
+    val wholeCategoryNotice: StringResource?
+        get() = when {
+            inMemory -> TDMR.strings.library_paging_bypassed
+            filter != null -> TDMR.strings.library_paging_bypassed_filter
+            else -> null
+        }
 
     override fun equals(other: Any?): Boolean = other is LibraryPagedPlan && other.key == key
 
@@ -67,6 +75,9 @@ class LibraryPagingController(
         scope.launch(Dispatchers.IO) { getLibraryMangaPaged.ensureIndexes() }
     }
 
+    fun categoryInvalidations(): Flow<Unit> =
+        getLibraryMangaPaged.categoryMembershipChanges().coalesceInvalidations(active, INVALIDATION_WINDOW)
+
     fun slowInvalidations(window: Duration, source: Flow<Unit> = invalidations): Flow<Unit> =
         source.coalesceInvalidations(active, window)
 
@@ -77,7 +88,8 @@ class LibraryPagingController(
     fun flowFor(plan: LibraryPagedPlan): Flow<PagingData<LibraryManga>> = synchronized(entries) {
         entries[plan.categoryId]?.takeIf { it.plan == plan }?.let { return it.flow }
         entries.remove(plan.categoryId)?.scope?.cancel()
-        val entryScope = CoroutineScope(scope.coroutineContext + Dispatchers.Default + SupervisorJob(scope.coroutineContext.job))
+        val entryScope =
+            CoroutineScope(scope.coroutineContext + Dispatchers.Default + SupervisorJob(scope.coroutineContext.job))
         val entry = Entry(plan, entryScope, build(plan).cachedIn(entryScope))
         entries[plan.categoryId] = entry
         while (entries.size > MAX_PAGERS) {
@@ -98,10 +110,11 @@ class LibraryPagingController(
 
     private fun build(plan: LibraryPagedPlan): Flow<PagingData<LibraryManga>> {
         val changes = if (plan.reloadOnDownloads) merge(invalidations, downloadInvalidations) else invalidations
-        if (plan.inMemory) {
+        val loadInMemory = plan.loadInMemory
+        if (loadInMemory != null) {
             return getLibraryMangaPaged.subscribeLoaded(
                 slowInvalidations(IN_MEMORY_INVALIDATION_WINDOW, changes),
-                plan.loadInMemory,
+                loadInMemory,
             )
         }
         val filter = plan.filter

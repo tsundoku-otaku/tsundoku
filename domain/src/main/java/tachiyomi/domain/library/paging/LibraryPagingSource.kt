@@ -45,7 +45,9 @@ class LibraryPagingSource(
 
         val data = synchronized(firstSeenAt) {
             if (firstSeenAt.size > MAX_TRACKED_ROWS) {
-                firstSeenAt.values.removeAll { it < offset - MAX_TRACKED_ROWS / 2 || it > offset + MAX_TRACKED_ROWS / 2 }
+                firstSeenAt.values.removeAll {
+                    it < offset - MAX_TRACKED_ROWS / 2 || it > offset + MAX_TRACKED_ROWS / 2
+                }
             }
             chunk.rows.filterIndexed { index, row ->
                 val at = offset + index

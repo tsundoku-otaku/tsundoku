@@ -42,6 +42,8 @@ class GetLibraryMangaPaged(
 
     fun changes(): Flow<Unit> = merge(mangaRepository.libraryTableChanges(), getLibraryManga.pagedChanges())
 
+    fun categoryMembershipChanges(): Flow<Unit> = mangaRepository.categoryMembershipChanges()
+
     fun subscribe(
         categoryId: Long,
         isNovel: Boolean?,
@@ -75,8 +77,8 @@ class GetLibraryMangaPaged(
     }
 
     /**
-     * With few matches every walked page passes everything before it, so a filtered generation walks
-     * its first page, then reads up to [SNAPSHOT_SIZE] ids in one walk and pages through them.
+     * With few matches every walked page passes everything before it, so a filtered generation reads
+     * up to [SNAPSHOT_SIZE] ids in one walk and pages through them.
      */
     internal inner class QueryGeneration(
         private val categoryId: Long,
@@ -89,7 +91,7 @@ class GetLibraryMangaPaged(
 
         suspend fun fetch(limit: Int, offset: Int): LibraryPagingSource.Chunk = withContext(ioDispatcher) {
             val mode = mutex.withLock { resolvedMode ?: resolveMode().also { resolvedMode = it } }
-            val snapshot = if (mode == Mode.SOURCE || (mode == Mode.NARROWED && offset > 0)) {
+            val snapshot = if (mode == Mode.SOURCE || mode == Mode.NARROWED) {
                 mutex.withLock { snapshot ?: takeSnapshot(mode).also { snapshot = it } }
             } else {
                 null
@@ -98,7 +100,7 @@ class GetLibraryMangaPaged(
                 val slice = snapshot.ids.subList(offset, (offset + limit).coerceAtMost(snapshot.ids.size))
                 val end = offset + slice.size
                 return@withContext LibraryPagingSource.Chunk(
-                    rowsInOrder(slice),
+                    rowsInOrder(slice, categoryId, isNovel, spec),
                     end.takeUnless { snapshot.complete && end == snapshot.ids.size },
                 )
             }
@@ -137,13 +139,17 @@ class GetLibraryMangaPaged(
 
     private class Snapshot(val ids: List<Long>, val complete: Boolean)
 
-    suspend fun awaitAll(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): List<LibraryManga> {
+    suspend fun awaitAll(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): List<LibraryManga> = withContext(ioDispatcher) {
         val small = isSmallCategory(categoryId)
         if (small || !isSourceDriven(spec)) {
-            return mangaRepository.getLibraryMangaPage(categoryId, isNovel, null, 0, spec, small)
+            return@withContext mangaRepository.getLibraryMangaPage(categoryId, isNovel, null, 0, spec, small)
         }
         val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, bySource = true)
-        return rowsInOrder(ids)
+        rowsInOrder(ids, categoryId, isNovel, spec)
     }
 
     suspend fun awaitFiltered(
@@ -152,55 +158,71 @@ class GetLibraryMangaPaged(
         spec: LibraryPageSpec,
         predicate: (LibraryManga) -> Boolean,
     ): List<LibraryManga> = withContext(ioDispatcher) {
-        val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec)
+        val small = isSmallCategory(categoryId)
+        val bySource = !small && isSourceDriven(spec)
+        val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, small, bySource)
         val result = ArrayList<LibraryManga>()
-        ids.chunked(ROWS_PER_QUERY).forEach { chunk -> rowsInOrder(chunk).filterTo(result, predicate) }
+        ids.chunked(ROWS_PER_QUERY).forEach { chunk ->
+            rowsInOrder(chunk, categoryId, isNovel, spec).filterTo(result, predicate)
+        }
         result
     }
 
-    suspend fun awaitCount(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): Long {
-        val small = isSmallCategory(categoryId)
-        val bySource = !small && isSourceDriven(spec)
-        return mangaRepository.countLibraryMangaPage(categoryId, isNovel, spec, small, bySource)
-    }
+    suspend fun awaitCount(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): Long =
+        withContext(ioDispatcher) {
+            val small = isSmallCategory(categoryId)
+            val bySource = !small && isSourceDriven(spec)
+            mangaRepository.countLibraryMangaPage(categoryId, isNovel, spec, small, bySource)
+        }
 
-    suspend fun awaitRandom(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): LibraryManga? {
+    suspend fun awaitRandom(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): LibraryManga? = withContext(ioDispatcher) {
         val small = isSmallCategory(categoryId)
         if (!small && isSourceDriven(spec)) {
             val id = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, bySource = true)
-                .randomOrNull() ?: return null
-            return mangaRepository.getLibraryMangaPageRows(listOf(id)).firstOrNull()
+                .randomOrNull() ?: return@withContext null
+            return@withContext mangaRepository.getLibraryMangaPageRows(listOf(id), categoryId, isNovel, spec)
+                .firstOrNull()
         }
         val count = mangaRepository.countLibraryMangaPage(categoryId, isNovel, spec, small)
-        if (count <= 0L) return null
+        if (count <= 0L) return@withContext null
         val offset = Random.nextLong(count)
-        return mangaRepository.getLibraryMangaPage(categoryId, isNovel, 1, offset, spec, small).firstOrNull()
+        mangaRepository.getLibraryMangaPage(categoryId, isNovel, 1, offset, spec, small).firstOrNull()
     }
 
     private suspend fun isSourceDriven(spec: LibraryPageSpec): Boolean =
         mangaRepository.isLibraryPageSourceDriven(spec, SOURCE_DRIVEN_ROWS)
 
-    private suspend fun rowsInOrder(ids: List<Long>): List<LibraryManga> {
+    private suspend fun rowsInOrder(
+        ids: List<Long>,
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): List<LibraryManga> {
         val byId = HashMap<Long, LibraryManga>(ids.size)
         ids.chunked(ROWS_PER_QUERY).forEach { chunk ->
-            mangaRepository.getLibraryMangaPageRows(chunk).associateByTo(byId) { it.id }
+            mangaRepository.getLibraryMangaPageRows(chunk, categoryId, isNovel, spec).associateByTo(byId) { it.id }
         }
         return ids.mapNotNull(byId::get)
     }
 
-    suspend fun awaitFavoriteCount(isNovel: Boolean?): Long = mangaRepository.countFavorites(isNovel)
+    suspend fun awaitFavoriteCount(isNovel: Boolean?): Long =
+        withContext(ioDispatcher) { mangaRepository.countFavorites(isNovel) }
 
-    suspend fun awaitHasUncategorized(isNovel: Boolean?): Boolean =
-        mangaRepository.hasUncategorizedFavorites(isNovel)
+    /** With a [scanLimit], a false answer only covers that many favorites. */
+    suspend fun awaitHasUncategorized(isNovel: Boolean?, scanLimit: Long? = null): Boolean =
+        withContext(ioDispatcher) { mangaRepository.hasUncategorizedFavorites(isNovel, scanLimit) }
 
     // Built lazily so only paged mode pays for the indexes.
     suspend fun ensureIndexes() {
         indexMutex.withLock {
             if (indexesReady) return
-            indexBuildState.value = true
             try {
                 val start = System.currentTimeMillis()
-                val built = mangaRepository.ensureLibraryPagingIndexes()
+                val built = mangaRepository.ensureLibraryPagingIndexes { indexBuildState.value = true }
                 indexesReady = true
                 logcat(LogPriority.INFO) {
                     "GetLibraryMangaPaged: paging indexes ready in ${System.currentTimeMillis() - start}ms (built=$built)"

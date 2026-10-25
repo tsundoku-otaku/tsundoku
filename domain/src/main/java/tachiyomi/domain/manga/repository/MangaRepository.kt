@@ -113,7 +113,13 @@ interface MangaRepository {
         bySource: Boolean = false,
     ): List<Long>
 
-    suspend fun getLibraryMangaPageRows(ids: List<Long>): List<LibraryManga>
+    /** Rows of [ids] that still belong to the page described by the other arguments. */
+    suspend fun getLibraryMangaPageRows(
+        ids: List<Long>,
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): List<LibraryManga>
 
     /** Whether [spec] is pinned to sources with at most [maxRows] rows, read best by source index. */
     suspend fun isLibraryPageSourceDriven(spec: LibraryPageSpec, maxRows: Long): Boolean
@@ -130,12 +136,14 @@ interface MangaRepository {
 
     suspend fun countFavorites(isNovel: Boolean?): Long
 
-    suspend fun hasUncategorizedFavorites(isNovel: Boolean?): Boolean
+    suspend fun hasUncategorizedFavorites(isNovel: Boolean?, scanLimit: Long? = null): Boolean
 
     fun libraryTableChanges(): Flow<Unit>
 
-    /** Returns true when an index had to be built. */
-    suspend fun ensureLibraryPagingIndexes(): Boolean
+    fun categoryMembershipChanges(): Flow<Unit>
+
+    /** Returns true when an index had to be built, calling [onBuild] first. */
+    suspend fun ensureLibraryPagingIndexes(onBuild: () -> Unit = {}): Boolean
 
     suspend fun dropLibraryPagingIndexes()
 

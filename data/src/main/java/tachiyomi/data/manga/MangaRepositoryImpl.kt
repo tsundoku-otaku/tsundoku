@@ -844,9 +844,15 @@ class MangaRepositoryImpl(
         return RawQuery(driver, query) { it.getLong(0)!! }.awaitAsList()
     }
 
-    override suspend fun getLibraryMangaPageRows(ids: List<Long>): List<LibraryManga> {
+    override suspend fun getLibraryMangaPageRows(
+        ids: List<Long>,
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): List<LibraryManga> {
         if (ids.isEmpty()) return emptyList()
-        return RawQuery(driver, LibraryPageSql.rows(ids), ::mapLibraryPageRow).awaitAsList()
+        val query = LibraryPageSql.rows(ids, categoryId, isNovel, spec)
+        return RawQuery(driver, query, ::mapLibraryPageRow).awaitAsList()
     }
 
     override suspend fun isLibraryPageSourceDriven(spec: LibraryPageSpec, maxRows: Long): Boolean {
@@ -874,8 +880,9 @@ class MangaRepositoryImpl(
         return RawQuery(driver, LibraryPageSql.countFavorites(isNovel)) { it.getLong(0)!! }.awaitAsOne()
     }
 
-    override suspend fun hasUncategorizedFavorites(isNovel: Boolean?): Boolean {
-        return RawQuery(driver, LibraryPageSql.hasUncategorized(isNovel)) { it.getLong(0)!! }.awaitAsOne() != 0L
+    override suspend fun hasUncategorizedFavorites(isNovel: Boolean?, scanLimit: Long?): Boolean {
+        val query = LibraryPageSql.hasUncategorized(isNovel, scanLimit)
+        return RawQuery(driver, query) { it.getLong(0)!! }.awaitAsOne() != 0L
     }
 
     override fun libraryTableChanges(): Flow<Unit> = callbackFlow {
@@ -884,7 +891,13 @@ class MangaRepositoryImpl(
         awaitClose { driver.removeListener("mangas", "mangas_categories", listener = listener) }
     }.conflate()
 
-    override suspend fun ensureLibraryPagingIndexes(): Boolean {
+    override fun categoryMembershipChanges(): Flow<Unit> = callbackFlow {
+        val listener = Query.Listener { trySend(Unit) }
+        driver.addListener("mangas_categories", listener = listener)
+        awaitClose { driver.removeListener("mangas_categories", listener = listener) }
+    }.conflate()
+
+    override suspend fun ensureLibraryPagingIndexes(onBuild: () -> Unit): Boolean {
         val existing = RawQuery(
             driver,
             LibraryPageQuery(
@@ -899,6 +912,7 @@ class MangaRepositoryImpl(
                 LibraryPageSql.normalizeDdl(definition) != LibraryPageSql.normalizeDdl(statements[index])
         }
         if (outdated.isEmpty()) return false
+        onBuild()
         outdated.forEach { index ->
             driver.execute(null, "DROP INDEX IF EXISTS ${LibraryPageSql.indexes[index].first}", 0).await()
             driver.execute(null, statements[index], 0).await()

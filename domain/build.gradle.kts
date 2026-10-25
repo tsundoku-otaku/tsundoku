@@ -26,6 +26,7 @@ dependencies {
 
     implementation(libs.unifile)
 
+    api(libs.androidx.paging.common)
     api(libs.sqldelight.androidxPaging)
 
     compileOnly(platform(libs.androidx.compose.bom))

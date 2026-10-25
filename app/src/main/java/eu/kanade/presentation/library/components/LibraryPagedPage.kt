@@ -22,6 +22,7 @@ import androidx.paging.LoadState
 import androidx.paging.PagingData
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
+import dev.icerock.moko.resources.StringResource
 import eu.kanade.tachiyomi.ui.library.LibraryItem
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.category.model.Category
@@ -35,7 +36,7 @@ import tachiyomi.presentation.core.screens.EmptyScreenAction
 @Immutable
 class LibraryPaging(
     val items: (Category) -> Flow<PagingData<LibraryManga>>?,
-    val isInMemory: (Category) -> Boolean,
+    val wholeCategoryNotice: (Category) -> StringResource?,
     val toItem: (LibraryManga) -> LibraryItem,
     // Rows are decorated while rendering, so this forces a redecorate.
     val badgeVersion: Int,
@@ -118,9 +119,9 @@ internal fun LibraryPagedPage(
     }
 
     Column {
-        if (paging.isInMemory(category)) {
+        paging.wholeCategoryNotice(category)?.let { notice ->
             Text(
-                text = stringResource(TDMR.strings.library_paging_bypassed),
+                text = stringResource(notice),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
