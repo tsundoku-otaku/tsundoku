@@ -173,6 +173,34 @@ class ManageFilterPresetsTest {
     }
 
     @Test
+    fun `select with duplicate option names keeps the saved option`() {
+        val target = FilterList(Choice("Status", arrayOf("Any", "Done", "Done")))
+
+        restore(FilterList(Choice("Status", arrayOf("Any", "Done", "Done"), 2)), target)
+
+        assertEquals(2, (target[0] as Choice).state)
+    }
+
+    @Test
+    fun `select options without their own names fall back to the saved index`() {
+        val saved = """[{"index":0,"name":"Genre","state":1,"value":"com.example.Genre@1a2b3c"}]"""
+        val target = FilterList(Choice("Genre", arrayOf("a", "b")))
+
+        ManageFilterPresets.applyPresetState(target, saved)
+
+        assertEquals(1, (target[0] as Choice).state)
+    }
+
+    @Test
+    fun `a header does not take the slot of a same-named filter`() {
+        val target = FilterList(Filter.Header("Tags"), Tags(listOf(Flag("x"))))
+
+        restore(FilterList(Filter.Header("Tags"), Tags(listOf(Flag("x", true)))), target)
+
+        assertTrue((target[1] as Tags).state.single().state)
+    }
+
+    @Test
     fun `group items restore by name`() {
         val target = FilterList(Tags(listOf(Flag("y"), Flag("x"))))
 

@@ -191,10 +191,11 @@ class ManageFilterPresets(
             states.forEach { element ->
                 try {
                     val entry = element.jsonObject
-                    val state = entry["state"]?.takeIf { it !is JsonNull } ?: return@forEach
+                    val state = entry["state"] ?: JsonNull
                     val name = entry["name"]?.jsonPrimitive?.contentOrNull ?: return@forEach
-                    val filter = slots.next(name)?.let { filters[it] } ?: return@forEach
-                    applyFilterState(filter, entry, state)
+                    // Stateless entries still claim their slot so a same-named filter after them keeps its own.
+                    val filter = slots.next(name) { filters[it].holds(state) }?.let { filters[it] } ?: return@forEach
+                    if (state !is JsonNull) applyFilterState(filter, entry, state)
                 } catch (e: Exception) {
                     logcat(LogPriority.WARN) { "FilterPresets: Skipped a filter: ${e.message}" }
                 }
@@ -220,11 +221,15 @@ class ManageFilterPresets(
                     (state as? JsonArray)?.forEach { element ->
                         val item = element as? JsonObject ?: return@forEach
                         val name = item["name"]?.asPrimitive()?.contentOrNull ?: return@forEach
-                        val itemState = item["state"]?.asPrimitive() ?: return@forEach
-                        when (val groupFilter = slots.next(name)?.let { items[it] }) {
-                            is Filter.CheckBox -> itemState.booleanOrNull?.let { groupFilter.state = it }
+                        val itemState = item["state"]?.asPrimitive()
+                        val slot = slots.next(name) {
+                            val stateful = items[it] is Filter.CheckBox || items[it] is Filter.TriState
+                            stateful == (itemState != null)
+                        }
+                        when (val groupFilter = slot?.let { items[it] }) {
+                            is Filter.CheckBox -> itemState?.booleanOrNull?.let { groupFilter.state = it }
                             is Filter.TriState ->
-                                itemState.intOrNull?.takeIf { it in 0..2 }?.let { groupFilter.state = it }
+                                itemState?.intOrNull?.takeIf { it in 0..2 }?.let { groupFilter.state = it }
                             else -> Unit
                         }
                     }
@@ -237,12 +242,27 @@ class ManageFilterPresets(
             filter.values.getOrNull(index)?.toString()
 
         private fun selectIndex(filter: Filter.Select<*>, entry: JsonObject, state: JsonElement): Int? {
-            val savedName = entry["value"]?.asPrimitive()?.contentOrNull
-            if (savedName != null) {
-                return filter.values.indexOfFirst { it.toString() == savedName }.takeIf { it >= 0 }
+            val savedIndex = state.asPrimitive()?.intOrNull?.takeIf { it in filter.values.indices }
+            val savedName = entry["value"]?.asPrimitive()?.contentOrNull ?: return savedIndex
+            if (savedIndex != null && filter.values[savedIndex].toString() == savedName) return savedIndex
+            val byName = filter.values.indexOfFirst { it.toString() == savedName }
+            return when {
+                byName >= 0 -> byName
+                // Options without their own toString() get a new name every launch.
+                IDENTITY_NAME.matches(savedName) -> savedIndex
+                else -> null
             }
-            return state.asPrimitive()?.intOrNull?.takeIf { it in filter.values.indices }
         }
+
+        private fun Filter<*>.holds(state: JsonElement): Boolean = when (this) {
+            is Filter.CheckBox, is Filter.TriState, is Filter.Text, is Filter.Select<*> ->
+                state is JsonPrimitive && state !is JsonNull
+            is Filter.Sort -> state is JsonObject
+            is Filter.Group<*> -> state is JsonArray
+            else -> state is JsonNull
+        }
+
+        private val IDENTITY_NAME = Regex("""[\w.$]+@[0-9a-f]+""")
 
         private fun JsonElement.asPrimitive(): JsonPrimitive? = (this as? JsonPrimitive)?.takeIf { it !is JsonNull }
 
@@ -251,7 +271,12 @@ class ManageFilterPresets(
                 .groupBy({ it.value }, { it.index })
                 .mapValues { ArrayDeque(it.value) }
 
-            fun next(name: String): Int? = slots[name]?.removeFirstOrNull()
+            fun next(name: String, fits: (Int) -> Boolean): Int? {
+                val queue = slots[name] ?: return null
+                val index = queue.firstOrNull(fits) ?: return null
+                queue.remove(index)
+                return index
+            }
         }
     }
 }
