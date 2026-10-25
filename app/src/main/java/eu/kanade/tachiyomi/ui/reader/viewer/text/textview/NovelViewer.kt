@@ -1426,8 +1426,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
         syncCurrentChapterIndexWithCurrentPage()
-        val text = loadedChapters.getOrNull(currentChapterIndex)?.block?.fullText
-            ?: loadedChapters.firstOrNull()?.block?.fullText
+        val target = loadedChapters.getOrNull(currentChapterIndex) ?: loadedChapters.firstOrNull()
+        val text = target?.block?.fullText
         if (text.isNullOrEmpty()) {
             // Chapter text hasn't rendered yet; defer so onChapterTextSet starts playback
             // once it's ready instead of failing the start silently.
@@ -1526,8 +1526,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
         syncCurrentChapterIndexWithCurrentPage()
-        val text = loadedChapters.getOrNull(currentChapterIndex)?.block?.fullText
-            ?: loadedChapters.firstOrNull()?.block?.fullText
+        val target = loadedChapters.getOrNull(currentChapterIndex) ?: loadedChapters.firstOrNull()
+        val text = target?.block?.fullText
         if (text.isNullOrEmpty()) {
             // Chapter text not rendered yet; defer to onChapterTextSet rather than no-op.
             logcat(LogPriority.WARN) { "TTS: text not ready for viewport start, deferring" }
@@ -2113,7 +2113,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
         }
 
-        if (pendingTtsAutoStart) {
+        val pendingStartIsThisChapter = loadedChapters.getOrNull(currentChapterIndex).let { it == null || it === loaded }
+        if (pendingTtsAutoStart && pendingStartIsThisChapter) {
             pendingTtsAutoStart = false
             val loadedIdx = loadedChapters.indexOf(loaded)
             if (loadedIdx >= 0) {
