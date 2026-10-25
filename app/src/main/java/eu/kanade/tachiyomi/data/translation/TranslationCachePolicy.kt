@@ -25,16 +25,21 @@ object TranslationCachePolicy {
     fun shouldSkipAutoEnqueue(cached: TranslatedChapter?): Boolean = cached != null
 
     /**
-     * Whether a queued run may reuse a stored translation or partial (.tmp) result
-     * dated [dateTranslated]. A forced run only reuses what it wrote itself, so a retry after
-     * a failure resumes instead of starting the whole book over.
+     * Whether a queued run may resume from [partial]. A forced run only resumes a partial its
+     * own task wrote, so a chunk retry of the same task resumes instead of starting over, while
+     * another run's output is never mixed in.
      */
-    fun canReuse(dateTranslated: Long?, forceRetranslate: Boolean, taskCreatedAt: Long): Boolean =
-        dateTranslated != null && (!forceRetranslate || dateTranslated >= taskCreatedAt)
+    fun canReuse(partial: PartialTranslation, forceRetranslate: Boolean, taskCreatedAt: Long): Boolean =
+        !forceRetranslate || partial.runId == taskCreatedAt
+
+    /** Number of leading chunks [partial] already covers, given each chunk's paragraph count. */
+    fun resumeChunkCount(chunkParagraphCounts: List<Int>, partial: PartialTranslation): Int =
+        partial.chunksDone?.coerceIn(0, chunkParagraphCounts.size)
+            ?: resumeChunkCount(chunkParagraphCounts, partial.paragraphs.size)
 
     /**
-     * Number of leading chunks already covered by [resumedParagraphs] paragraphs of a partial
-     * translation, given each chunk's paragraph count.
+     * Number of leading chunks covered by [resumedParagraphs] paragraphs, for partials saved
+     * before the chunk count was recorded.
      */
     fun resumeChunkCount(chunkParagraphCounts: List<Int>, resumedParagraphs: Int): Int {
         if (resumedParagraphs <= 0) return 0

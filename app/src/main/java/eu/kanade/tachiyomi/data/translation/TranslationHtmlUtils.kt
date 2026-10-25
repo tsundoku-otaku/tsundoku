@@ -10,6 +10,13 @@ import org.jsoup.parser.Parser
  * Extracted from [TranslationService] to satisfy SRP and allow reuse
  * from other call-sites (e.g. real-time reader translation).
  */
+data class PartialTranslation(
+    val title: String?,
+    val paragraphs: List<String>,
+    val chunksDone: Int?,
+    val runId: Long?,
+)
+
 object TranslationHtmlUtils {
 
     private const val SOURCE_HASH_COMMENT_PREFIX = "<!-- tsundoku-source-hash:"
@@ -124,6 +131,36 @@ object TranslationHtmlUtils {
         translatedParagraphs.forEach { paragraph ->
             append("<p>${escapeHtml(paragraph.trim()).replace("\n", "<br/>")}</p>")
         }
+    }
+
+    private val PARTIAL_MARKER = Regex("""<!--tsundoku-partial:run=(-?\d+);chunks=(\d+)-->""")
+
+    /** A partial (.tmp) translation: [chunksDone] chunks of the run started at [runId]. */
+    fun buildPartialHtml(
+        runId: Long,
+        chunksDone: Int,
+        translatedTitle: String?,
+        translatedParagraphs: List<String>,
+    ): String = "<!--tsundoku-partial:run=$runId;chunks=$chunksDone-->" +
+        buildTranslatedHtml(translatedTitle, translatedParagraphs)
+
+    /** Reads back [buildPartialHtml]; older partials have no run id or chunk count. */
+    fun parsePartialHtml(html: String): PartialTranslation {
+        val marker = PARTIAL_MARKER.find(html)
+        val doc = Jsoup.parse(html)
+        val titleElement = doc.selectFirst("h1")
+        val title = titleElement?.text()?.takeIf { it.isNotBlank() }
+        titleElement?.remove()
+        return PartialTranslation(
+            title = title,
+            // Partials always come from buildTranslatedHtml: one <p> per paragraph, <br/> inside.
+            paragraphs = doc.body().select("p").map { p ->
+                p.select("br").forEach { it.replaceWith(org.jsoup.nodes.TextNode("\n")) }
+                p.wholeText().trim()
+            }.filter { it.isNotBlank() },
+            chunksDone = marker?.groupValues?.get(2)?.toIntOrNull(),
+            runId = marker?.groupValues?.get(1)?.toLongOrNull(),
+        )
     }
 
     // ── Chunking ────────────────────────────────────────────────────

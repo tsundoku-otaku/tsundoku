@@ -47,17 +47,58 @@ class TranslationCachePolicyTest {
         assertFalse(TranslationCachePolicy.shouldSkipAutoEnqueue(null))
     }
 
+    private fun partial(runId: Long?, chunksDone: Int? = null, paragraphs: Int = 0) =
+        PartialTranslation(null, List(paragraphs) { "p$it" }, chunksDone, runId)
+
     @Test
-    fun `unforced run reuses any stored segment`() {
-        TranslationCachePolicy.canReuse(5L, forceRetranslate = false, taskCreatedAt = 100L) shouldBe true
-        TranslationCachePolicy.canReuse(null, forceRetranslate = false, taskCreatedAt = 100L) shouldBe false
+    fun `unforced run reuses any partial`() {
+        TranslationCachePolicy.canReuse(partial(runId = 5L), forceRetranslate = false, taskCreatedAt = 100L) shouldBe
+            true
+        TranslationCachePolicy.canReuse(partial(runId = null), forceRetranslate = false, taskCreatedAt = 100L) shouldBe
+            true
     }
 
     @Test
-    fun `forced run reuses only what it wrote itself`() {
-        TranslationCachePolicy.canReuse(99L, forceRetranslate = true, taskCreatedAt = 100L) shouldBe false
-        TranslationCachePolicy.canReuse(100L, forceRetranslate = true, taskCreatedAt = 100L) shouldBe true
-        TranslationCachePolicy.canReuse(null, forceRetranslate = true, taskCreatedAt = 100L) shouldBe false
+    fun `forced run reuses only its own task's partial`() {
+        TranslationCachePolicy.canReuse(partial(runId = 100L), forceRetranslate = true, taskCreatedAt = 100L) shouldBe
+            true
+        TranslationCachePolicy.canReuse(partial(runId = 200L), forceRetranslate = true, taskCreatedAt = 100L) shouldBe
+            false
+        TranslationCachePolicy.canReuse(partial(runId = null), forceRetranslate = true, taskCreatedAt = 100L) shouldBe
+            false
+    }
+
+    @Test
+    fun `a recorded chunk count wins over the paragraph count`() {
+        val counts = listOf(3, 3, 2)
+        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, chunksDone = 1, paragraphs = 7)) shouldBe 1
+        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, chunksDone = 9)) shouldBe 3
+        TranslationCachePolicy.resumeChunkCount(counts, partial(null, paragraphs = 6)) shouldBe 2
+    }
+
+    @Test
+    fun `partial html round trips without counting the title as a paragraph`() {
+        val paragraphs = listOf("one", "two\nlines", "three")
+        val html = TranslationHtmlUtils.buildPartialHtml(42L, 2, "Title", paragraphs)
+
+        val parsed = TranslationHtmlUtils.parsePartialHtml(html)
+
+        parsed.title shouldBe "Title"
+        parsed.paragraphs shouldBe paragraphs
+        parsed.chunksDone shouldBe 2
+        parsed.runId shouldBe 42L
+    }
+
+    @Test
+    fun `an older partial drops its title before paragraphs are counted`() {
+        val parsed = TranslationHtmlUtils.parsePartialHtml(
+            TranslationHtmlUtils.buildTranslatedHtml("Title", listOf("one", "two")),
+        )
+
+        parsed.title shouldBe "Title"
+        parsed.paragraphs shouldBe listOf("one", "two")
+        parsed.chunksDone shouldBe null
+        parsed.runId shouldBe null
     }
 
     @Test
