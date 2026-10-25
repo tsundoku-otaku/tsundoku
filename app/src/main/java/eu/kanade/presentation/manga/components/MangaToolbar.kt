@@ -1,9 +1,6 @@
 package eu.kanade.presentation.manga.components
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.ArrowDownward
-import androidx.compose.material.icons.outlined.ArrowUpward
-import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.FlipToBack
@@ -118,33 +115,6 @@ fun MangaToolbar(
                             ),
                         )
                     }
-                    if (onClickScrollToTop != null) {
-                        add(
-                            AppBar.Action(
-                                title = stringResource(TDMR.strings.action_scroll_to_top),
-                                icon = Icons.Outlined.ArrowUpward,
-                                onClick = onClickScrollToTop,
-                            ),
-                        )
-                    }
-                    if (onClickScrollToLastRead != null) {
-                        add(
-                            AppBar.Action(
-                                title = stringResource(MR.strings.last_read_chapter),
-                                icon = Icons.Outlined.Bookmark,
-                                onClick = onClickScrollToLastRead,
-                            ),
-                        )
-                    }
-                    if (onClickScrollToBottom != null) {
-                        add(
-                            AppBar.Action(
-                                title = stringResource(TDMR.strings.action_scroll_to_bottom),
-                                icon = Icons.Outlined.ArrowDownward,
-                                onClick = onClickScrollToBottom,
-                            ),
-                        )
-                    }
 
                     add(
                         AppBar.Action(
@@ -154,6 +124,30 @@ fun MangaToolbar(
                             onClick = onClickFilter,
                         ),
                     )
+                    if (onClickScrollToTop != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(TDMR.strings.action_scroll_to_top),
+                                onClick = onClickScrollToTop,
+                            ),
+                        )
+                    }
+                    if (onClickScrollToLastRead != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(MR.strings.last_read_chapter),
+                                onClick = onClickScrollToLastRead,
+                            ),
+                        )
+                    }
+                    if (onClickScrollToBottom != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(TDMR.strings.action_scroll_to_bottom),
+                                onClick = onClickScrollToBottom,
+                            ),
+                        )
+                    }
                     add(
                         AppBar.OverflowAction(
                             title = stringResource(MR.strings.action_webview_refresh),
