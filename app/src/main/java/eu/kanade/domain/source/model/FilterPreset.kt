@@ -1,6 +1,7 @@
 package eu.kanade.domain.source.model
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
 @Serializable
 data class FilterPreset(
@@ -9,7 +10,8 @@ data class FilterPreset(
     val name: String,
     val filterState: String, // JSON-encoded filter state
     val isDefault: Boolean = false,
-    val searchQuery: String? = null,
+    // Stored under its own preference key, see SourcePreferences.filterPresetQueries.
+    @Transient val searchQuery: String? = null,
 )
 
 @Serializable

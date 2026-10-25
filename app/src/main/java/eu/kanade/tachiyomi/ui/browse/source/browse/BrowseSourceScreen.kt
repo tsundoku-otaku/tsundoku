@@ -553,7 +553,7 @@ data class BrowseSourceScreen(
                 FilterPresetsDialog(
                     onDismissRequest = onDismissRequest,
                     presets = presets,
-                    currentFilters = state.filters,
+                    currentFilters = state.pendingFilters,
                     currentSearchQuery = state.toolbarQuery,
                     autoApplyEnabled = autoApplyEnabled,
                     onSavePreset = { name, setAsDefault, includeSearchText ->

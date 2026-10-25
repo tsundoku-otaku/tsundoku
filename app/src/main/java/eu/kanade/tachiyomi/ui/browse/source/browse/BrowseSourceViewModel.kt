@@ -119,6 +119,8 @@ class BrowseSourceViewModel(
     val currentPage: StateFlow<Int> = tachiyomi.data.source.BaseSourcePagingSource.currentPage
 
     // Initial page for jump-to-page feature - triggers pager recreation when changed
+    private var restoredPresetQuery: String? = null
+
     private val _initialPage = MutableStateFlow(1L)
     val initialPage: StateFlow<Long> = _initialPage.asStateFlow()
 
@@ -391,7 +393,9 @@ class BrowseSourceViewModel(
         }
     }
 
-    fun search(query: String? = null, filters: FilterList? = null) {
+    fun search(query: String? = null, filters: FilterList? = null) = search(query, filters, keepQuery = true)
+
+    private fun search(query: String?, filters: FilterList?, keepQuery: Boolean) {
         if (source !is CatalogueSource) return
         logcat(LogPriority.DEBUG) { "search called: query='$query', filters=${filters?.hashCode()}" }
 
@@ -399,6 +403,7 @@ class BrowseSourceViewModel(
             ?: Listing.Search(query = null, filters = source.getFilterList())
 
         val newFilters = filters ?: input.filters
+        val newQuery = if (keepQuery) query ?: input.query else query
 
         // Reset initial page to 1 when search/filters change
         _initialPage.value = 1L
@@ -407,11 +412,11 @@ class BrowseSourceViewModel(
         mutableState.update {
             it.copy(
                 listing = input.copy(
-                    query = query ?: input.query,
+                    query = newQuery,
                     filters = newFilters,
                 ),
                 filters = newFilters, // Ensure state.filters is also updated
-                toolbarQuery = query ?: input.query,
+                toolbarQuery = newQuery,
             )
         }
     }
@@ -421,6 +426,7 @@ class BrowseSourceViewModel(
         search(
             query = state.value.toolbarQuery?.takeIf { it.isNotBlank() },
             filters = state.value.pendingFilters,
+            keepQuery = false,
         )
     }
 
@@ -643,12 +649,15 @@ class BrowseSourceViewModel(
             ManageFilterPresets.applyPresetState(filters, preset.filterState)
             // Update pendingFilters directly and open filter dialog
             mutableState.update {
+                // A query only the previous preset brought in leaves with it
+                val typedQuery = it.toolbarQuery.takeUnless { query -> query == restoredPresetQuery }
                 it.copy(
                     pendingFilters = filters,
-                    toolbarQuery = preset.searchQuery ?: it.toolbarQuery,
+                    toolbarQuery = preset.searchQuery ?: typedQuery,
                     dialog = Dialog.Filter,
                 )
             }
+            restoredPresetQuery = preset.searchQuery
             logcat(LogPriority.INFO) { "BrowseSource: Preset applied successfully" }
         } else {
             logcat(LogPriority.WARN) { "BrowseSource: Preset not found for presetId=$presetId" }
