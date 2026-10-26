@@ -135,10 +135,9 @@ class ManageFilterPresets(
                     is Filter.Text -> JsonPrimitive(filter.state)
                     is Filter.Select<*> -> JsonPrimitive(filter.state)
                     is Filter.Sort -> JsonObject(
-                        mapOf(
-                            "index" to JsonPrimitive(filter.state?.index ?: 0),
-                            "ascending" to JsonPrimitive(filter.state?.ascending ?: true),
-                        ),
+                        filter.state?.let {
+                            mapOf("index" to JsonPrimitive(it.index), "ascending" to JsonPrimitive(it.ascending))
+                        }.orEmpty(),
                     )
                     is Filter.Group<*> -> JsonArray(
                         filter.state.mapIndexed { i, groupFilter ->
@@ -210,6 +209,10 @@ class ManageFilterPresets(
                 is Filter.Select<*> -> selectIndex(filter, entry, state)?.let { filter.state = it }
                 is Filter.Sort -> {
                     val sort = state as? JsonObject ?: return
+                    if (sort.isEmpty()) {
+                        filter.state = null
+                        return
+                    }
                     val index = sort["index"]?.asPrimitive()?.intOrNull ?: return
                     if (index !in filter.values.indices) return
                     val ascending = sort["ascending"]?.asPrimitive()?.booleanOrNull ?: true

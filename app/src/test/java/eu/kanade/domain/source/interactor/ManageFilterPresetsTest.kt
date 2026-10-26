@@ -163,6 +163,15 @@ class ManageFilterPresetsTest {
     }
 
     @Test
+    fun `unset sort stays unset`() {
+        val target = FilterList(Order(arrayOf("Name", "Date"), Filter.Sort.Selection(1, false)))
+
+        restore(FilterList(Order(arrayOf("Name", "Date"))), target)
+
+        assertNull((target[0] as Order).state)
+    }
+
+    @Test
     fun `one mismatched entry does not stop later filters`() {
         val legacy = """[{"index":0,"name":"Tags","state":null},{"index":1,"name":"a","state":true}]"""
         val target = FilterList(Tags(listOf(Flag("x"))), Flag("a"))
