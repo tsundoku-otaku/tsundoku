@@ -2,8 +2,10 @@ package tachiyomi.domain.manga.repository
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonObject
+import tachiyomi.domain.library.model.LibraryKeyedPage
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
+import tachiyomi.domain.library.model.LibraryPageCursor
 import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaSelectionMetric
@@ -103,6 +105,20 @@ interface MangaRepository {
         spec: LibraryPageSpec,
         smallCategory: Boolean = false,
     ): List<LibraryManga>
+
+    /**
+     * The page right after [after], found by seeking the sort index, or at [offset] without one.
+     * Its last row's cursor continues the walk without re-reading the rows before it.
+     */
+    suspend fun getLibraryMangaKeyedPage(
+        categoryId: Long,
+        isNovel: Boolean?,
+        limit: Long,
+        offset: Long,
+        after: LibraryPageCursor?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean = false,
+    ): LibraryKeyedPage
 
     suspend fun getLibraryMangaPageIds(
         categoryId: Long,

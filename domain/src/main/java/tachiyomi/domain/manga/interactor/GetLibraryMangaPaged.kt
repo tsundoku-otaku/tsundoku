@@ -20,6 +20,7 @@ import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.model.LibraryPageCursor
 import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.library.paging.LibraryPagingSource
 import tachiyomi.domain.library.service.LibraryPreferences
@@ -89,6 +90,10 @@ class GetLibraryMangaPaged(
         private var resolvedMode: Mode? = null
         private var snapshot: Snapshot? = null
 
+        // Offset -> cursor of the row just before it, so a page starting at a loaded page's end
+        // seeks the sort index instead of reading past every earlier row again.
+        private val cursors = HashMap<Int, LibraryPageCursor>()
+
         suspend fun fetch(limit: Int, offset: Int): LibraryPagingSource.Chunk = withContext(ioDispatcher) {
             val mode = mutex.withLock { resolvedMode ?: resolveMode().also { resolvedMode = it } }
             val snapshot = if (mode == Mode.SOURCE || mode == Mode.NARROWED) {
@@ -105,15 +110,18 @@ class GetLibraryMangaPaged(
                 )
             }
             if (snapshot?.complete == true) return@withContext LibraryPagingSource.Chunk(emptyList(), null)
-            val rows = mangaRepository.getLibraryMangaPage(
+            val after = mutex.withLock { cursors[offset] }
+            val page = mangaRepository.getLibraryMangaKeyedPage(
                 categoryId,
                 isNovel,
                 limit.toLong(),
-                offset.toLong(),
+                if (after != null) 0L else offset.toLong(),
+                after,
                 spec,
                 mode == Mode.SMALL,
             )
-            LibraryPagingSource.Chunk.of(rows, limit, offset)
+            page.last?.let { last -> mutex.withLock { cursors[offset + page.rows.size] = last } }
+            LibraryPagingSource.Chunk.of(page.rows, limit, offset)
         }
 
         private suspend fun resolveMode(): Mode = when {

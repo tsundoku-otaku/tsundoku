@@ -1,6 +1,7 @@
 package tachiyomi.data.manga
 
 import tachiyomi.core.common.util.lang.toLong
+import tachiyomi.domain.library.model.LibraryPageCursor
 import tachiyomi.domain.library.model.LibraryPageSpec
 
 internal class LibraryPageQuery(val sql: String, val args: List<Any>)
@@ -55,6 +56,35 @@ internal object LibraryPageSql {
         offset: Long,
         smallCategory: Boolean = false,
     ): LibraryPageQuery = select(COLUMNS, categoryId, isNovel, spec, limit, offset, smallCategory, bySource = false)
+
+    /**
+     * [page] continuing after [after] when set, with each row's sort key as the last column. The
+     * seek is a plain range on the sort key plus a tie check, so the sort index starts at the
+     * cursor instead of walking every row before it the way OFFSET does.
+     */
+    fun keyedPage(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        limit: Long,
+        offset: Long,
+        after: LibraryPageCursor?,
+        smallCategory: Boolean = false,
+    ): LibraryPageQuery = select(
+        COLUMNS,
+        categoryId,
+        isNovel,
+        spec,
+        limit,
+        offset,
+        smallCategory,
+        bySource = false,
+        after = after,
+        withKey = true,
+    )
+
+    /** Whether [keyedPage]'s sort key column holds text rather than a number. */
+    fun hasTextKey(spec: LibraryPageSpec): Boolean = spec.sortType == LibraryPageSpec.SORT_ALPHABETICAL
 
     /** The ids of [page] in the same order. */
     fun ids(
@@ -113,16 +143,21 @@ internal object LibraryPageSql {
         offset: Long,
         smallCategory: Boolean,
         bySource: Boolean,
+        after: LibraryPageCursor? = null,
+        withKey: Boolean = false,
     ): LibraryPageQuery {
         val args = ArrayList<Any>()
         val membership = if (smallCategory) Membership.LOOKUP else Membership.WALK
         val direction = if (spec.sortAscending) "ASC" else "DESC"
         if (isNovel == null && limit != null) {
-            return mergedSelect(columns, categoryId, spec, limit, offset, membership, bySource, direction)
+            return mergedSelect(columns, categoryId, spec, limit, offset, membership, bySource, direction, after, withKey)
         }
         val where = where(categoryId, isNovel, spec, args, membership)
         val sql = buildString {
-            append("SELECT ").append(columns).append(" FROM ").append(from(bySource)).append(" WHERE ").append(where)
+            append("SELECT ").append(columns)
+            if (withKey) append(", ").append(sortKey(spec))
+            append(" FROM ").append(from(bySource)).append(" WHERE ").append(where)
+            if (after != null) append(" AND ").append(seek(sortKey(spec), direction, after, args))
             append(" ORDER BY ").append(sortKey(spec)).append(' ').append(direction)
             append(", M._id ").append(direction)
             if (limit != null) {
@@ -144,11 +179,14 @@ internal object LibraryPageSql {
         membership: Membership,
         bySource: Boolean,
         direction: String,
+        after: LibraryPageCursor?,
+        withKey: Boolean,
     ): LibraryPageQuery {
         val args = ArrayList<Any>()
         val key = sortKey(spec)
         val branches = listOf(false, true).joinToString(" UNION ALL ") { novel ->
-            val where = where(categoryId, novel, spec, args, membership)
+            var where = where(categoryId, novel, spec, args, membership)
+            if (after != null) where += " AND " + seek(key, direction, after, args)
             args.add(limit + offset)
             "SELECT * FROM (SELECT M._id, $key AS _k FROM ${from(bySource)} WHERE $where " +
                 "ORDER BY $key $direction, M._id $direction LIMIT ?)"
@@ -157,10 +195,19 @@ internal object LibraryPageSql {
         args.add(offset)
         // Only the final page is read whole, so deep offsets skip the category lookup per skipped row.
         val head = "SELECT _id, _k FROM ($branches) ORDER BY _k $direction, _id $direction LIMIT ? OFFSET ?"
+        val outer = if (withKey) "$columns, P._k" else columns
         return LibraryPageQuery(
-            "SELECT $columns FROM ($head) P JOIN mangas M ON M._id = P._id ORDER BY P._k $direction, P._id $direction",
+            "SELECT $outer FROM ($head) P JOIN mangas M ON M._id = P._id ORDER BY P._k $direction, P._id $direction",
             args,
         )
+    }
+
+    private fun seek(key: String, direction: String, after: LibraryPageCursor, args: MutableList<Any>): String {
+        val op = if (direction == "ASC") ">" else "<"
+        args.add(after.key)
+        args.add(after.key)
+        args.add(after.id)
+        return "$key $op= ? AND ($key $op ? OR M._id $op ?)"
     }
 
     private fun from(bySource: Boolean): String =

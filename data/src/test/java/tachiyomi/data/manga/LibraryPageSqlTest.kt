@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
+import tachiyomi.domain.library.model.LibraryPageCursor
 import tachiyomi.domain.library.model.LibraryPageSpec
 import java.sql.Connection
 import java.sql.DriverManager
@@ -315,6 +316,63 @@ class LibraryPageSqlTest {
 
         paged shouldContainExactly everything
         plan(LibraryPageSql.page(0L, null, spec, limit = 50, offset = 100)) shouldContain "idx_library_page_"
+    }
+
+    private fun keyedPage(query: LibraryPageQuery): Pair<List<Long>, LibraryPageCursor?> {
+        db.prepareStatement(query.sql).use { st ->
+            bind(st, query)
+            st.executeQuery().use { rs ->
+                val keyColumn = rs.metaData.columnCount
+                val ids = ArrayList<Long>()
+                var last: LibraryPageCursor? = null
+                while (rs.next()) {
+                    val id = rs.getLong(1)
+                    ids.add(id)
+                    val key = rs.getObject(keyColumn).let { if (it is Number) it.toLong() else it as String }
+                    last = LibraryPageCursor(key, id)
+                }
+                return ids to last
+            }
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("sorts")
+    fun `seeking from each page's last row matches the full order`(sortType: Int, ascending: Boolean) {
+        insert(
+            (1L..600L).map {
+                val title = if (it % 2 == 0L) "Title ${it % 31}" else "title ${it % 31}"
+                Row(it, title, isNovel = it % 3 == 0L, lastRead = it % 11, total = it % 7, read = it % 5)
+            },
+        )
+        val spec = spec(sortType, ascending)
+
+        for (isNovel in listOf(false, true, null)) {
+            val everything = ids(LibraryPageSql.page(0L, isNovel, spec, limit = null, offset = 0))
+            val walked = ArrayList<Long>()
+            var after: LibraryPageCursor? = null
+            do {
+                val (page, last) = keyedPage(LibraryPageSql.keyedPage(0L, isNovel, spec, 50, 0, after))
+                walked.addAll(page)
+                after = last
+            } while (page.size == 50)
+
+            walked shouldContainExactly everything
+        }
+    }
+
+    @ParameterizedTest
+    @MethodSource("sorts")
+    fun `a seek starts at the cursor in the sort index`(sortType: Int, ascending: Boolean) {
+        insert((1L..200L).map { Row(it, "Title $it") })
+        val spec = spec(sortType, ascending)
+        val (_, last) = keyedPage(LibraryPageSql.keyedPage(0L, false, spec, 50, 0, null))
+
+        val plan = plan(LibraryPageSql.keyedPage(0L, false, spec, 50, 0, last))
+
+        plan shouldContain "idx_library_page_"
+        plan shouldContain (if (ascending) ">?" else "<?")
+        plan shouldNotContain "TEMP B-TREE"
     }
 
     @Test

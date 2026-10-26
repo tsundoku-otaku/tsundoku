@@ -33,8 +33,10 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.subscribeToList
 import tachiyomi.data.subscribeToOne
 import tachiyomi.data.subscribeToOneOrNull
+import tachiyomi.domain.library.model.LibraryKeyedPage
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
+import tachiyomi.domain.library.model.LibraryPageCursor
 import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
@@ -830,6 +832,25 @@ class MangaRepositoryImpl(
     ): List<LibraryManga> {
         val query = LibraryPageSql.page(categoryId, isNovel, spec, limit, offset, smallCategory)
         return RawQuery(driver, query, ::mapLibraryPageRow).awaitAsList()
+    }
+
+    override suspend fun getLibraryMangaKeyedPage(
+        categoryId: Long,
+        isNovel: Boolean?,
+        limit: Long,
+        offset: Long,
+        after: LibraryPageCursor?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean,
+    ): LibraryKeyedPage {
+        val query = LibraryPageSql.keyedPage(categoryId, isNovel, spec, limit, offset, after, smallCategory)
+        val textKey = LibraryPageSql.hasTextKey(spec)
+        val rows = RawQuery(driver, query) { cursor ->
+            val key: Any = if (textKey) cursor.getString(KEY_COLUMN)!! else cursor.getLong(KEY_COLUMN)!!
+            mapLibraryPageRow(cursor) to key
+        }.awaitAsList()
+        val last = rows.lastOrNull()?.let { (row, key) -> LibraryPageCursor(key, row.id) }
+        return LibraryKeyedPage(rows.map { it.first }, last)
     }
 
     override suspend fun getLibraryMangaPageIds(
@@ -2446,3 +2467,6 @@ class MangaRepositoryImpl(
         private const val SQLITE_VARIABLE_LIMIT = 900
     }
 }
+
+// Right after the columns mapLibraryPageRow reads.
+private const val KEY_COLUMN = 21
