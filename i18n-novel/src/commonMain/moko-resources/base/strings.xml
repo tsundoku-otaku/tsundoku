@@ -225,6 +225,10 @@
     <string name="chapter_search_progress">Searched %1$d of %2$d chapters</string>
     <string name="chapter_search_no_chapters">No downloaded chapters to search</string>
     <string name="chapter_search_empty">Search text across all downloaded chapters of this entry</string>
+    <string name="chapter_search_range_from">From chapter</string>
+    <string name="chapter_search_range_to">To chapter</string>
+    <string name="chapter_search_show_more">Show %1$d more</string>
+    <string name="chapter_search_show_less">Show less</string>
     <string name="action_export_epub_bulk">Export selected as EPUB</string>
     <string name="export_epub_progress">Exporting %1$d of %2$d chapters…</string>
     <string name="export_epub_success">EPUB exported successfully</string>

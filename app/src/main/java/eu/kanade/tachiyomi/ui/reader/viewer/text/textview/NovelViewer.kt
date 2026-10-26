@@ -1712,13 +1712,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun restoreProgress(page: ReaderPage) {
-        val savedProgress = page.chapter.chapter.last_page_read
+        val jumpProgress = activity.viewModel.takeJumpProgress(page.chapter)
+        val savedProgress = jumpProgress ?: page.chapter.chapter.last_page_read
         val isRead = page.chapter.chapter.read
         logcat(LogPriority.DEBUG) {
             "NovelViewer: Restoring progress, savedProgress=$savedProgress, isRead=$isRead for ${page.chapter.chapter.name}"
         }
 
-        val shouldRestore = if (!isRead) {
+        val shouldRestore = if (jumpProgress != null) {
+            true
+        } else if (!isRead) {
             savedProgress in 1..100
         } else {
             libraryPreferences.novelReadProgress100.get() && savedProgress in 1..100
