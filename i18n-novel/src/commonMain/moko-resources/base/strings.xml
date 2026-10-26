@@ -1019,4 +1019,8 @@
     <string name="novel_status_bar_element_chapter">Chapter</string>
     <string name="novel_status_bar_element_progress">Progress</string>
     <string name="novel_status_bar_element_battery">Battery</string>
+    <string name="filter_preset_save_title">Save filter preset</string>
+    <string name="filter_preset_name">Preset name</string>
+    <string name="filter_preset_set_default">Set as default preset</string>
+    <string name="filter_preset_include_search_text">Also include current search text</string>
 </resources>
