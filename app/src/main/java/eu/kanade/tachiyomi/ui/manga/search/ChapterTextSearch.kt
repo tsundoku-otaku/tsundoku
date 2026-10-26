@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.ui.manga.search
 
 import androidx.compose.runtime.Immutable
-import org.jsoup.Jsoup
+import eu.kanade.tachiyomi.util.chapter.HtmlTextScanner
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 import kotlin.coroutines.cancellation.CancellationException
@@ -37,7 +37,9 @@ data class ChapterTextMatches(
 object ChapterTextSearch {
 
     const val SNIPPET_CONTEXT = 60
-    const val MAX_SNIPPETS_PER_CHAPTER = 3
+
+    const val COLLAPSED_SNIPPETS = 3
+    const val MAX_SNIPPETS_PER_CHAPTER = 10
     private const val MAX_SNIPPET_MATCH_LENGTH = 200
     private const val WORD_CHAR = "[\\p{L}\\p{N}_]"
 
@@ -56,7 +58,43 @@ object ChapterTextSearch {
     /**
      * Reduces chapter HTML (or plain text) to whitespace-normalized visible text.
      */
-    fun toPlainText(content: String): String = Jsoup.parse(content).text()
+    fun toPlainText(content: String): String {
+        val out = StringBuilder(content.length)
+        var pendingSpace = false
+        HtmlTextScanner.scan(
+            content,
+            onChar = { char ->
+                if (char.isWhitespace() || Character.isSpaceChar(char)) {
+                    pendingSpace = out.isNotEmpty()
+                } else {
+                    if (pendingSpace) out.append(' ')
+                    pendingSpace = false
+                    out.append(char)
+                }
+            },
+            onBreak = { pendingSpace = out.isNotEmpty() },
+        )
+        return out.toString()
+    }
+
+    /** Plain query equivalent of [findMatches] without the regex engine. */
+    fun findLiteralMatches(
+        text: String,
+        query: String,
+        ignoreCase: Boolean,
+        maxSnippets: Int = MAX_SNIPPETS_PER_CHAPTER,
+    ): ChapterTextMatches {
+        if (text.isEmpty() || query.isEmpty()) return ChapterTextMatches(0, emptyList())
+        var count = 0
+        val snippets = mutableListOf<ChapterSearchSnippet>()
+        var from = text.indexOf(query, 0, ignoreCase)
+        while (from >= 0) {
+            count++
+            if (snippets.size < maxSnippets) snippets += snippetFor(text, from, from + query.length)
+            from = text.indexOf(query, from + query.length, ignoreCase)
+        }
+        return ChapterTextMatches(count, snippets)
+    }
 
     /**
      * Counts every non-empty match of [regex] in [text] and keeps excerpts for the first few.
