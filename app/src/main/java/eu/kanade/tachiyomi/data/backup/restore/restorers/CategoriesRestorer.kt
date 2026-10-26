@@ -24,12 +24,13 @@ class CategoriesRestorer(
             val categories = backupCategories
                 .sortedBy { it.order }
                 .map {
-                    val dbCategory = if (it.contentType != Category.CONTENT_TYPE_ALL) {
-                        dbCategoriesByName[it.name]?.firstOrNull { db -> db.contentType == it.contentType }
-                    } else {
-                        dbCategoriesByName[it.name]?.firstOrNull()
+                    val sameName = dbCategoriesByName[it.name].orEmpty()
+                    sameName.restoreMatch(it.contentType)?.let { dbCategory -> return@map dbCategory }
+                    // Names are unique in the UI, so widen a conflicting type instead of adding a duplicate
+                    sameName.firstOrNull()?.let { dbCategory ->
+                        database.categoriesQueries.updateContentType(Category.CONTENT_TYPE_ALL.toLong(), dbCategory.id)
+                        return@map dbCategory.copy(contentType = Category.CONTENT_TYPE_ALL)
                     }
-                    if (dbCategory != null) return@map dbCategory
                     val order = nextOrder++
                     database.categoriesQueries.insert(it.name, order, it.flags, it.contentType.toLong())
                     database.categoriesQueries.selectLastInsertedRowId()
@@ -45,3 +46,6 @@ class CategoriesRestorer(
         }
     }
 }
+
+internal fun List<Category>.restoreMatch(contentType: Int): Category? =
+    firstOrNull { it.contentType == contentType } ?: firstOrNull { it.contentType == Category.CONTENT_TYPE_ALL }

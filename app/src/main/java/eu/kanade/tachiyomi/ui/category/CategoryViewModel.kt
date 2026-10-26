@@ -14,6 +14,7 @@ import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
+import tachiyomi.domain.category.interactor.SetCategoryContentType
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -27,6 +28,7 @@ class CategoryViewModel(
     private val deleteCategory: DeleteCategory = Injekt.get(),
     private val reorderCategory: ReorderCategory = Injekt.get(),
     private val renameCategory: RenameCategory = Injekt.get(),
+    private val setCategoryContentType: SetCategoryContentType = Injekt.get(),
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
     private val categoryRepository: CategoryRepository = Injekt.get(),
 ) : StateViewModel<CategoryScreenState>(CategoryScreenState.Loading) {
@@ -91,11 +93,34 @@ class CategoryViewModel(
         }
     }
 
-    fun renameCategory(category: Category, name: String) {
+    fun editCategory(category: Category, name: String, contentType: Int) {
         viewModelScope.launch {
-            when (renameCategory.await(category, name)) {
-                is RenameCategory.Result.InternalError -> _events.send(CategoryEvent.InternalError)
-                else -> {}
+            if (name != category.name) {
+                if (renameCategory.await(category, name) is RenameCategory.Result.InternalError) {
+                    _events.send(CategoryEvent.InternalError)
+                    return@launch
+                }
+            }
+            if (contentType == category.contentType) return@launch
+
+            val mismatched = setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
+            if (mismatched.isEmpty()) {
+                changeContentType(category, contentType)
+            } else {
+                showDialog(CategoryDialog.ConfirmContentType(category.copy(name = name), contentType, mismatched.size))
+            }
+        }
+    }
+
+    fun changeContentType(category: Category, contentType: Int) {
+        viewModelScope.launch {
+            when (val result = setCategoryContentType.await(category.id, contentType)) {
+                is SetCategoryContentType.Result.InternalError -> _events.send(CategoryEvent.InternalError)
+                is SetCategoryContentType.Result.Success -> getLibraryManga.applyCategoryUpdates(
+                    mangaIds = result.removedMangaIds,
+                    addCategories = emptyList(),
+                    removeCategories = listOf(category.id),
+                )
             }
         }
     }
@@ -121,7 +146,9 @@ class CategoryViewModel(
 
 sealed interface CategoryDialog {
     data object Create : CategoryDialog
-    data class Rename(val category: Category) : CategoryDialog
+    data class Edit(val category: Category) : CategoryDialog
+    data class ConfirmContentType(val category: Category, val contentType: Int, val mismatchedCount: Int) :
+        CategoryDialog
     data class Delete(val category: Category) : CategoryDialog
 }
 
