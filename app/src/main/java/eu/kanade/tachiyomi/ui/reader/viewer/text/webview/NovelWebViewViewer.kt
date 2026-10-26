@@ -220,7 +220,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private var handoffState: TtsHandoffState<Pair<ReaderChapter, ReaderPage>> = TtsHandoffState.Idle
 
-    private var ttsPrefetchAnchorId: Long? = null
+    // Playback chapter whose midpoint already kicked a prefetch, so it fires once per chapter.
+    private var ttsMidpointPrefetchChapterId: Long? = null
     private val prefetchCompletedSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     // Survives ttsController.stop() - set when TTS triggers a non-inf-scroll chapter load.
@@ -352,13 +353,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 override fun onHighlightChunk(chunkIndex: Int, chunk: String, startOffset: Int, paragraphIndex: Int) {
                     applyTtsHighlight(chunkIndex, paragraphIndex)
                     saveTtsProgressForChunk(chunkIndex)
-                    val chunkCount = ttsController.ttsChunks.size
-                    if (preferences.novelInfiniteScroll.get() &&
+                }
+
+                override fun onChunkStart(chunkIndex: Int) {
+                    val chapterId = ttsController.ttsPlaybackChapterId
+                    if (chapterId != ttsMidpointPrefetchChapterId &&
+                        preferences.novelInfiniteScroll.get() &&
                         !isPagedModeActive() &&
                         handoffState.isIdle &&
-                        chunkIndex >= chunkCount / 2 &&
+                        chunkIndex >= ttsController.ttsChunks.size / 2 &&
                         loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) == null
                     ) {
+                        ttsMidpointPrefetchChapterId = chapterId
                         scope.launch { preFetchNextChapterForTts() }
                     }
                 }
@@ -2531,28 +2537,23 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private suspend fun preFetchNextChapterForTts() {
         if (!handoffState.isIdle) return
         val anchor = loadedChapters.lastOrNull() ?: currentChapters?.currChapter ?: return
-        val anchorId = anchor.chapter.id
-        if (anchorId != null) {
-            if (ttsPrefetchAnchorId == anchorId) return
-            ttsPrefetchAnchorId = anchorId
-        }
-        fun release() {
-            if (ttsPrefetchAnchorId == anchorId) ttsPrefetchAnchorId = null
-        }
-        val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor) ?: return release()
-        val nextId = preparedChapter.chapter.id ?: return release()
-        if (loadedChapterIds.contains(nextId)) return release()
-
-        val page = preparedChapter.pages?.firstOrNull() ?: return release()
-        val loader = page.chapter.pageLoader ?: return release()
-
-        handoffState = TtsHandoffState.PreFetching(anchorChapterId = anchor.chapter.id)
-        logcat(LogPriority.DEBUG) { "TTS (WebView): Pre-fetching next chapter ${preparedChapter.chapter.name}" }
+        // Claimed before the first suspension so concurrent triggers stop at the isIdle guard, and
+        // compared by identity so a prefetch outliving stopTts or a coalesce timeout changes nothing.
+        val claim = TtsHandoffState.PreFetching(anchorChapterId = anchor.chapter.id)
+        handoffState = claim
         try {
+            val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor) ?: return
+            val nextId = preparedChapter.chapter.id ?: return
+            if (loadedChapterIds.contains(nextId)) return
+
+            val page = preparedChapter.pages?.firstOrNull() ?: return
+            val loader = page.chapter.pageLoader ?: return
+
+            logcat(LogPriority.DEBUG) { "TTS (WebView): Pre-fetching next chapter ${preparedChapter.chapter.name}" }
             val loaded = awaitPageText(page = page, loader = loader, timeoutMs = 30_000)
             if (loaded) {
                 withContext(Dispatchers.Main) {
-                    if (handoffState.isPreFetching) {
+                    if (handoffState === claim) {
                         handoffState = TtsHandoffState.Cached(Pair(preparedChapter, page))
                         prefetchCompletedSignal.tryEmit(Unit)
                         logcat(LogPriority.DEBUG) {
@@ -2564,10 +2565,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         } catch (e: Exception) {
             logcat(LogPriority.WARN) { "TTS (WebView): Pre-fetch failed: ${e.message}" }
         } finally {
-            // Drop back to Idle if we never reached Cached (e.g. load failed).
-            if (handoffState.isPreFetching) {
+            // Drop back to Idle if we never reached Cached (e.g. load failed), and let a waiting append go on.
+            if (handoffState === claim) {
                 handoffState = TtsHandoffState.Idle
-                if (ttsPrefetchAnchorId == anchorId) ttsPrefetchAnchorId = null
+                prefetchCompletedSignal.tryEmit(Unit)
             }
         }
     }
@@ -3055,6 +3056,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // chapter so the next chapter is cached before onLastChunkDone hands off,
                 // instead of stalling on a cold fetch. Idempotent via the handoffState guard.
                 if (preferences.novelInfiniteScroll.get() &&
+                    !isPagedModeActive() &&
                     handoffState.isIdle &&
                     loadedChapters.getOrNull(chapterIdx + 1) == null
                 ) {
@@ -3076,7 +3078,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         if (docState == DocState.LOADING_REAL) docState = DocState.LOADING
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
-        ttsPrefetchAnchorId = null
+        ttsMidpointPrefetchChapterId = null
         dispatchTtsState()
         // The loadNextChapter TTS branch skips the JS-latch release, so after a threshold hit during
         // playback runtime.loadingNext stays true and scroll-driven appending never re-fires. Clear
