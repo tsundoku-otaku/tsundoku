@@ -6,8 +6,13 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -34,6 +39,9 @@ class TtsPlaybackService : Service() {
     private var chapterTitle: String = ""
     private var mangaId: Long = -1L
     private var chapterId: Long = -1L
+    private var hasSynced: Boolean = false
+
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     private val readerPreferences: ReaderPreferences by lazy { Injekt.get() }
 
@@ -67,6 +75,7 @@ class TtsPlaybackService : Service() {
             return START_NOT_STICKY
         }
 
+        var startedPlaying = false
         when (intent.action) {
             ACTION_PAUSE -> {
                 sendControlBroadcast(COMMAND_PAUSE)
@@ -90,6 +99,8 @@ class TtsPlaybackService : Service() {
             }
 
             ACTION_SYNC -> {
+                val wasPlaying = !isPaused && hasSynced
+                hasSynced = true
                 isPaused = intent.getBooleanExtra(EXTRA_IS_PAUSED, false)
                 paragraphIndex = intent.getIntExtra(EXTRA_PARAGRAPH_INDEX, 0).coerceAtLeast(0)
                 paragraphCount = intent.getIntExtra(EXTRA_PARAGRAPH_COUNT, 0).coerceAtLeast(0)
@@ -97,15 +108,18 @@ class TtsPlaybackService : Service() {
                 chapterTitle = intent.getStringExtra(EXTRA_CHAPTER_TITLE).orEmpty()
                 mangaId = intent.getLongExtra(EXTRA_MANGA_ID, -1L)
                 chapterId = intent.getLongExtra(EXTRA_CHAPTER_ID, -1L)
+                startedPlaying = !isPaused && !wasPlaying
             }
         }
 
         startForegroundWithNotification()
+        if (startedPlaying) claimMediaButtons()
 
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
         mediaSession.isActive = false
         mediaSession.release()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -172,6 +186,9 @@ class TtsPlaybackService : Service() {
 
         mediaSession.setSessionActivity(openReaderPendingIntent)
 
+        val paragraphLabel = paragraphProgressLabel()
+        updateMediaSession(paragraphLabel)
+
         val statusText = if (isPaused) "Paused" else "Reading in background"
 
         val contentText = if (chapterTitle.isNotBlank()) {
@@ -203,9 +220,6 @@ class TtsPlaybackService : Service() {
                 addAction(R.drawable.ic_close_24dp, "Stop", stopIntent)
             }.build()
         } else {
-            val paragraphLabel = paragraphProgressLabel()
-            updateMediaSession(paragraphLabel)
-
             var compactActionCount = 0
             var prevIndex = 0
             var toggleIndex = 0
@@ -323,6 +337,36 @@ class TtsPlaybackService : Service() {
         )
     }
 
+    // Media keys go to the session of the uid that last played audio. TTS audio is played by the
+    // engine's uid, so without this a previously used player (e.g. VLC) keeps the headset buttons.
+    private fun claimMediaButtons() {
+        try {
+            val samples = SILENCE_SAMPLE_RATE / 10
+            val track = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(SILENCE_SAMPLE_RATE)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                        .build(),
+                )
+                .setTransferMode(AudioTrack.MODE_STATIC)
+                .setBufferSizeInBytes(samples * 2)
+                .build()
+            track.write(ShortArray(samples), 0, samples)
+            track.play()
+            mainHandler.postDelayed({ track.release() }, 500L)
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Failed to claim media buttons for TTS" }
+        }
+    }
+
     private fun paragraphProgressLabel(): String? {
         if (paragraphCount <= 0) return null
         val current = paragraphIndex.coerceIn(0, paragraphCount - 1) + 1
@@ -349,6 +393,8 @@ class TtsPlaybackService : Service() {
         // duration - arbitrary but consistent, only used so the system has *a* unit to render a
         // seek bar and to convert a dragged position back to a paragraph index in onSeekTo.
         private const val SEEK_UNIT_MS = 1_000L
+
+        private const val SILENCE_SAMPLE_RATE = 8_000
 
         private const val ACTION_SYNC =
             "eu.kanade.tachiyomi.ui.reader.service.TtsPlaybackService.SYNC"
