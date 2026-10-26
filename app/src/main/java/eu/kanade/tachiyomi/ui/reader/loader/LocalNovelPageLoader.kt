@@ -6,8 +6,8 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import logcat.LogPriority
 import logcat.logcat
@@ -54,9 +54,22 @@ class LocalNovelPageLoader(
     }
 
     override suspend fun loadPage(page: ReaderPage) = withIOContext {
-        if (page.status == Page.State.Ready) return@withIOContext
-
-        page.status = Page.State.LoadPage
+        // Claim the page so concurrent callers share one fetch instead of each starting their own.
+        while (true) {
+            val claimed = synchronized(page) {
+                when (page.status) {
+                    Page.State.Ready -> return@withIOContext
+                    Page.State.LoadPage -> false
+                    else -> {
+                        page.status = Page.State.LoadPage
+                        true
+                    }
+                }
+            }
+            if (claimed) break
+            // Another caller's fetch ended; only its cancellation (back to Queue) needs a new attempt.
+            if (page.statusFlow.first { it != Page.State.LoadPage } != Page.State.Queue) return@withIOContext
+        }
         try {
             if (source.isNovelSource) {
                 page.text = source.fetchPageText(Page(page.index, page.url, page.imageUrl))
@@ -65,15 +78,12 @@ class LocalNovelPageLoader(
                 throw IllegalStateException("Source is not a NovelSource")
             }
         } catch (e: Throwable) {
-            // Only the caller's own cancellation is retryable; a source's internal timeout is a real error.
-            if (e is CancellationException && !currentCoroutineContext().isActive) {
-                if (page.status == Page.State.LoadPage) page.status = Page.State.Queue
-                throw e
+            if (currentCoroutineContext().isActive) {
+                logcat(LogPriority.ERROR) {
+                    "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}"
+                }
             }
-            logcat(LogPriority.ERROR) {
-                "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}"
-            }
-            page.status = Page.State.Error(e)
+            onPageLoadFailed(page, e)
         }
     }
 }
