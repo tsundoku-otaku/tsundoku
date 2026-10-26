@@ -651,19 +651,21 @@ class ReaderViewModel @JvmOverloads constructor(
         val loader = loader ?: return
 
         viewModelScope.launchIO {
+            // Reset chapter state to force reload
+            val previousLoader = currChapter.pageLoader
+            currChapter.state = ReaderChapter.State.Wait
             try {
-                // Reset chapter state to force reload
-                currChapter.state = ReaderChapter.State.Wait
-
                 loadChapter(loader, currChapter, forceFromSource = fromSource)
-
-                // Notify the viewer to refresh
-                withUIContext {
-                    state.value.viewer?.setChapters(state.value.viewerChapters!!)
-                }
             } catch (e: Throwable) {
                 if (e is CancellationException) throw e
                 logcat(LogPriority.ERROR, e) { "Failed to reload chapter" }
+            }
+
+            // Notify the viewer to refresh, including with a new error so it can be retried again
+            withUIContext {
+                state.value.viewerChapters?.let { state.value.viewer?.setChapters(it) }
+                // Only once the viewer shows the new pages, which no longer read from it.
+                if (previousLoader !== currChapter.pageLoader) previousLoader?.recycle()
             }
         }
     }

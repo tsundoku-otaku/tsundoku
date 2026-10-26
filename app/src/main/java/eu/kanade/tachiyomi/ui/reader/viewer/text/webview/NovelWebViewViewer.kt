@@ -2344,20 +2344,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         fun retryChapterLoad() {
             activity.runOnUiThread {
                 if (docState != DocState.ERROR || retryRequested) return@runOnUiThread
-                // The viewer's own copy still points at the previous chapter when the page list failed.
-                val chapters = activity.viewModel.state.value.viewerChapters ?: return@runOnUiThread
                 retryRequested = true
                 isInfiniteScrollPrepend = false
-                val page = chapters.currChapter.pages?.firstOrNull()
-                when {
-                    page?.status is Page.State.Error -> {
-                        page.status = Page.State.Queue
-                        setChapters(chapters)
-                    }
-                    // An empty chapter loaded fine, so only the source can return different text.
-                    page?.status == Page.State.Ready -> activity.viewModel.reloadChapter(fromSource = true)
-                    else -> activity.viewModel.reloadChapter(fromSource = false)
-                }
+                // The view model's chapters point at the failed chapter even when its page list failed.
+                val page = activity.viewModel.state.value.viewerChapters?.currChapter?.pages?.firstOrNull()
+                // An empty chapter loaded fine, so only the source can return different text.
+                activity.viewModel.reloadChapter(fromSource = page?.status == Page.State.Ready)
             }
         }
 
