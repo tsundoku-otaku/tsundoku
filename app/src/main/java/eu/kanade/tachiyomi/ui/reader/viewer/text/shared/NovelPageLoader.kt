@@ -35,6 +35,13 @@ object NovelPageLoader {
         }
 
         var loadJob: kotlinx.coroutines.Job? = null
+        fun launchLoad() = scope.launch(Dispatchers.IO) {
+            try {
+                loader.loadPage(page)
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // Expected when scope is cancelled
+            }
+        }
         if (page.status is Page.State.Error) {
             // Re-fetch a page cached in Error from a prior failed attempt, else statusFlow returns
             // Error immediately and the load can never recover once the network is back. retryPage
@@ -46,27 +53,17 @@ object NovelPageLoader {
                 // Clear the stale Error first: statusFlow replays its current value, so leaving it
                 // Error makes the first{} below match immediately and return before loadPage runs.
                 page.status = Page.State.Queue
-                loadJob = scope.launch(Dispatchers.IO) {
-                    try {
-                        loader.loadPage(page)
-                    } catch (_: kotlinx.coroutines.CancellationException) {
-                        // Expected when scope is cancelled
-                    }
-                }
+                loadJob = launchLoad()
             }
         } else if (page.status is Page.State.Queue) {
-            loadJob = scope.launch(Dispatchers.IO) {
-                try {
-                    loader.loadPage(page)
-                } catch (_: kotlinx.coroutines.CancellationException) {
-                    // Expected when scope is cancelled
-                }
-            }
+            loadJob = launchLoad()
         }
 
         return try {
             val finalState = withTimeout(timeoutMs) {
                 page.statusFlow.first { state ->
+                    // Another caller's load was cancelled and put the page back in the queue.
+                    if (state is Page.State.Queue && loadJob?.isActive != true) loadJob = launchLoad()
                     state is Page.State.Ready || state is Page.State.Error
                 }
             }

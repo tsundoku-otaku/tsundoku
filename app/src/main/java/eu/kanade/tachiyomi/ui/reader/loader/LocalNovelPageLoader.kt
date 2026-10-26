@@ -7,6 +7,8 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.util.lang.withIOContext
@@ -62,10 +64,12 @@ class LocalNovelPageLoader(
             } else {
                 throw IllegalStateException("Source is not a NovelSource")
             }
-        } catch (e: CancellationException) {
-            page.status = Page.State.Queue
-            throw e
         } catch (e: Throwable) {
+            // Only the caller's own cancellation is retryable; a source's internal timeout is a real error.
+            if (e is CancellationException && !currentCoroutineContext().isActive) {
+                if (page.status == Page.State.LoadPage) page.status = Page.State.Queue
+                throw e
+            }
             logcat(LogPriority.ERROR) {
                 "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}"
             }
