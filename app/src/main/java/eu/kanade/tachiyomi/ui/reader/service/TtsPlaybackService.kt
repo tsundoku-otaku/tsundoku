@@ -42,6 +42,8 @@ class TtsPlaybackService : Service() {
     private var hasSynced: Boolean = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private var silenceTrack: AudioTrack? = null
+    private val silenceTrackRelease = Runnable { releaseSilenceTrack() }
 
     private val readerPreferences: ReaderPreferences by lazy { Injekt.get() }
 
@@ -120,6 +122,7 @@ class TtsPlaybackService : Service() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacksAndMessages(null)
+        releaseSilenceTrack()
         mediaSession.isActive = false
         mediaSession.release()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -359,12 +362,20 @@ class TtsPlaybackService : Service() {
                 .setTransferMode(AudioTrack.MODE_STATIC)
                 .setBufferSizeInBytes(samples * 2)
                 .build()
+            releaseSilenceTrack()
+            silenceTrack = track
             track.write(ShortArray(samples), 0, samples)
             track.play()
-            mainHandler.postDelayed({ track.release() }, 500L)
+            mainHandler.removeCallbacks(silenceTrackRelease)
+            mainHandler.postDelayed(silenceTrackRelease, 500L)
         } catch (e: Exception) {
             logcat(LogPriority.WARN, e) { "Failed to claim media buttons for TTS" }
         }
+    }
+
+    private fun releaseSilenceTrack() {
+        silenceTrack?.release()
+        silenceTrack = null
     }
 
     private fun paragraphProgressLabel(): String? {
