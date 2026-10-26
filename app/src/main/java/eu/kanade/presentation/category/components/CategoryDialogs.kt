@@ -38,6 +38,7 @@ import tachiyomi.domain.category.model.Category
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 
 @Composable
@@ -158,25 +159,27 @@ private fun ContentTypeOption(
 }
 
 @Composable
-fun CategoryRenameDialog(
+fun CategoryEditDialog(
     onDismissRequest: () -> Unit,
-    onRename: (String) -> Unit,
+    onConfirm: (String, Int) -> Unit,
     categories: List<String>,
-    category: String,
+    category: Category,
 ) {
-    var name by remember { mutableStateOf(category) }
-    var valueHasChanged by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf(category.name) }
+    var contentType by remember { mutableIntStateOf(category.contentType) }
 
     val focusRequester = remember { FocusRequester() }
+    val nameChanged = name != category.name
     val nameAlreadyExists = remember(name) { categories.contains(name) }
+    val nameError = nameChanged && nameAlreadyExists
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
         confirmButton = {
             TextButton(
-                enabled = valueHasChanged && !nameAlreadyExists,
+                enabled = name.isNotEmpty() && !nameError && (nameChanged || contentType != category.contentType),
                 onClick = {
-                    onRename(name)
+                    onConfirm(name, contentType)
                     onDismissRequest()
                 },
             ) {
@@ -189,34 +192,97 @@ fun CategoryRenameDialog(
             }
         },
         title = {
-            Text(text = stringResource(MR.strings.action_rename_category))
+            Text(text = stringResource(TDMR.strings.action_edit_category))
         },
         text = {
-            OutlinedTextField(
-                modifier = Modifier.focusRequester(focusRequester),
-                value = name,
-                onValueChange = {
-                    valueHasChanged = name != it
-                    name = it
-                },
-                label = { Text(text = stringResource(MR.strings.name)) },
-                supportingText = {
-                    val msgRes = if (valueHasChanged && nameAlreadyExists) {
-                        MR.strings.error_category_exists
-                    } else {
-                        MR.strings.information_required_plain
-                    }
-                    Text(text = stringResource(msgRes))
-                },
-                isError = valueHasChanged && nameAlreadyExists,
-                singleLine = true,
-            )
+            Column {
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(text = stringResource(MR.strings.name)) },
+                    supportingText = {
+                        val msgRes = if (nameError) {
+                            MR.strings.error_category_exists
+                        } else {
+                            MR.strings.information_required_plain
+                        }
+                        Text(text = stringResource(msgRes))
+                    },
+                    isError = nameError,
+                    singleLine = true,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = stringResource(TDMR.strings.category_content_type),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                )
+
+                ContentTypeOption(
+                    text = stringResource(TDMR.strings.category_content_type_all),
+                    selected = contentType == Category.CONTENT_TYPE_ALL,
+                    onClick = { contentType = Category.CONTENT_TYPE_ALL },
+                )
+                ContentTypeOption(
+                    text = stringResource(TDMR.strings.category_content_type_manga),
+                    selected = contentType == Category.CONTENT_TYPE_MANGA,
+                    onClick = { contentType = Category.CONTENT_TYPE_MANGA },
+                )
+                ContentTypeOption(
+                    text = stringResource(TDMR.strings.category_content_type_novel),
+                    selected = contentType == Category.CONTENT_TYPE_NOVEL,
+                    onClick = { contentType = Category.CONTENT_TYPE_NOVEL },
+                )
+            }
         },
     )
 
     LaunchedEffect(focusRequester) {
         focusRequester.requestFocus()
     }
+}
+
+@Composable
+fun CategoryContentTypeChangeDialog(
+    onDismissRequest: () -> Unit,
+    onConfirm: () -> Unit,
+    category: String,
+    mismatchedCount: Int,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        confirmButton = {
+            TextButton(onClick = {
+                onConfirm()
+                onDismissRequest()
+            }) {
+                Text(text = stringResource(MR.strings.action_ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = stringResource(MR.strings.action_cancel))
+            }
+        },
+        title = {
+            Text(text = stringResource(TDMR.strings.category_content_type_change_title))
+        },
+        text = {
+            Text(
+                text = pluralStringResource(
+                    TDMR.plurals.category_content_type_change_message,
+                    mismatchedCount,
+                    mismatchedCount,
+                    category,
+                ),
+            )
+        },
+    )
 }
 
 @Composable

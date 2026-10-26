@@ -34,6 +34,11 @@ interface CategoryRepository {
 
     suspend fun updateName(categoryId: Long, name: String)
 
+    suspend fun getMangaIdsNotMatchingType(categoryId: Long, contentType: Int): List<Long>
+
+    /** Sets the content type and removes entries that no longer match it. */
+    suspend fun updateContentType(categoryId: Long, contentType: Int)
+
     suspend fun updateFlags(categoryId: Long, flags: Long)
 
     suspend fun updateAllFlags(flags: Long?)
