@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import java.util.concurrent.Callable
 import java.util.concurrent.ExecutionException
-import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -11,7 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class RegexTimeoutException : RuntimeException("Regex timed out")
 
-class RegexBusyException : RuntimeException("No regex worker available")
+class RegexBusyException : RuntimeException("Too many timed out regex workers still running")
 
 const val DEFAULT_REGEX_TIMEOUT_MS = 2_000L
 
@@ -19,21 +18,31 @@ private const val DEADLINE_CHECK_MASK = 0x3FF
 
 private val regexThreadCount = AtomicInteger()
 
-internal const val MAX_REGEX_WORKERS = 4
+private const val REGEX_WORKER_STACK_BYTES = 8L * 1024 * 1024
 
+internal const val MAX_STUCK_REGEX_WORKERS = 4
+
+private val stuckRegexWorkers = AtomicInteger()
+
+private const val TASK_RUNNING = 0
+private const val TASK_ABANDONED = 1
+private const val TASK_DONE = 2
+
+// Unbounded so rules of chapters processed at the same time never get rejected; idle workers are reused.
 private val regexExecutor = ThreadPoolExecutor(
     0,
-    MAX_REGEX_WORKERS,
+    Int.MAX_VALUE,
     30L,
     TimeUnit.SECONDS,
     SynchronousQueue(),
 ) { runnable ->
-    Thread(runnable, "regex-worker-${regexThreadCount.incrementAndGet()}").apply { isDaemon = true }
+    Thread(null, runnable, "regex-worker-${regexThreadCount.incrementAndGet()}", REGEX_WORKER_STACK_BYTES)
+        .apply { isDaemon = true }
 }
 
 // Only stops the worker on the JVM; Android's Matcher copies the input to a String and matches natively,
-// so a timed-out match keeps its thread busy until the process ends. After MAX_REGEX_WORKERS of them
-// every regex rule is skipped.
+// so a timed-out match keeps its thread busy until it ends on its own. While MAX_STUCK_REGEX_WORKERS of
+// them are running every regex rule is skipped.
 private class DeadlineCharSequence(
     private val inner: CharSequence,
     private val deadlineNanos: Long,
@@ -58,15 +67,22 @@ private class DeadlineCharSequence(
 private fun deadline(timeoutMs: Long): Long = System.nanoTime() + timeoutMs * 1_000_000
 
 internal fun <T> runWithRegexTimeout(timeoutMs: Long, block: () -> T): T {
-    val future = try {
-        regexExecutor.submit(Callable(block))
-    } catch (e: RejectedExecutionException) {
-        throw RegexBusyException()
-    }
+    if (stuckRegexWorkers.get() >= MAX_STUCK_REGEX_WORKERS) throw RegexBusyException()
+    val state = AtomicInteger(TASK_RUNNING)
+    val future = regexExecutor.submit(
+        Callable {
+            try {
+                block()
+            } finally {
+                if (state.getAndSet(TASK_DONE) == TASK_ABANDONED) stuckRegexWorkers.decrementAndGet()
+            }
+        },
+    )
     try {
         return future.get(timeoutMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
     } catch (e: TimeoutException) {
-        // A timed-out native match can't be interrupted; the thread is abandoned and the caller disables the rule.
+        // A timed-out native match can't be interrupted; it counts as stuck until it finishes on its own.
+        if (state.compareAndSet(TASK_RUNNING, TASK_ABANDONED)) stuckRegexWorkers.incrementAndGet()
         future.cancel(true)
         throw RegexTimeoutException()
     } catch (e: InterruptedException) {

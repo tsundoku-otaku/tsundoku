@@ -11,8 +11,17 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.core.common.preference.Preference
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+
+private fun CountDownLatch.awaitUninterruptibly() {
+    while (true) {
+        try {
+            await()
+            return
+        } catch (_: InterruptedException) {
+        }
+    }
+}
 
 class RegexReplacementsProcessorTest {
 
@@ -196,27 +205,19 @@ class RegexReplacementsProcessorTest {
     }
 
     @Test
-    fun `saturated pool skips a rule without disabling it`() {
+    fun `stuck workers block regex rules only until they finish`() {
         val rules = rulesJson(rule("x+", "y", isRegex = true))
-        val started = CountDownLatch(MAX_REGEX_WORKERS)
         val release = CountDownLatch(1)
-        val holders = List(MAX_REGEX_WORKERS) {
-            thread {
-                runCatching {
-                    runWithRegexTimeout(10_000) {
-                        started.countDown()
-                        release.await()
-                    }
-                }
+        repeat(MAX_STUCK_REGEX_WORKERS) {
+            assertThrows(RegexTimeoutException::class.java) {
+                runWithRegexTimeout(20) { release.awaitUninterruptibly() }
             }
         }
         try {
-            assertTrue(started.await(5, TimeUnit.SECONDS))
             assertThrows(RegexBusyException::class.java) { runWithRegexTimeout(1_000) {} }
             assertEquals("axxb", RegexReplacementsProcessor.apply("axxb", prefs(rules)))
         } finally {
             release.countDown()
-            holders.forEach { it.join() }
         }
         val deadline = System.nanoTime() + 2_000_000_000L
         var result: String
@@ -224,6 +225,25 @@ class RegexReplacementsProcessorTest {
             result = RegexReplacementsProcessor.apply("axxb", prefs(rules))
         } while (result != "ayb" && System.nanoTime() < deadline)
         assertEquals("ayb", result)
+    }
+
+    @Test
+    fun `concurrent rules are never rejected`() {
+        val release = CountDownLatch(1)
+        val holders = List(8) { thread { runWithRegexTimeout(10_000) { release.await() } } }
+        try {
+            assertEquals("y", runWithRegexTimeout(1_000) { "y" })
+        } finally {
+            release.countDown()
+            holders.forEach { it.join() }
+        }
+    }
+
+    @Test
+    fun `stack overflow is rethrown`() {
+        assertThrows(StackOverflowError::class.java) {
+            runWithRegexTimeout(1_000) { throw StackOverflowError() }
+        }
     }
 
     @Test
