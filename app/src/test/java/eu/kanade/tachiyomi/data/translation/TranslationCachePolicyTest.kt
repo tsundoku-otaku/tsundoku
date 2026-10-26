@@ -47,8 +47,8 @@ class TranslationCachePolicyTest {
         assertFalse(TranslationCachePolicy.shouldSkipAutoEnqueue(null))
     }
 
-    private fun partial(runId: Long?, chunksDone: Int? = null, paragraphs: Int = 0) =
-        PartialTranslation(null, List(paragraphs) { "p$it" }, chunksDone, runId)
+    private fun partial(runId: Long?, sourceParagraphs: Int? = null, paragraphs: Int = 0) =
+        PartialTranslation(null, List(paragraphs) { "p$it" }, sourceParagraphs, runId)
 
     @Test
     fun `unforced run reuses any partial`() {
@@ -69,11 +69,19 @@ class TranslationCachePolicyTest {
     }
 
     @Test
-    fun `a recorded chunk count wins over the paragraph count`() {
+    fun `a recorded source paragraph count wins over the translated paragraph count`() {
         val counts = listOf(3, 3, 2)
-        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, chunksDone = 1, paragraphs = 7)) shouldBe 1
-        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, chunksDone = 9)) shouldBe 3
+        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, sourceParagraphs = 3, paragraphs = 7)) shouldBe 1
+        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, sourceParagraphs = 8)) shouldBe 3
+        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, sourceParagraphs = 0)) shouldBe 0
         TranslationCachePolicy.resumeChunkCount(counts, partial(null, paragraphs = 6)) shouldBe 2
+    }
+
+    @Test
+    fun `a partial from another chunk size that ends mid chunk starts over`() {
+        val counts = listOf(3, 3, 2)
+        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, sourceParagraphs = 4, paragraphs = 4)) shouldBe 0
+        TranslationCachePolicy.resumeChunkCount(counts, partial(1L, sourceParagraphs = 20, paragraphs = 20)) shouldBe 0
     }
 
     @Test
@@ -85,7 +93,7 @@ class TranslationCachePolicyTest {
 
         parsed.title shouldBe "Title"
         parsed.paragraphs shouldBe paragraphs
-        parsed.chunksDone shouldBe 2
+        parsed.sourceParagraphs shouldBe 2
         parsed.runId shouldBe 42L
     }
 
@@ -97,7 +105,7 @@ class TranslationCachePolicyTest {
 
         parsed.title shouldBe "Title"
         parsed.paragraphs shouldBe listOf("one", "two")
-        parsed.chunksDone shouldBe null
+        parsed.sourceParagraphs shouldBe null
         parsed.runId shouldBe null
     }
 

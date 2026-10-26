@@ -13,7 +13,7 @@ import org.jsoup.parser.Parser
 data class PartialTranslation(
     val title: String?,
     val paragraphs: List<String>,
-    val chunksDone: Int?,
+    val sourceParagraphs: Int?,
     val runId: Long?,
 )
 
@@ -133,18 +133,18 @@ object TranslationHtmlUtils {
         }
     }
 
-    private val PARTIAL_MARKER = Regex("""<!--tsundoku-partial:run=(-?\d+);chunks=(\d+)-->""")
+    private val PARTIAL_MARKER = Regex("""<!--tsundoku-partial:run=(-?\d+);src=(\d+)-->""")
 
-    /** A partial (.tmp) translation: [chunksDone] chunks of the run started at [runId]. */
+    /** A partial (.tmp) translation of the first [sourceParagraphs] source paragraphs, from the run started at [runId]. */
     fun buildPartialHtml(
         runId: Long,
-        chunksDone: Int,
+        sourceParagraphs: Int,
         translatedTitle: String?,
         translatedParagraphs: List<String>,
-    ): String = "<!--tsundoku-partial:run=$runId;chunks=$chunksDone-->" +
+    ): String = "<!--tsundoku-partial:run=$runId;src=$sourceParagraphs-->" +
         buildTranslatedHtml(translatedTitle, translatedParagraphs)
 
-    /** Reads back [buildPartialHtml]; older partials have no run id or chunk count. */
+    /** Reads back [buildPartialHtml]; older partials have no run id or source paragraph count. */
     fun parsePartialHtml(html: String): PartialTranslation {
         val marker = PARTIAL_MARKER.find(html)
         val doc = Jsoup.parse(html)
@@ -158,7 +158,7 @@ object TranslationHtmlUtils {
                 p.select("br").forEach { it.replaceWith(org.jsoup.nodes.TextNode("\n")) }
                 p.wholeText().trim()
             }.filter { it.isNotBlank() },
-            chunksDone = marker?.groupValues?.get(2)?.toIntOrNull(),
+            sourceParagraphs = marker?.groupValues?.get(2)?.toIntOrNull(),
             runId = marker?.groupValues?.get(1)?.toLongOrNull(),
         )
     }

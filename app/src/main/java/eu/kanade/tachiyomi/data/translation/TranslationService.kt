@@ -478,6 +478,9 @@ class TranslationService(
         val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
         if (plainText.replace(MEDIA_PLACEHOLDER_REGEX, "").isBlank()) {
             logcat(LogPriority.DEBUG) { "Nothing to translate in ${locator.chapterName}" }
+            val html = TranslationHtmlUtils.buildTranslatedHtml(title, emptyList()) +
+                preservedImages.values.joinToString("")
+            saveTranslation(locator, task, engine.id.toString(), html)
             return
         }
         val paragraphs = TranslationHtmlUtils.splitParagraphsPreserving(plainText)
@@ -515,7 +518,7 @@ class TranslationService(
         // Translate chunks and split responses back into paragraphs
         val allTranslated = mutableListOf<String>()
         if (partial != null && resumeFromChunk > 0) {
-            if (partial.chunksDone != null) {
+            if (partial.sourceParagraphs != null) {
                 allTranslated.addAll(partial.paragraphs)
             } else {
                 val skippedParagraphs = chunkParagraphsList.take(resumeFromChunk).sumOf { it.size }
@@ -523,8 +526,14 @@ class TranslationService(
             }
         }
 
-        suspend fun saveProgress(chunksDone: Int) =
-            savePartialTranslation(locator, task, engine.id.toString(), chunksDone, allTranslated, translatedTitle)
+        suspend fun saveProgress(chunksDone: Int) = savePartialTranslation(
+            locator,
+            task,
+            engine.id.toString(),
+            chunkParagraphsList.take(chunksDone).sumOf { it.size },
+            allTranslated,
+            translatedTitle,
+        )
 
         var failedChunkIndex = -1
         // Contextual anchoring: send previous raw + translated paragraphs as context for LLM engines
@@ -735,7 +744,7 @@ class TranslationService(
         locator: TranslationLocator,
         task: TranslationTask,
         engineId: String,
-        chunksDone: Int,
+        sourceParagraphs: Int,
         translatedParagraphs: List<String>,
         translatedTitle: String?,
     ) {
@@ -743,7 +752,7 @@ class TranslationService(
 
         val html = TranslationHtmlUtils.buildPartialHtml(
             task.createdAt,
-            chunksDone,
+            sourceParagraphs,
             translatedTitle,
             translatedParagraphs,
         )

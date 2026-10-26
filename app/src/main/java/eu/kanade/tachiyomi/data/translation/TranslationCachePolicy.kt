@@ -32,10 +32,21 @@ object TranslationCachePolicy {
     fun canReuse(partial: PartialTranslation, forceRetranslate: Boolean, taskCreatedAt: Long): Boolean =
         !forceRetranslate || partial.runId == taskCreatedAt
 
-    /** Number of leading chunks [partial] already covers, given each chunk's paragraph count. */
-    fun resumeChunkCount(chunkParagraphCounts: List<Int>, partial: PartialTranslation): Int =
-        partial.chunksDone?.coerceIn(0, chunkParagraphCounts.size)
-            ?: resumeChunkCount(chunkParagraphCounts, partial.paragraphs.size)
+    /**
+     * Number of leading chunks [partial] already covers, given each chunk's paragraph count. A
+     * partial whose source paragraphs end inside a chunk (the chunk size changed) can't be split
+     * back into source paragraphs, so it isn't resumed.
+     */
+    fun resumeChunkCount(chunkParagraphCounts: List<Int>, partial: PartialTranslation): Int {
+        val covered = partial.sourceParagraphs
+            ?: return resumeChunkCount(chunkParagraphCounts, partial.paragraphs.size)
+        var sum = 0
+        chunkParagraphCounts.forEachIndexed { i, count ->
+            if (sum == covered) return i
+            sum += count
+        }
+        return if (sum == covered) chunkParagraphCounts.size else 0
+    }
 
     /**
      * Number of leading chunks covered by [resumedParagraphs] paragraphs, for partials saved
