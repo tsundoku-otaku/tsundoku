@@ -870,6 +870,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private val pendingTtsAutoStart: Boolean get() = pendingTtsStart != null
 
     private fun deferTtsStart(target: LoadedChapter?, fromViewport: Boolean) {
+        if (target?.isTextSet == true) {
+            logcat(LogPriority.WARN) { "TTS: chapter rendered no text, stopping" }
+            stopTts()
+            return
+        }
         val chapterId = target?.chapter?.chapter?.id
             ?: currentPage?.chapter?.chapter?.id
             ?: currentChapters?.currChapter?.chapter?.id
