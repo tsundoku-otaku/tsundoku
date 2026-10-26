@@ -118,9 +118,9 @@ class BrowseSourceViewModel(
     // Current page number from paging source
     val currentPage: StateFlow<Int> = tachiyomi.data.source.BaseSourcePagingSource.currentPage
 
-    // Initial page for jump-to-page feature - triggers pager recreation when changed
     private var restoredPresetQuery: String? = null
 
+    // Initial page for jump-to-page feature - triggers pager recreation when changed
     private val _initialPage = MutableStateFlow(1L)
     val initialPage: StateFlow<Long> = _initialPage.asStateFlow()
 
