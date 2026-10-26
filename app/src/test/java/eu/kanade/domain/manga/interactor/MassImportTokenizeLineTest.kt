@@ -91,11 +91,48 @@ class MassImportTokenizeLineTest {
     }
 
     @Test
-    fun `uppercase scheme is kept`() {
+    fun `uppercase scheme is lowercased`() {
         assertEquals(
-            listOf("HTTPS://a.example.com/x", "Http://b.example.com/y"),
+            listOf("https://a.example.com/x", "http://b.example.com/y"),
             MassImport.urlTokens("HTTPS://a.example.com/x Http://b.example.com/y"),
         )
+    }
+
+    @Test
+    fun `quoted url after another column is kept`() {
+        assertEquals(
+            listOf("https://a.example.com/x"),
+            MassImport.urlTokens("\"Some Title\",\"https://a.example.com/x\""),
+        )
+    }
+
+    @Test
+    fun `unquoted csv row with url first drops later columns`() {
+        assertEquals(
+            listOf("https://a.example.com/x"),
+            MassImport.urlTokens("https://a.example.com/x,Some Title,3"),
+        )
+    }
+
+    @Test
+    fun `json list keeps every url`() {
+        assertEquals(
+            listOf("https://a.example.com/x", "https://b.example.com/y"),
+            MassImport.urlTokens("[\"https://a.example.com/x\", \"https://b.example.com/y\"]"),
+        )
+    }
+
+    @Test
+    fun `url glued to a quote or bracket is kept`() {
+        assertEquals(
+            listOf("https://a.example.com/x", "https://b.example.com/y"),
+            MassImport.urlTokens("url:\"https://a.example.com/x\" see:<https://b.example.com/y>"),
+        )
+    }
+
+    @Test
+    fun `malformed scheme stays a non url token`() {
+        assertEquals(listOf("htps://a.example.com/x"), MassImport.tokenizeLine("htps://a.example.com/x"))
     }
 
     @Test

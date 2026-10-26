@@ -539,7 +539,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 .interleaveByHost(MAX_LOOKAHEAD)
                 .flatMapMerge(concurrency) { (urlIndex, url) ->
                     val shouldCount = urlIndex >= countBaseline
-                    if (url.isBlank() || !(url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true))) {
+                    if (url.isBlank() || !MassImport.isHttpUrl(url)) {
                         return@flatMapMerge flow {
                             if (shouldCount) {
                                 skippedCount.incrementAndGet()
