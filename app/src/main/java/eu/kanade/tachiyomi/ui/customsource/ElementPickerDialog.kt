@@ -57,6 +57,7 @@ fun ElementPickerDialog(
     label: String,
     onDismiss: () -> Unit,
     onPicked: (String) -> Unit,
+    scope: PickerScope = PickerScope.Document,
 ) {
     Dialog(
         onDismissRequest = onDismiss,
@@ -232,8 +233,28 @@ fun ElementPickerDialog(
                     showConfirm = false
                     lastSelected = null
                     clearHighlights()
-                    onPicked(selector)
-                    onDismiss()
+                    val finish = { picked: String ->
+                        onPicked(picked)
+                        onDismiss()
+                    }
+                    val wv = webView
+                    val script = when (scope) {
+                        PickerScope.Document -> null
+                        PickerScope.ListItem ->
+                            "window.detectItemSelector(${quote(org.json.JSONArray(listOf(selector)).toString())});"
+                        is PickerScope.InsideItem -> scope.listSelector.takeIf { it.isNotBlank() }
+                            ?.let { "window.relativeSelector(${quote(selector)}, ${quote(it)});" }
+                    }
+                    if (wv == null || script == null) {
+                        finish(selector)
+                    } else {
+                        wv.evaluateJavascript(script) { result ->
+                            // A JS error yields null; keep the raw pick rather than clearing the field.
+                            if (result == null || result == "null") return@evaluateJavascript finish(selector)
+                            val decoded = decodeJsString(result)
+                            finish(if (scope is PickerScope.ListItem) decoded.ifBlank { selector } else decoded)
+                        }
+                    }
                 },
                 onDismiss = {
                     showConfirm = false
@@ -243,4 +264,16 @@ fun ElementPickerDialog(
             )
         }
     }
+}
+
+/** How a picked element is turned into the selector the field stores. */
+sealed interface PickerScope {
+    /** Document-level selector (details page, content, pagination links). */
+    data object Document : PickerScope
+
+    /** The repeating item of a list (novel cards, chapter rows). */
+    data object ListItem : PickerScope
+
+    /** A field resolved inside each item of [listSelector] (card title/cover, chapter link/name/date). */
+    data class InsideItem(val listSelector: String) : PickerScope
 }

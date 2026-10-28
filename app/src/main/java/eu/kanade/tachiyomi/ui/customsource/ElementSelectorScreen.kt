@@ -556,8 +556,11 @@ fun ElementSelectorScreen(
                     currentUrl = newUrl
 
                     // Dynamic search capture: if the user gave a probe word and it shows up in the
-                    // resulting URL (raw or percent-encoded), derive the {query} pattern.
-                    if (currentStep == SelectorWizardStep.SEARCH && searchProbeQuery.isNotBlank()) {
+                    // resulting URL (raw or percent-encoded), derive the {query} pattern. The step is
+                    // read from the model: this client is remembered once, so a captured local would
+                    // stay at the first step forever.
+                    val step = screenModel.currentStepState.value ?: steps.first()
+                    if (step == SelectorWizardStep.SEARCH && searchProbeQuery.isNotBlank()) {
                         val derived = deriveSearchUrl(newUrl, config.baseUrl, searchProbeQuery)
                         if (derived != null) {
                             config.searchUrl = derived
@@ -569,6 +572,11 @@ fun ElementSelectorScreen(
                             // the user knows to run the search (and that case must match).
                             searchStatus = "fail"
                         }
+                    }
+                }
+                if (screenModel.detectedLanguageState.value.isBlank()) {
+                    view.evaluateJavascript("document.documentElement.lang || ''") { result ->
+                        screenModel.detectedLanguageState.value = decodeJsString(result)
                     }
                 }
                 injectSelectionScript()
@@ -2456,6 +2464,18 @@ internal val ELEMENT_SELECTOR_JS = """
         return tighten(els[0], self0);
     };
 
+    // Selector for the element matched by [sel], relative to its enclosing list item ([listSel]), so
+    // the source can resolve it inside every item. '' when the element is the item itself; [sel]
+    // unchanged when it isn't inside an item.
+    window.relativeSelector = function(sel, listSel) {
+        let el, item;
+        try { el = document.querySelector(sel); item = el ? el.closest(listSel) : null; } catch (e) { return sel; }
+        if (!el || !item) return sel;
+        let path = [];
+        for (let cur = el; cur && cur !== item; cur = cur.parentElement) path.unshift(segmentFor(cur));
+        return path.join(' > ');
+    };
+
     // Returns the parent selector + child elements of a selector, so the confirm dialog can walk up
     // AND down the DOM when the tap wasn't precise.
     window.relatives = function(sel) {
@@ -2548,6 +2568,12 @@ internal val ELEMENT_SELECTOR_JS = """
 
 })();
 """
+
+/** Decodes an evaluateJavascript result (a JSON value) to the string it holds; "" for null/non-string. */
+internal fun decodeJsString(result: String?): String = runCatching {
+    (kotlinx.serialization.json.Json.parseToJsonElement(result ?: "null") as? kotlinx.serialization.json.JsonPrimitive)
+        ?.takeIf { it.isString }?.content
+}.getOrNull().orEmpty()
 
 /**
  * Derives a {query} template from a URL produced by searching for [userQuery]. Handles raw and

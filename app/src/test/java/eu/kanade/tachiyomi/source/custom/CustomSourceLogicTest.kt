@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.source.custom
 
 import eu.kanade.tachiyomi.source.model.SManga
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -151,5 +152,37 @@ class CustomSourceLogicTest {
     fun `html to text collapses excess blank lines and trims`() {
         val out = htmlToFormattedText("<p>One</p><p></p><p></p><p>Two</p>")
         assertEquals("One\n\nTwo", out)
+    }
+
+    @Test
+    fun `rewrite moves only the base host and keeps path and query`() {
+        val rewritten = rewriteToCustomBase(
+            "https://source.example/novel/1?page=2".toHttpUrl(),
+            "https://source.example",
+            "https://mirror.example",
+        )
+        assertEquals("https://mirror.example/novel/1?page=2", rewritten.toString())
+    }
+
+    @Test
+    fun `rewrite leaves a url-valued query parameter alone`() {
+        val rewritten = rewriteToCustomBase(
+            "https://source.example/proxy?url=https://cdn.example/a.jpg".toHttpUrl(),
+            "https://source.example",
+            "https://mirror.example",
+        )
+        assertEquals("mirror.example", rewritten?.host)
+        assertEquals("https://cdn.example/a.jpg", rewritten?.queryParameter("url"))
+    }
+
+    @Test
+    fun `rewrite ignores requests to other hosts`() {
+        assertNull(
+            rewriteToCustomBase(
+                "https://cdn.example/a.jpg?ref=https://source.example".toHttpUrl(),
+                "https://source.example",
+                "https://mirror.example",
+            ),
+        )
     }
 }
