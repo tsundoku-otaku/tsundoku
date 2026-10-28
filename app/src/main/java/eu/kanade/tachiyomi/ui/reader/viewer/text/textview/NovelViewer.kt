@@ -43,6 +43,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsTextUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
 import eu.kanade.tachiyomi.util.system.toast
@@ -804,7 +805,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             override fun getCurrentPage(): ReaderPage? = currentPage
 
             override fun onHighlightChunk(chunkIndex: Int, chunk: String, startOffset: Int, paragraphIndex: Int) {
-                applyTtsHighlight(chunk, startOffset)
+                applyTtsHighlight(chunk, startOffset, paragraphIndex)
                 saveTtsProgressForChunk(chunkIndex)
             }
 
@@ -842,7 +843,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         activity.runOnUiThread { clearTtsSpansInLoadedChapters() }
     }
 
-    private fun applyTtsHighlight(chunk: String, startOffset: Int) {
+    private fun applyTtsHighlight(chunk: String, startOffset: Int, paragraphIndex: Int) {
         activity.runOnUiThread {
             val highlightColor = preferences.novelTtsHighlightColor.get()
             val highlightTextColor = preferences.novelTtsHighlightTextColor.get()
@@ -860,9 +861,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             val block = targetLoaded.block
             val text = block.fullText ?: return@runOnUiThread
 
-            val startIndex = text.indexOf(chunk, startOffset.coerceAtLeast(0))
-            if (startIndex < 0) return@runOnUiThread
-            val endIndex = (startIndex + chunk.length).coerceAtMost(text.length)
+            val chunkStartIndex = text.indexOf(chunk, startOffset.coerceAtLeast(0))
+            val (startIndex, endIndex) = if (chunkStartIndex >= 0) {
+                chunkStartIndex to (chunkStartIndex + chunk.length).coerceAtMost(text.length)
+            } else {
+                block.paragraphBoundsByNewline().getOrNull(paragraphIndex) ?: return@runOnUiThread
+            }
 
             var firstChunkView: TextView? = null
             var firstChunkLocalStart = 0
@@ -1313,22 +1317,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val viewportTop = scrollView.scrollY
         val viewportBottom = viewportTop + scrollView.height
 
-        // Same split as speak() so paragraph indexes are consistent.
-        val paragraphLines = text.split("\n").filter { it.isNotBlank() }
-        if (paragraphLines.isEmpty()) return 0
-
-        // Build start-char offset for each paragraph within `text`.
-        val paragraphOffsets = mutableListOf<Int>()
-        var searchFrom = 0
-        for (line in paragraphLines) {
-            val idx = text.indexOf(line, searchFrom)
-            if (idx >= 0) {
-                paragraphOffsets.add(idx)
-                searchFrom = idx + line.length
-            } else {
-                paragraphOffsets.add(searchFrom)
-            }
-        }
+        val textBlock = loadedChapters.firstOrNull { it.block.fullText === text }?.block
+        val paragraphOffsets = (textBlock?.paragraphBoundsByNewline() ?: TtsTextUtils.newlineParagraphBounds(text))
+            .map { it.first }
+        if (paragraphOffsets.isEmpty()) return 0
 
         loadedChapters.forEach { loaded ->
             if (!loaded.isLoaded) return@forEach

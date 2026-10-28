@@ -43,8 +43,6 @@ class TtsController(
         private set
     var ttsChunkStartOffsets: List<Int> = emptyList()
         private set
-    var ttsCurrentParagraphs: List<TtsTextUtils.ParagraphInfo> = emptyList()
-        private set
 
     var ttsPlaybackChapterIndex: Int = 0
         private set
@@ -147,7 +145,7 @@ class TtsController(
         ttsPaused = false
 
         val maxLength = TextToSpeech.getMaxSpeechInputLength().takeIf { it > 0 } ?: 4000
-        val paragraphs = text.split("\n").filter { it.isNotBlank() }
+        val paragraphs = TtsTextUtils.newlineParagraphBounds(text).map { (start, end) -> text.substring(start, end) }
         val chunkParagraphIndexes = mutableListOf<Int>()
 
         val chunks = if (paragraphs.size > 1) {
@@ -184,8 +182,6 @@ class TtsController(
             }
         }
         ttsChunkStartOffsets = offsets
-
-        ttsCurrentParagraphs = TtsTextUtils.findParagraphs(text)
 
         ttsCurrentChunkIndex = 0
         val startIndex = if (hasViewportStartOverride) {
@@ -275,15 +271,6 @@ class TtsController(
         ttsPaused = false
         tts?.stop()
         speakChunksFrom(target)
-        if (preferences.novelTtsEnableHighlight.get()) {
-            val chunk = ttsChunks.getOrNull(target) ?: return
-            callbacks.onHighlightChunk(
-                target,
-                chunk,
-                ttsChunkStartOffsets.getOrElse(target) { 0 },
-                ttsChunkParagraphIndexes.getOrElse(target) { 0 },
-            )
-        }
     }
 
     fun isSpeaking(): Boolean = ttsInitialized && tts?.isSpeaking == true

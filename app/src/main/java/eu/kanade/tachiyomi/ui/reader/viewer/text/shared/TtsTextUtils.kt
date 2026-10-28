@@ -11,6 +11,16 @@ object TtsTextUtils {
         val text: String,
     )
 
+    fun newlineParagraphBounds(text: String): List<Pair<Int, Int>> {
+        val bounds = mutableListOf<Pair<Int, Int>>()
+        var offset = 0
+        for (line in text.split("\n")) {
+            if (line.isNotBlank()) bounds.add(offset to offset + line.length)
+            offset += line.length + 1
+        }
+        return bounds
+    }
+
     fun splitTextForTts(text: String, maxLength: Int): List<String> {
         val chunks = mutableListOf<String>()
         val hasSpaces = ' ' in text

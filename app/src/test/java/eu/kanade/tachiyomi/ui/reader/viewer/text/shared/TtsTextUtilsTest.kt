@@ -257,4 +257,16 @@ class TtsTextUtilsTest {
         val chunks = listOf("abc")
         assertEquals(0, TtsTextUtils.getChunkIndexFromOffset(999, chunks))
     }
+
+    @Test
+    fun `newlineParagraphBounds skips blank lines and keeps offsets into the original text`() {
+        val text = "One\n\n  \nTwo words\nThree"
+        val bounds = TtsTextUtils.newlineParagraphBounds(text)
+        assertEquals(listOf("One", "Two words", "Three"), bounds.map { (s, e) -> text.substring(s, e) })
+    }
+
+    @Test
+    fun `newlineParagraphBounds is empty for blank text`() {
+        assertTrue(TtsTextUtils.newlineParagraphBounds(" \n\n").isEmpty())
+    }
 }
