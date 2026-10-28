@@ -1993,7 +1993,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val marginRight = preferences.novelMarginRight.get()
         val marginTop = preferences.novelMarginTop.get()
         val marginBottom = preferences.novelMarginBottom.get()
-        val fontColor = preferences.novelFontColor.get()
         val theme = preferences.novelTheme.get()
         val textAlign = preferences.novelTextAlign.get()
         val fontFamily = preferences.novelFontFamily.get()
@@ -2058,10 +2057,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
         }
 
-        val (_, themeTextColor) = getThemeColors(theme)
-        val finalTextColor = if (fontColor != 0) fontColor else themeTextColor
-        textView.setTextColor(finalTextColor)
-        textView.setLinkTextColor(ThemeUtils.getLinkColor(activity, getThemeColors(theme).first, finalTextColor))
+        val (themeBgColor, themeTextColor) = getThemeColors(theme)
+        textView.setTextColor(themeTextColor)
+        textView.setLinkTextColor(ThemeUtils.getLinkColor(activity, themeBgColor, themeTextColor))
 
         // textSize/typeface above can drift from the metrics baked into an existing
         // PrecomputedText, and the framework's own drag-thumbnail path (long-press to

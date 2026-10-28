@@ -52,17 +52,13 @@ internal class NovelWebViewStyler(
         val marginRight = preferences.novelMarginRight.get()
         val marginTop = preferences.novelMarginTop.get()
         val marginBottom = preferences.novelMarginBottom.get()
-        val fontColor = preferences.novelFontColor.get()
-        val backgroundColor = preferences.novelBackgroundColor.get()
         val paragraphIndent = preferences.novelParagraphIndent.get()
         val paragraphSpacing = preferences.novelParagraphSpacing.get()
         val textAlign = preferences.novelTextAlign.get()
         val theme = preferences.novelTheme.get()
         val hideChapterTitle = preferences.novelHideChapterTitle.get()
 
-        val (themeBgColor, themeTextColor) = ThemeUtils.getThemeColors(activity, preferences, theme)
-        val finalBgColor = if (theme == "custom" && backgroundColor != 0) backgroundColor else themeBgColor
-        val finalTextColor = if (fontColor != 0) fontColor else themeTextColor
+        val (finalBgColor, finalTextColor) = ThemeUtils.getThemeColors(activity, preferences, theme)
 
         val bgColorHex = ThemeUtils.colorToHex(finalBgColor)
         val textColorHex = ThemeUtils.colorToHex(finalTextColor)

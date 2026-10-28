@@ -32,9 +32,9 @@
 
     var fg = parse(getComputedStyle(document.body).color);
     var bg = parse(getComputedStyle(document.body).backgroundColor);
-    if (bg.length < 4 || bg[3] === 0) {
+    if (bg[3] === 0) {
         bg = parse(getComputedStyle(document.documentElement).backgroundColor);
-        if (bg.length < 4 || bg[3] === 0) bg = hex('__BG__');
+        if (bg[3] === 0) bg = hex('__BG__');
     }
     if (contrast(fg, bg) >= 3) return;
 
