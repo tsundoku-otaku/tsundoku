@@ -335,6 +335,7 @@
     <string name="selector_features_title">Source features</string>
     <string name="selector_features_desc">Pick what this source has.</string>
     <string name="selector_features_need_listing">Enable at least one of Popular or Latest.</string>
+    <string name="selector_setup_language_hint">Leave blank to use the language the site declares</string>
     <string name="selector_setup_dynamic_notice">Note: this builds a source by reading the page HTML. Sites that load content with JavaScript or AJAX may not work fully.</string>
     <string name="selector_feature_popular">Popular / trending list</string>
     <string name="selector_feature_latest">Latest updates list</string>

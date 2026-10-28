@@ -3,6 +3,7 @@ package eu.kanade.tachiyomi.source.custom
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
+import eu.kanade.tachiyomi.network.await
 import eu.kanade.tachiyomi.network.awaitSuccess
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.isNovelSource
@@ -199,20 +200,41 @@ private fun normalizeCustomUrl(url: String?): String? {
     }
 }
 
-private fun trySetFieldRecursively(target: Any, fieldName: String, value: Any): Boolean {
+private fun findFieldRecursively(target: Any, fieldName: String): java.lang.reflect.Field? {
     var current: Class<*>? = target.javaClass
     while (current != null) {
-        val field = runCatching { current.getDeclaredField(fieldName) }.getOrNull()
-        if (field != null) {
-            return runCatching {
-                field.isAccessible = true
-                field.set(target, value)
-                true
-            }.getOrDefault(false)
-        }
+        runCatching { current.getDeclaredField(fieldName) }.getOrNull()?.let { return it }
         current = current.superclass
     }
-    return false
+    return null
+}
+
+// Swaps the source's OkHttpClient. Handles a plain backing field (`val client = ...`) and a lazy
+// delegate (`val client by lazy`). A getter-only client (HttpSource's default) has no storage to swap.
+private fun replaceSourceClient(target: HttpSource, client: OkHttpClient): Boolean {
+    findFieldRecursively(target, "client")?.let { field ->
+        runCatching {
+            field.isAccessible = true
+            field.set(target, client)
+        }
+    } ?: findFieldRecursively(target, "client\$delegate")?.let { field ->
+        runCatching {
+            field.isAccessible = true
+            field.set(target, lazyOf(client))
+        }
+    }
+    return target.client === client
+}
+
+internal fun rewriteToCustomBase(url: okhttp3.HttpUrl, sourceBaseUrl: String, customBaseUrl: String): okhttp3.HttpUrl? {
+    val sourceBase = sourceBaseUrl.trimEnd('/').toHttpUrlOrNull() ?: return null
+    val customBase = customBaseUrl.trimEnd('/').toHttpUrlOrNull() ?: return null
+    if (!url.host.equals(sourceBase.host, ignoreCase = true)) return null
+    return url.newBuilder()
+        .scheme(customBase.scheme)
+        .host(customBase.host)
+        .port(customBase.port)
+        .build()
 }
 
 private fun createBaseUrlRewriteClient(
@@ -222,72 +244,42 @@ private fun createBaseUrlRewriteClient(
 ): OkHttpClient {
     val sourceBase = sourceBaseUrl.trimEnd('/')
     val customBase = customBaseUrl.trimEnd('/')
-    val sourceBaseHttp = sourceBase.toHttpUrlOrNull()
-    val customBaseHttp = customBase.toHttpUrlOrNull()
-
-    return client.newBuilder()
-        .addInterceptor { chain ->
-            val request = chain.request()
-            val reqUrl = request.url
-            var nextRequest = request
-
-            // Prefer structural comparison using HttpUrl when possible to avoid string concat bugs
-            if (sourceBaseHttp != null && customBaseHttp != null) {
-                if (reqUrl.host == sourceBaseHttp.host && reqUrl.scheme == sourceBaseHttp.scheme) {
-                    val newUrl = reqUrl.newBuilder()
-                        .scheme(customBaseHttp.scheme)
-                        .host(customBaseHttp.host)
-                        .port(customBaseHttp.port)
-                        .build()
-                    nextRequest = request.newBuilder().url(newUrl).build()
-                } else {
-                    // Fallback: handle exact string-prefix replacement only when request string actually starts with sourceBase
-                    val reqStr = reqUrl.toString()
-                    if (reqStr.startsWith(sourceBase)) {
-                        val rewritten = customBase + reqStr.removePrefix(sourceBase)
-                        rewritten.toHttpUrlOrNull()?.let { newHttpUrl ->
-                            nextRequest = request.newBuilder().url(newHttpUrl).build()
-                        }
-                    }
-                }
-            } else {
-                // If parsing failed for any reason, still attempt conservative string-based rewrite
-                val reqStr = reqUrl.toString()
-                if (reqStr.startsWith(sourceBase)) {
-                    val rewritten = customBase + reqStr.removePrefix(sourceBase)
-                    rewritten.toHttpUrlOrNull()?.let { newHttpUrl ->
-                        nextRequest = request.newBuilder().url(newHttpUrl).build()
-                    }
-                }
+    val rewrite = okhttp3.Interceptor { chain ->
+        val request = chain.request()
+        val builder = request.newBuilder()
+        rewriteToCustomBase(request.url, sourceBase, customBase)?.let { builder.url(it) }
+        // The extension builds Referer/Origin from its own baseUrl.
+        for (name in listOf("Referer", "Origin")) {
+            val value = request.header(name) ?: continue
+            if (value.startsWith(sourceBase, ignoreCase = true)) {
+                builder.header(name, customBase + value.substring(sourceBase.length))
             }
-            val finalRequest = run {
-                val reqStr = nextRequest.url.toString()
-                // look for second (or later) occurrence of scheme
-                val idxHttp = reqStr.indexOf("http://", 8).let { if (it >= 0) it else reqStr.indexOf("https://", 8) }
-                if (idxHttp > 0) {
-                    val embedded = reqStr.substring(idxHttp)
-                    embedded.toHttpUrlOrNull()?.let { embeddedUrl ->
-                        return@run nextRequest.newBuilder().url(embeddedUrl).build()
-                    }
-                }
-                nextRequest
-            }
-
-            chain.proceed(finalRequest)
         }
+        chain.proceed(builder.build())
+    }
+    // First in the chain so Cloudflare/rate-limit interceptors already see the custom host.
+    return client.newBuilder()
+        .apply { interceptors().add(0, rewrite) }
         .build()
 }
 
 private fun patchHttpSourceForCustomBaseUrl(source: HttpSource, customBaseUrl: String): HttpSource {
     val sourceBaseUrl = source.baseUrl.trimEnd('/')
     val targetBaseUrl = customBaseUrl.trimEnd('/')
-    if (targetBaseUrl.isBlank() || sourceBaseUrl == targetBaseUrl) return source
+    if (targetBaseUrl.isBlank() || sourceBaseUrl.equals(targetBaseUrl, ignoreCase = true)) return source
 
-    // Patch a fresh instance, not the shared SourceManager singleton: mutating its client
-    // leaks the rewrite interceptor onto the original source's own requests.
-    val target = source.freshCopyOrNull() ?: source
+    // Never patch the shared SourceManager instance: the rewrite would leak onto the extension's
+    // own requests and onto every other custom source based on it.
+    val target = source.freshCopyOrNull()
+        ?: throw IllegalStateException(
+            "${source.name} can't be redirected to $targetBaseUrl (no standalone instance available)",
+        )
     val rewrittenClient = createBaseUrlRewriteClient(target.client, sourceBaseUrl, targetBaseUrl)
-    trySetFieldRecursively(target, "client", rewrittenClient)
+    if (!replaceSourceClient(target, rewrittenClient)) {
+        throw IllegalStateException(
+            "${source.name} can't be redirected to $targetBaseUrl (its network client can't be replaced)",
+        )
+    }
     // Keep baseUrl original so the interceptor still matches outgoing requests.
     return target
 }
@@ -480,7 +472,7 @@ class CustomNovelSource(
     override val lang: String = config.language
     override val id: Long = config.id ?: generateId(config.name, config.baseUrl)
     override val supportsLatest: Boolean
-        get() = config.latestUrl != null || baseSource?.supportsLatest == true
+        get() = config.latestUrl != null || baseSourceOrNull()?.supportsLatest == true
 
     // Must match StubSource.toString() so translations/quotes resolve to the same on-disk directory
     // whether this source is loaded or currently stubbed. Novel sources render as "Name (LANG) (JS)".
@@ -489,50 +481,65 @@ class CustomNovelSource(
 
     override val client = network.cloudflareClient
 
+    private class ResolvedBase(
+        val original: Any,
+        val source: CatalogueSource,
+        val originalBaseUrl: String?,
+    )
+
+    @Volatile
+    private var resolvedBase: ResolvedBase? = null
+    private val resolveLock = Any()
+
     /**
      * When basedOnSourceId is set, we delegate all fetching/parsing to the base
      * extension source but substitute our own baseUrl in requests.
      * Supports HttpSource (APK extensions), JsSource (JS plugins), and any CatalogueSource.
+     *
+     * Resolved on every access rather than once: the extension may not be loaded yet at the first
+     * call, and an extension update replaces its instance.
      */
-    private val baseSource: CatalogueSource? by lazy {
-        config.basedOnSourceId?.let { sourceId ->
-            try {
-                val source = Injekt.get<SourceManager>().get(sourceId) as? CatalogueSource
-                // Capture original base URL BEFORE any patching
-                val originalBaseUrl = when (source) {
-                    is JsSource -> source.baseUrl.trimEnd('/')
-                    is HttpSource -> source.baseUrl.trimEnd('/')
+    private val baseSource: CatalogueSource?
+        get() {
+            val sourceId = config.basedOnSourceId ?: return null
+            val original = Injekt.get<SourceManager>().get(sourceId)
+                ?: throw IllegalStateException("Base source for $name is not installed or not loaded yet")
+            resolvedBase?.takeIf { it.original === original }?.let { return it.source }
+            return synchronized(resolveLock) {
+                resolvedBase?.takeIf { it.original === original }?.let { return@synchronized it.source }
+                if (original is CustomNovelSource) {
+                    throw IllegalStateException("$name can't be based on another custom source")
+                }
+                val catalogue = original as? CatalogueSource
+                    ?: throw IllegalStateException("Base source for $name can't browse")
+                val originalBaseUrl = when (catalogue) {
+                    is JsSource -> catalogue.baseUrl.trimEnd('/')
+                    is HttpSource -> catalogue.baseUrl.trimEnd('/')
                     else -> null
                 }
-                baseSourceOriginalUrl = originalBaseUrl
-
-                when {
-                    source is JsSource && baseUrl.isNotBlank() -> source.withSiteOverride(baseUrl)
-                    source is HttpSource && baseUrl.isNotBlank() -> patchHttpSourceForCustomBaseUrl(source, baseUrl)
-                    else -> source
+                val patched = when {
+                    catalogue is JsSource && baseUrl.isNotBlank() -> catalogue.withSiteOverride(baseUrl)
+                    catalogue is HttpSource && baseUrl.isNotBlank() ->
+                        patchHttpSourceForCustomBaseUrl(catalogue, baseUrl)
+                    else -> catalogue
                 }
-            } catch (_: Exception) {
-                null
+                resolvedBase = ResolvedBase(original, patched, originalBaseUrl)
+                patched
             }
         }
-    }
 
-    // Store the original source base URL before any patching/overrides
-    private var baseSourceOriginalUrl: String? = null
-
-    private val baseSourceUrl: String? by lazy {
-        // Ensure baseSource initialization happens first (which sets baseSourceOriginalUrl),
-        // then return the captured original URL
-        baseSource
-        baseSourceOriginalUrl
-    }
+    // For metadata/URL mapping, where a missing base must not throw.
+    private fun baseSourceOrNull(): CatalogueSource? = runCatching { baseSource }.getOrNull()
 
     /**
      * The base URL to use when translating between the custom source and the delegated source.
      * Prefer the delegated source URL so absolute links can be mapped back correctly.
      */
     private val effectiveRebaseUrl: String?
-        get() = baseSourceUrl ?: baseUrl.trimEnd('/')
+        get() {
+            baseSourceOrNull()
+            return resolvedBase?.originalBaseUrl ?: baseUrl.trimEnd('/')
+        }
 
     override fun headersBuilder(): Headers.Builder = super.headersBuilder().apply {
         config.headers.forEach { (key, value) ->
@@ -673,8 +680,10 @@ class CustomNovelSource(
 
         // If the first page introduces no chapter the library lacks (and not a forced refresh),
         // keep the existing list. We only short-circuit this "no new chapters" case since the
-        // result replaces the stored list and must otherwise be the full set.
-        val knownUrls = context?.takeIf { !it.forceRefresh }
+        // result replaces the stored list and must otherwise be the full set. Only valid when
+        // page 1 holds the newest chapters; an ascending list (reverseChapters) starts with the
+        // oldest, which are always known.
+        val knownUrls = context?.takeIf { !it.forceRefresh && !config.reverseChapters }
             ?.existingChapters?.mapNotNull { it.url.ifBlank { null } }?.toSet().orEmpty()
 
         val seen = mutableSetOf<String>()
@@ -691,10 +700,11 @@ class CustomNovelSource(
             val resolved = applyNovelUrlToPattern(pagePattern, manga.url)
             val visited = mutableSetOf<String>()
             var page = 1
-            while (page <= MAX_CHAPTER_PAGES) {
+            while (true) {
+                if (page > MAX_CHAPTER_PAGES) throw chapterPageLimitException()
                 val pageUrl = buildAbsoluteUrl(resolved.replace("{page}", page.toString()))
                 if (!visited.add(pageUrl)) break
-                val doc = client.newCall(GET(pageUrl, headers)).awaitSuccess().asJsoup()
+                val doc = fetchChapterListPage(pageUrl, firstPage = page == 1) ?: break
                 val fresh = addNew(parseChapterElements(doc, selectors))
                 // First page with nothing new => no updates; keep the existing list.
                 if (page == 1 && knownUrls.isNotEmpty() && all.isNotEmpty() &&
@@ -726,10 +736,11 @@ class CustomNovelSource(
             val visited = mutableSetOf<String>()
             var guard = 0
             var firstDoc: Document? = if (url == detailsUrl) detailsDoc else null
-            while (url != null && guard++ < MAX_CHAPTER_PAGES && visited.add(url)) {
-                val doc = firstDoc ?: client.newCall(GET(url, headers)).awaitSuccess().asJsoup()
-                firstDoc = null
+            while (url != null && visited.add(url)) {
+                if (++guard > MAX_CHAPTER_PAGES) throw chapterPageLimitException()
                 val firstPage = guard == 1
+                val doc = firstDoc ?: fetchChapterListPage(url, firstPage) ?: break
+                firstDoc = null
                 addNew(parseChapterElements(doc, selectors))
 
                 // First page, all already known => no updates; stop and keep the existing list.
@@ -749,6 +760,22 @@ class CustomNovelSource(
         }
         return if (config.reverseChapters) all.reversed() else all
     }
+
+    // Past the last page many sites answer 404; that ends the list instead of failing it. Only page 1
+    // must succeed.
+    private suspend fun fetchChapterListPage(url: String, firstPage: Boolean): Document? {
+        if (firstPage) return client.newCall(GET(url, headers)).awaitSuccess().asJsoup()
+        val response = client.newCall(GET(url, headers)).await()
+        if (!response.isSuccessful) {
+            response.close()
+            return null
+        }
+        return response.asJsoup()
+    }
+
+    // A partial list would replace the stored one and drop every chapter past the cut, so fail.
+    private fun chapterPageLimitException() =
+        IllegalStateException("Chapter list has more than $MAX_CHAPTER_PAGES pages")
 
     override suspend fun getPageList(chapter: SChapter): List<Page> {
         baseSource?.let { source ->
@@ -946,8 +973,12 @@ class CustomNovelSource(
         val bs = baseSource
         // A custom content selector overrides delegation.
         if (bs != null && bs.isNovelSource() && config.selectors.content.primary.isBlank()) {
-            // For content fetching, we need absolute URLs (not relative paths)
-            // buildAbsoluteUrl() converts relative to absolute on custom base
+            // Extensions build the content URL as baseUrl + page.url (the path their own getPageList
+            // returned), so hand them the same path getPageList delegation uses. An absolute URL
+            // here was glued onto their baseUrl ("https://site.comhttps://site.com/...").
+            if (bs is HttpSource) {
+                return bs.fetchPageText(toBaseSourcePage(page))
+            }
             val absoluteUrl = buildAbsoluteUrl(page.url)
             // mapCustomUrlToSourceUrl() converts custom base to source base if mirror
             val sourceUrl = mapCustomUrlToSourceUrl(absoluteUrl, baseUrl, effectiveRebaseUrl) ?: absoluteUrl
@@ -1037,7 +1068,7 @@ class CustomNovelSource(
     override fun imageUrlParse(response: Response) = ""
 
     override fun getFilterList(): FilterList {
-        baseSource?.let { return it.getFilterList() }
+        baseSourceOrNull()?.let { return it.getFilterList() }
         return FilterList()
     }
 
@@ -1201,7 +1232,7 @@ class CustomNovelSource(
         val value = repairedUrl.orEmpty()
         if (value.isBlank()) return url
 
-        if (baseSource is JsSource) {
+        if (baseSourceOrNull() is JsSource) {
             val customBase = baseUrl.trimEnd('/')
             val sourceBase = override?.trimEnd('/')
             return when {
@@ -1311,7 +1342,7 @@ class CustomNovelSource(
     }
 
     companion object {
-        private const val MAX_CHAPTER_PAGES = 30
+        private const val MAX_CHAPTER_PAGES = 500
 
         private val NAV_LINK_WORDS = listOf(
             "next", "previous", "prev", "next chapter", "previous chapter",
