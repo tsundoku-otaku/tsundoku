@@ -15,11 +15,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -28,7 +30,6 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -90,6 +91,7 @@ class DownloadCache(
      */
     private var lastRenew = 0L
     private var renewalJob: Job? = null
+    private val initJob: Job
 
     private val _isInitializing = MutableStateFlow(false)
     val isInitializing = _isInitializing
@@ -99,12 +101,14 @@ class DownloadCache(
     private val diskCacheFile: File
         get() = File(context.cacheDir, "dl_index_cache_v3")
 
+    private val scanDispatcher = Dispatchers.IO.limitedParallelism(8)
+
     private val rootDownloadsDirMutex = Mutex()
     private var rootDownloadsDir = RootDirectory(storageManager.getDownloadsDirectory())
 
     init {
         // Attempt to read cache file
-        scope.launch {
+        initJob = scope.launchIO {
             rootDownloadsDirMutex.withLock {
                 try {
                     if (diskCacheFile.exists()) {
@@ -125,10 +129,12 @@ class DownloadCache(
             .onEach { invalidateCache() }
             .launchIn(scope)
 
-        // Sources can be loaded asynchronously after app startup (notably JS/custom sources).
-        // Rebuild the cache when the source list changes so those entries get indexed too.
-        sourceManager.sources.map { it.filterIsInstance<CatalogueSource>() }
-            .onEach { invalidateCache() }
+        // JS and custom sources register after startup, so only their folders are scanned when they appear
+        sourceManager.sources
+            .map { sources -> sources.filterIsInstance<CatalogueSource>().mapTo(HashSet()) { it.id } }
+            .distinctUntilChanged()
+            .debounce(1.seconds)
+            .onEach { indexNewSources() }
             .launchIn(scope)
     }
 
@@ -398,6 +404,9 @@ class DownloadCache(
         }
 
         renewalJob = scope.launchIO {
+            // The disk index is older than this scan and would replace it if read afterwards
+            initJob.join()
+
             if (lastRenew == 0L) {
                 _isInitializing.emit(true)
             }
@@ -416,41 +425,10 @@ class DownloadCache(
             rootDownloadsDirMutex.withLock {
                 val updatedRootDir = RootDirectory(storageManager.getDownloadsDirectory())
 
-                updatedRootDir.sourceDirs = updatedRootDir.dir?.listFiles().orEmpty()
-                    .filter { it.isDirectory && !it.name.isNullOrBlank() }
-                    .mapNotNull { dir ->
-                        val sourceId = sourceMap[dir.name!!.lowercase()]
-                        sourceId?.let { it to SourceDirectory(dir) }
-                    }
-                    .toMap()
+                updatedRootDir.sourceDirs = findSourceDirs(updatedRootDir.dir, sourceMap)
 
-                updatedRootDir.sourceDirs.values.map { sourceDir ->
-                    async {
-                        sourceDir.mangaDirs = sourceDir.dir?.listFiles().orEmpty()
-                            .filter { it.isDirectory && !it.name.isNullOrBlank() }
-                            .associate { it.name!! to MangaDirectory(it) }
-
-                        sourceDir.mangaDirs.values.forEach { mangaDir ->
-                            val chapterDirs = mangaDir.dir?.listFiles().orEmpty()
-                                .mapNotNull {
-                                    when {
-                                        // Ignore incomplete downloads
-                                        it.name?.endsWith(Downloader.TMP_DIR_SUFFIX) == true -> null
-                                        // Folder of images
-                                        it.isDirectory -> it.name
-                                        // CBZ files
-                                        it.isFile && (it.extension == "cbz" || it.extension == "zip") ->
-                                            it.nameWithoutExtension
-                                        // Anything else is irrelevant
-                                        else -> null
-                                    }
-                                }
-                                .toMutableSet()
-
-                            mangaDir.chapterDirs = chapterDirs
-                        }
-                    }
-                }
+                updatedRootDir.sourceDirs.values
+                    .map { sourceDir -> async { scanSourceDir(sourceDir) } }
                     .awaitAll()
 
                 rootDownloadsDir = updatedRootDir
@@ -473,6 +451,78 @@ class DownloadCache(
 
         // Mainly to notify the indexing notifier UI
         notifyChanges()
+    }
+
+    private suspend fun indexNewSources() {
+        initJob.join()
+        renewalJob?.join()
+        // Nothing indexed yet, the full scan will pick every source up
+        if (lastRenew == 0L) return
+
+        val indexedIds = rootDownloadsDir.sourceDirs.keys
+        val sourceMap = getSources()
+            .filter { it.id !in indexedIds }
+            .associate { provider.getSourceDirName(it).lowercase() to it.id }
+        if (sourceMap.isEmpty()) return
+
+        val newSourceDirs = findSourceDirs(rootDownloadsDir.dir, sourceMap)
+        if (newSourceDirs.isEmpty()) return
+
+        coroutineScope {
+            newSourceDirs.values
+                .map { sourceDir -> async { scanSourceDir(sourceDir) } }
+                .awaitAll()
+        }
+
+        rootDownloadsDirMutex.withLock {
+            val current = rootDownloadsDir.sourceDirs
+            rootDownloadsDir.sourceDirs = current + newSourceDirs.filterKeys { it !in current }
+        }
+
+        notifyChanges()
+    }
+
+    private fun findSourceDirs(
+        rootDir: UniFile?,
+        sourceMap: Map<String, Long>,
+    ): Map<Long, SourceDirectory> {
+        return rootDir?.listFiles().orEmpty()
+            .filter { it.isDirectory && !it.name.isNullOrBlank() }
+            .mapNotNull { dir ->
+                val sourceId = sourceMap[dir.name!!.lowercase()]
+                sourceId?.let { it to SourceDirectory(dir) }
+            }
+            .toMap()
+    }
+
+    private suspend fun scanSourceDir(sourceDir: SourceDirectory) = coroutineScope {
+        val mangaDirs = sourceDir.dir?.listFiles().orEmpty()
+            .filter { it.isDirectory && !it.name.isNullOrBlank() }
+            .associate { it.name!! to MangaDirectory(it) }
+
+        mangaDirs.values
+            .map { mangaDir ->
+                async(scanDispatcher) {
+                    mangaDir.chapterDirs = mangaDir.dir?.listFiles().orEmpty()
+                        .mapNotNull {
+                            when {
+                                // Ignore incomplete downloads
+                                it.name?.endsWith(Downloader.TMP_DIR_SUFFIX) == true -> null
+                                // Folder of images
+                                it.isDirectory -> it.name
+                                // CBZ files
+                                it.isFile && (it.extension == "cbz" || it.extension == "zip") ->
+                                    it.nameWithoutExtension
+                                // Anything else is irrelevant
+                                else -> null
+                            }
+                        }
+                        .toMutableSet()
+                }
+            }
+            .awaitAll()
+
+        sourceDir.mangaDirs = mangaDirs
     }
 
     private fun getSources(): List<Source> {
