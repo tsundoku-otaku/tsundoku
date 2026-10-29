@@ -2,7 +2,6 @@
 
 package eu.kanade.tachiyomi.ui.reader.viewer.text.webview
 
-import android.R
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.PendingIntent
@@ -643,7 +642,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 val defineAction = RemoteAction(
                     Icon.createWithResource(
                         appContext,
-                        R.drawable.ic_menu_search
+                        android.R.drawable.ic_menu_search
                     ),
                     defineLabel,
                     "$defineLabel $text",
