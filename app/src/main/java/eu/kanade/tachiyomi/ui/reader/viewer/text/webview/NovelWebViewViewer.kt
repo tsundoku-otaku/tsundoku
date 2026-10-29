@@ -638,13 +638,15 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         PendingIntent.FLAG_UPDATE_CURRENT
                 )
 
+                val defineLabel = activity.stringResource(TDMR.strings.action_remember)
+
                 val defineAction = RemoteAction(
                     Icon.createWithResource(
                         appContext,
                         R.drawable.ic_menu_search
                     ),
-                    "Define", //TODO: localization
-                    "Define $text",
+                    defineLabel,
+                    "$defineLabel $text",
                     pendingIntent
                 )
 

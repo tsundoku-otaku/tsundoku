@@ -1023,4 +1023,5 @@
     <string name="novel_status_bar_element_chapter">Chapter</string>
     <string name="novel_status_bar_element_progress">Progress</string>
     <string name="novel_status_bar_element_battery">Battery</string>
+    <string name="action_define">Define</string>
 </resources>
