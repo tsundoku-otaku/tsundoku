@@ -637,7 +637,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         PendingIntent.FLAG_UPDATE_CURRENT
                 )
 
-                val defineLabel = activity.stringResource(TDMR.strings.action_remember)
+                val defineLabel = activity.stringResource(TDMR.strings.action_define)
 
                 val defineAction = RemoteAction(
                     Icon.createWithResource(
