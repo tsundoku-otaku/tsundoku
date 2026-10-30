@@ -629,6 +629,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 val intent = Intent(Intent.ACTION_DEFINE)
                     .putExtra(Intent.EXTRA_TEXT, text)
 
+                val canHandleDefine = intent.resolveActivity(appContext.packageManager) != null
+
+                if (!canHandleDefine) return original
+
                 val pendingIntent = PendingIntent.getActivity(
                     appContext,
                     0,
