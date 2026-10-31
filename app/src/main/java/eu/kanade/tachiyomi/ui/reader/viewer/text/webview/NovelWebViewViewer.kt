@@ -2559,7 +2559,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             val loaded = awaitPageText(page = page, loader = loader, timeoutMs = 30_000)
             if (loaded) {
                 withContext(Dispatchers.Main) {
-                    if (handoffState === claim) {
+                    if (handoffState === claim && !loadedChapterIds.contains(nextId)) {
                         handoffState = TtsHandoffState.Cached(Pair(preparedChapter, page))
                         prefetchCompletedSignal.tryEmit(Unit)
                         logcat(LogPriority.DEBUG) {
@@ -2594,29 +2594,28 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             handoffState = TtsHandoffState.Idle
             val (preparedChapter, page) = cached
             val nextId = preparedChapter.chapter.id ?: return false
-            if (!loadedChapterIds.contains(nextId)) {
-                logcat(LogPriority.DEBUG) {
-                    "NovelWebViewViewer: using pre-fetched chapter $nextId (${preparedChapter.chapter.name})"
-                }
-                val displayed = try {
-                    displayContentImmediate(preparedChapter, page, isAppendOrPrepend = true, isPrepend = false)
-                } finally {
-                    if (!silent) inlineFeedback.hideInlineLoading(isPrepend = false)
-                    setJsLoadingNext()
-                }
-                if (!displayed) {
-                    inlineFeedback.showInlineError(
-                        activity.stringResource(TDMR.strings.novel_error_couldnt_load_next_chapter),
-                        isPrepend = false,
-                        onRetry = ::retryAppendNextChapter,
-                    )
-                    return false
-                }
-                logcat(LogPriority.INFO) {
-                    "NovelWebViewViewer: Successfully appended pre-fetched chapter ${preparedChapter.chapter.name}"
-                }
+            // A prefetch that raced a cold append caches a chapter that is already in the DOM.
+            if (loadedChapterIds.contains(nextId)) return appendNextChapterIfAvailable(silent)
+            logcat(LogPriority.DEBUG) {
+                "NovelWebViewViewer: using pre-fetched chapter $nextId (${preparedChapter.chapter.name})"
             }
-            // Already loaded counts as success; the caller still advances TTS onto it.
+            val displayed = try {
+                displayContentImmediate(preparedChapter, page, isAppendOrPrepend = true, isPrepend = false)
+            } finally {
+                if (!silent) inlineFeedback.hideInlineLoading(isPrepend = false)
+                setJsLoadingNext()
+            }
+            if (!displayed) {
+                inlineFeedback.showInlineError(
+                    activity.stringResource(TDMR.strings.novel_error_couldnt_load_next_chapter),
+                    isPrepend = false,
+                    onRetry = ::retryAppendNextChapter,
+                )
+                return false
+            }
+            logcat(LogPriority.INFO) {
+                "NovelWebViewViewer: Successfully appended pre-fetched chapter ${preparedChapter.chapter.name}"
+            }
             return true
         }
 
