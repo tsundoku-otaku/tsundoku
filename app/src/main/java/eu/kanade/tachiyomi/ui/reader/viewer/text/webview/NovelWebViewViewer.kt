@@ -7,6 +7,7 @@ import android.app.AlertDialog
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import android.view.ActionMode
 import android.view.GestureDetector
 import android.view.KeyEvent
@@ -102,6 +103,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val AUTO_SCROLL_START_VERIFY_MS = 400L
         const val AUTO_SCROLL_MAX_START_ATTEMPTS = 3
         const val PAGED_CHAPTER_SWITCH_WATCHDOG_MS = 8_000L
+        const val TTS_PREFETCH_RETRY_COOLDOWN_MS = 30_000L
 
         const val TTS_TEXT_EXTRACTION_JS = """
             (function() {
@@ -235,6 +237,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     // ttsChunks spans every loaded chapter, so the prefetch midpoint is resolved for the playback chapter.
     private var ttsMidpointChunkIndex: Int? = null
+
+    // Keeps the per-chunk midpoint trigger from refetching a fast-failing source on every paragraph.
+    private var ttsPrefetchRetryAtMs = 0L
 
     // Bumped by stopTts so a handoff started before the stop cannot restart playback.
     private var ttsStopGeneration = 0
@@ -390,6 +395,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         !isPagedModeActive() &&
                         handoffState.isIdle &&
                         chunkIndex >= midpoint &&
+                        SystemClock.elapsedRealtime() >= ttsPrefetchRetryAtMs &&
                         loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) == null
                     ) {
                         scope.launch { preFetchNextChapterForTts() }
@@ -3075,6 +3081,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             // Drop back to Idle if we never reached Cached (e.g. load failed), and let a waiting append go on.
             if (handoffState === claim) {
                 handoffState = TtsHandoffState.Idle
+                ttsPrefetchRetryAtMs = SystemClock.elapsedRealtime() + TTS_PREFETCH_RETRY_COOLDOWN_MS
                 prefetchCompletedSignal.tryEmit(Unit)
             }
         }
@@ -3629,6 +3636,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
         ttsMidpointChunkIndex = null
+        ttsPrefetchRetryAtMs = 0L
         ttsStopGeneration++
         prefetchCompletedSignal.tryEmit(Unit)
         dispatchTtsState()
