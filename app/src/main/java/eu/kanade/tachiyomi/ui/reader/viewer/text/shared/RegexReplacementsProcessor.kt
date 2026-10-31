@@ -15,7 +15,7 @@ object RegexReplacementsProcessor {
         val replacement: String,
         val isRegex: Boolean,
     ) {
-        val key: String get() = "${regex.options.sorted()}\u0000${regex.pattern}\u0000$replacement"
+        val key: String get() = "${regex.options.sorted()}\u0000${regex.pattern}"
     }
 
     @Volatile
@@ -37,29 +37,21 @@ object RegexReplacementsProcessor {
         if (rulesJson.isBlank() || rulesJson == "[]") return content
 
         val compiled = synchronized(cache) {
-            cache[rulesJson] ?: compile(rulesJson).also { rules ->
-                cache[rulesJson] = rules
-                // A rule that was edited, or turned off and on again, gets another chance.
-                timedOutRules.retainAll(rules.filter { it.isRegex }.mapTo(HashSet()) { it.key })
-            }
+            cache[rulesJson] ?: compile(rulesJson).also { cache[rulesJson] = it }
         }
 
         var result = content
         for (rule in compiled) {
             if (rule.isRegex && rule.key in timedOutRules) continue
             try {
-                result = if (rule.isRegex) {
-                    rule.regex.replaceWithTimeout(result, rule.replacement, ruleTimeoutMs)
-                } else {
-                    rule.regex.replace(result, rule.replacement)
-                }
+                result = run(rule, result)
             } catch (e: RegexTimeoutException) {
-                timedOutRules.add(rule.key)
-                logcat(LogPriority.WARN) { "Regex '${rule.regex.pattern}' timed out, disabled until the rules change" }
-            } catch (e: StackOverflowError) {
-                timedOutRules.add(rule.key)
                 logcat(LogPriority.WARN) {
-                    "Regex '${rule.regex.pattern}' overflowed the stack, disabled until the rules change"
+                    "Regex '${rule.regex.pattern}' timed out, disabled until its pattern changes"
+                }
+            } catch (e: StackOverflowError) {
+                logcat(LogPriority.WARN) {
+                    "Regex '${rule.regex.pattern}' overflowed the stack, disabled until its pattern changes"
                 }
             } catch (e: RegexBusyException) {
                 logcat(LogPriority.WARN) { "Regex '${rule.regex.pattern}' skipped, timed out rules still running" }
@@ -73,30 +65,53 @@ object RegexReplacementsProcessor {
         return result
     }
 
+    /**
+     * Runs [rule] on [input] the way [apply] does, for the rule editor. Blocks for up to the rule timeout, so call
+     * it off the main thread. Throws [RegexTimeoutException] for a pattern that timed out now or earlier.
+     */
+    fun test(rule: RegexReplacement, input: String): String {
+        val compiled = compileRule(rule)
+        if (compiled.isRegex && compiled.key in timedOutRules) throw RegexTimeoutException()
+        return run(compiled, input)
+    }
+
+    private fun run(rule: CompiledRule, input: String): String {
+        if (!rule.isRegex) return rule.regex.replace(input, rule.replacement)
+        try {
+            return rule.regex.replaceWithTimeout(input, rule.replacement, ruleTimeoutMs)
+        } catch (e: RegexTimeoutException) {
+            timedOutRules.add(rule.key)
+            throw e
+        } catch (e: StackOverflowError) {
+            timedOutRules.add(rule.key)
+            throw e
+        }
+    }
+
+    private fun compileRule(rule: RegexReplacement): CompiledRule {
+        val options = if (rule.caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
+        val compiledRegex = if (rule.isRegex) {
+            Regex(rule.pattern, options)
+        } else {
+            val escapedPattern = Regex.escape(rule.pattern)
+            val boundedPattern = if (rule.matchWholeWord) {
+                "(?<![\\p{L}\\p{N}_])(?:$escapedPattern)(?![\\p{L}\\p{N}_])"
+            } else {
+                escapedPattern
+            }
+            Regex(boundedPattern, options)
+        }
+        val replacement = if (rule.isRegex) rule.replacement else Regex.escapeReplacement(rule.replacement)
+        return CompiledRule(compiledRegex, replacement, rule.isRegex)
+    }
+
     private fun compile(json: String): List<CompiledRule> {
         return try {
             val rules: List<RegexReplacement> = kotlinx.serialization.json.Json.decodeFromString(json)
             rules.mapNotNull { rule ->
                 if (!rule.enabled || rule.pattern.isBlank()) return@mapNotNull null
                 try {
-                    val options = if (rule.caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-                    val compiledRegex = if (rule.isRegex) {
-                        Regex(rule.pattern, options)
-                    } else {
-                        val escapedPattern = Regex.escape(rule.pattern)
-                        val boundedPattern = if (rule.matchWholeWord) {
-                            "(?<![\\p{L}\\p{N}_])(?:$escapedPattern)(?![\\p{L}\\p{N}_])"
-                        } else {
-                            escapedPattern
-                        }
-                        Regex(boundedPattern, options)
-                    }
-                    val replacement = if (rule.isRegex) {
-                        rule.replacement
-                    } else {
-                        Regex.escapeReplacement(rule.replacement)
-                    }
-                    CompiledRule(compiledRegex, replacement, rule.isRegex)
+                    compileRule(rule)
                 } catch (e: Exception) {
                     logcat(LogPriority.WARN) { "Failed to compile regex for '${rule.title}': ${e.message}" }
                     null
