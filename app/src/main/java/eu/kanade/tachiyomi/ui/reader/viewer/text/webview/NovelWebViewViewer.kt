@@ -52,6 +52,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsTextUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.CHAPTER_DIVIDER_CLASS
@@ -232,6 +233,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private val prefetchCompletedSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
+    // ttsChunks spans every loaded chapter, so the prefetch midpoint is resolved for the playback chapter.
+    private var ttsMidpointChunkIndex: Int? = null
+
     // Bumped by stopTts so a handoff started before the stop cannot restart playback.
     private var ttsStopGeneration = 0
 
@@ -380,11 +384,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 }
 
                 override fun onChunkStart(chunkIndex: Int) {
+                    val midpoint = ttsMidpointChunkIndex ?: return
                     // Gated by handoffState only, so a failed or discarded prefetch retries on a later chunk.
                     if (preferences.novelInfiniteScroll.get() &&
                         !isPagedModeActive() &&
                         handoffState.isIdle &&
-                        chunkIndex >= ttsController.ttsChunks.size / 2 &&
+                        chunkIndex >= midpoint &&
                         loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) == null
                     ) {
                         scope.launch { preFetchNextChapterForTts() }
@@ -3557,6 +3562,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             if (text.isNotBlank() && text != "null") {
                 logcat(LogPriority.DEBUG) { "TTS (WebView): Starting to speak ${text.length} characters" }
                 ttsController.speak(text, chapterIdx, chapterId)
+                resolveTtsMidpointChunk(chapterId)
 
                 // Inf-scroll TTS reads in place; the JS scroll threshold that normally kicks
                 // the prefetch may never fire. Start it when playback begins on the last loaded
@@ -3575,6 +3581,45 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
+    private fun resolveTtsMidpointChunk(chapterId: Long?) {
+        ttsMidpointChunkIndex = null
+        val chunkParagraphIndexes = ttsController.ttsChunkParagraphIndexes
+        if (chapterId == null) {
+            ttsMidpointChunkIndex = TtsTextUtils.midpointChunkIndex(chunkParagraphIndexes, null)
+            return
+        }
+        evaluateJavascriptSafe(ttsChapterParagraphRangeJs(chapterId)) { result ->
+            if (ttsController.ttsChunkParagraphIndexes !== chunkParagraphIndexes) return@evaluateJavascriptSafe
+            val bounds = unescapeJsResult(result).split(',').mapNotNull { it.trim().toIntOrNull() }
+            val range = if (bounds.size == 2 && bounds[0] >= 0) bounds[0]..bounds[1] else null
+            ttsMidpointChunkIndex = TtsTextUtils.midpointChunkIndex(chunkParagraphIndexes, range)
+        }
+    }
+
+    /** "first,last" indexes, in the TTS_TEXT_EXTRACTION_JS paragraph list, of the paragraphs inside [chapterId]. */
+    private fun ttsChapterParagraphRangeJs(chapterId: Long): String = """
+        (function() {
+            var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
+            var els = Array.from(document.querySelectorAll(selectors)).filter(function(el) {
+                return !!el && !!el.innerText && el.innerText.trim().length > 0;
+            });
+            if (!els.length) {
+                els = Array.from(document.body.children).filter(function(el) {
+                    return !!el && !!el.innerText && el.innerText.trim().length > 0;
+                });
+            }
+            var sel = '$CHAPTER_TAG_NAME[$CHAPTER_ID_ATTR="$chapterId"]';
+            var first = -1, last = -1;
+            for (var i = 0; i < els.length; i++) {
+                if (els[i].closest(sel)) {
+                    if (first < 0) first = i;
+                    last = i;
+                }
+            }
+            return first + ',' + last;
+        })();
+    """.trimIndent()
+
     fun stopTts() {
         logcat(LogPriority.DEBUG) {
             "TTS (WebView): stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}, ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex}, ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex}, ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
@@ -3584,6 +3629,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // A chapter load in flight still has to finish setting up the reader, so docState stays as is.
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
+        ttsMidpointChunkIndex = null
         ttsStopGeneration++
         prefetchCompletedSignal.tryEmit(Unit)
         dispatchTtsState()
@@ -3719,6 +3765,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     ttsController.ttsViewportParagraphIndex = firstVisibleParagraphIndex.coerceAtLeast(0)
                     ttsController.hasViewportStartOverride = true
                     ttsController.speak(text, chapterIdx, chapterId)
+                    resolveTtsMidpointChunk(chapterId)
                 } else {
                     logcat(LogPriority.WARN) { "TTS (WebView): No text available for viewport start" }
                 }
