@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import java.util.concurrent.Callable
+import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
@@ -24,9 +25,10 @@ internal const val MAX_STUCK_REGEX_WORKERS = 4
 
 private val stuckRegexWorkers = AtomicInteger()
 
-private const val TASK_RUNNING = 0
-private const val TASK_ABANDONED = 1
-private const val TASK_DONE = 2
+private const val TASK_PENDING = 0
+private const val TASK_RUNNING = 1
+private const val TASK_ABANDONED = 2
+private const val TASK_DONE = 3
 
 // Unbounded so rules of chapters processed at the same time never get rejected; idle workers are reused.
 private val regexExecutor = ThreadPoolExecutor(
@@ -66,11 +68,14 @@ private class DeadlineCharSequence(
 
 private fun deadline(timeoutMs: Long): Long = System.nanoTime() + timeoutMs * 1_000_000
 
+internal fun stuckRegexWorkerCount(): Int = stuckRegexWorkers.get()
+
 internal fun <T> runWithRegexTimeout(timeoutMs: Long, block: () -> T): T {
     if (stuckRegexWorkers.get() >= MAX_STUCK_REGEX_WORKERS) throw RegexBusyException()
-    val state = AtomicInteger(TASK_RUNNING)
+    val state = AtomicInteger(TASK_PENDING)
     val future = regexExecutor.submit(
         Callable {
+            if (!state.compareAndSet(TASK_PENDING, TASK_RUNNING)) throw CancellationException()
             try {
                 block()
             } finally {
@@ -81,15 +86,29 @@ internal fun <T> runWithRegexTimeout(timeoutMs: Long, block: () -> T): T {
     try {
         return future.get(timeoutMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
     } catch (e: TimeoutException) {
-        // A timed-out native match can't be interrupted; it counts as stuck until it finishes on its own.
-        if (state.compareAndSet(TASK_RUNNING, TASK_ABANDONED)) stuckRegexWorkers.incrementAndGet()
+        abandon(state)
         future.cancel(true)
         throw RegexTimeoutException()
     } catch (e: InterruptedException) {
+        abandon(state)
         future.cancel(true)
         throw e
     } catch (e: ExecutionException) {
         throw e.cause ?: e
+    }
+}
+
+// A task cancelled before it starts never runs its finally, so only a started one may count as stuck.
+private fun abandon(state: AtomicInteger) {
+    while (true) {
+        when (state.get()) {
+            TASK_PENDING -> if (state.compareAndSet(TASK_PENDING, TASK_ABANDONED)) return
+            TASK_RUNNING -> if (state.compareAndSet(TASK_RUNNING, TASK_ABANDONED)) {
+                stuckRegexWorkers.incrementAndGet()
+                return
+            }
+            else -> return
+        }
     }
 }
 
