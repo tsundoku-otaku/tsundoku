@@ -230,8 +230,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private var handoffState: TtsHandoffState<Pair<ReaderChapter, ReaderPage>> = TtsHandoffState.Idle
 
-    // Playback chapter whose midpoint already kicked a prefetch, so it fires once per chapter.
-    private var ttsMidpointPrefetchChapterId: Long? = null
     private val prefetchCompletedSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     // Bumped by stopTts so a handoff started before the stop cannot restart playback.
@@ -382,15 +380,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 }
 
                 override fun onChunkStart(chunkIndex: Int) {
-                    val chapterId = ttsController.ttsPlaybackChapterId
-                    if (chapterId != ttsMidpointPrefetchChapterId &&
-                        preferences.novelInfiniteScroll.get() &&
+                    // Gated by handoffState only, so a failed or discarded prefetch retries on a later chunk.
+                    if (preferences.novelInfiniteScroll.get() &&
                         !isPagedModeActive() &&
                         handoffState.isIdle &&
                         chunkIndex >= ttsController.ttsChunks.size / 2 &&
                         loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) == null
                     ) {
-                        ttsMidpointPrefetchChapterId = chapterId
                         scope.launch { preFetchNextChapterForTts() }
                     }
                 }
@@ -3588,7 +3584,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // A chapter load in flight still has to finish setting up the reader, so docState stays as is.
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
-        ttsMidpointPrefetchChapterId = null
         ttsStopGeneration++
         prefetchCompletedSignal.tryEmit(Unit)
         dispatchTtsState()
