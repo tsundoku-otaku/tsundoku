@@ -224,6 +224,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var ttsMidpointPrefetchChapterId: Long? = null
     private val prefetchCompletedSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
+    // Bumped by stopTts so a handoff started before the stop cannot restart playback.
+    private var ttsStopGeneration = 0
+
     // Survives ttsController.stop() - set when TTS triggers a non-inf-scroll chapter load.
     private var pendingTtsAutoStartOnLoad = false
 
@@ -500,6 +503,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             "TTS (WebView): Auto-loading next chapter ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
 
+        val generation = ttsStopGeneration
         scope.launch {
             // Paged mode never appends into the DOM (see loadNextChapter()'s JS-interface guard) -
             // always fall through to the full chapter-switch handoff below, same as infinite
@@ -511,6 +515,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // 30 s hard cap: if the fetch stalls (e.g. no-timeout HTTP client),
                 // stop TTS rather than leaving isTtsAutoPlay stuck true indefinitely.
                 val appended = withTimeoutOrNull(30_000L) { appendNextChapterIfAvailable(silent = true) }
+                if (generation != ttsStopGeneration) return@launch
                 if (appended == true) {
                     // Drive the handoff directly instead of waiting on a JS callback +
                     // watchdog timer. The DOM append and the unload-and-start JS are queued
@@ -2619,6 +2624,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         if (silent && handoffState.isPreFetching) {
             logcat(LogPriority.DEBUG) { "NovelWebViewViewer: TTS append waiting on in-flight pre-fetch" }
             withTimeoutOrNull(5_000L) { prefetchCompletedSignal.first() }
+            if (!ttsController.isTtsAutoPlay) return false
             if (handoffState.cachedOrNull != null) {
                 // Cache populated while we waited - recurse to take the cache path.
                 return appendNextChapterIfAvailable(silent = true)
@@ -3079,6 +3085,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
         ttsMidpointPrefetchChapterId = null
+        ttsStopGeneration++
+        prefetchCompletedSignal.tryEmit(Unit)
         dispatchTtsState()
         // The loadNextChapter TTS branch skips the JS-latch release, so after a threshold hit during
         // playback runtime.loadingNext stays true and scroll-driven appending never re-fires. Clear
