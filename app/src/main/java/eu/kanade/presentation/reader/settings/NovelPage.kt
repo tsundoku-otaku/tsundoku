@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.data.font.FontManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsViewModel
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexBusyException
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexReplacementsProcessor
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexTimeoutException
 import kotlinx.coroutines.CancellationException
@@ -1447,11 +1448,13 @@ private fun RegexEditDialog(
     var testError by remember { mutableStateOf<String?>(null) }
     var testRunning by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    fun testSnapshot() = listOf(pattern, replacement, isRegex, matchWholeWord, caseSensitive, testInput)
 
     // Pre-compute strings for non-composable onClick callbacks
     val patternEmptyText = stringResource(TDMR.strings.novel_pattern_empty)
     val invalidRegexText = stringResource(TDMR.strings.novel_invalid_regex)
     val regexTimedOutText = stringResource(TDMR.strings.novel_regex_timed_out)
+    val regexBusyText = stringResource(TDMR.strings.novel_regex_busy)
     val invalidRegexFormatText = stringResource(TDMR.strings.novel_invalid_regex_format, "%s")
 
     AlertDialog(
@@ -1610,26 +1613,30 @@ private fun RegexEditDialog(
                             caseSensitive = if (isRegex) false else caseSensitive,
                         )
                         val input = testInput
+                        val snapshot = testSnapshot()
                         testRunning = true
                         scope.launch {
-                            try {
-                                testOutput = withContext(Dispatchers.Default) {
+                            val (output, error) = try {
+                                val result = withContext(Dispatchers.Default) {
                                     RegexReplacementsProcessor.test(rule, input)
                                 }
-                                testError = null
+                                Pair<String?, String?>(result, null)
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: RegexTimeoutException) {
-                                testError = regexTimedOutText
-                                testOutput = null
+                                null to regexTimedOutText
+                            } catch (e: RegexBusyException) {
+                                null to regexBusyText
                             } catch (e: StackOverflowError) {
-                                testError = regexTimedOutText
-                                testOutput = null
+                                null to regexTimedOutText
                             } catch (e: Exception) {
-                                testError = e.message ?: invalidRegexText
-                                testOutput = null
+                                null to (e.message ?: invalidRegexText)
                             } finally {
                                 testRunning = false
+                            }
+                            if (testSnapshot() == snapshot) {
+                                testOutput = output
+                                testError = error
                             }
                         }
                     },
