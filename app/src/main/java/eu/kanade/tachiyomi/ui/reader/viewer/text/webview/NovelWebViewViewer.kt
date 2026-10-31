@@ -375,7 +375,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
                 override fun onChunkStart(chunkIndex: Int) {
                     val midpoint = ttsMidpointChunkIndex ?: return
-                    // Gated by handoffState only, so a failed or discarded prefetch retries on a later chunk.
+                    // A failed prefetch retries on a later chunk once the cooldown has passed.
                     if (preferences.novelInfiniteScroll.get() &&
                         !isPagedModeActive() &&
                         handoffState.isIdle &&
