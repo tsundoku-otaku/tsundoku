@@ -415,7 +415,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // recounted: seed completed at the persisted progress and suppress all tallies for stream
         // indices below it (see shouldCount), so repeated resumes can't inflate counts past total
         // or regress the progress bar.
-        val countBaseline = seed?.progress ?: 0
+        // Clamped because a batch saved by an older tokenizer can have more progress than tokens now.
+        val countBaseline = (seed?.progress ?: 0).coerceIn(0, totalCount)
         val completedCount = AtomicInteger(countBaseline)
         val addedCount = AtomicInteger(seed?.added ?: 0)
         val skippedCount = AtomicInteger(seed?.skipped ?: 0)
