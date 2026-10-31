@@ -951,7 +951,10 @@ class ReaderActivity : BaseActivity() {
             var isEditing by remember { mutableStateOf(false) }
             val novelWebViewer = state.viewer as? NovelWebViewViewer
             LaunchedEffect(novelWebViewer) {
-                novelWebViewer?.editModeEnded?.collect { isEditing = false }
+                novelWebViewer?.editModeEnded?.collect {
+                    isEditing = false
+                    showEditSaveDialog = false
+                }
             }
 
             NovelReaderAppBars(
