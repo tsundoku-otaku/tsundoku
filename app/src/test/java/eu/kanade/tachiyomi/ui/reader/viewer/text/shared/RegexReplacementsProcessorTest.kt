@@ -2,6 +2,7 @@
 
 package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
+import eu.kanade.presentation.reader.settings.RegexReplacement
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import io.mockk.every
 import io.mockk.mockk
@@ -225,6 +226,7 @@ class RegexReplacementsProcessorTest {
             result = RegexReplacementsProcessor.apply("axxb", prefs(rules))
         } while (result != "ayb" && System.nanoTime() < deadline)
         assertEquals("ayb", result)
+        awaitNoStuckWorkers()
     }
 
     @Test
@@ -250,6 +252,83 @@ class RegexReplacementsProcessorTest {
     fun `replaceWithTimeout matches Regex replace for normal input`() {
         assertEquals("a-b-c", Regex(",").replaceWithTimeout("a,b,c", "-"))
         assertEquals("A,B", Regex("[a-z]").replaceWithTimeout("a,b") { it.value.uppercase() })
+    }
+
+    private fun awaitNoStuckWorkers() {
+        val deadline = System.nanoTime() + 5_000_000_000L
+        while (stuckRegexWorkerCount() != 0 && System.nanoTime() < deadline) Thread.sleep(10)
+        assertEquals(0, stuckRegexWorkerCount())
+    }
+
+    @Test
+    fun `timed out catastrophic match frees its worker`() {
+        assertThrows(RegexTimeoutException::class.java) {
+            Regex("(a+)+\\1d").replaceWithTimeout(CATASTROPHIC_INPUT, "x", timeoutMs = 100)
+        }
+        awaitNoStuckWorkers()
+    }
+
+    @Test
+    fun `tasks timed out before they start do not count as stuck`() {
+        repeat(200) {
+            try {
+                runWithRegexTimeout(0) {}
+            } catch (_: RegexTimeoutException) {
+            } catch (_: RegexBusyException) {
+            }
+        }
+        awaitNoStuckWorkers()
+        assertEquals("y", runWithRegexTimeout(1_000) { "y" })
+    }
+
+    @Test
+    fun `timed out rule stays disabled after being toggled off and on`() {
+        val pattern = "(a+)+\\1e"
+        val enabled = rulesJson(rule(pattern, "x", isRegex = true), rule("a", "b"))
+        val disabled = rulesJson(rule(pattern, "x", isRegex = true, enabled = false), rule("a", "b"))
+        val previous = RegexReplacementsProcessor.ruleTimeoutMs
+        try {
+            RegexReplacementsProcessor.ruleTimeoutMs = 100
+            assertEquals("b".repeat(40), RegexReplacementsProcessor.apply(CATASTROPHIC_INPUT, prefs(enabled)))
+            assertEquals("b".repeat(40), RegexReplacementsProcessor.apply(CATASTROPHIC_INPUT, prefs(disabled)))
+
+            RegexReplacementsProcessor.ruleTimeoutMs = 60_000
+            val start = System.nanoTime()
+            assertEquals("b".repeat(40), RegexReplacementsProcessor.apply(CATASTROPHIC_INPUT, prefs(enabled)))
+            assertTrue(System.nanoTime() - start < 5_000_000_000L)
+        } finally {
+            RegexReplacementsProcessor.ruleTimeoutMs = previous
+        }
+        awaitNoStuckWorkers()
+    }
+
+    @Test
+    fun `editor test applies the rule like the reader does`() {
+        assertEquals("x-x", RegexReplacementsProcessor.test(RegexReplacement("t", "A", "x"), "a-A"))
+        assertEquals("$1", RegexReplacementsProcessor.test(RegexReplacement("t", "b", "$1", isRegex = false), "b"))
+        assertEquals("[b]", RegexReplacementsProcessor.test(RegexReplacement("t", "(b)", "[$1]"), "b"))
+    }
+
+    @Test
+    fun `editor test times out and does not rerun a timed out pattern`() {
+        val rule = RegexReplacement("t", "(a+)+\\1f", "x")
+        val previous = RegexReplacementsProcessor.ruleTimeoutMs
+        try {
+            RegexReplacementsProcessor.ruleTimeoutMs = 100
+            assertThrows(RegexTimeoutException::class.java) {
+                RegexReplacementsProcessor.test(rule, CATASTROPHIC_INPUT)
+            }
+
+            RegexReplacementsProcessor.ruleTimeoutMs = 60_000
+            val start = System.nanoTime()
+            assertThrows(RegexTimeoutException::class.java) {
+                RegexReplacementsProcessor.test(rule, CATASTROPHIC_INPUT)
+            }
+            assertTrue(System.nanoTime() - start < 1_000_000_000L)
+        } finally {
+            RegexReplacementsProcessor.ruleTimeoutMs = previous
+        }
+        awaitNoStuckWorkers()
     }
 
     private companion object {
