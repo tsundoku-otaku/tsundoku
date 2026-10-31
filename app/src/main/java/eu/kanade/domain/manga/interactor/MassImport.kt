@@ -35,18 +35,158 @@ class MassImport(
     private val missingSourceHostLogCache = ConcurrentHashMap<String, Boolean>()
 
     companion object {
-        private val GLUE_REGEX = Regex("(?<=[^\\s])(?=https?://)")
+        private val SCHEME_START = Regex("https?://", RegexOption.IGNORE_CASE)
         private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+\\-.]*://")
+        private val SCHEMELESS_URL = Regex("(?:[a-z0-9-]+\\.)+[a-z]{2,}(?::\\d+)?(?:[/?#].*)?", RegexOption.IGNORE_CASE)
+        private const val FIELD_SEPARATORS = ",;|`\"'<>[]{}"
+        private const val URL_TERMINATORS = "\"<>`"
+        private const val LIST_SEPARATORS = ",;|"
 
-        // Shared tokenizer for every entry point so the "valid" count matches what the import
-        // walks. Splits on comma/semicolon/space/tab and de-glues separator-less URLs.
-        fun tokenizeLine(line: String): List<String> {
-            val trimmed = line.trim()
-            if (trimmed.isEmpty()) return emptyList()
-            return trimmed.replace(GLUE_REGEX, "\n")
-                .split('\n', ',', ';', ' ', '\t')
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+        // Smart quotes and CJK clause punctuation are never part of a pasted URL.
+        private const val UNICODE_TERMINATORS =
+            "“”„‘’‚«»‹›「」『』、。！＂＇，：；？"
+        private const val SENTENCE_PUNCTUATION = ".:!?"
+        private const val OPENERS = "([{"
+        private const val CLOSERS = ")]}"
+
+        // A scheme right after one of these belongs to the URL (archive and redirect links).
+        private const val EMBEDDED_SCHEME_PREFIX = "/=?&#"
+
+        // URLs plus the leftover non-URL fields, in line order.
+        fun tokenizeLine(line: String): List<String> = scan(line, keepFields = true)
+
+        fun urlTokens(line: String): List<String> = scan(line, keepFields = false)
+
+        fun isHttpUrl(token: String): Boolean {
+            val bodyStart = schemeLength(token, 0)
+            if (bodyStart == 0 || bodyStart == token.length) return false
+            val c = token[bodyStart]
+            return c != '/' && c != '?' && c != '#'
+        }
+
+        // Null for plain text such as CSV columns, which is not worth listing as invalid.
+        fun invalidTokenReason(token: String): String? = when {
+            "://" in token -> "Not a valid URL"
+            SCHEMELESS_URL.matches(token) && ('/' in token || token.startsWith("www.", ignoreCase = true)) ->
+                "Missing http:// or https://"
+            else -> null
+        }
+
+        private fun schemeLength(s: String, at: Int): Int = when {
+            s.regionMatches(at, "https://", 0, 8, ignoreCase = true) -> 8
+            s.regionMatches(at, "http://", 0, 7, ignoreCase = true) -> 7
+            else -> 0
+        }
+
+        private fun isBreak(c: Char): Boolean =
+            Character.isWhitespace(c) ||
+                Character.isSpaceChar(c) ||
+                c in '​'..'‍' ||
+                c == '⁠' ||
+                c == '﻿' ||
+                c == '᠎' ||
+                c in UNICODE_TERMINATORS
+
+        private fun scan(rawLine: String, keepFields: Boolean): List<String> {
+            // JSON encoders commonly escape slashes.
+            val line = if ("\\/" in rawLine) rawLine.replace("\\/", "/") else rawLine
+            val starts = mutableListOf<Int>()
+            val ends = mutableListOf<Int>()
+            var from = 0
+            while (from < line.length) {
+                val start = SCHEME_START.find(line, from)?.range?.first ?: break
+                val end = urlEnd(line, start)
+                if (end > start + schemeLength(line, start)) {
+                    starts += start
+                    ends += end
+                }
+                from = end
+            }
+
+            // Sentence punctuation is only trimmed when the URL sits in prose; a URL alone on its
+            // line or among other URLs keeps it.
+            var last = 0
+            var prose = false
+            for (i in starts.indices) {
+                if (hasWordChar(line, last, starts[i])) prose = true
+                last = ends[i]
+            }
+            if (hasWordChar(line, last, line.length)) prose = true
+
+            val tokens = ArrayList<String>(starts.size)
+            last = 0
+            for (i in starts.indices) {
+                if (keepFields) addFields(line, last, starts[i], tokens)
+                val url = cleanUrl(line, starts[i], ends[i], line.getOrNull(starts[i] - 1) == '\'', prose)
+                if (keepFields || isHttpUrl(url)) tokens += url
+                last = ends[i]
+            }
+            if (keepFields) addFields(line, last, line.length, tokens)
+            return tokens
+        }
+
+        private fun urlEnd(line: String, start: Int): Int {
+            val bodyStart = start + schemeLength(line, start)
+            var inQuery = false
+            for (i in bodyStart until line.length) {
+                val c = line[i]
+                if (isBreak(c) || c in URL_TERMINATORS) return i
+                if (c in LIST_SEPARATORS && separatorEndsUrl(line, i + 1, inQuery)) return i
+                if (c == '?' || c == '#') inQuery = true
+                if (i > bodyStart && line[i - 1] !in EMBEDDED_SCHEME_PREFIX && schemeLength(line, i) > 0) return i
+            }
+            return line.length
+        }
+
+        // Query values use commas as list separators, so there only a clear field boundary ends
+        // the URL. In the path a comma is kept only before '_' or '%' (wiki-style titles).
+        private fun separatorEndsUrl(line: String, next: Int, inQuery: Boolean): Boolean {
+            val n = line.getOrNull(next) ?: return true
+            if (isBreak(n) || n in URL_TERMINATORS || n == '\'' || schemeLength(line, next) > 0) return true
+            return !inQuery && n != '_' && n != '%'
+        }
+
+        private fun cleanUrl(line: String, start: Int, end: Int, singleQuoted: Boolean, prose: Boolean): String {
+            val bodyStart = start + schemeLength(line, start)
+            val opens = IntArray(OPENERS.length)
+            val closes = IntArray(CLOSERS.length)
+            for (i in bodyStart until end) {
+                val o = OPENERS.indexOf(line[i])
+                if (o >= 0) opens[o]++
+                val c = CLOSERS.indexOf(line[i])
+                if (c >= 0) closes[c]++
+            }
+            var e = end
+            while (e > bodyStart) {
+                val ch = line[e - 1]
+                val k = CLOSERS.indexOf(ch)
+                val o = OPENERS.indexOf(ch)
+                when {
+                    ch in LIST_SEPARATORS -> {}
+                    o >= 0 -> opens[o]--
+                    prose && ch in SENTENCE_PUNCTUATION -> {}
+                    singleQuoted && ch == '\'' -> {}
+                    k >= 0 && closes[k] > opens[k] -> closes[k]--
+                    else -> break
+                }
+                e--
+            }
+            return line.substring(start, bodyStart).lowercase() + line.substring(bodyStart, e)
+        }
+
+        private fun hasWordChar(line: String, from: Int, to: Int): Boolean {
+            for (i in from until to) if (line[i].isLetterOrDigit()) return true
+            return false
+        }
+
+        private fun addFields(line: String, from: Int, to: Int, into: MutableList<String>) {
+            var fieldStart = from
+            for (i in from..to) {
+                if (i == to || isBreak(line[i]) || line[i] in FIELD_SEPARATORS) {
+                    if (i > fieldStart) into += line.substring(fieldStart, i)
+                    fieldStart = i + 1
+                }
+            }
         }
     }
 
@@ -213,8 +353,7 @@ class MassImport(
 
     fun parseUrls(text: String): List<String> {
         return text.lineSequence()
-            .flatMap { tokenizeLine(it).asSequence() }
-            .filter { it.startsWith("http://") || it.startsWith("https://") }
+            .flatMap { urlTokens(it).asSequence() }
             .distinctBy { urlDedupKey(it) }
             .toList()
     }
@@ -245,8 +384,8 @@ class MassImport(
         val seenKeys = mutableSetOf<String>()
 
         for (line in rawLines) {
-            if (!line.startsWith("http://") && !line.startsWith("https://")) {
-                invalidUrls.add(line to "Not a valid URL")
+            if (!isHttpUrl(line)) {
+                invalidTokenReason(line)?.let { invalidUrls.add(line to it) }
                 continue
             }
 

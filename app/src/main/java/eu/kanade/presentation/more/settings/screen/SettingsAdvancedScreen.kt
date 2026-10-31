@@ -62,6 +62,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
+import eu.kanade.domain.manga.interactor.MassImport
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.advanced.ClearDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.debug.DebugInfoScreen
@@ -1044,10 +1045,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     pendingUrls
                                         .lineSequence()
                                         .forEach { rawLine ->
-                                            rawLine.split(',', ';')
-                                                .asSequence()
-                                                .map { it.trim() }
-                                                .filter { it.startsWith("http://") || it.startsWith("https://") }
+                                            MassImport.urlTokens(rawLine)
                                                 .forEach { url ->
                                                     validUrlCount++
                                                     buffer.add(url)
