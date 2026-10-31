@@ -237,9 +237,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     //   ERROR         error placeholder committed; body counts as ready but has no DOM to append onto
     private enum class DocState { LOADING, LOADING_REAL, READY, ERROR }
 
-    // Set by Retry until the next error page, so a double tap starts one load.
-    private var retryRequested = false
-
     /** Emits when edit mode ends without the user leaving it, e.g. the chapter failed to load. */
     val editModeEnded = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private var docState = DocState.LOADING
@@ -1812,7 +1809,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // transition. ERROR keeps webChapterContentReady true (so a failed load can't block
         // infinite-scroll appends forever) while marking the body un-appendable.
         docState = DocState.ERROR
-        retryRequested = false
         releasePagedChapterSwitchIfPending()
         if (isEditingMode) {
             // The error page replaces the edited document, so nothing is left to save.
@@ -2343,13 +2339,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         @JavascriptInterface
         fun retryChapterLoad() {
             activity.runOnUiThread {
-                if (docState != DocState.ERROR || retryRequested) return@runOnUiThread
-                retryRequested = true
+                if (docState != DocState.ERROR) return@runOnUiThread
                 isInfiniteScrollPrepend = false
                 // The view model's chapters point at the failed chapter even when its page list failed.
                 val page = activity.viewModel.state.value.viewerChapters?.currChapter?.pages?.firstOrNull()
-                // An empty chapter loaded fine, so only the source can return different text.
-                activity.viewModel.reloadChapter(fromSource = page?.status == Page.State.Ready)
+                // The error page replaced every chapter, so none may be skipped as already loaded.
+                chapterQueue.clear()
+                if (activity.viewModel.reloadChapter(fromSource = shouldRetryFromSource(page))) {
+                    // Leaves ERROR, so further taps are ignored until the reload shows its result.
+                    showLoadingIndicator()
+                }
             }
         }
 
@@ -3337,3 +3336,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 }
+
+/** Only a page that loaded with no text at all can get different text by skipping the local copy. */
+internal fun shouldRetryFromSource(page: Page?): Boolean =
+    page?.status == Page.State.Ready && page.text.isNullOrBlank()
