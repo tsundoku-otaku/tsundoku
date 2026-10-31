@@ -152,6 +152,128 @@ class MassImportTokenizeLineTest {
     }
 
     @Test
+    fun `python style list drops trailing quote and bracket`() {
+        assertEquals(
+            listOf("https://a.example.com/1", "https://a.example.com/2"),
+            MassImport.urlTokens("['https://a.example.com/1', 'https://a.example.com/2']"),
+        )
+    }
+
+    @Test
+    fun `trailing brace and bracket are stripped when unbalanced`() {
+        assertEquals(listOf("https://a.example.com/x"), MassImport.urlTokens("{https://a.example.com/x}"))
+        assertEquals(
+            listOf("https://a.example.com/x?f[a]=1"),
+            MassImport.urlTokens("https://a.example.com/x?f[a]=1"),
+        )
+    }
+
+    @Test
+    fun `comma inside query is kept`() {
+        assertEquals(
+            listOf("https://a.example.com/x?ids=12,34"),
+            MassImport.urlTokens("https://a.example.com/x?ids=12,34"),
+        )
+        assertEquals(
+            listOf("https://a.example.com/x?ids=12,34", "https://a.example.com/y"),
+            MassImport.urlTokens("https://a.example.com/x?ids=12,34, https://a.example.com/y"),
+        )
+    }
+
+    @Test
+    fun `comma before space or scheme splits urls`() {
+        assertEquals(
+            listOf("https://a.example.com/1", "https://a.example.com/2"),
+            MassImport.urlTokens("https://a.example.com/1,https://a.example.com/2"),
+        )
+        assertEquals(
+            listOf("https://a.example.com/1?p=1", "https://a.example.com/2?p=2"),
+            MassImport.urlTokens("https://a.example.com/1?p=1, https://a.example.com/2?p=2"),
+        )
+        assertEquals(
+            listOf("https://a.example.com/1?p=1", "https://a.example.com/2"),
+            MassImport.urlTokens("https://a.example.com/1?p=1,https://a.example.com/2"),
+        )
+    }
+
+    @Test
+    fun `sentence punctuation is kept on a url alone`() {
+        assertEquals(listOf("https://a.example.com/what?!"), MassImport.urlTokens("https://a.example.com/what?!"))
+        assertEquals(listOf("https://a.example.com/x."), MassImport.urlTokens("  https://a.example.com/x.  "))
+        assertEquals(
+            listOf("https://a.example.com/a!", "https://a.example.com/b:"),
+            MassImport.urlTokens("https://a.example.com/a! https://a.example.com/b:"),
+        )
+    }
+
+    @Test
+    fun `sentence punctuation is stripped in prose`() {
+        assertEquals(
+            listOf("https://a.example.com/x", "https://a.example.com/y"),
+            MassImport.urlTokens("Read https://a.example.com/x! Or https://a.example.com/y?"),
+        )
+    }
+
+    @Test
+    fun `trailing comma is always stripped`() {
+        assertEquals(listOf("https://a.example.com/x"), MassImport.urlTokens("https://a.example.com/x,"))
+    }
+
+    @Test
+    fun `unicode spaces end the url`() {
+        for (space in listOf('\u00A0', '\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF', '\u3000', '\u2009')) {
+            assertEquals(
+                listOf("https://a.example.com/x", "Title"),
+                MassImport.tokenizeLine("https://a.example.com/x${space}Title"),
+                "U+%04X".format(space.code),
+            )
+        }
+    }
+
+    @Test
+    fun `scheme check is case insensitive and needs a host`() {
+        assertEquals(true, MassImport.isHttpUrl("HTTP://a.example.com/x"))
+        assertEquals(true, MassImport.isHttpUrl("Https://a.example.com"))
+        assertEquals(false, MassImport.isHttpUrl("http://"))
+        assertEquals(false, MassImport.isHttpUrl("HTTPS://"))
+        assertEquals(false, MassImport.isHttpUrl("http:///x"))
+        assertEquals(false, MassImport.isHttpUrl("ftp://a.example.com"))
+    }
+
+    @Test
+    fun `bare scheme is not a url`() {
+        assertEquals(emptyList<String>(), MassImport.urlTokens("http:// https://"))
+        assertEquals(listOf("http://"), MassImport.tokenizeLine("http://"))
+    }
+
+    @Test
+    fun `archive and redirect links stay whole`() {
+        val archive = "https://web.archive.org/web/2020/https://a.example.com/x"
+        assertEquals(listOf(archive), MassImport.urlTokens(archive))
+        val redirect = "https://a.example.com/out?to=https://b.example.com/y&x=1"
+        assertEquals(listOf(redirect), MassImport.urlTokens(redirect))
+    }
+
+    @Test
+    fun `invalid token reasons`() {
+        assertEquals("Missing http:// or https://", MassImport.invalidTokenReason("a.example.com/x"))
+        assertEquals("Missing http:// or https://", MassImport.invalidTokenReason("www.example.com"))
+        assertEquals("Not a valid URL", MassImport.invalidTokenReason("htps://a.example.com/x"))
+        assertEquals("Not a valid URL", MassImport.invalidTokenReason("http://"))
+        assertEquals(null, MassImport.invalidTokenReason("Title"))
+        assertEquals(null, MassImport.invalidTokenReason("Vol.II"))
+        assertEquals(null, MassImport.invalidTokenReason("3"))
+    }
+
+    @Test
+    fun `schemeless entry is kept as a field for the invalid list`() {
+        assertEquals(
+            listOf("a.example.com/x", "https://a.example.com/y"),
+            MassImport.tokenizeLine("a.example.com/x, https://a.example.com/y"),
+        )
+    }
+
+    @Test
     fun `parseUrls matches urlTokens and dedups`() {
         val massImport = MassImport(
             sourceManager = mockk(relaxed = true),
