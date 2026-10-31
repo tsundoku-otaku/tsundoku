@@ -42,30 +42,36 @@ object NovelPageLoader {
                 // Expected when scope is cancelled
             }
         }
-        if (page.status is Page.State.Error) {
+        val initialStatus = page.status
+        if (initialStatus is Page.State.Error) {
             // Re-fetch a page cached in Error from a prior failed attempt, else statusFlow returns
             // Error immediately and the load can never recover once the network is back. retryPage
             // resets it to Queue and re-queues.
             loader.retryPage(page)
             // retryPage is a no-op in the PageLoader base class; if the loader didn't reset the
             // state, fall back to launching the load directly so recovery still works.
-            if (page.status is Page.State.Error) {
-                // Clear the stale Error first: statusFlow replays its current value, so leaving it
-                // Error makes the first{} below match immediately and return before loadPage runs.
-                page.status = Page.State.Queue
-                loadJob = launchLoad()
-            }
-        } else if (page.status is Page.State.Queue) {
+            // Clear the stale Error first: statusFlow replays its current value, so leaving it
+            // Error makes the first{} below match immediately and return before loadPage runs.
+            if (page.tryClaim(initialStatus, Page.State.Queue)) loadJob = launchLoad()
+        } else if (initialStatus is Page.State.Queue) {
             loadJob = launchLoad()
         }
+        // A page the loader re-queued itself is its own to load; only a load this call or another
+        // caller had started is restarted when it is cancelled back to Queue.
+        val restartOnQueue = loadJob != null ||
+            page.status.let { it is Page.State.LoadPage || it is Page.State.DownloadImage }
+        fun settled(state: Page.State) = state is Page.State.Ready ||
+            state is Page.State.Error ||
+            (restartOnQueue && state is Page.State.Queue && loadJob?.isActive != true)
 
         return try {
             val finalState = withTimeout(timeoutMs) {
-                page.statusFlow.first { state ->
-                    // Another caller's load was cancelled and put the page back in the queue.
-                    if (state is Page.State.Queue && loadJob?.isActive != true) loadJob = launchLoad()
-                    state is Page.State.Ready || state is Page.State.Error
+                var state = page.statusFlow.first(::settled)
+                while (state is Page.State.Queue) {
+                    loadJob = launchLoad()
+                    state = page.statusFlow.first(::settled)
                 }
+                state
             }
 
             when (finalState) {
