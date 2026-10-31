@@ -12,6 +12,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runInterruptible
@@ -219,7 +221,9 @@ internal class HttpPageLoader(
             page.stream = { chapterCache.getImageFile(imageUrl).inputStream() }
             page.status = Page.State.Ready
         } catch (e: Throwable) {
-            onPageLoadFailed(page, e)
+            // The worker is only cancelled by recycle, after which nothing would load a re-queued page.
+            page.status = Page.State.Error(e)
+            currentCoroutineContext().ensureActive()
         }
     }
 }
