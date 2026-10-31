@@ -101,7 +101,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val PAGED_CHAPTER_SWITCH_WATCHDOG_MS = 8_000L
         const val TTS_PREFETCH_RETRY_COOLDOWN_MS = 30_000L
 
-        const val TTS_TEXT_EXTRACTION_JS = """
+        // Paragraph list shared by TTS extraction, highlight and chapter range so their indexes agree.
+        const val TTS_COLLECT_PARAGRAPHS_JS = """
             (function() {
                 var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
                 var els = Array.from(document.querySelectorAll(selectors)).filter(function(el) {
@@ -112,6 +113,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         return !!el && !!el.innerText && el.innerText.trim().length > 0;
                     });
                 }
+                return els;
+            })()
+        """
+
+        const val TTS_TEXT_EXTRACTION_JS = """
+            (function() {
+                var els = $TTS_COLLECT_PARAGRAPHS_JS;
                 if (!els.length) {
                     var body = document.body;
                     return body ? body.innerText || body.textContent : '';
@@ -444,15 +452,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 document.documentElement.style.setProperty('--td-tts-highlight-bg', '$highlightColor');
                 document.documentElement.style.setProperty('--td-tts-highlight-text', '$highlightTextColor');
 
-                var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
-                var paragraphs = Array.from(document.querySelectorAll(selectors)).filter(function(el) {
-                    return !!el && !!el.innerText && el.innerText.trim().length > 0;
-                });
-                if (!paragraphs.length) {
-                    paragraphs = Array.from(document.body.children).filter(function(el) {
-                        return !!el && !!el.innerText && el.innerText.trim().length > 0;
-                    });
-                }
+                var paragraphs = $TTS_COLLECT_PARAGRAPHS_JS;
 
                 if (state.currentEl) {
                     state.currentEl.classList.remove('td-tts-highlight-bg', 'td-tts-highlight-underline', 'td-tts-highlight-outline');
@@ -3100,15 +3100,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     /** "first,last" indexes, in the TTS_TEXT_EXTRACTION_JS paragraph list, of the paragraphs inside [chapterId]. */
     private fun ttsChapterParagraphRangeJs(chapterId: Long): String = """
         (function() {
-            var selectors = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
-            var els = Array.from(document.querySelectorAll(selectors)).filter(function(el) {
-                return !!el && !!el.innerText && el.innerText.trim().length > 0;
-            });
-            if (!els.length) {
-                els = Array.from(document.body.children).filter(function(el) {
-                    return !!el && !!el.innerText && el.innerText.trim().length > 0;
-                });
-            }
+            var els = $TTS_COLLECT_PARAGRAPHS_JS;
             var sel = '$CHAPTER_TAG_NAME[$CHAPTER_ID_ATTR="$chapterId"]';
             var first = -1, last = -1;
             for (var i = 0; i < els.length; i++) {
