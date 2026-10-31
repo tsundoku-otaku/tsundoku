@@ -1,7 +1,9 @@
 package eu.kanade.domain.manga.interactor
 
 import io.mockk.mockk
+import java.time.Duration
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Test
 
 class MassImportTokenizeLineTest {
@@ -271,6 +273,58 @@ class MassImportTokenizeLineTest {
             listOf("a.example.com/x", "https://a.example.com/y"),
             MassImport.tokenizeLine("a.example.com/x, https://a.example.com/y"),
         )
+    }
+
+    @Test
+    fun `markdown link with url as text yields the url once`() {
+        assertEquals(
+            listOf("https://a.example.com/x", "https://a.example.com/x"),
+            MassImport.urlTokens("[https://a.example.com/x](https://a.example.com/x)"),
+        )
+    }
+
+    @Test
+    fun `smart quotes and cjk punctuation end the url`() {
+        assertEquals(
+            listOf("https://a.example.com/x", "https://a.example.com/y"),
+            MassImport.urlTokens("“https://a.example.com/x” and ‘https://a.example.com/y’"),
+        )
+        assertEquals(
+            listOf("https://a.example.com/x", "https://a.example.com/y"),
+            MassImport.urlTokens("看 https://a.example.com/x，和 https://a.example.com/y。"),
+        )
+    }
+
+    @Test
+    fun `backticks and pipes around a url are dropped`() {
+        assertEquals(listOf("https://a.example.com/x"), MassImport.urlTokens("`https://a.example.com/x`"))
+        assertEquals(
+            listOf("https://a.example.com/x", "https://a.example.com/y"),
+            MassImport.urlTokens("|https://a.example.com/x|Title|https://a.example.com/y|"),
+        )
+        assertEquals(
+            listOf("https://a.example.com/css?family=A|B"),
+            MassImport.urlTokens("https://a.example.com/css?family=A|B"),
+        )
+    }
+
+    @Test
+    fun `json escaped slashes are unescaped`() {
+        assertEquals(
+            listOf("https://a.example.com/x", "https://b.example.com/y"),
+            MassImport.urlTokens("{\"u\":\"https:\\/\\/a.example.com\\/x\",\"v\":\"https:\\/\\/b.example.com\\/y\"}"),
+        )
+    }
+
+    @Test
+    fun `large pastes tokenize in linear time`() {
+        val urls = (0 until 100_000).map { "https://a.example.com/n/$it" }
+        val oneLine = urls.joinToString(",")
+        val manyLines = urls.joinToString("\n") { "\"Some, Title\",$it,3" }
+        assertTimeoutPreemptively(Duration.ofSeconds(20)) {
+            assertEquals(urls, MassImport.urlTokens(oneLine))
+            assertEquals(urls, manyLines.lineSequence().flatMap { MassImport.urlTokens(it) }.toList())
+        }
     }
 
     @Test

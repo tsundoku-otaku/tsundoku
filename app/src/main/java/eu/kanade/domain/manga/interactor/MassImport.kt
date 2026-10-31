@@ -38,9 +38,13 @@ class MassImport(
         private val SCHEME_START = Regex("https?://", RegexOption.IGNORE_CASE)
         private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+\\-.]*://")
         private val SCHEMELESS_URL = Regex("(?:[a-z0-9-]+\\.)+[a-z]{2,}(?::\\d+)?(?:[/?#].*)?", RegexOption.IGNORE_CASE)
-        private const val FIELD_SEPARATORS = ",;\"'<>[]{}"
-        private const val URL_TERMINATORS = "\"<>"
-        private const val LIST_SEPARATORS = ",;"
+        private const val FIELD_SEPARATORS = ",;|`\"'<>[]{}"
+        private const val URL_TERMINATORS = "\"<>`"
+        private const val LIST_SEPARATORS = ",;|"
+
+        // Smart quotes and CJK clause punctuation are never part of a pasted URL.
+        private const val UNICODE_TERMINATORS =
+            "“”„‘’‚«»‹›「」『』、。！＂＇，：；？"
         private const val SENTENCE_PUNCTUATION = ".:!?"
         private const val OPENERS = "([{"
         private const val CLOSERS = ")]}"
@@ -80,9 +84,12 @@ class MassImport(
                 c in '​'..'‍' ||
                 c == '⁠' ||
                 c == '﻿' ||
-                c == '᠎'
+                c == '᠎' ||
+                c in UNICODE_TERMINATORS
 
-        private fun scan(line: String, keepFields: Boolean): List<String> {
+        private fun scan(rawLine: String, keepFields: Boolean): List<String> {
+            // JSON encoders commonly escape slashes.
+            val line = if ("\\/" in rawLine) rawLine.replace("\\/", "/") else rawLine
             val starts = mutableListOf<Int>()
             val ends = mutableListOf<Int>()
             var from = 0
@@ -153,8 +160,10 @@ class MassImport(
             while (e > bodyStart) {
                 val ch = line[e - 1]
                 val k = CLOSERS.indexOf(ch)
+                val o = OPENERS.indexOf(ch)
                 when {
                     ch in LIST_SEPARATORS -> {}
+                    o >= 0 -> opens[o]--
                     prose && ch in SENTENCE_PUNCTUATION -> {}
                     singleQuoted && ch == '\'' -> {}
                     k >= 0 && closes[k] > opens[k] -> closes[k]--
