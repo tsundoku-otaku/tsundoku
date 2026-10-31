@@ -119,4 +119,13 @@ object TtsTextUtils {
             .takeIf { it >= 0 }
             ?: currentChunk
     }
+
+    /** Midpoint chunk of the chunks whose paragraph falls in [paragraphRange], or of all chunks when it is null. */
+    fun midpointChunkIndex(chunkParagraphIndexes: List<Int>, paragraphRange: IntRange?): Int? {
+        if (paragraphRange == null) return chunkParagraphIndexes.size.takeIf { it > 0 }?.let { it / 2 }
+        val first = chunkParagraphIndexes.indexOfFirst { it in paragraphRange }
+        if (first < 0) return null
+        val last = chunkParagraphIndexes.indexOfLast { it in paragraphRange }
+        return first + (last - first + 1) / 2
+    }
 }

@@ -23,6 +23,7 @@ class TtsController(
         fun onInitialized(pendingRequest: StartRequest?)
         fun getCurrentPage(): ReaderPage?
         fun onHighlightChunk(chunkIndex: Int, chunk: String, startOffset: Int, paragraphIndex: Int)
+        fun onChunkStart(chunkIndex: Int) {}
         fun onClearHighlights()
         fun onLastChunkDone()
         fun runOnUiThread(action: () -> Unit)
@@ -90,6 +91,7 @@ class TtsController(
             override fun onStart(utteranceId: String?) {
                 utteranceId?.removePrefix("tts_utterance_")?.toIntOrNull()?.let { chunkIndex ->
                     ttsCurrentChunkIndex = chunkIndex
+                    callbacks.runOnUiThread { callbacks.onChunkStart(chunkIndex) }
                     if (preferences.novelTtsEnableHighlight.get()) {
                         val chunk = ttsChunks.getOrNull(chunkIndex) ?: return
                         val startOffset = ttsChunkStartOffsets.getOrElse(chunkIndex) { 0 }

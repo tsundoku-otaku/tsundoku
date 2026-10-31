@@ -257,4 +257,23 @@ class TtsTextUtilsTest {
         val chunks = listOf("abc")
         assertEquals(0, TtsTextUtils.getChunkIndexFromOffset(999, chunks))
     }
+
+    @Test
+    fun `midpointChunkIndex uses all chunks when no paragraph range is given`() {
+        assertEquals(2, TtsTextUtils.midpointChunkIndex(listOf(0, 1, 2, 3, 4), null))
+        assertEquals(null, TtsTextUtils.midpointChunkIndex(emptyList(), null))
+    }
+
+    @Test
+    fun `midpointChunkIndex measures only the chunks of the paragraph range`() {
+        // Paragraphs 0..1 belong to the playback chapter, 2..5 to a chapter appended after it.
+        val chunkParagraphIndexes = listOf(0, 0, 1, 1, 2, 3, 4, 5, 5, 5)
+        assertEquals(2, TtsTextUtils.midpointChunkIndex(chunkParagraphIndexes, 0..1))
+        assertEquals(7, TtsTextUtils.midpointChunkIndex(chunkParagraphIndexes, 2..5))
+    }
+
+    @Test
+    fun `midpointChunkIndex returns null when no chunk is in the paragraph range`() {
+        assertEquals(null, TtsTextUtils.midpointChunkIndex(listOf(0, 1), 5..6))
+    }
 }
