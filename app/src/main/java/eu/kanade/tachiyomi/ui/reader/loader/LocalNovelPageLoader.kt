@@ -56,19 +56,14 @@ class LocalNovelPageLoader(
     override suspend fun loadPage(page: ReaderPage) = withIOContext {
         // Claim the page so concurrent callers share one fetch instead of each starting their own.
         while (true) {
-            val claimed = synchronized(page) {
-                when (page.status) {
-                    Page.State.Ready -> return@withIOContext
-                    Page.State.LoadPage -> false
-                    else -> {
-                        page.status = Page.State.LoadPage
-                        true
-                    }
+            when (val status = page.status) {
+                Page.State.Ready -> return@withIOContext
+                Page.State.LoadPage -> {
+                    // Another caller's fetch ended; only its cancellation (back to Queue) needs a new attempt.
+                    if (page.statusFlow.first { it != Page.State.LoadPage } != Page.State.Queue) return@withIOContext
                 }
+                else -> if (page.tryClaim(status, Page.State.LoadPage)) break
             }
-            if (claimed) break
-            // Another caller's fetch ended; only its cancellation (back to Queue) needs a new attempt.
-            if (page.statusFlow.first { it != Page.State.LoadPage } != Page.State.Queue) return@withIOContext
         }
         try {
             if (source.isNovelSource) {

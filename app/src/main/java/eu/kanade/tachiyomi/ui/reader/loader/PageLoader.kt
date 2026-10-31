@@ -3,8 +3,8 @@ package eu.kanade.tachiyomi.ui.reader.loader
 import androidx.annotation.CallSuper
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 
 /**
@@ -47,15 +47,15 @@ abstract class PageLoader {
 
     /**
      * Records [error] as the result of loading [page]. A load the caller cancelled goes back to the
-     * queue and the cancellation is rethrown; a cancellation the source threw itself, such as its
-     * own timeout, is a real error.
+     * queue and the cancellation is rethrown, whatever the source threw while being cancelled; a
+     * cancellation the source threw itself, such as its own timeout, is a real error.
      */
     protected suspend fun onPageLoadFailed(page: ReaderPage, error: Throwable) {
-        if (error is CancellationException && !currentCoroutineContext().isActive) {
-            if (page.status == Page.State.LoadPage || page.status == Page.State.DownloadImage) {
-                page.status = Page.State.Queue
-            }
-            throw error
+        val context = currentCoroutineContext()
+        if (!context.isActive) {
+            page.tryClaim(Page.State.LoadPage, Page.State.Queue) ||
+                page.tryClaim(Page.State.DownloadImage, Page.State.Queue)
+            context.ensureActive()
         }
         page.status = Page.State.Error(error)
     }

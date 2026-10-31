@@ -7,9 +7,11 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.chapter.model.Chapter
+import java.io.InterruptedIOException
 import java.util.concurrent.atomic.AtomicInteger
 
 class LocalNovelPageLoaderTest {
@@ -83,5 +86,45 @@ class LocalNovelPageLoaderTest {
 
         val status = page.status
         assertTrue(status is Page.State.Error && status.error is TimeoutCancellationException)
+    }
+
+    @Test
+    fun `a cancelled load goes back to the queue when the source throws an io error`() = runBlocking {
+        val (source, _) = source {
+            try {
+                awaitCancellation()
+            } catch (_: CancellationException) {
+                throw InterruptedIOException()
+            }
+        }
+        val loader = LocalNovelPageLoader(chapter, source)
+        val page = ReaderPage(0, "/c")
+
+        val job = launch { loader.loadPage(page) }
+        page.statusFlow.first { it == Page.State.LoadPage }
+        job.cancelAndJoin()
+
+        assertEquals(Page.State.Queue, page.status)
+    }
+
+    @Test
+    fun `a waiting load fetches again when the owning load is cancelled`() = runBlocking {
+        val started = AtomicInteger()
+        val (source, calls) = source {
+            if (started.incrementAndGet() == 1) awaitCancellation()
+            "text"
+        }
+        val loader = LocalNovelPageLoader(chapter, source)
+        val page = ReaderPage(0, "/c")
+
+        val first = launch { loader.loadPage(page) }
+        page.statusFlow.first { it == Page.State.LoadPage }
+        val second = async { loader.loadPage(page) }
+        delay(50)
+        first.cancelAndJoin()
+        second.await()
+
+        assertEquals(2, calls.get())
+        assertEquals(Page.State.Ready, page.status)
     }
 }
