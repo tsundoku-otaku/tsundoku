@@ -8,6 +8,9 @@ import logcat.logcat
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Comment
+import org.jsoup.nodes.TextNode
 
 object HtmlUtils {
 
@@ -15,6 +18,7 @@ object HtmlUtils {
 
     private val frontMatterRegex = Regex("^\\uFEFF?---\\s*\\r?\\n([\\s\\S]*?)\\r?\\n---\\s*(\\r?\\n|$)")
     private const val CHAPTER_TITLE_SEARCH_LIMIT = 3000
+    private const val MAX_SANITIZE_PASSES = 4
 
     private val htmlTagRegex = Regex(
         "<\\s*(html|head|body|div|p|span|br|h[1-6]|img|a|table|ul|ol|li|blockquote|article|section|!doctype)\\b",
@@ -37,23 +41,13 @@ object HtmlUtils {
         Regex("""part\s*\d+""", RegexOption.IGNORE_CASE),
     )
 
-    @Suppress("ktlint:standard:max-line-length")
-    private val scriptTagRegex =
-        Regex("<script[^>]*>.*?</script>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    private val scriptSelfClosingRegex = Regex("<script[^>]*/>", RegexOption.IGNORE_CASE)
+    // Attributes whose value is a URL that a browser may load or navigate to.
+    private val urlAttributes = setOf("href", "src", "action", "formaction", "xlink:href", "data", "poster", "background", "cite")
 
-    @Suppress("ktlint:standard:max-line-length")
-    private val styleTagRegex =
-        Regex("<style[^>]*>.*?</style>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    private val styleSelfClosingRegex = Regex("<style[^>]*/>", RegexOption.IGNORE_CASE)
-    private val linkStylesheetRegex1 = Regex("<link[^>]*rel[^>]*stylesheet[^>]*>", RegexOption.IGNORE_CASE)
-    private val linkStylesheetRegex2 = Regex("<link[^>]*stylesheet[^>]*rel[^>]*>", RegexOption.IGNORE_CASE)
+    // Elements that only render a data: URL as media, never as a document that runs script.
+    private val dataUrlMediaTags = setOf("img", "image", "source", "video", "audio", "track")
 
-    @Suppress("ktlint:standard:max-line-length")
-    private val noscriptTagRegex =
-        Regex("<noscript[^>]*>.*?</noscript>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    private val htmlCommentRegex = Regex("<!--.*?-->", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
-    private val encodedCommentRegex = Regex("&lt;!--.*?--&gt;", RegexOption.DOT_MATCHES_ALL)
+    private val textCommentRegex = Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL)
 
     private val imgTagRegex = Regex("<img[^>]*>", RegexOption.IGNORE_CASE)
     private val imageTagRegex = Regex("</?image[^>]*>", RegexOption.IGNORE_CASE)
@@ -211,6 +205,10 @@ object HtmlUtils {
         return chapterNumPatterns.any { it.matches(text) && it.containsMatchIn(chapterName) }
     }
 
+    /**
+     * Sanitizes on the DOM and serializes, so no text-level rewrite can turn attribute contents
+     * back into markup. Clean chapters are returned verbatim when embedded JS is kept.
+     */
     fun sanitizeForRender(
         content: String,
         target: RenderTarget,
@@ -218,38 +216,100 @@ object HtmlUtils {
         keepEmbeddedJs: Boolean,
         blockMedia: Boolean,
     ): String {
-        var result = content
-
         val stripJs = target == RenderTarget.TEXT_VIEW || !keepEmbeddedJs
         val stripCss = target == RenderTarget.TEXT_VIEW || !keepEmbeddedCss
 
-        if (stripJs) {
-            result = result.replace(scriptTagRegex, "")
-            result = result.replace(scriptSelfClosingRegex, "")
-        }
+        val first = sanitizePass(content, target, stripJs, stripCss, blockMedia)
+        if (!stripJs) return if (first.changed) first.html else content
 
-        if (stripCss) {
-            result = result.replace(styleTagRegex, "")
-            result = result.replace(styleSelfClosingRegex, "")
-            if (target == RenderTarget.WEB_VIEW) {
-                result = result.replace(linkStylesheetRegex1, "")
-                result = result.replace(linkStylesheetRegex2, "")
-                try {
-                    val doc = org.jsoup.Jsoup.parseBodyFragment(result)
-                    doc.body().select("*").removeAttr("style")
-                    result = doc.body().html()
-                } catch (_: Exception) {
-                    // Keep the partially sanitized result if parsing fails.
-                }
+        // Serialized markup can parse differently than the original (foreign content mXSS), and the
+        // WebView only ever parses our serialization, so repeat until it is stable and clean.
+        var html = first.html
+        repeat(MAX_SANITIZE_PASSES) {
+            val pass = sanitizePass(html, target, stripJs, stripCss, blockMedia)
+            if (!pass.changed && pass.html == html) return html
+            html = pass.html
+        }
+        return escapeHtml(Jsoup.parseBodyFragment(html).text())
+    }
+
+    private class SanitizeResult(val html: String, val changed: Boolean)
+
+    private fun sanitizePass(
+        content: String,
+        target: RenderTarget,
+        stripJs: Boolean,
+        stripCss: Boolean,
+        blockMedia: Boolean,
+    ): SanitizeResult {
+        val doc = Jsoup.parseBodyFragment(content)
+        doc.outputSettings().prettyPrint(false)
+        val body = doc.body()
+        var changed = false
+
+        fun removeAll(query: String) {
+            val found = body.select(query)
+            if (found.isNotEmpty()) {
+                found.remove()
+                changed = true
             }
         }
 
-        result = result.replace(noscriptTagRegex, "")
-        result = result.replace(htmlCommentRegex, "")
-        result = result.replace(encodedCommentRegex, "")
+        removeAll("noscript, base")
+        if (stripJs) {
+            // Embedded documents run their own script; SVG animations can set href to javascript: at runtime.
+            removeAll(
+                "script, meta[http-equiv], iframe, frame, frameset, object, embed, " +
+                    "animate, set, animatemotion, animatetransform",
+            )
+        }
+        if (stripCss) removeAll("style, link[rel~=(?i)stylesheet]")
+        if (blockMedia) removeAll("img, image, video, audio, source")
 
-        if (blockMedia) result = stripMediaTags(result)
-        return result
+        for (element in body.allElements) {
+            for (node in element.childNodes().toList()) {
+                if (node is Comment) {
+                    node.remove()
+                    changed = true
+                } else if (node is TextNode && "<!--" in node.wholeText) {
+                    node.text(node.wholeText.replace(textCommentRegex, ""))
+                    changed = true
+                }
+            }
+
+            if (stripCss && target == RenderTarget.WEB_VIEW && element.hasAttr("style")) {
+                element.removeAttr("style")
+                changed = true
+            }
+
+            if (stripJs) {
+                val unsafe = element.attributes().asList().filter { isUnsafeAttribute(element.normalName(), it.key, it.value) }
+                unsafe.forEach { element.removeAttr(it.key) }
+                if (unsafe.isNotEmpty()) changed = true
+            }
+
+            // Native loading="lazy" never fires inside the custom scroll/paged-transform containers.
+            if (target == RenderTarget.WEB_VIEW &&
+                (element.normalName() == "img" || element.normalName() == "iframe") &&
+                element.attr("loading").equals("lazy", ignoreCase = true)
+            ) {
+                element.attr("loading", "eager")
+                changed = true
+            }
+        }
+
+        return SanitizeResult(body.html(), changed)
+    }
+
+    private fun isUnsafeAttribute(tag: String, key: String, value: String): Boolean {
+        val name = key.lowercase()
+        if (name.length > 2 && name.startsWith("on") && name.drop(2).all { it in 'a'..'z' }) return true
+        if (name == "srcdoc") return true
+        if (name !in urlAttributes) return false
+        val url = value.filterNot { it.isWhitespace() || it.isISOControl() }.lowercase()
+        return url.startsWith("javascript:") ||
+            url.startsWith("vbscript:") ||
+            (url.startsWith("data:") && tag !in dataUrlMediaTags)
     }
 
     fun stripMediaTags(content: String): String {
