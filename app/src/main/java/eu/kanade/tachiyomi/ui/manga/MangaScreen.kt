@@ -431,6 +431,25 @@ class MangaScreen(
                     },
                 )
             }
+            is MangaViewModel.Dialog.ConfirmTranslateChapters -> {
+                AlertDialog(
+                    onDismissRequest = onDismissRequest,
+                    title = { Text(stringResource(TDMR.strings.action_translate_downloaded)) },
+                    text = {
+                        Text(stringResource(TDMR.strings.translate_chapters_confirm, dialog.chapters.size))
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.confirmTranslateChapters(dialog) }) {
+                            Text(stringResource(TDMR.strings.action_translate))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDismissRequest) {
+                            Text(stringResource(MR.strings.action_cancel))
+                        }
+                    },
+                )
+            }
             is MangaViewModel.Dialog.WordCount -> {
                 eu.kanade.presentation.manga.components.WordCountDialog(
                     checkedChapters = dialog.checkedChapters,
