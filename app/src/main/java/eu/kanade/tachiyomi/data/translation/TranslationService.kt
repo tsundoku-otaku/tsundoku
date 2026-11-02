@@ -43,6 +43,7 @@ import tachiyomi.domain.translation.model.TranslationStatus
 import tachiyomi.domain.translation.model.TranslationTask
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.domain.translation.service.TranslationPreferences
+import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.util.concurrent.ConcurrentHashMap
@@ -761,7 +762,10 @@ class TranslationService(
         }
 
         // Download first (or wait for an in-flight download) so the user keeps an offline copy
-        if (translationPreferences.autoDownloadBeforeTranslate().get() && source.isNovelSource()) {
+        if (translationPreferences.autoDownloadBeforeTranslate().get() &&
+            source.isNovelSource() &&
+            !manga.isLocalNovel()
+        ) {
             if (downloadManager.getQueuedDownloadOrNull(chapter.id) == null) {
                 downloadManager.downloadChapters(manga, listOf(chapter))
             }

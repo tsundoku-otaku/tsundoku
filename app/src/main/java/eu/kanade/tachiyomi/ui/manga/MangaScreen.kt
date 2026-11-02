@@ -208,7 +208,7 @@ class MangaScreen(
                 null
             },
             onTranslateClicked = viewModel::translateMangaDetails,
-            onTranslateDownloadedClicked = viewModel::translateDownloadedChapters,
+            onTranslateDownloadedClicked = { viewModel.translateDownloadedChapters() }.takeIf { successState.isNovel },
             onExportEpubClicked = viewModel::showExportEpubDialog.takeIf { successState.isNovel },
             onSearchChaptersClicked = {
                 navigator.push(ChapterSearchScreen(successState.manga.id))

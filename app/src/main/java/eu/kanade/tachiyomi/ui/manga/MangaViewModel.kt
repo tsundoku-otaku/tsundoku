@@ -1695,9 +1695,9 @@ class MangaViewModel(
         val manga = state.manga
 
         viewModelScope.launchIO {
-            // Get all downloaded chapters
+            val isLocalEntry = manga.isLocalNovel()
             val downloadedChapters = state.chapters.filter { item ->
-                item.downloadState == Download.State.DOWNLOADED
+                isLocalEntry || item.downloadState == Download.State.DOWNLOADED
             }.map { it.chapter }
 
             if (downloadedChapters.isEmpty()) {
