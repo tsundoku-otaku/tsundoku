@@ -661,6 +661,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             isFocusable = true
             isFocusableInTouchMode = true
             if (preferences.novelTextSelectable.get() &&
+                preferences.novelForceDictionaryAction.get() &&
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             ) {
                 setTextClassifier(ContextMenuUtils.createDictionaryTextClassifier(activity))
