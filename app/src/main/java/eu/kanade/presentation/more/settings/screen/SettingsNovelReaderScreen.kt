@@ -448,8 +448,8 @@ object SettingsNovelReaderScreen : SearchableSettings {
                 add(
                     Preference.PreferenceItem.SwitchPreference(
                         preference = readerPreferences.novelForceDictionaryAction,
-                        title = "Always show \"Define\" action",
-                        subtitle = "Always show the Define (dictionary) action in the text selection context menu",
+                        title = stringResource(TDMR.strings.pref_novel_force_dictionary_action),
+                        subtitle = stringResource(TDMR.strings.pref_novel_force_dictionary_action_summary),
                     ),
                 )
                 add(
