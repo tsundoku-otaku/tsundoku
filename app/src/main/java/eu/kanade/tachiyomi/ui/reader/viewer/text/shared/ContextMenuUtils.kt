@@ -18,8 +18,11 @@ import android.view.textclassifier.TextSelection
 import androidx.annotation.RequiresApi
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.novel.TDMR
+import java.text.BreakIterator
+import java.util.Locale
 
 object ContextMenuUtils {
+    private const val MAX_DICTIONARY_WORDS = 2
 
     /**
      * Creates a [TextClassifier] that adds a custom Define action to system
@@ -53,6 +56,17 @@ object ContextMenuUtils {
                     .toString()
 
                 if (text.isBlank()) return original
+
+                val language = system.detectLanguage(
+                    TextLanguage.Request.Builder(text).build(),
+                )
+                val locale = if (language.localeHypothesisCount > 0) {
+                    language.getLocale(0).toLocale()
+                } else {
+                    Locale.ROOT
+                }
+
+                if (!shouldShowDictionary(text, locale)) return original
 
                 val intent = Intent(Intent.ACTION_DEFINE)
                     .putExtra(Intent.EXTRA_TEXT, text)
@@ -128,6 +142,43 @@ object ContextMenuUtils {
                 request: ConversationActions.Request
             ): ConversationActions = system.suggestConversationActions(request)
         }
+    }
+
+    /**
+     * Determines whether the selected text contains up to two word-like segments
+     * suitable for dictionary lookup.
+     *
+     * @param selection Selected text to evaluate.
+     * @param locale Language of the selected content.
+     * @return `true` if one or two words are selected, `false` otherwise.
+     */
+    private fun shouldShowDictionary(
+        selection: String,
+        locale: Locale
+    ): Boolean {
+        val text = selection.trim()
+        if (text.isEmpty()) return false
+
+        val iterator = BreakIterator.getWordInstance(locale)
+        iterator.setText(text)
+
+        var wordCount = 0
+        var start = iterator.first()
+        var end = iterator.next()
+
+        while (end != BreakIterator.DONE) {
+            val segment = text.substring(start, end)
+
+            if (segment.any { Character.isLetterOrDigit(it) }) {
+                wordCount++
+                if (wordCount > MAX_DICTIONARY_WORDS) return false
+            }
+
+            start = end
+            end = iterator.next()
+        }
+
+        return wordCount in 1..MAX_DICTIONARY_WORDS
     }
 
 }
