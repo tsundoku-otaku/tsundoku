@@ -716,7 +716,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             applyTextSelectionPreference(this)
 
             if (preferences.novelTextSelectable.get()) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (preferences.novelForceDictionaryAction.get() &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                ) {
                     setTextClassifier(ContextMenuUtils.createDictionaryTextClassifier(activity))
                 } else {
                     setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)

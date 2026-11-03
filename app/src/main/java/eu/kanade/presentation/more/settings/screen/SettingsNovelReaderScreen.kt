@@ -447,6 +447,13 @@ object SettingsNovelReaderScreen : SearchableSettings {
                 )
                 add(
                     Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelForceDictionaryAction,
+                        title = "Always show \"Define\" action",
+                        subtitle = "Always show the Define (dictionary) action in the text selection context menu",
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
                         preference = readerPreferences.novelShowRawHtml,
                         title = "Show raw HTML",
                         subtitle = "Display HTML source instead of rendered content",
