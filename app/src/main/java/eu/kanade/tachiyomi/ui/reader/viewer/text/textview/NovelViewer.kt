@@ -4,6 +4,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.textview
 
 import android.graphics.Canvas
 import android.graphics.text.LineBreaker
+import android.os.Build
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
@@ -35,6 +36,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ChapterQueue
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContextMenuUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelProgress
@@ -713,10 +715,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             )
             applyTextSelectionPreference(this)
 
-            if (preferences.novelTextSelectable.get() &&
-                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
-            ) {
-                setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
+            if (preferences.novelTextSelectable.get()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setTextClassifier(ContextMenuUtils.createDictionaryTextClassifier(activity))
+                } else {
+                    setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP)
+                }
             }
 
             // Set custom action mode callback for text selection
@@ -1805,7 +1809,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             "justify" -> Gravity.START // Android doesn't have justify, fallback to start
             else -> Gravity.START
         }
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             textView.justificationMode = if (textAlign == "justify") {
                 LineBreaker.JUSTIFICATION_MODE_INTER_WORD
             } else {
