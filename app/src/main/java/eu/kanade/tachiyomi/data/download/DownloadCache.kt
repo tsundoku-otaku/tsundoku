@@ -90,6 +90,7 @@ class DownloadCache(
     /**
      * The last time the cache was refreshed.
      */
+    @Volatile
     private var lastRenew = 0L
     private var renewalJob: Job? = null
 
@@ -228,7 +229,7 @@ class DownloadCache(
         val job = renewalJob
         job?.join()
         if (job?.isCancelled == true) return false
-        indexNewSourcesSafely()
+        indexNewSourcesSafely(waitForSources = false)
         return true
     }
 
@@ -459,11 +460,7 @@ class DownloadCache(
             it.invokeOnCompletion(onCancelling = true) { exception ->
                 if (exception != null && exception !is CancellationException) {
                     logcat(LogPriority.ERROR, exception) { "DownloadCache: failed to create cache" }
-                }
-                when (exception) {
-                    null -> {}
-                    is CancellationException -> lastRenew = 0L
-                    else -> lastRenew = System.currentTimeMillis()
+                    lastRenew = System.currentTimeMillis()
                 }
                 notifyChanges()
             }
@@ -471,9 +468,9 @@ class DownloadCache(
         return true
     }
 
-    private suspend fun indexNewSourcesSafely() {
+    private suspend fun indexNewSourcesSafely(waitForSources: Boolean = true) {
         try {
-            indexNewSources()
+            indexNewSources(waitForSources)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -481,13 +478,17 @@ class DownloadCache(
         }
     }
 
-    private suspend fun indexNewSources() {
+    private suspend fun indexNewSources(waitForSources: Boolean) {
         initJob.join()
         renewalJob?.join()
         // Nothing indexed yet, the full scan will pick every source up
         if (lastRenew == 0L) return
 
-        val sources = withTimeoutOrNull(30.seconds) { getSources() } ?: currentSources()
+        val sources = if (waitForSources) {
+            withTimeoutOrNull(30.seconds) { getSources() } ?: currentSources()
+        } else {
+            currentSources()
+        }
         val found = rootDownloadsDirMutex.withLock {
             val root = rootDownloadsDir
             val newSources = sources.filter { it.id !in checkedSourceIds && it.id !in root.sourceDirs }
