@@ -91,9 +91,14 @@ class SetMangaCategories(
     }
 
     suspend fun update(mangaIds: List<Long>, addCategories: List<Long>, removeCategories: List<Long>) {
-        if (addCategories.isNotEmpty()) add(mangaIds, addCategories, skipRefresh = true)
-        if (removeCategories.isNotEmpty()) remove(mangaIds, removeCategories, skipRefresh = true)
-        getLibraryManga.applyCategoryUpdates(mangaIds, addCategories, removeCategories)
+        val added = addCategories.isNotEmpty() && add(mangaIds, addCategories, skipRefresh = true)
+        val removed = removeCategories.isNotEmpty() && remove(mangaIds, removeCategories, skipRefresh = true)
+        if (!added && !removed) return
+        getLibraryManga.applyCategoryUpdates(
+            mangaIds,
+            if (added) addCategories else emptyList(),
+            if (removed) removeCategories else emptyList(),
+        )
     }
 
     /**
