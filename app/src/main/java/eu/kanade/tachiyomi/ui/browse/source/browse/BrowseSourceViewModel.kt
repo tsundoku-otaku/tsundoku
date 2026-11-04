@@ -118,8 +118,6 @@ class BrowseSourceViewModel(
     // Current page number from paging source
     val currentPage: StateFlow<Int> = tachiyomi.data.source.BaseSourcePagingSource.currentPage
 
-    private var restoredPresetQuery: String? = null
-
     // Initial page for jump-to-page feature - triggers pager recreation when changed
     private val _initialPage = MutableStateFlow(1L)
     val initialPage: StateFlow<Long> = _initialPage.asStateFlow()
@@ -312,8 +310,7 @@ class BrowseSourceViewModel(
         // Reset initial page to 1 when listing changes (e.g., switching between Popular, Latest, Search)
         _initialPage.value = 1L
         _targetEndPage.value = null
-        restoredPresetQuery = null
-        mutableState.update { it.copy(listing = listing, toolbarQuery = null) }
+        mutableState.update { it.copy(listing = listing, toolbarQuery = null, presetQuery = null) }
     }
 
     fun setFilters(filters: FilterList) {
@@ -394,9 +391,7 @@ class BrowseSourceViewModel(
         }
     }
 
-    fun search(query: String? = null, filters: FilterList? = null) = search(query, filters, keepQuery = true)
-
-    private fun search(query: String?, filters: FilterList?, keepQuery: Boolean) {
+    fun search(query: String? = null, filters: FilterList? = null) {
         if (source !is CatalogueSource) return
         logcat(LogPriority.DEBUG) { "search called: query='$query', filters=${filters?.hashCode()}" }
 
@@ -404,7 +399,7 @@ class BrowseSourceViewModel(
             ?: Listing.Search(query = null, filters = source.getFilterList())
 
         val newFilters = filters ?: input.filters
-        val newQuery = if (keepQuery) query ?: input.query else query
+        val newQuery = query ?: input.query
 
         // Reset initial page to 1 when search/filters change
         _initialPage.value = 1L
@@ -418,17 +413,21 @@ class BrowseSourceViewModel(
                 ),
                 filters = newFilters, // Ensure state.filters is also updated
                 toolbarQuery = newQuery,
+                presetQuery = null,
             )
         }
     }
 
     fun applyFilters() {
-        // Toolbar text may hold a restored preset query that was never submitted
-        search(
-            query = state.value.toolbarQuery?.takeIf { it.isNotBlank() },
-            filters = state.value.pendingFilters,
-            keepQuery = false,
-        )
+        // Unsubmitted toolbar text is ignored like a plain filter apply, except a loaded preset's query
+        search(query = state.value.presetQuery, filters = state.value.pendingFilters)
+    }
+
+    fun dismissFilterDialog() {
+        mutableState.update {
+            if (it.presetQuery == null) return@update it.copy(dialog = null)
+            it.copy(dialog = null, toolbarQuery = it.queryBeforePreset, presetQuery = null)
+        }
     }
 
     fun searchGenre(genreName: String) {
@@ -474,6 +473,7 @@ class BrowseSourceViewModel(
                 filters = defaultFilters,
                 listing = listing,
                 toolbarQuery = listing.query,
+                presetQuery = null,
             )
         }
     }
@@ -651,14 +651,15 @@ class BrowseSourceViewModel(
             // Update pendingFilters directly and open filter dialog
             mutableState.update {
                 // A query only the previous preset brought in leaves with it
-                val typedQuery = it.toolbarQuery.takeUnless { query -> query == restoredPresetQuery }
+                val ownQuery = if (it.presetQuery != null) it.queryBeforePreset else it.toolbarQuery
                 it.copy(
                     pendingFilters = filters,
-                    toolbarQuery = preset.searchQuery ?: typedQuery,
+                    toolbarQuery = preset.searchQuery ?: ownQuery,
+                    presetQuery = preset.searchQuery,
+                    queryBeforePreset = ownQuery.takeIf { _ -> preset.searchQuery != null },
                     dialog = Dialog.Filter,
                 )
             }
-            restoredPresetQuery = preset.searchQuery
             logcat(LogPriority.INFO) { "BrowseSource: Preset applied successfully" }
         } else {
             logcat(LogPriority.WARN) { "BrowseSource: Preset not found for presetId=$presetId" }
@@ -696,8 +697,7 @@ class BrowseSourceViewModel(
     }
 
     fun setToolbarQuery(query: String?) {
-        restoredPresetQuery = null
-        mutableState.update { it.copy(toolbarQuery = query) }
+        mutableState.update { it.copy(toolbarQuery = query, presetQuery = null) }
     }
 
     sealed class Listing(open val query: String?, open val filters: FilterList) {
@@ -992,6 +992,10 @@ class BrowseSourceViewModel(
         val filters: FilterList = FilterList(),
         val pendingFilters: FilterList = FilterList(), // Filters being edited in dialog
         val toolbarQuery: String? = null,
+        // Query a loaded preset put in the toolbar that has not been applied yet; whenever it is
+        // non-null the toolbar shows it, and queryBeforePreset is what dismissing puts back
+        val presetQuery: String? = null,
+        val queryBeforePreset: String? = null,
         val dialog: Dialog? = null,
         val selectionMode: Boolean = false,
         val selection: Set<Manga> = emptySet(),

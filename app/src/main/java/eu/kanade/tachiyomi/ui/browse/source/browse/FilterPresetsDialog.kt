@@ -164,16 +164,19 @@ private fun PresetItem(
         }
 
         Row {
-            IconButton(onClick = onSetDefault) {
-                Icon(
-                    imageVector = if (preset.isDefault) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                    contentDescription = if (preset.isDefault) "Remove default" else "Set as default",
-                    tint = if (preset.isDefault) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
+            // Auto-apply only restores filters, so a preset with search text can't be the default
+            if (preset.isDefault || preset.searchQuery == null) {
+                IconButton(onClick = onSetDefault) {
+                    Icon(
+                        imageVector = if (preset.isDefault) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (preset.isDefault) "Remove default" else "Set as default",
+                        tint = if (preset.isDefault) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
             }
             IconButton(onClick = onDelete) {
                 Icon(
