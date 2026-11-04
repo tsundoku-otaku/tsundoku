@@ -17,6 +17,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Fixed
 - Route headset media to TTS session [@mrissaoussama](https://github.com/mrissaoussama) [#466](https://github.com/tsundoku-otaku/tsundoku/pull/466)
 
+### Other
+- Add link to Mihon [@mrissaoussama](https://github.com/mrissaoussama) [#442](https://github.com/tsundoku-otaku/tsundoku/pull/442)
+
 
 ## [v0.3.4] - 2026-10-16
 ### Added

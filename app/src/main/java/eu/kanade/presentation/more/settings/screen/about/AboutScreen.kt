@@ -163,6 +163,13 @@ object AboutScreen : Screen() {
                 }
 
                 item {
+                    TextPreferenceWidget(
+                        title = stringResource(MR.strings.based_on_mihon),
+                        onPreferenceClick = { uriHandler.openUri("https://github.com/mihonapp/mihon") },
+                    )
+                }
+
+                item {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
