@@ -118,6 +118,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             chapterQueue.isLoadingNext = value
         }
     private var isRestoringScroll = false
+
+    // Own flag: other restores clear isRestoringScroll from their own posts mid-toggle
+    private var separatorTogglesInFlight = 0
+    private val isScrollGuarded get() = isRestoringScroll || separatorTogglesInFlight > 0
     private var currentChapterIndex: Int
         get() = chapterQueue.currentIndex
         set(value) {
@@ -305,7 +309,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             // updateCurrentChapterFromScroll to detect the wrong chapter.
             val inGracePeriod = System.currentTimeMillis() - chapterEntryTime < CHAPTER_ENTRY_GRACE_MS
 
-            if (!isRestoringScroll && !inGracePeriod) {
+            if (!isScrollGuarded && !inGracePeriod) {
                 updateCurrentChapterFromScroll(scrollY)
             }
 
@@ -331,7 +335,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 // chunks and during pause/resume, causing the scroll listener to start a
                 // visible chapter fetch while TTS still owns the chapter transition.
                 val ttsIsDrivingChapterHandoff = ttsController.isTtsAutoPlay
-                if (!isRestoringScroll && !ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
+                if (!isScrollGuarded && !ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
                     !isLoadingNext &&
                     !reachedNovelEnd &&
                     !nextLoadRequiresManualRetry &&
@@ -341,7 +345,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                         "NovelViewer: scroll threshold hit (progress=$chapterProgress >= $effectiveThreshold, currentIdx=$currentChapterIndex, loadedCount=${loadedChapters.size})"
                     }
                     loadNextChapterIfAvailable()
-                } else if (!isRestoringScroll && ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
+                } else if (!isScrollGuarded && ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
                     onLastLoaded
                 ) {
                     preFetchNextChapterForTts()
@@ -697,15 +701,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             .map(contentContainer::getChildAt)
             .firstOrNull { it !in separators && it.bottom > scrollY }
         val anchorOffset = anchor?.let { scrollY - it.top } ?: 0
-        // Another restore in flight owns the guard and clears it itself
-        val ownsGuard = !isRestoringScroll
-        isRestoringScroll = true
+        separatorTogglesInFlight++
         separators.forEach { it.isVisible = visible }
         scrollView.doOnPreDraw {
             if (anchor != null && anchor.parent === contentContainer) {
                 scrollView.scrollTo(0, anchor.top + anchorOffset)
             }
-            if (ownsGuard) scrollView.post { isRestoringScroll = false }
+            scrollView.post { separatorTogglesInFlight-- }
         }
     }
 
@@ -2103,7 +2105,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private fun maybeLoadNextChapterFromSlider() {
         if (!preferences.novelInfiniteScroll.get()) return
-        if (ttsController.isTtsAutoPlay || isLoadingNext || isRestoringScroll) return
+        if (ttsController.isTtsAutoPlay || isLoadingNext || isScrollGuarded) return
         scrollView.post {
             if (ttsController.isTtsAutoPlay) return@post
             val onLastLoaded = currentChapterIndex == (loadedChapters.size - 1).coerceAtLeast(0)
