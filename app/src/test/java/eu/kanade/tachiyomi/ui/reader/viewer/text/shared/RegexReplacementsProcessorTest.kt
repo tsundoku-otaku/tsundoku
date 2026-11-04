@@ -321,7 +321,7 @@ class RegexReplacementsProcessorTest {
 
             RegexReplacementsProcessor.ruleTimeoutMs = 60_000
             val start = System.nanoTime()
-            assertThrows(RegexTimeoutException::class.java) {
+            assertThrows(RegexDisabledException::class.java) {
                 RegexReplacementsProcessor.test(rule, CATASTROPHIC_INPUT)
             }
             assertTrue(System.nanoTime() - start < 1_000_000_000L)

@@ -13,6 +13,8 @@ class RegexTimeoutException : RuntimeException("Regex timed out")
 
 class RegexBusyException : RuntimeException("Too many timed out regex workers still running")
 
+class RegexDisabledException : RuntimeException("Regex disabled after an earlier timeout")
+
 const val DEFAULT_REGEX_TIMEOUT_MS = 2_000L
 
 private const val DEADLINE_CHECK_MASK = 0x3FF
