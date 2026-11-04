@@ -37,6 +37,9 @@ open class Page(
             _statusFlow.value = value
         }
 
+    /** Atomically moves [status] from [from] to [to], returning false if it was not [from]. */
+    fun tryClaim(from: State, to: State): Boolean = _statusFlow.compareAndSet(from, to)
+
     @Transient
     private val _progressFlow = MutableStateFlow(0)
 
