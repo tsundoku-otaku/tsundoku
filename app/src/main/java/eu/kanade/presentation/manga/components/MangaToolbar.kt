@@ -1,6 +1,9 @@
 package eu.kanade.presentation.manga.components
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowDownward
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Bookmark
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.FlipToBack
@@ -16,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
+import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.AppBarActions
 import eu.kanade.presentation.components.AppBarTitle
@@ -25,6 +29,9 @@ import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.theme.active
+import tachiyomi.presentation.core.util.collectAsState
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 @Composable
 fun MangaToolbar(
@@ -62,6 +69,8 @@ fun MangaToolbar(
     modifier: Modifier = Modifier,
 ) {
     val isActionMode = actionModeCounter > 0
+    val scrollActionsInOverflow by remember { Injekt.get<UiPreferences>().mangaScrollActionsInOverflow }
+        .collectAsState()
     AppBar(
         titleContent = {
             if (isActionMode) {
@@ -114,6 +123,36 @@ fun MangaToolbar(
                                 onClick = { downloadExpanded = !downloadExpanded },
                             ),
                         )
+                    }
+
+                    if (!scrollActionsInOverflow) {
+                        if (onClickScrollToTop != null) {
+                            add(
+                                AppBar.Action(
+                                    title = stringResource(TDMR.strings.action_scroll_to_top),
+                                    icon = Icons.Outlined.ArrowUpward,
+                                    onClick = onClickScrollToTop,
+                                ),
+                            )
+                        }
+                        if (onClickScrollToLastRead != null) {
+                            add(
+                                AppBar.Action(
+                                    title = stringResource(TDMR.strings.action_scroll_to_next_unread),
+                                    icon = Icons.Outlined.Bookmark,
+                                    onClick = onClickScrollToLastRead,
+                                ),
+                            )
+                        }
+                        if (onClickScrollToBottom != null) {
+                            add(
+                                AppBar.Action(
+                                    title = stringResource(TDMR.strings.action_scroll_to_bottom),
+                                    icon = Icons.Outlined.ArrowDownward,
+                                    onClick = onClickScrollToBottom,
+                                ),
+                            )
+                        }
                     }
 
                     add(
@@ -232,29 +271,31 @@ fun MangaToolbar(
                             onClick = onClickEditNotes,
                         ),
                     )
-                    if (onClickScrollToTop != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_scroll_to_top),
-                                onClick = onClickScrollToTop,
-                            ),
-                        )
-                    }
-                    if (onClickScrollToLastRead != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_scroll_to_next_unread),
-                                onClick = onClickScrollToLastRead,
-                            ),
-                        )
-                    }
-                    if (onClickScrollToBottom != null) {
-                        add(
-                            AppBar.OverflowAction(
-                                title = stringResource(TDMR.strings.action_scroll_to_bottom),
-                                onClick = onClickScrollToBottom,
-                            ),
-                        )
+                    if (scrollActionsInOverflow) {
+                        if (onClickScrollToTop != null) {
+                            add(
+                                AppBar.OverflowAction(
+                                    title = stringResource(TDMR.strings.action_scroll_to_top),
+                                    onClick = onClickScrollToTop,
+                                ),
+                            )
+                        }
+                        if (onClickScrollToLastRead != null) {
+                            add(
+                                AppBar.OverflowAction(
+                                    title = stringResource(TDMR.strings.action_scroll_to_next_unread),
+                                    onClick = onClickScrollToLastRead,
+                                ),
+                            )
+                        }
+                        if (onClickScrollToBottom != null) {
+                            add(
+                                AppBar.OverflowAction(
+                                    title = stringResource(TDMR.strings.action_scroll_to_bottom),
+                                    onClick = onClickScrollToBottom,
+                                ),
+                            )
+                        }
                     }
                 },
             )
