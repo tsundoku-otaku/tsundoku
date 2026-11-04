@@ -566,8 +566,9 @@ class MainActivity : BaseActivity() {
                 if (!query.isNullOrEmpty()) {
                     val filter = intent.getStringExtra(INTENT_SEARCH_FILTER)
                     navigator.popUntilRoot()
-                    val isNovel = intent.action == INTENT_SEARCH_NOVEL ||
-                        (filter != null && isNovelExtensionPackage(filter))
+                    // An installed extension's own type wins over the action
+                    val isNovel = filter?.let(::isNovelExtensionPackage)
+                        ?: (intent.action == INTENT_SEARCH_NOVEL)
                     if (isNovel) {
                         navigator.push(NovelGlobalSearchScreen(query, filter))
                     } else {
@@ -609,11 +610,13 @@ class MainActivity : BaseActivity() {
         return true
     }
 
-    private fun isNovelExtensionPackage(pkgName: String): Boolean {
+    /** @return null when no installed extension with sources has [pkgName] */
+    private fun isNovelExtensionPackage(pkgName: String): Boolean? {
         return extensionManager.installedExtensionsFlow.value
             .firstOrNull { it.pkgName == pkgName }
             ?.sources
-            ?.any { it.isNovelSource() } == true
+            ?.takeIf { it.isNotEmpty() }
+            ?.any { it.isNovelSource() }
     }
 
     /**
