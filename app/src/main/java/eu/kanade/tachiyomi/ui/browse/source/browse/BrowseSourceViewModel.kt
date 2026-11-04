@@ -312,6 +312,7 @@ class BrowseSourceViewModel(
         // Reset initial page to 1 when listing changes (e.g., switching between Popular, Latest, Search)
         _initialPage.value = 1L
         _targetEndPage.value = null
+        restoredPresetQuery = null
         mutableState.update { it.copy(listing = listing, toolbarQuery = null) }
     }
 
@@ -695,6 +696,7 @@ class BrowseSourceViewModel(
     }
 
     fun setToolbarQuery(query: String?) {
+        restoredPresetQuery = null
         mutableState.update { it.copy(toolbarQuery = query) }
     }
 
