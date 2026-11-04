@@ -687,16 +687,33 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
+    // Keeps the paragraph at the top of the screen in place while separators above it change height
+    private fun applySeparatorVisibility() {
+        val visible = !preferences.novelHideChapterSeparator.get()
+        val separators = loadedChapters.mapNotNull { it.separatorView }
+        if (separators.all { it.isVisible == visible }) return
+        val scrollY = scrollView.scrollY
+        val anchor = (0 until contentContainer.childCount)
+            .map(contentContainer::getChildAt)
+            .firstOrNull { it !in separators && it.bottom > scrollY }
+        val anchorOffset = anchor?.let { scrollY - it.top } ?: 0
+        isRestoringScroll = true
+        separators.forEach { it.isVisible = visible }
+        scrollView.doOnPreDraw {
+            if (anchor != null && anchor.parent === contentContainer) {
+                scrollView.scrollTo(0, anchor.top + anchorOffset)
+            }
+            scrollView.post { isRestoringScroll = false }
+        }
+    }
+
     private fun observePreferences() {
         NovelTextViewPreferenceObserver(
             preferences = preferences,
             scope = scope,
             onStylePrefChanged = ::refreshAllChapterStyles,
             onContentReloadRequested = ::reloadContent,
-            onSeparatorVisibilityChanged = {
-                val visible = !preferences.novelHideChapterSeparator.get()
-                loadedChapters.forEach { it.separatorView?.isVisible = visible }
-            },
+            onSeparatorVisibilityChanged = ::applySeparatorVisibility,
             onTtsSettingsChanged = {
                 if (ttsController.ttsInitialized) ttsController.applySettings()
             },
@@ -1687,7 +1704,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             var removedHeight = toRemove.headerView.height + toRemove.block.container.height
 
             toRemove.separatorView?.let { sep ->
-                removedHeight += sep.height
+                removedHeight += sep.visibleHeight()
                 contentContainer.removeView(sep)
             }
 
@@ -1697,7 +1714,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
             if (loadedChapters.isNotEmpty()) {
                 loadedChapters.first().separatorView?.let { sep ->
-                    removedHeight += sep.height
+                    removedHeight += sep.visibleHeight()
                     contentContainer.removeView(sep)
                     loadedChapters.first().separatorView = null
                 }

@@ -98,13 +98,7 @@ internal class NovelWebViewStyler(
             ""
         }
 
-        // Collapsed rather than display:none, chapter tracking reads the divider positions
-        val hideSeparatorCss = if (preferences.novelHideChapterSeparator.get()) {
-            ".$CHAPTER_DIVIDER_CLASS " +
-                "{ border: none !important; margin: 0 !important; height: 0 !important; }"
-        } else {
-            ""
-        }
+        val hideSeparatorCss = hideChapterSeparatorCss(preferences.novelHideChapterSeparator.get())
 
         val css = """
             $fontFaceDeclaration
@@ -332,6 +326,13 @@ internal class NovelWebViewStyler(
         // Sentinel URL the injected @font-face points at; resolved by interceptFont() in the
         // WebView's shouldInterceptRequest. Never hits the network.
         const val FONT_URL_PREFIX = "https://tsundoku.font/custom"
+
+        // Collapsed rather than display:none, chapter tracking reads the divider positions
+        internal fun hideChapterSeparatorCss(hide: Boolean): String = if (hide) {
+            ".$CHAPTER_DIVIDER_CLASS { border: none !important; margin: 0 !important; height: 0 !important; }"
+        } else {
+            ""
+        }
 
         internal fun fontOverrideCss(sourceCssPriority: Boolean, useOriginalFonts: Boolean): Pair<String, String> {
             if (sourceCssPriority) return "" to ""
