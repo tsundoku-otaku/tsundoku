@@ -90,6 +90,7 @@ import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.source.local.isLocal
 import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
@@ -1134,7 +1135,14 @@ class LibraryViewModel(
                 "Category change: ids=$count add=${addCategories.size} remove=${removeCategories.size} type=$type"
             }
 
-            setMangaCategories.update(mangaIds, addCategories, removeCategories)
+            if (!setMangaCategories.update(mangaIds, addCategories, removeCategories)) {
+                logcat(LogPriority.WARN) { "Category change: some changes failed to save for $count manga" }
+                snackbarHostState.showSnackbar(
+                    message = Injekt.get<android.app.Application>()
+                        .stringResource(TDMR.strings.duplicate_categories_failed),
+                    duration = SnackbarDuration.Short,
+                )
+            }
 
             clearSelection()
         }
