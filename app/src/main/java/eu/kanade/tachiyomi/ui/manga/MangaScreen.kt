@@ -285,6 +285,7 @@ class MangaScreen(
                     onOpenManga = { navigator.push(MangaScreen(it.id)) },
                     onMigrate = { viewModel.showMigrateDialog(it) },
                     canAddAnyway = dialog.canAddAnyway,
+                    initialSelectedIds = dialog.selectedIds,
                     onChangeCategories = viewModel::showChangeDuplicatesCategoryDialog,
                 )
             }
@@ -292,7 +293,7 @@ class MangaScreen(
             is MangaViewModel.Dialog.ChangeDuplicatesCategory -> {
                 ChangeCategoryDialog(
                     initialSelection = dialog.initialSelection,
-                    onDismissRequest = onDismissRequest,
+                    onDismissRequest = { viewModel.restoreDialog(dialog.returnTo) },
                     onEditCategories = { navigator.push(CategoryScreen()) },
                     onConfirm = { addCategories, removeCategories ->
                         viewModel.setDuplicatesCategories(dialog.mangas, addCategories, removeCategories)

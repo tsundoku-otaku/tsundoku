@@ -1134,17 +1134,7 @@ class LibraryViewModel(
                 "Category change: ids=$count add=${addCategories.size} remove=${removeCategories.size} type=$type"
             }
 
-            if (addCategories.isNotEmpty()) {
-                logcat(LogPriority.DEBUG) { "Category change: adding categories $addCategories to $count manga" }
-                setMangaCategories.add(mangaIds, addCategories, skipRefresh = true)
-            }
-            if (removeCategories.isNotEmpty()) {
-                logcat(LogPriority.DEBUG) { "Category change: removing categories $removeCategories from $count manga" }
-                setMangaCategories.remove(mangaIds, removeCategories, skipRefresh = true)
-            }
-
-            logcat(LogPriority.DEBUG) { "Category change: applying in-memory patch" }
-            getLibraryManga.applyCategoryUpdates(mangaIds, addCategories, removeCategories)
+            setMangaCategories.update(mangaIds, addCategories, removeCategories)
 
             clearSelection()
         }

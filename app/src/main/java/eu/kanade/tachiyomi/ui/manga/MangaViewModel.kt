@@ -539,6 +539,8 @@ class MangaViewModel(
     }
 
     fun showChangeDuplicatesCategoryDialog(mangas: List<Manga>) {
+        val duplicatesDialog = successState?.dialog as? Dialog.DuplicateManga ?: return
+        val returnTo = duplicatesDialog.copy(selectedIds = mangas.mapTo(HashSet()) { it.id })
         viewModelScope.launchIO {
             val contentTypes = mangas.mapTo(HashSet()) {
                 if (it.isNovel) Category.CONTENT_TYPE_NOVEL else Category.CONTENT_TYPE_MANGA
@@ -550,7 +552,8 @@ class MangaViewModel(
             val initialSelection = categories.toCommonCheckboxState({ it.id }, perManga)
             withUIContext {
                 updateSuccessState {
-                    it.copy(dialog = Dialog.ChangeDuplicatesCategory(mangas, initialSelection))
+                    if (it.dialog !== duplicatesDialog) return@updateSuccessState it
+                    it.copy(dialog = Dialog.ChangeDuplicatesCategory(mangas, initialSelection, returnTo))
                 }
             }
         }
@@ -558,10 +561,12 @@ class MangaViewModel(
 
     fun setDuplicatesCategories(mangas: List<Manga>, addCategories: List<Long>, removeCategories: List<Long>) {
         viewModelScope.launchNonCancellable {
-            val mangaIds = mangas.map { it.id }
-            if (addCategories.isNotEmpty()) setMangaCategories.add(mangaIds, addCategories)
-            if (removeCategories.isNotEmpty()) setMangaCategories.remove(mangaIds, removeCategories)
+            setMangaCategories.update(mangas.map { it.id }, addCategories, removeCategories)
         }
+    }
+
+    fun restoreDialog(dialog: Dialog) {
+        updateSuccessState { it.copy(dialog = dialog) }
     }
 
     fun showSetFetchIntervalDialog() {
@@ -1384,6 +1389,7 @@ class MangaViewModel(
         data class ChangeDuplicatesCategory(
             val mangas: List<Manga>,
             val initialSelection: List<CheckboxState<Category>>,
+            val returnTo: DuplicateManga,
         ) : Dialog
         data class DeleteChapters(val chapters: List<Chapter>) : Dialog
         data class RemoveChaptersFromDb(val chapters: List<Chapter>) : Dialog
@@ -1392,6 +1398,7 @@ class MangaViewModel(
             val duplicates: List<MangaWithChapterCount>,
             // False for an entry already in the library, where toggling favorite would remove it.
             val canAddAnyway: Boolean,
+            val selectedIds: Set<Long> = emptySet(),
         ) : Dialog
         data class SimilarNovels(
             val similarNovels: List<MangaWithChapterCount>,

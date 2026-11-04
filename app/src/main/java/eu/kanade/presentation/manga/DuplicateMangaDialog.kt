@@ -51,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -95,9 +96,10 @@ fun DuplicateMangaDialog(
     onMigrate: (manga: Manga) -> Unit,
     modifier: Modifier = Modifier,
     canAddAnyway: Boolean = true,
+    initialSelectedIds: Set<Long> = emptySet(),
     onChangeCategories: ((List<Manga>) -> Unit)? = null,
 ) {
-    var selectedIds by remember(duplicates) { mutableStateOf(emptySet<Long>()) }
+    var selectedIds by remember(duplicates) { mutableStateOf(initialSelectedIds) }
     val sourceManager = remember { Injekt.get<SourceManager>() }
     val minHeight = LocalPreferenceMinHeight.current
     val horizontalPadding = PaddingValues(horizontal = TabbedDialogPaddings.Horizontal)
@@ -158,7 +160,7 @@ fun DuplicateMangaDialog(
                             modifier = Modifier.size(18.dp),
                         )
                         Spacer(modifier = Modifier.width(MaterialTheme.padding.small))
-                        Text(text = "${stringResource(MR.strings.action_move_category)} (${selectedIds.size})")
+                        Text(text = stringResource(MR.strings.action_move_category_count, selectedIds.size))
                     }
                 }
             }
@@ -275,14 +277,13 @@ private fun DuplicateMangaListItem(
                 )
             }
             if (onSelectedChange != null) {
+                val checkboxBackground = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
                 Checkbox(
                     checked = selected,
                     onCheckedChange = onSelectedChange,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(24.dp)
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), CircleShape),
+                        .drawBehind { drawCircle(checkboxBackground, radius = 14.dp.toPx()) },
                 )
             }
         }

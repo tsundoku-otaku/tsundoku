@@ -90,6 +90,12 @@ class SetMangaCategories(
         }
     }
 
+    suspend fun update(mangaIds: List<Long>, addCategories: List<Long>, removeCategories: List<Long>) {
+        if (addCategories.isNotEmpty()) add(mangaIds, addCategories, skipRefresh = true)
+        if (removeCategories.isNotEmpty()) remove(mangaIds, removeCategories, skipRefresh = true)
+        getLibraryManga.applyCategoryUpdates(mangaIds, addCategories, removeCategories)
+    }
+
     /**
      * Force a library refresh. Call this after batch operations with skipRefresh=true.
      * Uses forced refresh to bypass the minimum refresh interval since user explicitly
