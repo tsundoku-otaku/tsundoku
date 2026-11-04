@@ -444,6 +444,7 @@
             document.documentElement.classList.remove(PAGED_CLASS);
             container().style.transform = '';
             document.body.style.width = '';
+            document.body.style.height = '';
         } else {
             document.documentElement.classList.add(PAGED_CLASS);
             repaginate();
@@ -566,22 +567,69 @@
     // Added content (snippets, late images, fonts) overflows into more columns without resizing the
     // container, so the ResizeObserver above never sees it. Event-driven, debounced like resize;
     // attribute changes (TTS highlight, this script's transforms) are deliberately not observed.
+    // Content can grow before or after the reader (late images, snippets), so re-derive the page
+    // from the text that was at the top of the screen; the ratio alone would jump to other text.
+    // A font swap reflows everything, where the ratio is the better guess.
+    function textAtPageStart() {
+        if (!document.caretRangeFromPoint) return null;
+        var el = container();
+        var x = Math.floor(window.innerWidth / 2);
+        var h = window.innerHeight || document.documentElement.clientHeight;
+        for (var y = 8; y < h; y += 24) {
+            var range = document.caretRangeFromPoint(x, y);
+            if (range && el.contains(range.startContainer)) return range;
+        }
+        return null;
+    }
+
+    function offsetInContainer(range) {
+        var rect = range.getClientRects()[0];
+        if (!rect) {
+            var node = range.startContainer;
+            if (node.nodeType !== 1) node = node.parentElement;
+            else if (node.childNodes[range.startOffset]) node = node.childNodes[range.startOffset];
+            if (!node || node.nodeType !== 1) return null;
+            rect = node.getBoundingClientRect();
+        }
+        return rect.left - container().getBoundingClientRect().left;
+    }
+
+    function reflowKeepingText() {
+        var anchor = textAtPageStart();
+        applyColumnLayout();
+        var pc = computePageCount();
+        var idx = p.pageIndex || 0;
+        var offset = anchor ? offsetInContainer(anchor) : null;
+        if (offset !== null) idx = Math.floor((offset + 1) / pageWidth());
+        idx = Math.max(0, Math.min(idx, pc - 1));
+        p.lastRatio = pc > 0 ? (idx + 1) / pc : 0;
+        landOnPage(idx, pc, false);
+    }
+
     var reflowDebounce = null;
-    function scheduleReflowCheck() {
+    var reflowKeepsText = true;
+    function scheduleReflowCheck(keepText) {
         if (!p.restored) return;
+        reflowKeepsText = reflowKeepsText && keepText;
         clearTimeout(reflowDebounce);
-        reflowDebounce = setTimeout(function () {
-            if (isSuspended()) return;
-            if (computePageCount() !== p.pageCount) repaginate();
+        reflowDebounce = setTimeout(function run() {
+            if (!enabled || isSuspended()) { reflowKeepsText = true; return; }
+            // Mid-swipe the deferred repaginate would land by ratio, so wait for the release
+            if (drag) { reflowDebounce = setTimeout(run, 150); return; }
+            var keep = reflowKeepsText;
+            reflowKeepsText = true;
+            if (computePageCount() === p.pageCount) return;
+            if (keep) reflowKeepingText(); else repaginate();
         }, 100);
     }
+    function onContentReflow() { scheduleReflowCheck(true); }
     if (typeof MutationObserver === 'function') {
-        new MutationObserver(scheduleReflowCheck)
+        new MutationObserver(onContentReflow)
             .observe(container(), { childList: true, characterData: true, subtree: true });
     }
-    container().addEventListener('load', scheduleReflowCheck, true);
-    container().addEventListener('error', scheduleReflowCheck, true);
+    container().addEventListener('load', onContentReflow, true);
+    container().addEventListener('error', onContentReflow, true);
     if (document.fonts && document.fonts.addEventListener) {
-        document.fonts.addEventListener('loadingdone', scheduleReflowCheck);
+        document.fonts.addEventListener('loadingdone', function () { scheduleReflowCheck(false); });
     }
 })();
