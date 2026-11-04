@@ -67,11 +67,12 @@ object RegexReplacementsProcessor {
 
     /**
      * Runs [rule] on [input] the way [apply] does, for the rule editor. Blocks for up to the rule timeout, so call
-     * it off the main thread. Throws [RegexTimeoutException] for a pattern that timed out now or earlier.
+     * it off the main thread. Throws [RegexTimeoutException] when it times out now and [RegexDisabledException] when it
+     * timed out earlier.
      */
     fun test(rule: RegexReplacement, input: String): String {
         val compiled = compileRule(rule)
-        if (compiled.isRegex && compiled.key in timedOutRules) throw RegexTimeoutException()
+        if (compiled.isRegex && compiled.key in timedOutRules) throw RegexDisabledException()
         return run(compiled, input)
     }
 
