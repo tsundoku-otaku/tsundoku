@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
@@ -73,7 +74,7 @@ class DownloadCache(
     private val storageManager: StorageManager = Injekt.get(),
 ) {
 
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _changes: Channel<Unit> = Channel(Channel.UNLIMITED)
     val changes = _changes.receiveAsFlow()
@@ -91,6 +92,9 @@ class DownloadCache(
      */
     private var lastRenew = 0L
     private var renewalJob: Job? = null
+
+    @Volatile
+    private var generation = 0
     private val initJob: Job
 
     private val _isInitializing = MutableStateFlow(false)
@@ -106,17 +110,23 @@ class DownloadCache(
     private val rootDownloadsDirMutex = Mutex()
     private var rootDownloadsDir = RootDirectory(storageManager.getDownloadsDirectory())
 
+    private var checkedSourceIds: Set<Long> = emptySet()
+
     init {
         // Attempt to read cache file
         initJob = scope.launchIO {
+            val startGeneration = generation
             rootDownloadsDirMutex.withLock {
                 try {
-                    if (diskCacheFile.exists()) {
+                    if (diskCacheFile.exists() && generation == startGeneration) {
                         val diskCache = diskCacheFile.inputStream().use {
                             ProtoBuf.decodeFromByteArray<RootDirectory>(it.readBytes())
                         }
-                        rootDownloadsDir = diskCache
-                        lastRenew = System.currentTimeMillis()
+                        if (generation == startGeneration) {
+                            rootDownloadsDir = diskCache
+                            checkedSourceIds = diskCache.sourceDirs.keys
+                            lastRenew = System.currentTimeMillis()
+                        }
                     }
                 } catch (e: Throwable) {
                     logcat(LogPriority.ERROR, e) { "Failed to initialize from disk cache" }
@@ -129,12 +139,12 @@ class DownloadCache(
             .onEach { invalidateCache() }
             .launchIn(scope)
 
-        // JS and custom sources register after startup, so only their folders are scanned when they appear
+        // Late sources (JS, custom) only get their own folders scanned
         sourceManager.sources
             .map { sources -> sources.filterIsInstance<CatalogueSource>().mapTo(HashSet()) { it.id } }
             .distinctUntilChanged()
             .debounce(1.seconds)
-            .onEach { indexNewSources() }
+            .onEach { indexNewSourcesSafely() }
             .launchIn(scope)
     }
 
@@ -217,7 +227,9 @@ class DownloadCache(
         renewCache()
         val job = renewalJob
         job?.join()
-        return job?.isCancelled != true
+        if (job?.isCancelled == true) return false
+        indexNewSourcesSafely()
+        return true
     }
 
     /**
@@ -384,9 +396,11 @@ class DownloadCache(
     }
 
     fun invalidateCache() {
-        lastRenew = 0L
-        val jobToCancel = renewalJob
-        renewalJob = null
+        val jobToCancel = synchronized(this) {
+            generation++
+            lastRenew = 0L
+            renewalJob.also { renewalJob = null }
+        }
         diskCacheFile.delete()
         scope.launchIO {
             jobToCancel?.cancelAndJoin()
@@ -398,27 +412,29 @@ class DownloadCache(
      * Renews the downloads cache.
      */
     private fun renewCache() {
+        if (!synchronized(this) { launchRenewal() }) return
+
+        // Mainly to notify the indexing notifier UI
+        notifyChanges()
+    }
+
+    private fun launchRenewal(): Boolean {
         // Avoid renewing cache if in the process nor too often
         if (lastRenew + renewInterval >= System.currentTimeMillis() || renewalJob?.isActive == true) {
-            return
+            return false
         }
 
         renewalJob = scope.launchIO {
             // The disk index is older than this scan and would replace it if read afterwards
             initJob.join()
+            if (lastRenew + renewInterval >= System.currentTimeMillis()) return@launchIO
+            val startGeneration = generation
 
             if (lastRenew == 0L) {
                 _isInitializing.emit(true)
             }
 
-            // Try to wait until extensions and sources have loaded
-            var sources = emptyList<Source>()
-            withTimeoutOrNull(30.seconds) {
-                extensionManager.isInitialized.first { it }
-                sourceManager.isInitialized.first { it }
-
-                sources = getSources()
-            }
+            val sources = withTimeoutOrNull(30.seconds) { getSources() } ?: currentSources()
 
             val sourceMap = sources.associate { provider.getSourceDirName(it).lowercase() to it.id }
 
@@ -431,7 +447,11 @@ class DownloadCache(
                     .map { sourceDir -> async { scanSourceDir(sourceDir) } }
                     .awaitAll()
 
-                rootDownloadsDir = updatedRootDir
+                if (generation == startGeneration) {
+                    rootDownloadsDir = updatedRootDir
+                    checkedSourceIds = sources.mapTo(HashSet()) { it.id }
+                    lastRenew = System.currentTimeMillis()
+                }
             }
 
             _isInitializing.emit(false)
@@ -440,17 +460,25 @@ class DownloadCache(
                 if (exception != null && exception !is CancellationException) {
                     logcat(LogPriority.ERROR, exception) { "DownloadCache: failed to create cache" }
                 }
-                lastRenew = if (exception is CancellationException) {
-                    0L
-                } else {
-                    System.currentTimeMillis()
+                when (exception) {
+                    null -> {}
+                    is CancellationException -> lastRenew = 0L
+                    else -> lastRenew = System.currentTimeMillis()
                 }
                 notifyChanges()
             }
         }
+        return true
+    }
 
-        // Mainly to notify the indexing notifier UI
-        notifyChanges()
+    private suspend fun indexNewSourcesSafely() {
+        try {
+            indexNewSources()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "DownloadCache: failed to index new sources" }
+        }
     }
 
     private suspend fun indexNewSources() {
@@ -459,27 +487,27 @@ class DownloadCache(
         // Nothing indexed yet, the full scan will pick every source up
         if (lastRenew == 0L) return
 
-        val indexedIds = rootDownloadsDir.sourceDirs.keys
-        val sourceMap = getSources()
-            .filter { it.id !in indexedIds }
-            .associate { provider.getSourceDirName(it).lowercase() to it.id }
-        if (sourceMap.isEmpty()) return
+        val sources = withTimeoutOrNull(30.seconds) { getSources() } ?: currentSources()
+        val found = rootDownloadsDirMutex.withLock {
+            val root = rootDownloadsDir
+            val newSources = sources.filter { it.id !in checkedSourceIds && it.id !in root.sourceDirs }
+            if (newSources.isEmpty()) return
+            val sourceMap = newSources.associate { provider.getSourceDirName(it).lowercase() to it.id }
 
-        val newSourceDirs = findSourceDirs(rootDownloadsDir.dir, sourceMap)
-        if (newSourceDirs.isEmpty()) return
+            val indexedUris = root.sourceDirs.values.mapNotNullTo(HashSet()) { it.dir?.uri }
+            val newSourceDirs = findSourceDirs(root.dir, sourceMap).filterValues { it.dir?.uri !in indexedUris }
+            coroutineScope {
+                newSourceDirs.values
+                    .map { sourceDir -> async { scanSourceDir(sourceDir) } }
+                    .awaitAll()
+            }
 
-        coroutineScope {
-            newSourceDirs.values
-                .map { sourceDir -> async { scanSourceDir(sourceDir) } }
-                .awaitAll()
+            root.sourceDirs += newSourceDirs
+            checkedSourceIds = checkedSourceIds + newSources.map { it.id }
+            newSourceDirs.isNotEmpty()
         }
 
-        rootDownloadsDirMutex.withLock {
-            val current = rootDownloadsDir.sourceDirs
-            rootDownloadsDir.sourceDirs = current + newSourceDirs.filterKeys { it !in current }
-        }
-
-        notifyChanges()
+        if (found) notifyChanges()
     }
 
     private fun findSourceDirs(
@@ -525,7 +553,13 @@ class DownloadCache(
         sourceDir.mangaDirs = mangaDirs
     }
 
-    private fun getSources(): List<Source> {
+    private suspend fun getSources(): List<Source> {
+        extensionManager.isInitialized.first { it }
+        sourceManager.isInitialized.first { it }
+        return currentSources()
+    }
+
+    private fun currentSources(): List<Source> {
         val catalogueSources = sourceManager.getAll().filterIsInstance<CatalogueSource>()
         val catalogueSourceIds = catalogueSources.mapTo(mutableSetOf()) { it.id }
         val offlineStubSources = sourceManager.getStubSources().filterNot { it.id in catalogueSourceIds }
