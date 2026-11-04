@@ -92,7 +92,8 @@ class ManageFilterPresets(
             FilterPresetList(updatedPresets),
         )
         val queries = preferences.filterPresetQueries(sourceId)
-        if (presetId in queries.get()) queries.set(queries.get() - presetId)
+        val storedQueries = queries.get()
+        if (presetId in storedQueries) queries.set(storedQueries - presetId)
         logcat(LogPriority.INFO) { "FilterPresets: Deleted preset ${presetToDelete?.name ?: presetId}" }
     }
 
@@ -109,8 +110,7 @@ class ManageFilterPresets(
     }
 
     fun getDefaultPresetState(sourceId: Long): String? {
-        val preset = getPresets(sourceId).presets.find { it.isDefault }
-        return preset?.filterState
+        return preferences.filterPresets(sourceId).get().presets.find { it.isDefault }?.filterState
     }
 
     fun getAutoApplyEnabled(): Boolean {
