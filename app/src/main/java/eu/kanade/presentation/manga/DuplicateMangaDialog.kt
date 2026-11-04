@@ -181,6 +181,7 @@ fun DuplicateMangaDialog(
                         onDismissRequest = onDismissRequest,
                         onOpenManga = { onOpenManga(it.manga) },
                         selected = it.manga.id in selectedIds,
+                        selectionMode = selectedIds.isNotEmpty(),
                         onSelectedChange = if (onChangeCategories != null) {
                             { checked ->
                                 selectedIds = if (checked) selectedIds + it.manga.id else selectedIds - it.manga.id
@@ -235,6 +236,7 @@ private fun DuplicateMangaListItem(
     onOpenManga: () -> Unit,
     onMigrate: () -> Unit,
     selected: Boolean = false,
+    selectionMode: Boolean = false,
     onSelectedChange: ((Boolean) -> Unit)? = null,
 ) {
     val source = getSource()
@@ -247,8 +249,12 @@ private fun DuplicateMangaListItem(
             .combinedClickable(
                 onLongClick = { onOpenManga() },
                 onClick = {
-                    onDismissRequest()
-                    onMigrate()
+                    if (selectionMode && onSelectedChange != null) {
+                        onSelectedChange(!selected)
+                    } else {
+                        onDismissRequest()
+                        onMigrate()
+                    }
                 },
             )
             .padding(MaterialTheme.padding.small),

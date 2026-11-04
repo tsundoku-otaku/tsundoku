@@ -90,15 +90,18 @@ class SetMangaCategories(
         }
     }
 
-    suspend fun update(mangaIds: List<Long>, addCategories: List<Long>, removeCategories: List<Long>) {
+    /** @return false when any of the changes failed to save */
+    suspend fun update(mangaIds: List<Long>, addCategories: List<Long>, removeCategories: List<Long>): Boolean {
         val added = addCategories.isNotEmpty() && add(mangaIds, addCategories, skipRefresh = true)
         val removed = removeCategories.isNotEmpty() && remove(mangaIds, removeCategories, skipRefresh = true)
-        if (!added && !removed) return
-        getLibraryManga.applyCategoryUpdates(
-            mangaIds,
-            if (added) addCategories else emptyList(),
-            if (removed) removeCategories else emptyList(),
-        )
+        if (added || removed) {
+            getLibraryManga.applyCategoryUpdates(
+                mangaIds,
+                if (added) addCategories else emptyList(),
+                if (removed) removeCategories else emptyList(),
+            )
+        }
+        return added == addCategories.isNotEmpty() && removed == removeCategories.isNotEmpty()
     }
 
     /**

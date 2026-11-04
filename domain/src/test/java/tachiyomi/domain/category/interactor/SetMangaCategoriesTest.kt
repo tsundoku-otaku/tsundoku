@@ -4,6 +4,8 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.repository.MangaRepository
@@ -16,7 +18,7 @@ class SetMangaCategoriesTest {
 
     @Test
     fun `update patches the library with both changes`() = runTest {
-        setMangaCategories.update(listOf(1L), listOf(2L), listOf(3L))
+        assertTrue(setMangaCategories.update(listOf(1L), listOf(2L), listOf(3L)))
 
         coVerify { getLibraryManga.applyCategoryUpdates(listOf(1L), listOf(2L), listOf(3L)) }
     }
@@ -25,7 +27,7 @@ class SetMangaCategoriesTest {
     fun `update leaves out a change that failed to save`() = runTest {
         coEvery { repository.addMangasCategories(any(), any()) } throws IllegalStateException()
 
-        setMangaCategories.update(listOf(1L), listOf(2L), listOf(3L))
+        assertFalse(setMangaCategories.update(listOf(1L), listOf(2L), listOf(3L)))
 
         coVerify { getLibraryManga.applyCategoryUpdates(listOf(1L), emptyList(), listOf(3L)) }
     }
@@ -34,7 +36,7 @@ class SetMangaCategoriesTest {
     fun `update skips the patch when nothing was saved`() = runTest {
         coEvery { repository.removeMangasCategories(any(), any()) } throws IllegalStateException()
 
-        setMangaCategories.update(listOf(1L), emptyList(), listOf(3L))
+        assertFalse(setMangaCategories.update(listOf(1L), emptyList(), listOf(3L)))
 
         coVerify(exactly = 0) { getLibraryManga.applyCategoryUpdates(any(), any(), any()) }
     }
