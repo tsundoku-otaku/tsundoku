@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.util.fastAll
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cafe.adriel.voyager.navigator.LocalNavigator
@@ -34,6 +35,7 @@ import eu.kanade.presentation.library.LibrarySettingsDialog
 import eu.kanade.presentation.library.MarkReadConfirmationDialog
 import eu.kanade.presentation.library.UpdateSelectedDialog
 import eu.kanade.presentation.library.components.LibraryContent
+import eu.kanade.presentation.library.components.LibraryPaging
 import eu.kanade.presentation.library.components.LibraryToolbar
 import eu.kanade.presentation.library.components.MassImportDialog
 import eu.kanade.presentation.manga.components.LibraryBottomActionMenu
@@ -106,6 +108,13 @@ data object LibraryTab : Tab {
             },
         )
         val state by viewModel.state.collectAsState()
+
+        if (viewModel.paginationEnabled) {
+            LifecycleStartEffect(viewModel) {
+                viewModel.setPagedActive(true)
+                onStopOrDispose { viewModel.setPagedActive(false) }
+            }
+        }
         val titleMaxLines by settingsViewModel.libraryPreferences.titleMaxLines.changes().collectAsState(
             settingsViewModel.libraryPreferences.titleMaxLines.get(),
         )
@@ -255,11 +264,21 @@ data object LibraryTab : Tab {
                         getItemsForCategory = { state.getItemsForCategory(it) },
                         titleMaxLines = titleMaxLines,
                         showUrlInList = showUrlInList,
-                        paginationEnabled = viewModel.paginationEnabled,
-                        onCategoryFirstVisible = viewModel::onCategoryFirstVisible,
-                        onLoadMore = viewModel::loadMoreForCategory,
-                        getLoadMoreKey = { state.categoryLoadKey(it) },
-                        isCategoryLoading = { state.paginationLoadingCategories.contains(it.id) },
+                        paging = if (viewModel.paginationEnabled) {
+                            LibraryPaging(
+                                items = viewModel::pagedItems,
+                                wholeCategoryNotice = { state.pagedPlans[it.id]?.wholeCategoryNotice },
+                                toItem = viewModel::pagedItem,
+                                badgeVersion = state.pagedBadgeVersion,
+                                buildingIndexes = state.pagedBuildingIndexes,
+                                onLongClick = { category, manga, loaded ->
+                                    viewModel.toggleRangeSelection(category, manga, loaded)
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                            )
+                        } else {
+                            null
+                        },
                     )
                 }
             }
