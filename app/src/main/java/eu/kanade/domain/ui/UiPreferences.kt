@@ -38,7 +38,7 @@ class UiPreferences(
     val imagesInDescription: Preference<Boolean> = preferenceStore.getBoolean("pref_render_images_description", true)
 
     val mangaScrollActionsInOverflow: Preference<Boolean> =
-        preferenceStore.getBoolean("pref_manga_scroll_actions_in_overflow", true)
+        preferenceStore.getBoolean("pref_manga_scroll_actions_in_overflow", false)
 
     companion object {
         fun dateFormat(format: String): DateTimeFormatter = when (format) {

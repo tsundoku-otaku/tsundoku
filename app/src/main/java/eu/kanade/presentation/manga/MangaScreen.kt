@@ -342,14 +342,16 @@ private fun MangaScreenSmallImpl(
     val chapterListState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val context = LocalContext.current
-    val scrollActions = chapterScrollActions(
-        scope = scrollScope,
-        listState = chapterListState,
-        headerItems = ONE_PANE_HEADER_ITEMS,
-        listItem = listItem,
-        nextUnreadId = { state.chapters.getNextUnread(state.manga)?.id },
-        onNoTarget = { context.toast(TDMR.strings.manga_no_unread_chapter) },
-    )
+    val scrollActions = remember(listItem, state.chapters, state.manga) {
+        chapterScrollActions(
+            scope = scrollScope,
+            listState = chapterListState,
+            headerItems = ONE_PANE_HEADER_ITEMS,
+            listItem = listItem,
+            nextUnreadId = { state.chapters.getNextUnread(state.manga)?.id },
+            onNoTarget = { context.toast(TDMR.strings.manga_no_unread_chapter) },
+        )
+    }
 
     BackHandler(enabled = isAnySelected) {
         onAllChapterSelected(false)
@@ -648,14 +650,16 @@ fun MangaScreenLargeImpl(
     val chapterListState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
     val context = LocalContext.current
-    val scrollActions = chapterScrollActions(
-        scope = scrollScope,
-        listState = chapterListState,
-        headerItems = TWO_PANE_HEADER_ITEMS,
-        listItem = listItem,
-        nextUnreadId = { state.chapters.getNextUnread(state.manga)?.id },
-        onNoTarget = { context.toast(TDMR.strings.manga_no_unread_chapter) },
-    )
+    val scrollActions = remember(listItem, state.chapters, state.manga) {
+        chapterScrollActions(
+            scope = scrollScope,
+            listState = chapterListState,
+            headerItems = TWO_PANE_HEADER_ITEMS,
+            listItem = listItem,
+            nextUnreadId = { state.chapters.getNextUnread(state.manga)?.id },
+            onNoTarget = { context.toast(TDMR.strings.manga_no_unread_chapter) },
+        )
+    }
 
     BackHandler(enabled = isAnySelected) {
         onAllChapterSelected(false)
