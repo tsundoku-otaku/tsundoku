@@ -32,14 +32,13 @@ import uy.kohesive.injekt.api.get
 
 class TtsPlaybackService : Service() {
 
-    private var isPaused: Boolean = false
+    private var isPaused: Boolean = true
     private var paragraphIndex: Int = 0
     private var paragraphCount: Int = 0
     private var novelTitle: String = "TTS playback"
     private var chapterTitle: String = ""
     private var mangaId: Long = -1L
     private var chapterId: Long = -1L
-    private var hasSynced: Boolean = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var silenceTrack: AudioTrack? = null
@@ -101,8 +100,7 @@ class TtsPlaybackService : Service() {
             }
 
             ACTION_SYNC -> {
-                val wasPlaying = !isPaused && hasSynced
-                hasSynced = true
+                val wasPaused = isPaused
                 isPaused = intent.getBooleanExtra(EXTRA_IS_PAUSED, false)
                 paragraphIndex = intent.getIntExtra(EXTRA_PARAGRAPH_INDEX, 0).coerceAtLeast(0)
                 paragraphCount = intent.getIntExtra(EXTRA_PARAGRAPH_COUNT, 0).coerceAtLeast(0)
@@ -110,12 +108,11 @@ class TtsPlaybackService : Service() {
                 chapterTitle = intent.getStringExtra(EXTRA_CHAPTER_TITLE).orEmpty()
                 mangaId = intent.getLongExtra(EXTRA_MANGA_ID, -1L)
                 chapterId = intent.getLongExtra(EXTRA_CHAPTER_ID, -1L)
-                startedPlaying = !isPaused && !wasPlaying
+                startedPlaying = wasPaused && !isPaused
             }
         }
 
-        startForegroundWithNotification()
-        if (startedPlaying) claimMediaButtons()
+        if (startForegroundWithNotification() && startedPlaying) claimMediaButtons()
 
         return START_NOT_STICKY
     }
@@ -143,7 +140,7 @@ class TtsPlaybackService : Service() {
         stopSelf()
     }
 
-    private fun startForegroundWithNotification() {
+    private fun startForegroundWithNotification(): Boolean {
         val toggleIntent = PendingIntent.getService(
             this,
             1001,
@@ -294,10 +291,12 @@ class TtsPlaybackService : Service() {
             ) {
                 logcat(LogPriority.WARN, e) { "Foreground start not allowed for TTS notification" }
                 stopSelf()
+                return false
             } else {
                 throw e
             }
         }
+        return true
     }
 
     // Feeds the lockscreen/Bluetooth/Android-Auto surfaces (PlaybackStateCompat/MediaMetadataCompat).
@@ -369,6 +368,7 @@ class TtsPlaybackService : Service() {
             mainHandler.removeCallbacks(silenceTrackRelease)
             mainHandler.postDelayed(silenceTrackRelease, 500L)
         } catch (e: Exception) {
+            releaseSilenceTrack()
             logcat(LogPriority.WARN, e) { "Failed to claim media buttons for TTS" }
         }
     }
