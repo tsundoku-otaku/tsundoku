@@ -12,6 +12,7 @@ internal class NovelTextViewPreferenceObserver(
     private val scope: CoroutineScope,
     private val onStylePrefChanged: () -> Unit,
     private val onContentReloadRequested: () -> Unit,
+    private val onSeparatorVisibilityChanged: () -> Unit,
     private val onTtsSettingsChanged: () -> Unit,
 ) {
 
@@ -70,10 +71,15 @@ internal class NovelTextViewPreferenceObserver(
         scope.launch {
             // Infinite scroll is a structural change (single flow vs. multi-chapter appends), so
             // reload the whole view for a consistent state instead of patching it live.
-            merge(
-                preferences.novelInfiniteScroll.changes().drop(1),
-                preferences.novelHideChapterSeparator.changes().drop(1),
-            ).collectLatest { onContentReloadRequested() }
+            preferences.novelInfiniteScroll.changes()
+                .drop(1)
+                .collectLatest { onContentReloadRequested() }
+        }
+
+        scope.launch {
+            preferences.novelHideChapterSeparator.changes()
+                .drop(1)
+                .collect { onSeparatorVisibilityChanged() }
         }
 
         scope.launch {

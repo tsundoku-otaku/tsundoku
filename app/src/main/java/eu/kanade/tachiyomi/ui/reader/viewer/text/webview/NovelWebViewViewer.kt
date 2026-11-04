@@ -1582,7 +1582,6 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             themeTokens = ThemeUtils.getThemeTokens(activity, preferences, preferences.novelTheme.get()),
             tsundokuScript = buildTsundokuScript(),
             infiniteScrollEnabled = preferences.novelInfiniteScroll.get(),
-            hideChapterSeparator = preferences.novelHideChapterSeparator.get(),
             blockMedia = preferences.novelBlockMedia.get(),
         )
         val pageLoader = currentPage?.chapter?.pageLoader

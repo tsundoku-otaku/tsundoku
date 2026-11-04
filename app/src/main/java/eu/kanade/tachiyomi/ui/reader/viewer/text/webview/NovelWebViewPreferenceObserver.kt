@@ -39,6 +39,7 @@ internal class NovelWebViewPreferenceObserver(
                 preferences.novelCustomCss.changes().drop(1),
                 preferences.novelCustomCssSnippets.changes().drop(1),
                 preferences.novelHideChapterTitle.changes().drop(1),
+                preferences.novelHideChapterSeparator.changes().drop(1),
                 preferences.novelTextSelectable.changes().drop(1),
             ).debounce(STYLE_DEBOUNCE_MS).collect { onStyleChanged() }
         }
@@ -74,7 +75,6 @@ internal class NovelWebViewPreferenceObserver(
             merge(
                 preferences.novelInfiniteScroll.changes().drop(1),
                 preferences.novelPagedMode.changes().drop(1),
-                preferences.novelHideChapterSeparator.changes().drop(1),
             ).collect { onChapterReloadRequested() }
         }
 

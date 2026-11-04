@@ -98,6 +98,14 @@ internal class NovelWebViewStyler(
             ""
         }
 
+        // Collapsed rather than display:none, chapter tracking reads the divider positions
+        val hideSeparatorCss = if (preferences.novelHideChapterSeparator.get()) {
+            ".$CHAPTER_DIVIDER_CLASS " +
+                "{ border: none !important; margin: 0 !important; height: 0 !important; }"
+        } else {
+            ""
+        }
+
         val css = """
             $fontFaceDeclaration
             body {
@@ -122,6 +130,7 @@ internal class NovelWebViewStyler(
             }
             $headingSizeRules
             $hideChapterTitleCss
+            $hideSeparatorCss
             $customCss
             $enabledSnippetsCss
         """.trimIndent().replace("\n", " ")
