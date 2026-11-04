@@ -697,13 +697,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             .map(contentContainer::getChildAt)
             .firstOrNull { it !in separators && it.bottom > scrollY }
         val anchorOffset = anchor?.let { scrollY - it.top } ?: 0
+        // Another restore in flight owns the guard and clears it itself
+        val ownsGuard = !isRestoringScroll
         isRestoringScroll = true
         separators.forEach { it.isVisible = visible }
         scrollView.doOnPreDraw {
             if (anchor != null && anchor.parent === contentContainer) {
                 scrollView.scrollTo(0, anchor.top + anchorOffset)
             }
-            scrollView.post { isRestoringScroll = false }
+            if (ownsGuard) scrollView.post { isRestoringScroll = false }
         }
     }
 
@@ -1188,6 +1190,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             contentContainer.removeView(lc.block.container)
         }
         chapterQueue.removeFirstN(removeCount)
+        loadedChapters.firstOrNull()?.let { first ->
+            first.separatorView?.let { sep ->
+                removedHeight += sep.visibleHeight()
+                contentContainer.removeView(sep)
+            }
+            first.separatorView = null
+        }
         currentChapterIndex = (currentChapterIndex - removeCount).coerceAtLeast(0)
         ttsController.shiftPlaybackChapterIndex(removeCount)
         // Removed views were above the viewport; compensate so the read chapter stays put.
