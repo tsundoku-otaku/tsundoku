@@ -33,6 +33,7 @@ import eu.kanade.domain.source.model.FilterPreset
 import eu.kanade.presentation.components.AdaptiveSheet
 import eu.kanade.tachiyomi.source.model.FilterList
 import tachiyomi.i18n.MR
+import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.material.Button
 import tachiyomi.presentation.core.i18n.stringResource
 
@@ -41,8 +42,9 @@ fun FilterPresetsDialog(
     onDismissRequest: () -> Unit,
     presets: List<FilterPreset>,
     currentFilters: FilterList,
+    currentSearchQuery: String?,
     autoApplyEnabled: Boolean,
-    onSavePreset: (name: String, setAsDefault: Boolean) -> Unit,
+    onSavePreset: (name: String, setAsDefault: Boolean, includeSearchText: Boolean) -> Unit,
     onLoadPreset: (Long) -> Unit,
     onDeletePreset: (Long) -> Unit,
     onSetDefaultPreset: (Long?) -> Unit,
@@ -122,9 +124,10 @@ fun FilterPresetsDialog(
 
     if (showSaveDialog) {
         SavePresetDialog(
+            hasSearchText = !currentSearchQuery.isNullOrBlank(),
             onDismiss = { showSaveDialog = false },
-            onSave = { name, setAsDefault ->
-                onSavePreset(name, setAsDefault)
+            onSave = { name, setAsDefault, includeSearchText ->
+                onSavePreset(name, setAsDefault, includeSearchText)
                 showSaveDialog = false
             },
         )
@@ -161,16 +164,19 @@ private fun PresetItem(
         }
 
         Row {
-            IconButton(onClick = onSetDefault) {
-                Icon(
-                    imageVector = if (preset.isDefault) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                    contentDescription = if (preset.isDefault) "Remove default" else "Set as default",
-                    tint = if (preset.isDefault) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
+            // Auto-apply only restores filters, so a preset with search text can't be the default
+            if (preset.isDefault || preset.searchQuery == null) {
+                IconButton(onClick = onSetDefault) {
+                    Icon(
+                        imageVector = if (preset.isDefault) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        contentDescription = if (preset.isDefault) "Remove default" else "Set as default",
+                        tint = if (preset.isDefault) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
             }
             IconButton(onClick = onDelete) {
                 Icon(
@@ -183,22 +189,24 @@ private fun PresetItem(
 }
 
 @Composable
-private fun SavePresetDialog(
+internal fun SavePresetDialog(
+    hasSearchText: Boolean,
     onDismiss: () -> Unit,
-    onSave: (String, Boolean) -> Unit,
+    onSave: (String, Boolean, Boolean) -> Unit,
 ) {
     var presetName by remember { mutableStateOf("") }
     var setAsDefault by remember { mutableStateOf(false) }
+    var includeSearchText by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Save Filter Preset") },
+        title = { Text(stringResource(TDMR.strings.filter_preset_save_title)) },
         text = {
             Column {
                 OutlinedTextField(
                     value = presetName,
                     onValueChange = { presetName = it },
-                    label = { Text("Preset Name") },
+                    label = { Text(stringResource(TDMR.strings.filter_preset_name)) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -214,15 +222,33 @@ private fun SavePresetDialog(
                         onCheckedChange = { setAsDefault = it },
                     )
                     Text(
-                        text = "Set as default preset",
+                        text = stringResource(TDMR.strings.filter_preset_set_default),
                         modifier = Modifier.padding(start = 8.dp),
                     )
+                }
+
+                if (hasSearchText && !setAsDefault) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(
+                            checked = includeSearchText,
+                            onCheckedChange = { includeSearchText = it },
+                        )
+                        Text(
+                            text = stringResource(TDMR.strings.filter_preset_include_search_text),
+                            modifier = Modifier.padding(start = 8.dp),
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(presetName, setAsDefault) },
+                onClick = { onSave(presetName, setAsDefault, includeSearchText) },
                 enabled = presetName.isNotBlank(),
             ) {
                 Text(stringResource(MR.strings.action_save))

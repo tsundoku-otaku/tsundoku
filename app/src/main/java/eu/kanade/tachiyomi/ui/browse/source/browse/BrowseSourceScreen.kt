@@ -534,13 +534,14 @@ data class BrowseSourceScreen(
             is BrowseSourceViewModel.Dialog.Filter -> {
                 val presets by viewModel.filterPresets.collectAsState()
                 SourceFilterDialog(
-                    onDismissRequest = onDismissRequest,
+                    onDismissRequest = viewModel::dismissFilterDialog,
                     filters = state.pendingFilters, // Use pendingFilters for editing
                     onReset = viewModel::resetFilters,
-                    onFilter = { viewModel.search(filters = state.pendingFilters) }, // Apply pendingFilters on search
+                    onFilter = { viewModel.applyFilters() },
                     onUpdate = viewModel::setFilters,
                     onOpenPresets = viewModel::openPresetSheet,
                     presets = presets,
+                    currentSearchQuery = state.pendingQuery,
                     onSavePreset = viewModel::saveFilterPreset,
                     onLoadPreset = viewModel::loadFilterPreset,
                     onDeletePreset = viewModel::deleteFilterPreset,
@@ -550,12 +551,13 @@ data class BrowseSourceScreen(
                 val presets by viewModel.filterPresets.collectAsState()
                 val autoApplyEnabled by viewModel.autoApplyFilterPresets.collectAsState()
                 FilterPresetsDialog(
-                    onDismissRequest = onDismissRequest,
+                    onDismissRequest = viewModel::dismissFilterDialog,
                     presets = presets,
-                    currentFilters = state.filters,
+                    currentFilters = state.pendingFilters,
+                    currentSearchQuery = state.pendingQuery,
                     autoApplyEnabled = autoApplyEnabled,
-                    onSavePreset = { name, setAsDefault ->
-                        viewModel.saveFilterPreset(name, setAsDefault)
+                    onSavePreset = { name, setAsDefault, includeSearchText ->
+                        viewModel.saveFilterPreset(name, setAsDefault, includeSearchText)
                     },
                     onLoadPreset = { presetId ->
                         viewModel.loadFilterPreset(presetId)
