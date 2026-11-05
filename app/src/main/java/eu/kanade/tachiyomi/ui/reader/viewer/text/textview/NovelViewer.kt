@@ -43,7 +43,6 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RenderTarget
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ThemeUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsController
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsHandoffState
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsTextUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.handleNovelFlingGesture
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.localized
 import eu.kanade.tachiyomi.util.system.toast
@@ -862,10 +861,14 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             val text = block.fullText ?: return@runOnUiThread
 
             val chunkStartIndex = text.indexOf(chunk, startOffset.coerceAtLeast(0))
-            val (startIndex, endIndex) = if (chunkStartIndex >= 0) {
-                chunkStartIndex to (chunkStartIndex + chunk.length).coerceAtMost(text.length)
-            } else {
-                block.paragraphBoundsByNewline().getOrNull(paragraphIndex) ?: return@runOnUiThread
+            // The paragraph fallback only stands in for a chunk that is the whole paragraph;
+            // otherwise every chunk of a long paragraph would light up the entire paragraph.
+            val (startIndex, endIndex) = when {
+                chunkStartIndex >= 0 ->
+                    chunkStartIndex to (chunkStartIndex + chunk.length).coerceAtMost(text.length)
+                ttsController.ttsChunkParagraphIndexes.count { it == paragraphIndex } == 1 ->
+                    block.paragraphBoundsByNewline().getOrNull(paragraphIndex) ?: return@runOnUiThread
+                else -> return@runOnUiThread
             }
 
             var firstChunkView: TextView? = null
@@ -1317,28 +1320,26 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val viewportTop = scrollView.scrollY
         val viewportBottom = viewportTop + scrollView.height
 
-        val textBlock = loadedChapters.firstOrNull { it.block.fullText === text }?.block
-        val paragraphOffsets = (textBlock?.paragraphBoundsByNewline() ?: TtsTextUtils.newlineParagraphBounds(text))
-            .map { it.first }
+        // Only the chapter being spoken: char offsets from another chapter's views would index
+        // into the wrong paragraph list.
+        val loaded = loadedChapters.firstOrNull { it.isLoaded && it.block.fullText === text } ?: return 0
+        val paragraphOffsets = loaded.block.paragraphBoundsByNewline().map { it.first }
         if (paragraphOffsets.isEmpty()) return 0
 
-        loadedChapters.forEach { loaded ->
-            if (!loaded.isLoaded) return@forEach
-            val containerTop = loaded.block.container.top
-            for ((i, chunkView) in loaded.block.chunkViews.withIndex()) {
-                val chunkTop = containerTop + chunkView.top
-                val chunkBottom = chunkTop + chunkView.height
+        val containerTop = loaded.block.container.top
+        for ((i, chunkView) in loaded.block.chunkViews.withIndex()) {
+            val chunkTop = containerTop + chunkView.top
+            val chunkBottom = chunkTop + chunkView.height
 
-                if (chunkBottom > viewportTop && chunkTop < viewportBottom) {
-                    val layout = chunkView.layout ?: return 0
-                    if (layout.lineCount > 0) {
-                        val chunkRelativeY = (viewportTop - chunkTop).coerceAtLeast(0)
-                        val lineAtViewportTop = layout.getLineForVertical(chunkRelativeY.coerceAtMost(layout.height))
-                        val chunkStart = loaded.block.chunkStarts.getOrNull(i) ?: 0
-                        val charOffset = (chunkStart + layout.getLineStart(lineAtViewportTop)).coerceAtLeast(0)
-                        val pIdx = paragraphOffsets.indexOfLast { it <= charOffset }
-                        return if (pIdx >= 0) pIdx else 0
-                    }
+            if (chunkBottom > viewportTop && chunkTop < viewportBottom) {
+                val layout = chunkView.layout ?: return 0
+                if (layout.lineCount > 0) {
+                    val chunkRelativeY = (viewportTop - chunkTop).coerceAtLeast(0)
+                    val lineAtViewportTop = layout.getLineForVertical(chunkRelativeY.coerceAtMost(layout.height))
+                    val chunkStart = loaded.block.chunkStarts.getOrNull(i) ?: 0
+                    val charOffset = (chunkStart + layout.getLineStart(lineAtViewportTop)).coerceAtLeast(0)
+                    val pIdx = paragraphOffsets.indexOfLast { it <= charOffset }
+                    return if (pIdx >= 0) pIdx else 0
                 }
             }
         }
