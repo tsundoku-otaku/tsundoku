@@ -60,6 +60,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,6 +74,14 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.data.font.FontManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsViewModel
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexBusyException
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexDisabledException
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexReplacementsProcessor
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexTimeoutException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import tachiyomi.core.common.i18n.stringResource
@@ -1438,10 +1447,16 @@ private fun RegexEditDialog(
     var testInput by remember { mutableStateOf("") }
     var testOutput by remember { mutableStateOf<String?>(null) }
     var testError by remember { mutableStateOf<String?>(null) }
+    var testRunning by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    fun testSnapshot() = listOf(pattern, replacement, isRegex, matchWholeWord, caseSensitive, testInput)
 
     // Pre-compute strings for non-composable onClick callbacks
     val patternEmptyText = stringResource(TDMR.strings.novel_pattern_empty)
     val invalidRegexText = stringResource(TDMR.strings.novel_invalid_regex)
+    val regexTimedOutText = stringResource(TDMR.strings.novel_regex_timed_out)
+    val regexBusyText = stringResource(TDMR.strings.novel_regex_busy)
+    val regexDisabledText = stringResource(TDMR.strings.novel_regex_disabled)
     val invalidRegexFormatText = stringResource(TDMR.strings.novel_invalid_regex_format, "%s")
 
     AlertDialog(
@@ -1591,26 +1606,45 @@ private fun RegexEditDialog(
                             testError = patternEmptyText
                             return@TextButton
                         }
-                        try {
-                            testOutput = if (isRegex) {
-                                val regex = Regex(pattern)
-                                regex.replace(testInput, replacement)
-                            } else {
-                                val escapedPattern = Regex.escape(pattern)
-                                val boundedPattern = if (matchWholeWord) {
-                                    "(?<![\\p{L}\\p{N}_])(?:$escapedPattern)(?![\\p{L}\\p{N}_])"
-                                } else {
-                                    escapedPattern
+                        val rule = RegexReplacement(
+                            title = title,
+                            pattern = pattern,
+                            replacement = replacement,
+                            isRegex = isRegex,
+                            matchWholeWord = if (isRegex) false else matchWholeWord,
+                            caseSensitive = if (isRegex) false else caseSensitive,
+                        )
+                        val input = testInput
+                        val snapshot = testSnapshot()
+                        testRunning = true
+                        scope.launch {
+                            val (output, error) = try {
+                                val result = withContext(Dispatchers.Default) {
+                                    RegexReplacementsProcessor.test(rule, input)
                                 }
-                                val options = if (caseSensitive) emptySet() else setOf(RegexOption.IGNORE_CASE)
-                                Regex(boundedPattern, options).replace(testInput) { replacement }
+                                Pair<String?, String?>(result, null)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: RegexTimeoutException) {
+                                null to regexTimedOutText
+                            } catch (e: RegexBusyException) {
+                                null to regexBusyText
+                            } catch (e: RegexDisabledException) {
+                                null to regexDisabledText
+                            } catch (e: StackOverflowError) {
+                                null to regexTimedOutText
+                            } catch (e: Exception) {
+                                null to (e.message ?: invalidRegexText)
+                            } finally {
+                                testRunning = false
                             }
-                            testError = null
-                        } catch (e: Exception) {
-                            testError = e.message ?: invalidRegexText
-                            testOutput = null
+                            if (testSnapshot() == snapshot) {
+                                testOutput = output
+                                testError = error
+                            }
                         }
                     },
+                    enabled = !testRunning,
                     modifier = Modifier.padding(top = 4.dp),
                 ) {
                     Text(stringResource(TDMR.strings.novel_run_test))
