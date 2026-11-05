@@ -200,7 +200,7 @@ internal class NovelWebViewStyler(
         }
     }
 
-    fun injectStyles() {
+    fun injectStyles(keepPosition: Boolean = false) {
         val payload = buildPayload()
         webView.setBackgroundColor(payload.backgroundColor)
         container.setBackgroundColor(payload.backgroundColor)
@@ -210,6 +210,7 @@ internal class NovelWebViewStyler(
             mapOf(
                 "STYLE_ID" to STYLE_ID_CUSTOM,
                 "CSS" to quoteForJson(payload.css),
+                "KEEP_POSITION" to keepPosition.toString(),
             ),
         )
         evaluateJs(js)

@@ -120,8 +120,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var isRestoringScroll = false
 
     // Own flag: other restores clear isRestoringScroll from their own posts mid-toggle
-    private var separatorTogglesInFlight = 0
-    private val isScrollGuarded get() = isRestoringScroll || separatorTogglesInFlight > 0
+    private var separatorToggleGuard: Runnable? = null
+    private val isScrollGuarded get() = isRestoringScroll || separatorToggleGuard != null
     private var currentChapterIndex: Int
         get() = chapterQueue.currentIndex
         set(value) {
@@ -162,6 +162,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var awaitingFirstScrollSample = false
     private companion object {
         const val CHAPTER_ENTRY_GRACE_MS = 800L
+        const val SEPARATOR_GUARD_TIMEOUT_MS = 1000L
         const val NEXT_CHAPTER_BUTTON_TAG = "next_chapter_button"
         const val PROGRESS_SAVE_DEBOUNCE_MS = 500L
     }
@@ -697,17 +698,29 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val separators = loadedChapters.mapNotNull { it.separatorView }
         if (separators.all { it.isVisible == visible }) return
         val scrollY = scrollView.scrollY
+        // A gone view keeps the bounds of its last layout, so only a shown one can anchor
         val anchor = (0 until contentContainer.childCount)
             .map(contentContainer::getChildAt)
-            .firstOrNull { it !in separators && it.bottom > scrollY }
+            .firstOrNull { it.isVisible && it !in separators && it.bottom > scrollY }
         val anchorOffset = anchor?.let { scrollY - it.top } ?: 0
-        separatorTogglesInFlight++
         separators.forEach { it.isVisible = visible }
+
+        separatorToggleGuard?.let(scrollView::removeCallbacks)
+        // Lifted after the restore below, or on a timeout when no draw comes (the pre-draw
+        // listener is dropped if the view detaches), so tracking can't stay blocked
+        val release = object : Runnable {
+            override fun run() {
+                if (separatorToggleGuard === this) separatorToggleGuard = null
+            }
+        }
+        separatorToggleGuard = release
+        scrollView.postDelayed(release, SEPARATOR_GUARD_TIMEOUT_MS)
         scrollView.doOnPreDraw {
             if (anchor != null && anchor.parent === contentContainer) {
                 scrollView.scrollTo(0, anchor.top + anchorOffset)
             }
-            scrollView.post { separatorTogglesInFlight-- }
+            scrollView.removeCallbacks(release)
+            scrollView.post(release)
         }
     }
 
