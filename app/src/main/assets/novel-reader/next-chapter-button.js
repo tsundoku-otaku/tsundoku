@@ -19,8 +19,8 @@
     var btn = document.createElement('button');
     btn.textContent = 'Next Chapter →';
     btn.style.cssText = 'width: 100%; padding: 12px 24px; font-size: 16px; ' +
-        'background-color: ' + bg + '; color: ' + fg + '; ' +
-        'border: 2px solid ' + fg + '; border-radius: 8px; ' +
+        'background-color: var(--tsundoku-reader-background, ' + bg + '); color: var(--tsundoku-reader-text, ' + fg + '); ' +
+        'border: 2px solid var(--tsundoku-reader-text, ' + fg + '); border-radius: 8px; ' +
         'cursor: pointer; text-transform: none; opacity: 0.8;';
     btn.onclick = function () {
         Android.loadNextChapter();
