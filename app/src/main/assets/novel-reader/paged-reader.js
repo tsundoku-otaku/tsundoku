@@ -100,6 +100,13 @@
 
     function applyColumnLayout() {
         var el = container();
+        // A fractional body box wider than the whole-px column lets the next column's first pixel
+        // show at the clip edge, so pin the box to the column width. Derived from the viewport
+        // rather than by clearing and re-measuring the box, which forced two layouts per call.
+        var cs = window.getComputedStyle(document.body);
+        var hMargin = (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
+        document.body.style.boxSizing = 'border-box';
+        document.body.style.width = Math.floor(document.documentElement.clientWidth - hMargin) + 'px';
         var w = pageWidth();
         el.style.columnWidth = w + 'px';
         el.style.MozColumnWidth = w + 'px';
@@ -108,13 +115,25 @@
         // clip the container - reduce by body's own margin only. Deliberately NOT by
         // __SAFE_TOP_VAR__/__SAFE_BOTTOM_VAR__ (transient menu-bar overlays) - sizing the page to
         // those turned every menu toggle into a repagination + ResizeObserver feedback loop.
-        var cs = window.getComputedStyle(document.body);
         var vMargin = (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
-        document.body.style.boxSizing = 'border-box';
         // Explicit floored px height, not `calc(100vh - Npx)`: fractional rounding there let the
         // last line's descenders clip past the overflow:hidden edge. 1px safety buffer for the rest.
         var innerH = window.innerHeight || document.documentElement.clientHeight;
-        document.body.style.height = Math.floor(innerH - vMargin - 1) + 'px';
+        var available = innerH - vMargin - 1;
+        // Snap to whole lines so the column break never lands mid-line. Read line-height from the
+        // content, not body (source CSS may override it).
+        var lineHeight = parseFloat(contentLineHeight());
+        if (lineHeight > 0) {
+            var lines = Math.floor(available / lineHeight);
+            if (lines > 0) available = Math.ceil(lines * lineHeight);
+        }
+        document.body.style.height = Math.floor(available) + 'px';
+    }
+
+    function contentLineHeight() {
+        var el = container();
+        var sample = el.querySelector('p, div, li, blockquote') || el;
+        return window.getComputedStyle(sample).lineHeight;
     }
 
     function computePageCount() {
@@ -222,7 +241,14 @@
         reportPageInfo(idx, pc);
         reportProgress(p.lastRatio);
         publishProgress(p.lastRatio, idx, pc);
+        // An animated turn captures once its transition ends (see the transitionend listener)
+        pageAnchor = animate ? null : textAtPageStart();
     }
+
+    // The text at the top of the current page, taken once the page settles and before any later
+    // content change moves it. A Range follows DOM edits around it, so after a change it still
+    // points at the same text wherever that text ended up.
+    var pageAnchor = null;
 
     // Recomputes page count/width against the current layout and lands on the page nearest
     // p.lastRatio (the authoritative position - see file header). `ratio`, when passed, ALSO
@@ -412,6 +438,10 @@
         }
     };
 
+    function isSuspended() {
+        return !document.documentElement.classList.contains(PAGED_CLASS);
+    }
+
     // Edit mode has its own keyboard-clearance bottom padding on body that assumes normal
     // document flow (see NovelWebViewViewer's toggleEditMode script) - that has no room to work
     // within paged mode's fixed 100vh clip, so pagination is suspended (plain scrollable flow,
@@ -421,6 +451,8 @@
         if (suspended) {
             document.documentElement.classList.remove(PAGED_CLASS);
             container().style.transform = '';
+            document.body.style.width = '';
+            document.body.style.height = '';
         } else {
             document.documentElement.classList.add(PAGED_CLASS);
             repaginate();
@@ -526,7 +558,7 @@
 
     if (typeof ResizeObserver === 'function') {
         var containerResizeObserver = new ResizeObserver(function () {
-            if (!p.restored) return;
+            if (!p.restored || isSuspended()) return;
             repaginate();
         });
         containerResizeObserver.observe(container());
@@ -535,8 +567,87 @@
 
     var resizeDebounce = null;
     window.addEventListener('resize', function () {
-        if (!p.restored) return;
+        if (!p.restored || isSuspended()) return;
         clearTimeout(resizeDebounce);
         resizeDebounce = setTimeout(function () { repaginate(); }, 100);
     });
+
+    // Added content (snippets, late images, fonts) overflows into more columns without resizing the
+    // container, so the ResizeObserver above never sees it. Event-driven, debounced like resize;
+    // attribute changes (TTS highlight, this script's transforms) are deliberately not observed.
+    // Content can grow before or after the reader (late images, snippets), so re-derive the page
+    // from the text that was at the top of the screen; the ratio alone would jump to other text.
+    // A font swap reflows everything, where the ratio is the better guess.
+    function textAtPageStart() {
+        if (!document.caretRangeFromPoint) return null;
+        var el = container();
+        var x = Math.floor(window.innerWidth / 2);
+        var h = window.innerHeight || document.documentElement.clientHeight;
+        for (var y = 8; y < h; y += 24) {
+            var range = document.caretRangeFromPoint(x, y);
+            if (range && el.contains(range.startContainer)) return range;
+        }
+        return null;
+    }
+
+    function offsetInContainer(range) {
+        var rect = range.getClientRects()[0];
+        var node = range.startContainer;
+        if (!rect && node.nodeType === 3 && range.startOffset < node.length) {
+            var oneChar = document.createRange();
+            oneChar.setStart(node, range.startOffset);
+            oneChar.setEnd(node, range.startOffset + 1);
+            rect = oneChar.getClientRects()[0];
+        }
+        // No element-box fallback: a paragraph spanning several columns starts pages back
+        if (!rect) return null;
+        return rect.left - container().getBoundingClientRect().left;
+    }
+
+    function reflowKeepingText() {
+        var anchor = pageAnchor && container().contains(pageAnchor.startContainer)
+            ? pageAnchor
+            : textAtPageStart();
+        applyColumnLayout();
+        var pc = computePageCount();
+        var offset = anchor ? offsetInContainer(anchor) : null;
+        var idx = offset !== null ? Math.floor((offset + 1) / pageWidth()) : (p.pageIndex || 0);
+        idx = Math.max(0, Math.min(idx, pc - 1));
+        // Same page and count: the text is still on screen. The anchor is kept, not re-taken,
+        // so repeated small edits can't walk the position.
+        if (idx === p.pageIndex && pc === p.pageCount) return;
+        p.lastRatio = pc > 0 ? (idx + 1) / pc : 0;
+        landOnPage(idx, pc, false);
+    }
+
+    var reflowDebounce = null;
+    var reflowKeepsText = true;
+    function scheduleReflowCheck(keepText) {
+        if (!p.restored) return;
+        reflowKeepsText = reflowKeepsText && keepText;
+        clearTimeout(reflowDebounce);
+        reflowDebounce = setTimeout(function run() {
+            if (!enabled || isSuspended()) { reflowKeepsText = true; return; }
+            // Mid-swipe the deferred repaginate would land by ratio, so wait for the release
+            if (drag) { reflowDebounce = setTimeout(run, 150); return; }
+            var keep = reflowKeepsText;
+            reflowKeepsText = true;
+            // Text can move without the page count changing, so a keep-text reflow always checks
+            if (keep) reflowKeepingText();
+            else if (computePageCount() !== p.pageCount) repaginate();
+        }, 100);
+    }
+    function onContentReflow() { scheduleReflowCheck(true); }
+    if (typeof MutationObserver === 'function') {
+        new MutationObserver(onContentReflow)
+            .observe(container(), { childList: true, characterData: true, subtree: true });
+    }
+    container().addEventListener('transitionend', function (e) {
+        if (e.target === container() && e.propertyName === 'transform') pageAnchor = textAtPageStart();
+    });
+    container().addEventListener('load', onContentReflow, true);
+    container().addEventListener('error', onContentReflow, true);
+    if (document.fonts && document.fonts.addEventListener) {
+        document.fonts.addEventListener('loadingdone', function () { scheduleReflowCheck(false); });
+    }
 })();
