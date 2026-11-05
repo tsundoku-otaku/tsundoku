@@ -785,8 +785,8 @@ class MangaViewModel(
         manga: Manga,
         translatedChapterIds: Set<Long> = emptySet(),
     ): List<ChapterList.Item> {
-        val isMangaLocal = manga.isLocal() || manga.isLocalNovel()
         return map { chapter ->
+            val isMangaLocal = manga.isLocal()
             val activeDownload = if (isMangaLocal) {
                 null
             } else {
@@ -1565,7 +1565,7 @@ class MangaViewModel(
         val manga = state.manga
         val isLocalEntry = manga.isLocal() || manga.isLocalNovel()
         val chapters = state.chapters
-            .filter { it.isDownloaded }
+            .filter { isLocalEntry || it.isDownloaded }
             .map { it.chapter }
         val totalChapters = state.chapters.size
 
@@ -1694,7 +1694,7 @@ class MangaViewModel(
     }
 
     /**
-     * Ask to translate every downloaded chapter.
+     * Ask to translate every downloaded chapter (every chapter for local novels).
      * @param forceRetranslate if true, retranslate even already-translated chapters.
      */
     fun translateDownloadedChapters(forceRetranslate: Boolean = false) {
@@ -1704,7 +1704,10 @@ class MangaViewModel(
         viewModelScope.launchIO {
             if (!checkTranslationEnabled()) return@launchIO
 
-            val downloadedChapters = state.chapters.filter { it.isDownloaded }.map { it.chapter }
+            val isLocalEntry = manga.isLocalNovel()
+            val downloadedChapters = state.chapters.filter { item ->
+                isLocalEntry || item.downloadState == Download.State.DOWNLOADED
+            }.map { it.chapter }
 
             if (downloadedChapters.isEmpty()) {
                 withUIContext {
@@ -1906,13 +1909,14 @@ class MangaViewModel(
              * @return an observable of the list of chapters filtered and sorted.
              */
             private fun List<ChapterList.Item>.applyFilters(manga: Manga): Sequence<ChapterList.Item> {
+                val isLocalManga = manga.isLocal()
                 val unreadFilter = manga.unreadFilter
                 val downloadedFilter = manga.downloadedFilter
                 val bookmarkedFilter = manga.bookmarkedFilter
                 return asSequence()
                     .filter { (chapter) -> applyFilter(unreadFilter) { !chapter.read } }
                     .filter { (chapter) -> applyFilter(bookmarkedFilter) { chapter.bookmark } }
-                    .filter { applyFilter(downloadedFilter) { it.isDownloaded } }
+                    .filter { applyFilter(downloadedFilter) { it.isDownloaded || isLocalManga } }
                     .sortedWith { (chapter1), (chapter2) -> getChapterSort(manga).invoke(chapter1, chapter2) }
             }
         }
