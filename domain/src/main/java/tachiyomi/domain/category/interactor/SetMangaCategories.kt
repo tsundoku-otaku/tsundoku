@@ -90,6 +90,27 @@ class SetMangaCategories(
         }
     }
 
+    suspend fun update(mangaIds: List<Long>, addCategories: List<Long>, removeCategories: List<Long>): UpdateResult {
+        val wantsAdd = addCategories.isNotEmpty()
+        val wantsRemove = removeCategories.isNotEmpty()
+        val added = wantsAdd && add(mangaIds, addCategories, skipRefresh = true)
+        val removed = wantsRemove && remove(mangaIds, removeCategories, skipRefresh = true)
+        if (added || removed) {
+            getLibraryManga.applyCategoryUpdates(
+                mangaIds,
+                if (added) addCategories else emptyList(),
+                if (removed) removeCategories else emptyList(),
+            )
+        }
+        return when {
+            added == wantsAdd && removed == wantsRemove -> UpdateResult.Saved
+            added || removed -> UpdateResult.Partial
+            else -> UpdateResult.Failed
+        }
+    }
+
+    enum class UpdateResult { Saved, Partial, Failed }
+
     /**
      * Force a library refresh. Call this after batch operations with skipRefresh=true.
      * Uses forced refresh to bypass the minimum refresh interval since user explicitly
