@@ -638,7 +638,6 @@
     <string name="no_downloaded_chapters">No downloaded chapters found</string>
     <string name="translation_queued">Queued %d chapters for translation</string>
     <string name="translation_disabled">Translation is disabled. Enable it in translation settings</string>
-    <string name="translate_chapters_confirm">Translate %d chapters?</string>
 
     <!-- Custom Source - Create dialog hint -->
     <string name="custom_source_use_repos_hint">For pre-built novel source themes (Madara, LightNovelWP, etc.), install extensions from a repository instead.</string>
