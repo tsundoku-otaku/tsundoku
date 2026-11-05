@@ -21,7 +21,6 @@ import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.download.service.DownloadPreferences
 import tachiyomi.domain.library.service.LibraryPreferences
-import tachiyomi.domain.translation.service.TranslationPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -86,7 +85,7 @@ class PreferenceRestorer(
                         }
                     }
                     is StringPreferenceValue -> {
-                        if (prefs[key] is String? && !keepsSavedSecret(key, value.value, prefs[key])) {
+                        if (prefs[key] is String?) {
                             preferenceStore.getString(key).set(value.value)
                         }
                     }
@@ -135,8 +134,4 @@ class PreferenceRestorer(
         }
         return true
     }
-}
-
-internal fun keepsSavedSecret(key: String, restored: String, saved: Any?): Boolean {
-    return key in TranslationPreferences.SECRET_KEYS && restored.isBlank() && !(saved as? String).isNullOrBlank()
 }
