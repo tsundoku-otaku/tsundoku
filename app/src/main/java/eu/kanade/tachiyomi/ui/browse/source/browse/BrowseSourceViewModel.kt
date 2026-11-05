@@ -302,15 +302,22 @@ class BrowseSourceViewModel(
             }
         }
 
-        // Reset pendingFilters to the potentially preset-applied filters
-        mutableState.update { it.copy(pendingFilters = freshFilters) }
+        // Reset pendingFilters to the potentially preset-applied filters; a loaded preset's
+        // search text goes with the rest of it
+        mutableState.update {
+            it.copy(
+                pendingFilters = freshFilters,
+                toolbarQuery = it.pendingPreset?.previousToolbarQuery ?: it.toolbarQuery,
+                pendingPreset = null,
+            )
+        }
     }
 
     fun setListing(listing: Listing) {
         // Reset initial page to 1 when listing changes (e.g., switching between Popular, Latest, Search)
         _initialPage.value = 1L
         _targetEndPage.value = null
-        mutableState.update { it.copy(listing = listing, toolbarQuery = null, presetQuery = null) }
+        mutableState.update { it.copy(listing = listing, toolbarQuery = null, pendingPreset = null) }
     }
 
     fun setFilters(filters: FilterList) {
@@ -413,20 +420,25 @@ class BrowseSourceViewModel(
                 ),
                 filters = newFilters, // Ensure state.filters is also updated
                 toolbarQuery = newQuery,
-                presetQuery = null,
+                pendingPreset = null,
             )
         }
     }
 
     fun applyFilters() {
         // Unsubmitted toolbar text is ignored like a plain filter apply, except a loaded preset's query
-        search(query = state.value.presetQuery, filters = state.value.pendingFilters)
+        search(query = state.value.pendingPreset?.query, filters = state.value.pendingFilters)
     }
 
     fun dismissFilterDialog() {
         mutableState.update {
-            if (it.presetQuery == null) return@update it.copy(dialog = null)
-            it.copy(dialog = null, toolbarQuery = it.queryBeforePreset, presetQuery = null)
+            val preset = it.pendingPreset ?: return@update it.copy(dialog = null)
+            it.copy(
+                dialog = null,
+                toolbarQuery = preset.previousToolbarQuery,
+                pendingFilters = preset.previousFilters,
+                pendingPreset = null,
+            )
         }
     }
 
@@ -473,7 +485,7 @@ class BrowseSourceViewModel(
                 filters = defaultFilters,
                 listing = listing,
                 toolbarQuery = listing.query,
-                presetQuery = null,
+                pendingPreset = null,
             )
         }
     }
@@ -626,7 +638,7 @@ class BrowseSourceViewModel(
             "BrowseSource: saveFilterPreset name=$name, setAsDefault=$setAsDefault, " +
                 "includeSearchText=$includeSearchText, sourceId=$sourceId"
         }
-        val currentQuery = state.value.toolbarQuery?.takeIf { it.isNotBlank() }
+        val currentQuery = state.value.pendingQuery?.takeIf { it.isNotBlank() }
         manageFilterPresets.savePreset(
             sourceId = sourceId,
             name = name,
@@ -650,13 +662,16 @@ class BrowseSourceViewModel(
             ManageFilterPresets.applyPresetState(filters, preset.filterState)
             // Update pendingFilters directly and open filter dialog
             mutableState.update {
-                // A query only the previous preset brought in leaves with it
-                val ownQuery = if (it.presetQuery != null) it.queryBeforePreset else it.toolbarQuery
+                // Loading another preset on top keeps what was there before the first one
+                val previous = it.pendingPreset
                 it.copy(
                     pendingFilters = filters,
-                    toolbarQuery = preset.searchQuery ?: ownQuery,
-                    presetQuery = preset.searchQuery,
-                    queryBeforePreset = ownQuery.takeIf { _ -> preset.searchQuery != null },
+                    toolbarQuery = preset.searchQuery ?: previous?.previousToolbarQuery ?: it.toolbarQuery,
+                    pendingPreset = PendingPreset(
+                        query = preset.searchQuery,
+                        previousToolbarQuery = previous?.previousToolbarQuery ?: it.toolbarQuery,
+                        previousFilters = previous?.previousFilters ?: it.pendingFilters,
+                    ),
                     dialog = Dialog.Filter,
                 )
             }
@@ -697,7 +712,7 @@ class BrowseSourceViewModel(
     }
 
     fun setToolbarQuery(query: String?) {
-        mutableState.update { it.copy(toolbarQuery = query, presetQuery = null) }
+        mutableState.update { it.copy(toolbarQuery = query, pendingPreset = null) }
     }
 
     sealed class Listing(open val query: String?, open val filters: FilterList) {
@@ -992,10 +1007,7 @@ class BrowseSourceViewModel(
         val filters: FilterList = FilterList(),
         val pendingFilters: FilterList = FilterList(), // Filters being edited in dialog
         val toolbarQuery: String? = null,
-        // Query a loaded preset put in the toolbar that has not been applied yet; whenever it is
-        // non-null the toolbar shows it, and queryBeforePreset is what dismissing puts back
-        val presetQuery: String? = null,
-        val queryBeforePreset: String? = null,
+        val pendingPreset: PendingPreset? = null,
         val dialog: Dialog? = null,
         val selectionMode: Boolean = false,
         val selection: Set<Manga> = emptySet(),
@@ -1003,5 +1015,16 @@ class BrowseSourceViewModel(
         val translatedTitles: Map<Long, String> = emptyMap(),
     ) {
         val isUserQuery get() = listing is Listing.Search && !listing.query.isNullOrEmpty()
+
+        /** The query applying the filter sheet would search with; unsubmitted toolbar text isn't it. */
+        val pendingQuery get() = pendingPreset?.query ?: listing.query
     }
+
+    /** A preset loaded into the filter sheet but not applied yet, with what dismissing it puts back. */
+    @Immutable
+    data class PendingPreset(
+        val query: String?,
+        val previousToolbarQuery: String?,
+        val previousFilters: FilterList,
+    )
 }

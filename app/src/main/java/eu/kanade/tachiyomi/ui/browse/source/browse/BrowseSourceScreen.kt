@@ -541,7 +541,7 @@ data class BrowseSourceScreen(
                     onUpdate = viewModel::setFilters,
                     onOpenPresets = viewModel::openPresetSheet,
                     presets = presets,
-                    currentSearchQuery = state.toolbarQuery,
+                    currentSearchQuery = state.pendingQuery,
                     onSavePreset = viewModel::saveFilterPreset,
                     onLoadPreset = viewModel::loadFilterPreset,
                     onDeletePreset = viewModel::deleteFilterPreset,
@@ -554,7 +554,7 @@ data class BrowseSourceScreen(
                     onDismissRequest = viewModel::dismissFilterDialog,
                     presets = presets,
                     currentFilters = state.pendingFilters,
-                    currentSearchQuery = state.toolbarQuery,
+                    currentSearchQuery = state.pendingQuery,
                     autoApplyEnabled = autoApplyEnabled,
                     onSavePreset = { name, setAsDefault, includeSearchText ->
                         viewModel.saveFilterPreset(name, setAsDefault, includeSearchText)

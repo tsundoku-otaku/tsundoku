@@ -98,6 +98,8 @@ class ManageFilterPresets(
     }
 
     fun setDefaultPreset(sourceId: Long, presetId: Long?) {
+        // Auto-apply only restores filters, so a preset with search text can't be the default
+        if (presetId != null && getPreset(sourceId, presetId)?.searchQuery != null) return
         val currentPresets = preferences.filterPresets(sourceId).get()
         val updatedPresets = currentPresets.presets.map { preset ->
             preset.copy(isDefault = preset.id == presetId)

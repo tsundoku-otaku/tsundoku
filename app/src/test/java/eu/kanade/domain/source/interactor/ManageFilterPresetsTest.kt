@@ -57,21 +57,21 @@ class ManageFilterPresetsTest {
     }
 
     @Test
-    fun `getPreset returns null for an unknown id`() {
-        assertNull(manage.getPreset(1L, 42L))
-    }
-
-    @Test
-    fun `toggling a preset as default keeps its search query`() {
+    fun `a preset with search text can't become the default`() {
         manage.savePreset(1L, "p", filters(true), searchQuery = "query")
         val id = manage.getPresets(1L).presets.single().id
 
         manage.setDefaultPreset(1L, id)
-        assertTrue(manage.getPresets(1L).presets.single().isDefault)
-        manage.setDefaultPreset(1L, null)
 
+        assertNull(manage.getDefaultPresetState(1L))
         assertEquals("query", manage.getPresets(1L).presets.single().searchQuery)
     }
+
+    @Test
+    fun `getPreset returns null for an unknown id`() {
+        assertNull(manage.getPreset(1L, 42L))
+    }
+
 
     @Test
     fun `search queries are stored apart from the presets and dropped on delete`() {
