@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -65,6 +66,8 @@ import eu.kanade.tachiyomi.ui.manga.ChapterList
 import eu.kanade.tachiyomi.ui.manga.MangaViewModel
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.system.copyToClipboard
+import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.chapter.service.missingChaptersCount
@@ -338,6 +341,17 @@ private fun MangaScreenSmallImpl(
 
     val chapterListState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val scrollActions = remember(listItem, state.chapters, state.manga) {
+        chapterScrollActions(
+            scope = scrollScope,
+            listState = chapterListState,
+            headerItems = ONE_PANE_HEADER_ITEMS,
+            listItem = listItem,
+            nextUnreadId = { state.chapters.getNextUnread(state.manga)?.id },
+            onNoTarget = { context.toast(TDMR.strings.manga_no_unread_chapter) },
+        )
+    }
 
     BackHandler(enabled = isAnySelected) {
         onAllChapterSelected(false)
@@ -382,26 +396,9 @@ private fun MangaScreenSmallImpl(
                 onClickExportEpub = onExportEpubClicked,
                 onClickSearchChapters = onSearchChaptersClicked,
                 onClickWordCount = onWordCountClicked,
-                onClickScrollToTop = {
-                    scrollScope.launch { chapterListState.animateScrollToItem(0) }
-                },
-                onClickScrollToLastRead = {
-                    val targetChapter = state.chapters.getNextUnread(state.manga)
-                    if (targetChapter != null) {
-                        val targetIndex = listItem.indexOfFirst {
-                            it is ChapterList.Item && it.chapter.id == targetChapter.id
-                        }
-                        if (targetIndex != -1) {
-                            scrollScope.launch {
-                                val halfHeight = chapterListState.layoutInfo.viewportSize.height / 2
-                                chapterListState.animateScrollToItem(targetIndex + 4, scrollOffset = -halfHeight)
-                            }
-                        }
-                    }
-                },
-                onClickScrollToBottom = {
-                    scrollScope.launch { chapterListState.animateScrollToItem(listItem.size + 3) }
-                },
+                onClickScrollToTop = scrollActions.toTop,
+                onClickScrollToLastRead = scrollActions.toNextUnread,
+                onClickScrollToBottom = scrollActions.toBottom,
                 actionModeCounter = selectedChapterCount,
                 onCancelActionMode = { onAllChapterSelected(false) },
                 onSelectAll = { onAllChapterSelected(true) },
@@ -652,6 +649,17 @@ fun MangaScreenLargeImpl(
 
     val chapterListState = rememberLazyListState()
     val scrollScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val scrollActions = remember(listItem, state.chapters, state.manga) {
+        chapterScrollActions(
+            scope = scrollScope,
+            listState = chapterListState,
+            headerItems = TWO_PANE_HEADER_ITEMS,
+            listItem = listItem,
+            nextUnreadId = { state.chapters.getNextUnread(state.manga)?.id },
+            onNoTarget = { context.toast(TDMR.strings.manga_no_unread_chapter) },
+        )
+    }
 
     BackHandler(enabled = isAnySelected) {
         onAllChapterSelected(false)
@@ -683,26 +691,9 @@ fun MangaScreenLargeImpl(
                 onClickExportEpub = onExportEpubClicked,
                 onClickSearchChapters = onSearchChaptersClicked,
                 onClickWordCount = onWordCountClicked,
-                onClickScrollToTop = {
-                    scrollScope.launch { chapterListState.animateScrollToItem(0) }
-                },
-                onClickScrollToLastRead = {
-                    val targetChapter = state.chapters.getNextUnread(state.manga)
-                    if (targetChapter != null) {
-                        val targetIndex = listItem.indexOfFirst {
-                            it is ChapterList.Item && it.chapter.id == targetChapter.id
-                        }
-                        if (targetIndex != -1) {
-                            scrollScope.launch {
-                                val halfHeight = chapterListState.layoutInfo.viewportSize.height / 2
-                                chapterListState.animateScrollToItem(targetIndex + 1, scrollOffset = -halfHeight)
-                            }
-                        }
-                    }
-                },
-                onClickScrollToBottom = {
-                    scrollScope.launch { chapterListState.animateScrollToItem(listItem.size) }
-                },
+                onClickScrollToTop = scrollActions.toTop,
+                onClickScrollToLastRead = scrollActions.toNextUnread,
+                onClickScrollToBottom = scrollActions.toBottom,
                 onCancelActionMode = { onAllChapterSelected(false) },
                 actionModeCounter = selectedChapterCount,
                 onSelectAll = { onAllChapterSelected(true) },
@@ -875,6 +866,40 @@ fun MangaScreenLargeImpl(
         }
     }
 }
+
+// Items each layout's LazyColumn shows before the chapter rows.
+private const val ONE_PANE_HEADER_ITEMS = 4
+private const val TWO_PANE_HEADER_ITEMS = 1
+
+private class ChapterScrollActions(
+    val toTop: () -> Unit,
+    val toNextUnread: () -> Unit,
+    val toBottom: () -> Unit,
+)
+
+private fun chapterScrollActions(
+    scope: CoroutineScope,
+    listState: LazyListState,
+    headerItems: Int,
+    listItem: List<ChapterList>,
+    nextUnreadId: () -> Long?,
+    onNoTarget: () -> Unit,
+) = ChapterScrollActions(
+    toTop = { scope.launch { listState.animateScrollToItem(0) } },
+    toNextUnread = {
+        val id = nextUnreadId()
+        val index = listItem.indexOfFirst { it is ChapterList.Item && it.chapter.id == id }
+        if (id == null || index < 0) {
+            onNoTarget()
+        } else {
+            scope.launch {
+                val halfHeight = listState.layoutInfo.viewportSize.height / 2
+                listState.animateScrollToItem(headerItems + index, scrollOffset = -halfHeight)
+            }
+        }
+    },
+    toBottom = { scope.launch { listState.animateScrollToItem(headerItems + listItem.lastIndex) } },
+)
 
 @Composable
 private fun SharedMangaBottomActionMenu(
