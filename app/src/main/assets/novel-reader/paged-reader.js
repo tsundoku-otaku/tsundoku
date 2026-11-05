@@ -101,10 +101,12 @@
     function applyColumnLayout() {
         var el = container();
         // A fractional body box wider than the whole-px column lets the next column's first pixel
-        // show at the clip edge, so pin the box to the column width.
+        // show at the clip edge, so pin the box to the column width. Derived from the viewport
+        // rather than by clearing and re-measuring the box, which forced two layouts per call.
+        var cs = window.getComputedStyle(document.body);
+        var hMargin = (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
         document.body.style.boxSizing = 'border-box';
-        document.body.style.width = '';
-        document.body.style.width = Math.floor(document.body.getBoundingClientRect().width) + 'px';
+        document.body.style.width = Math.floor(document.documentElement.clientWidth - hMargin) + 'px';
         var w = pageWidth();
         el.style.columnWidth = w + 'px';
         el.style.MozColumnWidth = w + 'px';
@@ -113,7 +115,6 @@
         // clip the container - reduce by body's own margin only. Deliberately NOT by
         // __SAFE_TOP_VAR__/__SAFE_BOTTOM_VAR__ (transient menu-bar overlays) - sizing the page to
         // those turned every menu toggle into a repagination + ResizeObserver feedback loop.
-        var cs = window.getComputedStyle(document.body);
         var vMargin = (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
         // Explicit floored px height, not `calc(100vh - Npx)`: fractional rounding there let the
         // last line's descenders clip past the overflow:hidden edge. 1px safety buffer for the rest.
@@ -240,7 +241,14 @@
         reportPageInfo(idx, pc);
         reportProgress(p.lastRatio);
         publishProgress(p.lastRatio, idx, pc);
+        // An animated turn captures once its transition ends (see the transitionend listener)
+        pageAnchor = animate ? null : textAtPageStart();
     }
+
+    // The text at the top of the current page, taken once the page settles and before any later
+    // content change moves it. A Range follows DOM edits around it, so after a change it still
+    // points at the same text wherever that text ended up.
+    var pageAnchor = null;
 
     // Recomputes page count/width against the current layout and lands on the page nearest
     // p.lastRatio (the authoritative position - see file header). `ratio`, when passed, ALSO
@@ -584,24 +592,30 @@
 
     function offsetInContainer(range) {
         var rect = range.getClientRects()[0];
-        if (!rect) {
-            var node = range.startContainer;
-            if (node.nodeType !== 1) node = node.parentElement;
-            else if (node.childNodes[range.startOffset]) node = node.childNodes[range.startOffset];
-            if (!node || node.nodeType !== 1) return null;
-            rect = node.getBoundingClientRect();
+        var node = range.startContainer;
+        if (!rect && node.nodeType === 3 && range.startOffset < node.length) {
+            var oneChar = document.createRange();
+            oneChar.setStart(node, range.startOffset);
+            oneChar.setEnd(node, range.startOffset + 1);
+            rect = oneChar.getClientRects()[0];
         }
+        // No element-box fallback: a paragraph spanning several columns starts pages back
+        if (!rect) return null;
         return rect.left - container().getBoundingClientRect().left;
     }
 
     function reflowKeepingText() {
-        var anchor = textAtPageStart();
+        var anchor = pageAnchor && container().contains(pageAnchor.startContainer)
+            ? pageAnchor
+            : textAtPageStart();
         applyColumnLayout();
         var pc = computePageCount();
-        var idx = p.pageIndex || 0;
         var offset = anchor ? offsetInContainer(anchor) : null;
-        if (offset !== null) idx = Math.floor((offset + 1) / pageWidth());
+        var idx = offset !== null ? Math.floor((offset + 1) / pageWidth()) : (p.pageIndex || 0);
         idx = Math.max(0, Math.min(idx, pc - 1));
+        // Same page and count: the text is still on screen. The anchor is kept, not re-taken,
+        // so repeated small edits can't walk the position.
+        if (idx === p.pageIndex && pc === p.pageCount) return;
         p.lastRatio = pc > 0 ? (idx + 1) / pc : 0;
         landOnPage(idx, pc, false);
     }
@@ -618,8 +632,9 @@
             if (drag) { reflowDebounce = setTimeout(run, 150); return; }
             var keep = reflowKeepsText;
             reflowKeepsText = true;
-            if (computePageCount() === p.pageCount) return;
-            if (keep) reflowKeepingText(); else repaginate();
+            // Text can move without the page count changing, so a keep-text reflow always checks
+            if (keep) reflowKeepingText();
+            else if (computePageCount() !== p.pageCount) repaginate();
         }, 100);
     }
     function onContentReflow() { scheduleReflowCheck(true); }
@@ -627,6 +642,9 @@
         new MutationObserver(onContentReflow)
             .observe(container(), { childList: true, characterData: true, subtree: true });
     }
+    container().addEventListener('transitionend', function (e) {
+        if (e.target === container() && e.propertyName === 'transform') pageAnchor = textAtPageStart();
+    });
     container().addEventListener('load', onContentReflow, true);
     container().addEventListener('error', onContentReflow, true);
     if (document.fonts && document.fonts.addEventListener) {
