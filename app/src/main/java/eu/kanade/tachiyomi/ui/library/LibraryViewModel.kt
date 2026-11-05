@@ -35,6 +35,7 @@ import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.ui.category.failureMessage
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
@@ -90,7 +91,6 @@ import tachiyomi.domain.track.interactor.GetTracksPerManga
 import tachiyomi.domain.track.model.Track
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.i18n.MR
-import tachiyomi.i18n.novel.TDMR
 import tachiyomi.source.local.isLocal
 import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
@@ -1135,16 +1135,16 @@ class LibraryViewModel(
                 "Category change: ids=$count add=${addCategories.size} remove=${removeCategories.size} type=$type"
             }
 
-            if (!setMangaCategories.update(mangaIds, addCategories, removeCategories)) {
-                logcat(LogPriority.WARN) { "Category change: some changes failed to save for $count manga" }
+            val result = setMangaCategories.update(mangaIds, addCategories, removeCategories)
+            // Before the snackbar: showSnackbar suspends until it is gone
+            clearSelection()
+            result.failureMessage()?.let { message ->
+                logcat(LogPriority.WARN) { "Category change: $result for $count manga" }
                 snackbarHostState.showSnackbar(
-                    message = Injekt.get<android.app.Application>()
-                        .stringResource(TDMR.strings.duplicate_categories_failed),
+                    message = Injekt.get<android.app.Application>().stringResource(message),
                     duration = SnackbarDuration.Short,
                 )
             }
-
-            clearSelection()
         }
     }
 

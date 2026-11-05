@@ -34,6 +34,6 @@ class GetDuplicateLibraryManga(
     }
 
     companion object {
-        private const val DISPLAY_LIMIT = 30L
+        private const val DISPLAY_LIMIT = 10L
     }
 }

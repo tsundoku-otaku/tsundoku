@@ -296,7 +296,7 @@ class MangaScreen(
                     onDismissRequest = { viewModel.restoreDialog(dialog.returnTo) },
                     onEditCategories = { navigator.push(CategoryScreen()) },
                     onConfirm = { addCategories, removeCategories ->
-                        viewModel.setDuplicatesCategories(dialog.mangas, addCategories, removeCategories)
+                        viewModel.setDuplicatesCategories(dialog, addCategories, removeCategories)
                     },
                 )
             }

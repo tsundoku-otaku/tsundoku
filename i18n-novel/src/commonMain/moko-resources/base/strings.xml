@@ -373,6 +373,7 @@
     <string name="duplicate_dismiss_group">Dismiss group</string>
     <string name="duplicate_no_shared_category">No category fits the content type of the selected entries</string>
     <string name="duplicate_categories_failed">Could not save the categories</string>
+    <string name="duplicate_categories_partial">Some category changes could not be saved</string>
     <string name="duplicate_deselect_group">Deselect group</string>
     <string name="duplicate_apply_library_filters">Library filters</string>
     <string name="duplicate_full_urls_short">Full URLs</string>

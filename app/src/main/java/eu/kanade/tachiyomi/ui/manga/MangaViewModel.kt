@@ -45,6 +45,7 @@ import eu.kanade.tachiyomi.network.interceptor.InteractiveRateLimitBypass
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.rateLimitHost
+import eu.kanade.tachiyomi.ui.category.failureMessage
 import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
@@ -554,11 +555,20 @@ class MangaViewModel(
         }
     }
 
-    fun setDuplicatesCategories(mangas: List<Manga>, addCategories: List<Long>, removeCategories: List<Long>) {
+    fun setDuplicatesCategories(
+        dialog: Dialog.ChangeDuplicatesCategory,
+        addCategories: List<Long>,
+        removeCategories: List<Long>,
+    ) {
+        // The category dialog already put the duplicates dialog back; drop its selection
+        // now that the change is applied so it doesn't read as still pending.
+        updateSuccessState {
+            if (it.dialog != dialog.returnTo) return@updateSuccessState it
+            it.copy(dialog = dialog.returnTo.copy(selectedIds = emptySet()))
+        }
         duplicatesCategoryWrite = viewModelScope.launchNonCancellable {
-            if (!setMangaCategories.update(mangas.map { it.id }, addCategories, removeCategories)) {
-                withUIContext { context.toast(TDMR.strings.duplicate_categories_failed) }
-            }
+            val result = setMangaCategories.update(dialog.mangas.map { it.id }, addCategories, removeCategories)
+            result.failureMessage()?.let { withUIContext { context.toast(it) } }
         }
     }
 

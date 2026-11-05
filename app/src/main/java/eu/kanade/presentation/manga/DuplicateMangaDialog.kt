@@ -99,7 +99,7 @@ fun DuplicateMangaDialog(
     initialSelectedIds: Set<Long> = emptySet(),
     onChangeCategories: ((List<Manga>) -> Unit)? = null,
 ) {
-    var selectedIds by remember(duplicates) { mutableStateOf(initialSelectedIds) }
+    var selectedIds by remember(duplicates, initialSelectedIds) { mutableStateOf(initialSelectedIds) }
     val sourceManager = remember { Injekt.get<SourceManager>() }
     val minHeight = LocalPreferenceMinHeight.current
     val horizontalPadding = PaddingValues(horizontal = TabbedDialogPaddings.Horizontal)
