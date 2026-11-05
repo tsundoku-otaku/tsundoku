@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.sync.Mutex
@@ -82,6 +83,12 @@ class ExtensionManager(
         // installedExtensionsFlow, so async init is safe.
         scope.launchIO { initExtensions() }
         ExtensionInstallReceiver(InstallationListener()).register(context)
+    }
+
+    /** Waits for the first load, then reads the installed map directly (the list flow lags it). */
+    suspend fun awaitInstalledExtension(pkgName: String): Extension.Installed? {
+        isInitialized.first { it }
+        return installedExtensionMapFlow.value[pkgName]
     }
 
     private var subLanguagesEnabledOnFirstRun = preferences.enabledLanguages.isSet()

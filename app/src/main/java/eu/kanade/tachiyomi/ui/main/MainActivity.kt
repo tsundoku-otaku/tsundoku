@@ -561,15 +561,24 @@ class MainActivity : BaseActivity() {
                 }
                 null
             }
-            INTENT_SEARCH -> {
+            INTENT_SEARCH, INTENT_SEARCH_NOVEL -> {
                 val query = intent.getStringExtra(INTENT_SEARCH_QUERY)
                 if (!query.isNullOrEmpty()) {
                     val filter = intent.getStringExtra(INTENT_SEARCH_FILTER)
+                    val novelAction = intent.action == INTENT_SEARCH_NOVEL
                     navigator.popUntilRoot()
-                    if (filter != null && isNovelExtensionPackage(filter)) {
-                        navigator.push(NovelGlobalSearchScreen(query, filter))
+                    if (filter == null) {
+                        pushGlobalSearch(navigator, query, null, novelAction)
                     } else {
-                        navigator.push(GlobalSearchScreen(query, filter))
+                        // On a cold start the extensions are still loading when the intent arrives
+                        lifecycleScope.launch {
+                            val sources = extensionManager.awaitInstalledExtension(filter)?.sources.orEmpty()
+                            // A single-type extension decides; a mixed one leaves it to the action
+                            val isNovel = sources.map { it.isNovelSource() }.distinct().singleOrNull() ?: novelAction
+                            // A package that isn't an installed extension (e.g. a JS plugin id) matches no
+                            // source, so search everything instead of showing an empty screen
+                            pushGlobalSearch(navigator, query, filter.takeIf { sources.isNotEmpty() }, isNovel)
+                        }
                     }
                 }
                 null
@@ -607,11 +616,10 @@ class MainActivity : BaseActivity() {
         return true
     }
 
-    private fun isNovelExtensionPackage(pkgName: String): Boolean {
-        return extensionManager.installedExtensionsFlow.value
-            .firstOrNull { it.pkgName == pkgName }
-            ?.sources
-            ?.any { it.isNovelSource() } == true
+    private fun pushGlobalSearch(navigator: Navigator, query: String, filter: String?, isNovel: Boolean) {
+        navigator.push(
+            if (isNovel) NovelGlobalSearchScreen(query, filter) else GlobalSearchScreen(query, filter),
+        )
     }
 
     /**
@@ -708,6 +716,7 @@ class MainActivity : BaseActivity() {
 
     companion object {
         const val INTENT_SEARCH = "eu.kanade.tachiyomi.SEARCH"
+        const val INTENT_SEARCH_NOVEL = "eu.kanade.tachiyomi.novel.SEARCH"
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"
     }
