@@ -13,6 +13,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ## [Unreleased]
 ### Changed
 - Increase chapter title marquee scroll speed [@mrissaoussama](https://github.com/mrissaoussama) [#472](https://github.com/tsundoku-otaku/tsundoku/pull/472)
+- Mangascreen scroll to top/current/bottom buttons have option to move into/out of overflow menu [@mrissaoussama](https://github.com/mrissaoussama) [#457](https://github.com/tsundoku-otaku/tsundoku/pull/457)
 
 ### Fixed
 - Route headset media to TTS session [@mrissaoussama](https://github.com/mrissaoussama) [#466](https://github.com/tsundoku-otaku/tsundoku/pull/466)
