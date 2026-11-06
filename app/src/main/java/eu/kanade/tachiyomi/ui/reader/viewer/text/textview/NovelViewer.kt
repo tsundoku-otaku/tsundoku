@@ -804,7 +804,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             override fun getCurrentPage(): ReaderPage? = currentPage
 
             override fun onHighlightChunk(chunkIndex: Int, chunk: String, startOffset: Int, paragraphIndex: Int) {
-                applyTtsHighlight(chunk, startOffset)
+                applyTtsHighlight(chunk, startOffset, paragraphIndex)
                 saveTtsProgressForChunk(chunkIndex)
             }
 
@@ -842,7 +842,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         activity.runOnUiThread { clearTtsSpansInLoadedChapters() }
     }
 
-    private fun applyTtsHighlight(chunk: String, startOffset: Int) {
+    private fun applyTtsHighlight(chunk: String, startOffset: Int, paragraphIndex: Int) {
         activity.runOnUiThread {
             val highlightColor = preferences.novelTtsHighlightColor.get()
             val highlightTextColor = preferences.novelTtsHighlightTextColor.get()
@@ -860,9 +860,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             val block = targetLoaded.block
             val text = block.fullText ?: return@runOnUiThread
 
-            val startIndex = text.indexOf(chunk, startOffset.coerceAtLeast(0))
-            if (startIndex < 0) return@runOnUiThread
-            val endIndex = (startIndex + chunk.length).coerceAtMost(text.length)
+            val chunkStartIndex = text.indexOf(chunk, startOffset.coerceAtLeast(0))
+            // The paragraph fallback only stands in for a chunk that is the whole paragraph;
+            // otherwise every chunk of a long paragraph would light up the entire paragraph.
+            val (startIndex, endIndex) = when {
+                chunkStartIndex >= 0 ->
+                    chunkStartIndex to (chunkStartIndex + chunk.length).coerceAtMost(text.length)
+                ttsController.ttsChunkParagraphIndexes.count { it == paragraphIndex } == 1 ->
+                    block.paragraphBoundsByNewline().getOrNull(paragraphIndex) ?: return@runOnUiThread
+                else -> return@runOnUiThread
+            }
 
             var firstChunkView: TextView? = null
             var firstChunkLocalStart = 0
@@ -1313,40 +1320,26 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val viewportTop = scrollView.scrollY
         val viewportBottom = viewportTop + scrollView.height
 
-        // Same split as speak() so paragraph indexes are consistent.
-        val paragraphLines = text.split("\n").filter { it.isNotBlank() }
-        if (paragraphLines.isEmpty()) return 0
+        // Only the chapter being spoken: char offsets from another chapter's views would index
+        // into the wrong paragraph list.
+        val loaded = loadedChapters.firstOrNull { it.isLoaded && it.block.fullText === text } ?: return 0
+        val paragraphOffsets = loaded.block.paragraphBoundsByNewline().map { it.first }
+        if (paragraphOffsets.isEmpty()) return 0
 
-        // Build start-char offset for each paragraph within `text`.
-        val paragraphOffsets = mutableListOf<Int>()
-        var searchFrom = 0
-        for (line in paragraphLines) {
-            val idx = text.indexOf(line, searchFrom)
-            if (idx >= 0) {
-                paragraphOffsets.add(idx)
-                searchFrom = idx + line.length
-            } else {
-                paragraphOffsets.add(searchFrom)
-            }
-        }
+        val containerTop = loaded.block.container.top
+        for ((i, chunkView) in loaded.block.chunkViews.withIndex()) {
+            val chunkTop = containerTop + chunkView.top
+            val chunkBottom = chunkTop + chunkView.height
 
-        loadedChapters.forEach { loaded ->
-            if (!loaded.isLoaded) return@forEach
-            val containerTop = loaded.block.container.top
-            for ((i, chunkView) in loaded.block.chunkViews.withIndex()) {
-                val chunkTop = containerTop + chunkView.top
-                val chunkBottom = chunkTop + chunkView.height
-
-                if (chunkBottom > viewportTop && chunkTop < viewportBottom) {
-                    val layout = chunkView.layout ?: return 0
-                    if (layout.lineCount > 0) {
-                        val chunkRelativeY = (viewportTop - chunkTop).coerceAtLeast(0)
-                        val lineAtViewportTop = layout.getLineForVertical(chunkRelativeY.coerceAtMost(layout.height))
-                        val chunkStart = loaded.block.chunkStarts.getOrNull(i) ?: 0
-                        val charOffset = (chunkStart + layout.getLineStart(lineAtViewportTop)).coerceAtLeast(0)
-                        val pIdx = paragraphOffsets.indexOfLast { it <= charOffset }
-                        return if (pIdx >= 0) pIdx else 0
-                    }
+            if (chunkBottom > viewportTop && chunkTop < viewportBottom) {
+                val layout = chunkView.layout ?: return 0
+                if (layout.lineCount > 0) {
+                    val chunkRelativeY = (viewportTop - chunkTop).coerceAtLeast(0)
+                    val lineAtViewportTop = layout.getLineForVertical(chunkRelativeY.coerceAtMost(layout.height))
+                    val chunkStart = loaded.block.chunkStarts.getOrNull(i) ?: 0
+                    val charOffset = (chunkStart + layout.getLineStart(lineAtViewportTop)).coerceAtLeast(0)
+                    val pIdx = paragraphOffsets.indexOfLast { it <= charOffset }
+                    return if (pIdx >= 0) pIdx else 0
                 }
             }
         }

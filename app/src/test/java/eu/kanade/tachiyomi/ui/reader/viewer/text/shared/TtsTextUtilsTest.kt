@@ -184,51 +184,6 @@ class TtsTextUtilsTest {
         assertEquals(threeParaIndexes[1], resultParagraph)
     }
 
-    // ── findParagraphs ───────────────────────────────────────────────────────
-
-    @Test
-    fun `findParagraphs splits plain text on double newlines`() {
-        val text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
-        val result = TtsTextUtils.findParagraphs(text)
-        assertEquals(3, result.size)
-        assertEquals("First paragraph.", result[0].text)
-        assertEquals("Second paragraph.", result[1].text)
-        assertEquals("Third paragraph.", result[2].text)
-    }
-
-    @Test
-    fun `findParagraphs assigns sequential indexes`() {
-        val text = "Para one.\n\nPara two.\n\nPara three."
-        val result = TtsTextUtils.findParagraphs(text)
-        result.forEachIndexed { i, p -> assertEquals(i, p.index) }
-    }
-
-    @Test
-    fun `findParagraphs returns empty list for blank input`() {
-        val result = TtsTextUtils.findParagraphs("   \n\n  ")
-        assertTrue(result.isEmpty())
-    }
-
-    @Test
-    fun `findParagraphs extracts paragraphs from html p tags`() {
-        val html = "<p>Hello world</p><p>Second para</p>"
-        val result = TtsTextUtils.findParagraphs(html)
-        assertEquals(2, result.size)
-        assertTrue(result[0].text.contains("Hello"))
-        assertTrue(result[1].text.contains("Second"))
-    }
-
-    @Test
-    fun `findParagraphs startChar and endChar are within text bounds`() {
-        val text = "Alpha.\n\nBeta."
-        val result = TtsTextUtils.findParagraphs(text)
-        for (p in result) {
-            assertTrue(p.startChar >= 0)
-            assertTrue(p.endChar <= text.length)
-            assertTrue(p.startChar < p.endChar)
-        }
-    }
-
     // ── getChunkIndexFromOffset ──────────────────────────────────────────────
 
     @Test
@@ -256,5 +211,17 @@ class TtsTextUtilsTest {
     fun `getChunkIndexFromOffset returns 0 when offset past end`() {
         val chunks = listOf("abc")
         assertEquals(0, TtsTextUtils.getChunkIndexFromOffset(999, chunks))
+    }
+
+    @Test
+    fun `newlineParagraphBounds skips blank lines and keeps offsets into the original text`() {
+        val text = "One\n\n  \nTwo words\nThree"
+        val bounds = TtsTextUtils.newlineParagraphBounds(text)
+        assertEquals(listOf("One", "Two words", "Three"), bounds.map { (s, e) -> text.substring(s, e) })
+    }
+
+    @Test
+    fun `newlineParagraphBounds is empty for blank text`() {
+        assertTrue(TtsTextUtils.newlineParagraphBounds(" \n\n").isEmpty())
     }
 }
