@@ -118,6 +118,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             chapterQueue.isLoadingNext = value
         }
     private var isRestoringScroll = false
+
+    // Own flag: other restores clear isRestoringScroll from their own posts mid-toggle
+    private var separatorToggleGuard: Runnable? = null
+    private val isScrollGuarded get() = isRestoringScroll || separatorToggleGuard != null
     private var currentChapterIndex: Int
         get() = chapterQueue.currentIndex
         set(value) {
@@ -158,6 +162,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var awaitingFirstScrollSample = false
     private companion object {
         const val CHAPTER_ENTRY_GRACE_MS = 800L
+        const val SEPARATOR_GUARD_TIMEOUT_MS = 1000L
         const val NEXT_CHAPTER_BUTTON_TAG = "next_chapter_button"
         const val PROGRESS_SAVE_DEBOUNCE_MS = 500L
     }
@@ -305,7 +310,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             // updateCurrentChapterFromScroll to detect the wrong chapter.
             val inGracePeriod = System.currentTimeMillis() - chapterEntryTime < CHAPTER_ENTRY_GRACE_MS
 
-            if (!isRestoringScroll && !inGracePeriod) {
+            if (!isScrollGuarded && !inGracePeriod) {
                 updateCurrentChapterFromScroll(scrollY)
             }
 
@@ -331,7 +336,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 // chunks and during pause/resume, causing the scroll listener to start a
                 // visible chapter fetch while TTS still owns the chapter transition.
                 val ttsIsDrivingChapterHandoff = ttsController.isTtsAutoPlay
-                if (!isRestoringScroll && !ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
+                if (!isScrollGuarded && !ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
                     !isLoadingNext &&
                     !reachedNovelEnd &&
                     !nextLoadRequiresManualRetry &&
@@ -341,7 +346,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                         "NovelViewer: scroll threshold hit (progress=$chapterProgress >= $effectiveThreshold, currentIdx=$currentChapterIndex, loadedCount=${loadedChapters.size})"
                     }
                     loadNextChapterIfAvailable()
-                } else if (!isRestoringScroll && ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
+                } else if (!isScrollGuarded && ttsIsDrivingChapterHandoff && chapterProgress >= effectiveThreshold &&
                     onLastLoaded
                 ) {
                     preFetchNextChapterForTts()
@@ -674,6 +679,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         timeoutMs: Long,
     ): Boolean = NovelPageLoader.awaitPageText("NovelViewer", page, loader, timeoutMs, scope)
 
+    // A gone view keeps its last laid out height
+    private fun View.visibleHeight(): Int = if (isVisible) height else 0
+
     private fun reloadContent() {
         activity.runOnUiThread {
             currentChapters?.let {
@@ -684,12 +692,45 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
+    // Keeps the paragraph at the top of the screen in place while separators above it change height
+    private fun applySeparatorVisibility() {
+        val visible = !preferences.novelHideChapterSeparator.get()
+        val separators = loadedChapters.mapNotNull { it.separatorView }
+        if (separators.all { it.isVisible == visible }) return
+        val scrollY = scrollView.scrollY
+        // A gone view keeps the bounds of its last layout, so only a shown one can anchor
+        val anchor = (0 until contentContainer.childCount)
+            .map(contentContainer::getChildAt)
+            .firstOrNull { it.isVisible && it !in separators && it.bottom > scrollY }
+        val anchorOffset = anchor?.let { scrollY - it.top } ?: 0
+        separators.forEach { it.isVisible = visible }
+
+        separatorToggleGuard?.let(scrollView::removeCallbacks)
+        // Lifted after the restore below, or on a timeout when no draw comes (the pre-draw
+        // listener is dropped if the view detaches), so tracking can't stay blocked
+        val release = object : Runnable {
+            override fun run() {
+                if (separatorToggleGuard === this) separatorToggleGuard = null
+            }
+        }
+        separatorToggleGuard = release
+        scrollView.postDelayed(release, SEPARATOR_GUARD_TIMEOUT_MS)
+        scrollView.doOnPreDraw {
+            if (anchor != null && anchor.parent === contentContainer) {
+                scrollView.scrollTo(0, anchor.top + anchorOffset)
+            }
+            scrollView.removeCallbacks(release)
+            scrollView.post(release)
+        }
+    }
+
     private fun observePreferences() {
         NovelTextViewPreferenceObserver(
             preferences = preferences,
             scope = scope,
             onStylePrefChanged = ::refreshAllChapterStyles,
             onContentReloadRequested = ::reloadContent,
+            onSeparatorVisibilityChanged = ::applySeparatorVisibility,
             onTtsSettingsChanged = {
                 if (ttsController.ttsInitialized) ttsController.applySettings()
             },
@@ -1074,6 +1115,23 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         return true
     }
 
+    private fun addSeparator(chapter: LoadedChapter) {
+        val separator = TextView(activity).apply {
+            isVisible = !preferences.novelHideChapterSeparator.get()
+            text = "──────────"
+            textSize = 16f
+            setTextColor(0xFF888888.toInt())
+            gravity = Gravity.CENTER
+            setPadding(16, 48, 16, 48)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        contentContainer.addView(separator)
+        chapter.separatorView = separator
+    }
+
     private fun moveToLoadedNextChapterForTts(anchorChapterIndex: Int = currentChapterIndex): Boolean {
         logcat(LogPriority.DEBUG) {
             "TTS: moveToLoadedNextChapterForTts anchor=$anchorChapterIndex ts=${System.currentTimeMillis()} ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
@@ -1086,19 +1144,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             handoffState = TtsHandoffState.Idle
 
             isRestoringScroll = true
-            val separator = TextView(activity).apply {
-                text = "──────────"
-                textSize = 16f
-                setTextColor(0xFF888888.toInt())
-                gravity = Gravity.CENTER
-                setPadding(16, 48, 16, 48)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                )
-            }
-            contentContainer.addView(separator)
-            cached.separatorView = separator
+            addSeparator(cached)
             contentContainer.addView(cached.headerView)
             contentContainer.addView(cached.block.container)
             chapterQueue.append(cached)
@@ -1157,7 +1203,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         isRestoringScroll = true
         toRemove.forEach { lc ->
             lc.separatorView?.let { sep ->
-                removedHeight += sep.height
+                removedHeight += sep.visibleHeight()
                 contentContainer.removeView(sep)
             }
             removedHeight += lc.headerView.height
@@ -1166,6 +1212,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             contentContainer.removeView(lc.block.container)
         }
         chapterQueue.removeFirstN(removeCount)
+        loadedChapters.firstOrNull()?.let { first ->
+            first.separatorView?.let { sep ->
+                removedHeight += sep.visibleHeight()
+                contentContainer.removeView(sep)
+            }
+            first.separatorView = null
+        }
         currentChapterIndex = (currentChapterIndex - removeCount).coerceAtLeast(0)
         ttsController.shiftPlaybackChapterIndex(removeCount)
         // Removed views were above the viewport; compensate so the read chapter stays put.
@@ -1538,21 +1591,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         // Reset is deferred to scrollView.post{} so it happens AFTER the layout pass.
         isRestoringScroll = true
 
-        if (isAppend) {
-            val separator = TextView(activity).apply {
-                text = "──────────"
-                textSize = 16f
-                setTextColor(0xFF888888.toInt())
-                gravity = Gravity.CENTER
-                setPadding(16, 48, 16, 48)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                )
-            }
-            contentContainer.addView(separator)
-            loadedChapter.separatorView = separator
-        }
+        if (isAppend) addSeparator(loadedChapter)
 
         contentContainer.addView(headerView)
         contentContainer.addView(block.container)
@@ -1682,7 +1721,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             var removedHeight = toRemove.headerView.height + toRemove.block.container.height
 
             toRemove.separatorView?.let { sep ->
-                removedHeight += sep.height
+                removedHeight += sep.visibleHeight()
                 contentContainer.removeView(sep)
             }
 
@@ -1692,7 +1731,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
             if (loadedChapters.isNotEmpty()) {
                 loadedChapters.first().separatorView?.let { sep ->
-                    removedHeight += sep.height
+                    removedHeight += sep.visibleHeight()
                     contentContainer.removeView(sep)
                     loadedChapters.first().separatorView = null
                 }
@@ -2049,7 +2088,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
         var accumulatedHeight = 0
         for ((index, loadedChapter) in loadedChapters.withIndex()) {
-            val separatorHeight = loadedChapter.separatorView?.height ?: 0
+            val separatorHeight = loadedChapter.separatorView?.visibleHeight() ?: 0
             if (index == currentChapterIndex) {
                 val chapterHeight =
                     loadedChapter.headerView.height + loadedChapter.block.container.height + separatorHeight
@@ -2072,7 +2111,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private fun maybeLoadNextChapterFromSlider() {
         if (!preferences.novelInfiniteScroll.get()) return
-        if (ttsController.isTtsAutoPlay || isLoadingNext || isRestoringScroll) return
+        if (ttsController.isTtsAutoPlay || isLoadingNext || isScrollGuarded) return
         scrollView.post {
             if (ttsController.isTtsAutoPlay) return@post
             val onLastLoaded = currentChapterIndex == (loadedChapters.size - 1).coerceAtLeast(0)

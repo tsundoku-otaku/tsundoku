@@ -159,4 +159,13 @@ class NovelWebViewStylerTest {
         )
         assertEquals(mapOf("oneShot" to "code", "append" to "v2"), baseline)
     }
+
+    @Test
+    fun `hidden chapter separator collapses the divider without removing it`() {
+        val css = NovelWebViewStyler.hideChapterSeparatorCss(hide = true)
+        assertTrue(".${NovelWebViewChapterMeta.CHAPTER_DIVIDER_CLASS}" in css)
+        assertTrue("height: 0 !important" in css && "border: none !important" in css)
+        assertFalse("display: none" in css)
+        assertEquals("", NovelWebViewStyler.hideChapterSeparatorCss(hide = false))
+    }
 }

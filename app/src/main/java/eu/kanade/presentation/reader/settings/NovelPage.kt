@@ -733,6 +733,12 @@ internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, re
             checked = infiniteScrollEnabled,
             onClick = { viewModel.preferences.novelInfiniteScroll.set(!infiniteScrollEnabled) },
         )
+        if (infiniteScrollEnabled) {
+            CheckboxItem(
+                label = stringResource(TDMR.strings.pref_novel_hide_chapter_separator),
+                pref = viewModel.preferences.novelHideChapterSeparator,
+            )
+        }
     }
 
     // Paged Mode (WebView only, experimental) - swipe/tap turns a page instead of scrolling.
