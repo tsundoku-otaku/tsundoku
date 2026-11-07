@@ -6,6 +6,7 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.view.ActionMode
 import android.view.GestureDetector
 import android.view.KeyEvent
@@ -41,6 +42,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.NovelConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ChapterQueue
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContentPipeline
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ContextMenuUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.ErrorFormatter
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.NovelPageLoader
@@ -658,6 +660,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }.apply {
             isFocusable = true
             isFocusableInTouchMode = true
+            if (preferences.novelTextSelectable.get() &&
+                preferences.novelForceDictionaryAction.get() &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+            ) {
+                setTextClassifier(ContextMenuUtils.createDictionaryTextClassifier(activity))
+            }
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true

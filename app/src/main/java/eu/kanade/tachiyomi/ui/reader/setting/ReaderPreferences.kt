@@ -247,6 +247,8 @@ class ReaderPreferences(
     val novelTapToScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tap_to_scroll", false)
     val novelTextSelectable: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_text_selectable", true)
 
+    val novelForceDictionaryAction: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_force_dictionary_action", false)
+
     // Block media elements (images, videos) in WebView and TextView readers
     val novelBlockMedia: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_block_media", false)
 
