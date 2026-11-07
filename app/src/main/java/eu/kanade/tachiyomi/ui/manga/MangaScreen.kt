@@ -75,6 +75,7 @@ import tachiyomi.domain.manga.model.CustomMangaInfo
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.isLocalNovel
@@ -208,7 +209,7 @@ class MangaScreen(
                 null
             },
             onTranslateClicked = viewModel::translateMangaDetails,
-            onTranslateDownloadedClicked = viewModel::translateDownloadedChapters,
+            onTranslateDownloadedClicked = { viewModel.translateDownloadedChapters() }.takeIf { successState.isNovel },
             onExportEpubClicked = viewModel::showExportEpubDialog.takeIf { successState.isNovel },
             onSearchChaptersClicked = {
                 navigator.push(ChapterSearchScreen(successState.manga.id))
@@ -428,6 +429,26 @@ class MangaScreen(
                     onDismissRequest = onDismissRequest,
                     onExport = { uri, options ->
                         viewModel.exportAsEpub(dialog.manga, dialog.chapters, uri, options)
+                    },
+                )
+            }
+            is MangaViewModel.Dialog.ConfirmTranslateChapters -> {
+                AlertDialog(
+                    onDismissRequest = onDismissRequest,
+                    title = { Text(stringResource(TDMR.strings.action_translate_downloaded)) },
+                    text = {
+                        val count = dialog.chapters.size
+                        Text(pluralStringResource(TDMR.plurals.translate_chapters_confirm, count, count))
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.confirmTranslateChapters(dialog) }) {
+                            Text(stringResource(TDMR.strings.action_translate))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDismissRequest) {
+                            Text(stringResource(MR.strings.action_cancel))
+                        }
                     },
                 )
             }

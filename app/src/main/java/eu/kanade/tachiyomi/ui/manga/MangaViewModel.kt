@@ -101,6 +101,7 @@ import tachiyomi.domain.storage.service.StorageManager
 import tachiyomi.domain.track.interactor.GetTracks
 import tachiyomi.domain.translation.model.ChapterRef
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
+import tachiyomi.domain.translation.service.TranslationPreferences
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.source.local.isLocal
@@ -144,6 +145,7 @@ class MangaViewModel(
     private val filterChaptersForDownload: FilterChaptersForDownload = Injekt.get(),
     private val translatedChapterRepository: TranslatedChapterRepository = Injekt.get(),
     private val translationService: TranslationService = Injekt.get(),
+    private val translationPreferences: TranslationPreferences = Injekt.get(),
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get(),
     val snackbarHostState: SnackbarHostState = SnackbarHostState(),
@@ -1372,6 +1374,11 @@ class MangaViewModel(
         data object ClearCustomInfo : Dialog
         data class TranslateMangaDetails(val manga: Manga) : Dialog
         data class ExportEpub(val manga: Manga, val chapters: List<Chapter>) : Dialog
+        data class ConfirmTranslateChapters(
+            val manga: Manga,
+            val chapters: List<Chapter>,
+            val forceRetranslate: Boolean,
+        ) : Dialog
 
         /** [result] is null while counting is in progress. */
         data class WordCount(
@@ -1687,7 +1694,7 @@ class MangaViewModel(
     }
 
     /**
-     * Queue all downloaded chapters for translation.
+     * Ask to translate every downloaded chapter (every chapter for local novels).
      * @param forceRetranslate if true, retranslate even already-translated chapters.
      */
     fun translateDownloadedChapters(forceRetranslate: Boolean = false) {
@@ -1695,9 +1702,11 @@ class MangaViewModel(
         val manga = state.manga
 
         viewModelScope.launchIO {
-            // Get all downloaded chapters
+            if (!checkTranslationEnabled()) return@launchIO
+
+            val isLocalEntry = manga.isLocalNovel()
             val downloadedChapters = state.chapters.filter { item ->
-                item.downloadState == Download.State.DOWNLOADED
+                isLocalEntry || item.downloadState == Download.State.DOWNLOADED
             }.map { it.chapter }
 
             if (downloadedChapters.isEmpty()) {
@@ -1709,14 +1718,7 @@ class MangaViewModel(
                 return@launchIO
             }
 
-            // Filter out already-translated chapters unless forcing
-            val chaptersToTranslate = if (forceRetranslate) {
-                downloadedChapters
-            } else {
-                val translatedIds = translatedChapterIdsFor(manga, downloadedChapters)
-                downloadedChapters.filter { it.id !in translatedIds }
-            }
-
+            val chaptersToTranslate = untranslatedChapters(manga, downloadedChapters, forceRetranslate)
             if (chaptersToTranslate.isEmpty()) {
                 withUIContext {
                     snackbarHostState.showSnackbar(
@@ -1726,21 +1728,8 @@ class MangaViewModel(
                 return@launchIO
             }
 
-            // Queue chapters for translation
-            translationService.enqueueAll(
-                manga,
-                chaptersToTranslate,
-                TranslationService.PRIORITY_NORMAL,
-                forceRetranslate,
-            )
-
-            // Start background worker with notification
-            TranslationJob.start(context)
-
-            withUIContext {
-                snackbarHostState.showSnackbar(
-                    context.stringResource(TDMR.strings.translation_queued, chaptersToTranslate.size),
-                )
+            updateSuccessState {
+                it.copy(dialog = Dialog.ConfirmTranslateChapters(manga, chaptersToTranslate, forceRetranslate))
             }
         }
     }
@@ -1753,13 +1742,9 @@ class MangaViewModel(
         val manga = state.manga
 
         viewModelScope.launchIO {
-            val chaptersToTranslate = if (forceRetranslate) {
-                chapters
-            } else {
-                val translatedIds = translatedChapterIdsFor(manga, chapters)
-                chapters.filter { it.id !in translatedIds }
-            }
+            if (!checkTranslationEnabled()) return@launchIO
 
+            val chaptersToTranslate = untranslatedChapters(manga, chapters, forceRetranslate)
             if (chaptersToTranslate.isEmpty()) {
                 withUIContext {
                     snackbarHostState.showSnackbar(
@@ -1769,19 +1754,42 @@ class MangaViewModel(
                 return@launchIO
             }
 
-            translationService.enqueueAll(
-                manga,
-                chaptersToTranslate,
-                TranslationService.PRIORITY_NORMAL,
-                forceRetranslate,
-            )
-            TranslationJob.start(context)
+            queueTranslations(manga, chaptersToTranslate, forceRetranslate)
+        }
+    }
 
-            withUIContext {
-                snackbarHostState.showSnackbar(
-                    context.stringResource(TDMR.strings.translation_queued, chaptersToTranslate.size),
-                )
-            }
+    fun confirmTranslateChapters(dialog: Dialog.ConfirmTranslateChapters) {
+        dismissDialog()
+        viewModelScope.launchIO {
+            queueTranslations(dialog.manga, dialog.chapters, dialog.forceRetranslate)
+        }
+    }
+
+    private suspend fun checkTranslationEnabled(): Boolean {
+        if (translationPreferences.translationEnabled().get()) return true
+        withUIContext {
+            snackbarHostState.showSnackbar(context.stringResource(TDMR.strings.translation_disabled))
+        }
+        return false
+    }
+
+    private suspend fun untranslatedChapters(
+        manga: Manga,
+        chapters: List<Chapter>,
+        forceRetranslate: Boolean,
+    ): List<Chapter> {
+        if (forceRetranslate) return chapters
+        val translatedIds = translatedChapterIdsFor(manga, chapters)
+        return chapters.filter { it.id !in translatedIds }
+    }
+
+    private suspend fun queueTranslations(manga: Manga, chapters: List<Chapter>, forceRetranslate: Boolean) {
+        translationService.enqueueAll(manga, chapters, TranslationService.PRIORITY_NORMAL, forceRetranslate)
+        TranslationJob.start(context)
+        withUIContext {
+            snackbarHostState.showSnackbar(
+                context.stringResource(TDMR.strings.translation_queued, chapters.size),
+            )
         }
     }
 
