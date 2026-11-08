@@ -45,6 +45,7 @@ import eu.kanade.tachiyomi.network.interceptor.InteractiveRateLimitBypass
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.rateLimitHost
+import eu.kanade.tachiyomi.ui.category.failureMessage
 import eu.kanade.tachiyomi.ui.reader.quote.QuoteManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
@@ -70,6 +71,7 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
 import tachiyomi.core.common.preference.mapAsCheckboxState
+import tachiyomi.core.common.preference.toCommonCheckboxState
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
@@ -472,13 +474,7 @@ class MangaViewModel(
 
                 // Now check if user previously set categories, when available
                 // Filter categories based on content type (manga vs novel)
-                val isNovel = state.manga.isNovel
-                val contentType = if (isNovel) Category.CONTENT_TYPE_NOVEL else Category.CONTENT_TYPE_MANGA
-                val allCategories = getCategories()
-                // Show content-type specific + universal (CONTENT_TYPE_ALL) categories
-                val categories = allCategories.filter {
-                    it.contentType == contentType || it.contentType == Category.CONTENT_TYPE_ALL
-                }
+                val categories = getCategoriesFor(setOf(state.manga.categoryContentType))
                 // Normalize URL to ensure leading slash for JsSource/CustomNovelSource path convention
                 state.source?.let { src ->
                     val normalizedUrl = eu.kanade.tachiyomi.util.source.normalizeSourcePath(src, manga.url)
@@ -518,13 +514,7 @@ class MangaViewModel(
         val manga = successState?.manga ?: return
         val source = successState?.source ?: return
         viewModelScope.launch {
-            // Filter categories based on content type (manga vs novel)
-            val isNovel = manga.isNovel
-            val contentType = if (isNovel) Category.CONTENT_TYPE_NOVEL else Category.CONTENT_TYPE_MANGA
-            val allCategories = getCategories()
-            val categories = allCategories.filter {
-                it.contentType == contentType || it.contentType == Category.CONTENT_TYPE_ALL
-            }
+            val categories = getCategoriesFor(setOf(manga.categoryContentType))
             val selection = getMangaCategoryIds(manga)
             updateSuccessState { successState ->
                 successState.copy(
@@ -535,6 +525,55 @@ class MangaViewModel(
                 )
             }
         }
+    }
+
+    private var duplicatesCategoryWrite: Job? = null
+
+    fun showChangeDuplicatesCategoryDialog(mangas: List<Manga>) {
+        val duplicatesDialog = successState?.dialog as? Dialog.DuplicateManga ?: return
+        val returnTo = duplicatesDialog.copy(selectedIds = mangas.mapTo(HashSet()) { it.id })
+        val pendingWrite = duplicatesCategoryWrite
+        viewModelScope.launchIO {
+            // Read the categories only after the previous change landed
+            pendingWrite?.join()
+            val categories = getCategoriesFor(mangas.mapTo(HashSet()) { it.categoryContentType })
+            if (categories.isEmpty() && getCategories().isNotEmpty()) {
+                withUIContext { context.toast(TDMR.strings.duplicate_no_shared_category) }
+                return@launchIO
+            }
+            val perManga = getCategories.awaitForMangas(mangas.map { it.id })
+            val initialSelection = categories.toCommonCheckboxState(
+                { it.id },
+                mangas.map { manga -> perManga[manga.id].orEmpty().mapTo(HashSet()) { it.id } },
+            )
+            withUIContext {
+                updateSuccessState {
+                    if (it.dialog !== duplicatesDialog) return@updateSuccessState it
+                    it.copy(dialog = Dialog.ChangeDuplicatesCategory(mangas, initialSelection, returnTo))
+                }
+            }
+        }
+    }
+
+    fun setDuplicatesCategories(
+        dialog: Dialog.ChangeDuplicatesCategory,
+        addCategories: List<Long>,
+        removeCategories: List<Long>,
+    ) {
+        // The category dialog already put the duplicates dialog back; drop its selection
+        // now that the change is applied so it doesn't read as still pending.
+        updateSuccessState {
+            if (it.dialog != dialog.returnTo) return@updateSuccessState it
+            it.copy(dialog = dialog.returnTo.copy(selectedIds = emptySet()))
+        }
+        duplicatesCategoryWrite = viewModelScope.launchNonCancellable {
+            val result = setMangaCategories.update(dialog.mangas.map { it.id }, addCategories, removeCategories)
+            result.failureMessage()?.let { withUIContext { context.toast(it) } }
+        }
+    }
+
+    fun restoreDialog(dialog: Dialog) {
+        updateSuccessState { it.copy(dialog = dialog) }
     }
 
     fun showSetFetchIntervalDialog() {
@@ -606,6 +645,17 @@ class MangaViewModel(
     suspend fun getCategories(): List<Category> {
         return getCategories.await().filterNot { it.isSystemCategory }
     }
+
+    // Categories of the given content types plus the universal ones; a mix only fits the universal ones
+    private suspend fun getCategoriesFor(contentTypes: Set<Int>): List<Category> {
+        val contentType = contentTypes.singleOrNull()
+        return getCategories().filter {
+            it.contentType == Category.CONTENT_TYPE_ALL || it.contentType == contentType
+        }
+    }
+
+    private val Manga.categoryContentType: Int
+        get() = if (isNovel) Category.CONTENT_TYPE_NOVEL else Category.CONTENT_TYPE_MANGA
 
     /**
      * Gets the category id's the manga is in, if the manga is not in a category, returns the default id.
@@ -1354,6 +1404,11 @@ class MangaViewModel(
             val manga: Manga,
             val initialSelection: List<CheckboxState<Category>>,
         ) : Dialog
+        data class ChangeDuplicatesCategory(
+            val mangas: List<Manga>,
+            val initialSelection: List<CheckboxState<Category>>,
+            val returnTo: DuplicateManga,
+        ) : Dialog
         data class DeleteChapters(val chapters: List<Chapter>) : Dialog
         data class RemoveChaptersFromDb(val chapters: List<Chapter>) : Dialog
         data class DuplicateManga(
@@ -1361,6 +1416,7 @@ class MangaViewModel(
             val duplicates: List<MangaWithChapterCount>,
             // False for an entry already in the library, where toggling favorite would remove it.
             val canAddAnyway: Boolean,
+            val selectedIds: Set<Long> = emptySet(),
         ) : Dialog
         data class SimilarNovels(
             val similarNovels: List<MangaWithChapterCount>,
