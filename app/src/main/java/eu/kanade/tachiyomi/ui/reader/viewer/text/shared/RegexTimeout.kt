@@ -88,7 +88,13 @@ internal fun <T> runWithRegexTimeout(timeoutMs: Long, block: () -> T): T {
     try {
         return future.get(timeoutMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
     } catch (e: TimeoutException) {
-        abandon(state)
+        if (abandon(state)) {
+            try {
+                return future.get()
+            } catch (failed: ExecutionException) {
+                throw failed.cause ?: failed
+            }
+        }
         future.cancel(true)
         throw RegexTimeoutException()
     } catch (e: InterruptedException) {
@@ -101,15 +107,17 @@ internal fun <T> runWithRegexTimeout(timeoutMs: Long, block: () -> T): T {
 }
 
 // A task cancelled before it starts never runs its finally, so only a started one may count as stuck.
-private fun abandon(state: AtomicInteger) {
+// True when the task already finished, so its result can still be used.
+private fun abandon(state: AtomicInteger): Boolean {
     while (true) {
         when (state.get()) {
-            TASK_PENDING -> if (state.compareAndSet(TASK_PENDING, TASK_ABANDONED)) return
+            TASK_PENDING -> if (state.compareAndSet(TASK_PENDING, TASK_ABANDONED)) return false
             TASK_RUNNING -> if (state.compareAndSet(TASK_RUNNING, TASK_ABANDONED)) {
                 stuckRegexWorkers.incrementAndGet()
-                return
+                return false
             }
-            else -> return
+            TASK_DONE -> return true
+            else -> return false
         }
     }
 }
