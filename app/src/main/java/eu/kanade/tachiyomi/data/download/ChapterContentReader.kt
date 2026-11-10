@@ -8,6 +8,7 @@ import mihon.core.archive.rewriteResolvedAssetRefs
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import java.io.Closeable
 
 /**
  * Shared utility for reading text content (HTML / TXT) from downloaded chapters.
@@ -48,6 +49,54 @@ class ChapterContentReader(
         }
     }
 
+    /**
+     * Opens a reader for the downloaded content of many chapters of [manga]. Each [DownloadedContentReader.read]
+     * returns the same as [readDownloadedContent] for that chapter, but the manga's download directory is
+     * listed once for the whole reader instead of being looked up again for every chapter.
+     *
+     * The reader is not thread-safe: use it from one coroutine at a time. It holds no open files, so
+     * closing it only drops the cached listing; a listing taken before new downloads finish will not
+     * see them, so open a new reader per scan.
+     */
+    fun openDownloadedContentReader(
+        manga: Manga,
+        source: eu.kanade.tachiyomi.source.Source,
+    ): DownloadedContentReader = DownloadedContentReader(manga, source)
+
+    inner class DownloadedContentReader internal constructor(
+        private val manga: Manga,
+        private val source: eu.kanade.tachiyomi.source.Source,
+    ) : Closeable {
+        private var chapterFiles: Map<String, UniFile>? = null
+
+        /** The downloaded content of [chapter], or `null` if nothing was found. */
+        fun read(chapter: Chapter): String? {
+            val files = chapterFiles ?: listMangaDir().also { chapterFiles = it }
+            val chapterDirOrCbz = downloadProvider
+                .getValidChapterDirNames(chapter.name, chapter.scanlator, chapter.url)
+                .firstNotNullOfOrNull { files[it] }
+            val content = chapterDirOrCbz?.let {
+                try {
+                    readChapterDirOrCbz(it)
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e) { "Failed to read downloaded chapter: ${chapter.name}" }
+                    null
+                }
+            }
+            // Anything the listing cannot answer goes through the regular per-chapter lookup.
+            return content ?: readDownloadedContent(manga, chapter, source)
+        }
+
+        private fun listMangaDir(): Map<String, UniFile> =
+            downloadProvider.findMangaDir(manga.title, source)?.listFiles().orEmpty()
+                .mapNotNull { file -> file.name?.let { name -> name to file } }
+                .toMap()
+
+        override fun close() {
+            chapterFiles = null
+        }
+    }
+
     // ── Internals ───────────────────────────────────────────────────
 
     private fun readFromChapterDir(
@@ -63,6 +112,10 @@ class ChapterContentReader(
             source,
         ) ?: return null
 
+        return readChapterDirOrCbz(chapterDirOrCbz)
+    }
+
+    private fun readChapterDirOrCbz(chapterDirOrCbz: UniFile): String? {
         val isCbz = chapterDirOrCbz.name?.let { it.endsWith(".cbz") || it.endsWith(".zip") } == true
 
         return if (isCbz) {

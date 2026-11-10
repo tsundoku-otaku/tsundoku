@@ -1,0 +1,4 @@
+Plain text chapter.
+Second line here	with a tab.
+
+New paragraph   with  extra   spaces.
