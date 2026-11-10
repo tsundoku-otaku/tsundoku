@@ -37,6 +37,7 @@ import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.rateLimitHost
+import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchTarget
 import eu.kanade.tachiyomi.ui.reader.loader.ChapterLoader
 import eu.kanade.tachiyomi.ui.reader.loader.DownloadPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.InsertPage
@@ -161,6 +162,22 @@ class ReaderViewModel @JvmOverloads constructor(
     private val initialChapterId = savedState.get<Long>("chapter") ?: -1L
 
     val hasValidArgs = mangaId != -1L && initialChapterId != -1L
+
+    /** A chapter search match the reader was opened at; consumed by [takeSearchTarget]. */
+    private var searchTarget: ChapterSearchTarget? =
+        savedState.get<String>(SEARCH_TARGET_KEY)?.let(ChapterSearchTarget::decode)
+
+    /**
+     * Returns the chapter search match to open [chapterId] at, once: later calls, and calls for
+     * other chapters, return null, so the reader falls back to the saved progress.
+     */
+    fun takeSearchTarget(chapterId: Long?): ChapterSearchTarget? {
+        if (chapterId != initialChapterId) return null
+        return searchTarget?.also {
+            searchTarget = null
+            savedState.remove<String>(SEARCH_TARGET_KEY)
+        }
+    }
 
     private val eventChannel = Channel<Event>()
     val eventFlow = eventChannel.receiveAsFlow()
@@ -1859,5 +1876,10 @@ class ReaderViewModel @JvmOverloads constructor(
         data class SavedImage(val result: SaveImageResult) : Event
         data class ShareImage(val uri: Uri, val page: ReaderPage) : Event
         data class CopyImage(val uri: Uri) : Event
+    }
+
+    companion object {
+        /** Intent extra holding the encoded [ChapterSearchTarget] the reader was opened at. */
+        const val SEARCH_TARGET_KEY = "search_target"
     }
 }
