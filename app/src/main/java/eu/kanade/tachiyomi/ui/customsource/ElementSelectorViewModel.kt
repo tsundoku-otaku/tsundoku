@@ -154,7 +154,8 @@ class ElementSelectorViewModel(
                 initialSourceName.ifEmpty { "Custom Source" }
             },
             baseUrl = baseUrl,
-            language = normalizeLanguageCode(language.ifBlank { detectedLanguageState.value }),
+            language = language.trim().takeIf { it.isNotEmpty() }?.lowercase()?.replace('_', '-')
+                ?: normalizeLanguageCode(detectedLanguageState.value),
             reverseChapters = selectorConfig.reverseChapters,
             popularUrl = popularUrl,
             latestUrl = latestUrl,

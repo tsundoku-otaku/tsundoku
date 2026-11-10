@@ -212,15 +212,17 @@ private fun findFieldRecursively(target: Any, fieldName: String): java.lang.refl
 // Swaps the source's OkHttpClient. Handles a plain backing field (`val client = ...`) and a lazy
 // delegate (`val client by lazy`). A getter-only client (HttpSource's default) has no storage to swap.
 private fun replaceSourceClient(target: HttpSource, client: OkHttpClient): Boolean {
+    findFieldRecursively(target, "client\$delegate")?.let { field ->
+        runCatching {
+            field.isAccessible = true
+            field.set(target, lazyOf(client))
+        }
+    }
+    if (target.client === client) return true
     findFieldRecursively(target, "client")?.let { field ->
         runCatching {
             field.isAccessible = true
             field.set(target, client)
-        }
-    } ?: findFieldRecursively(target, "client\$delegate")?.let { field ->
-        runCatching {
-            field.isAccessible = true
-            field.set(target, lazyOf(client))
         }
     }
     return target.client === client
@@ -487,6 +489,11 @@ class CustomNovelSource(
         val originalBaseUrl: String?,
     )
 
+    private class FailedBase(val original: Any, val error: Throwable)
+
+    @Volatile
+    private var failedBase: FailedBase? = null
+
     @Volatile
     private var resolvedBase: ResolvedBase? = null
     private val resolveLock = Any()
@@ -505,8 +512,10 @@ class CustomNovelSource(
             val original = Injekt.get<SourceManager>().get(sourceId)
                 ?: throw IllegalStateException("Base source for $name is not installed or not loaded yet")
             resolvedBase?.takeIf { it.original === original }?.let { return it.source }
+            failedBase?.takeIf { it.original === original }?.let { throw it.error }
             return synchronized(resolveLock) {
                 resolvedBase?.takeIf { it.original === original }?.let { return@synchronized it.source }
+                failedBase?.takeIf { it.original === original }?.let { throw it.error }
                 if (original is CustomNovelSource) {
                     throw IllegalStateException("$name can't be based on another custom source")
                 }
@@ -520,7 +529,12 @@ class CustomNovelSource(
                 val patched = when {
                     catalogue is JsSource && baseUrl.isNotBlank() -> catalogue.withSiteOverride(baseUrl)
                     catalogue is HttpSource && baseUrl.isNotBlank() ->
-                        patchHttpSourceForCustomBaseUrl(catalogue, baseUrl)
+                        try {
+                            patchHttpSourceForCustomBaseUrl(catalogue, baseUrl)
+                        } catch (e: IllegalStateException) {
+                            failedBase = FailedBase(original, e)
+                            throw e
+                        }
                     else -> catalogue
                 }
                 resolvedBase = ResolvedBase(original, patched, originalBaseUrl)
@@ -766,9 +780,13 @@ class CustomNovelSource(
     private suspend fun fetchChapterListPage(url: String, firstPage: Boolean): Document? {
         if (firstPage) return client.newCall(GET(url, headers)).awaitSuccess().asJsoup()
         val response = client.newCall(GET(url, headers)).await()
-        if (!response.isSuccessful) {
+        if (response.code == 404 || response.code == 410) {
             response.close()
             return null
+        }
+        if (!response.isSuccessful) {
+            response.close()
+            throw IllegalStateException("HTTP error ${response.code} on chapter list page $url")
         }
         return response.asJsoup()
     }
