@@ -15,12 +15,12 @@
 
     document.addEventListener('click', function (e) {
         var anchor = e.target && e.target.closest ? e.target.closest('a[href^="#"]') : null;
-        if (!anchor) return;
+        if (!anchor || anchor.isContentEditable) return;
         var id = decode(anchor.getAttribute('href').substring(1));
         if (!id) return;
         var selector = '[id="' + cssEscape(id) + '"], a[name="' + cssEscape(id) + '"]';
         var chapter = anchor.closest('__CHAPTER_TAG_NAME__');
-        var target = (chapter && chapter.querySelector(selector)) || document.querySelector(selector);
+        var target = (chapter || document).querySelector(selector);
         if (!target) return;
         e.preventDefault();
         e.stopPropagation();
