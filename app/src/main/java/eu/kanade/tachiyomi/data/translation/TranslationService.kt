@@ -17,6 +17,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -473,7 +474,7 @@ class TranslationService(
         val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
         if (plainText.replace(MEDIA_PLACEHOLDER_REGEX, "").isBlank()) {
             logcat(LogPriority.DEBUG) { "Nothing to translate in ${locator.chapterName}" }
-            val html = TranslationHtmlUtils.buildTranslatedHtml(title, emptyList()) +
+            val html = TranslationHtmlUtils.buildTranslatedHtml(translateTitle(title, task, engine), emptyList()) +
                 preservedImages.values.joinToString("")
             saveTranslation(locator, task, engine.id.toString(), html)
             return
@@ -647,7 +648,12 @@ class TranslationService(
             // Rate limiting between chunks
             val delayMs = translationPreferences.rateLimitDelayMs().get()
             if (delayMs > 0 && chunkIndex < chunks.size - 1) {
-                delay(delayMs.toLong())
+                try {
+                    delay(delayMs.toLong())
+                } catch (e: CancellationException) {
+                    saveProgress(chunkIndex + 1)
+                    throw e
+                }
             }
         }
 
@@ -760,10 +766,12 @@ class TranslationService(
             translatedContent = html,
             dateTranslated = System.currentTimeMillis(),
         )
-        try {
-            translatedChapterRepository.upsertTmpTranslation(locator, partial)
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e) { "Failed to save partial translation" }
+        withContext(NonCancellable) {
+            try {
+                translatedChapterRepository.upsertTmpTranslation(locator, partial)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to save partial translation" }
+            }
         }
     }
 
