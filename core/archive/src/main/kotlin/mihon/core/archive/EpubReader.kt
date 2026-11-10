@@ -396,7 +396,7 @@ class EpubReader(private val reader: ArchiveReader) : Closeable by reader {
 
         val entryPath = when {
             pathPart.isBlank() -> packagePath
-            getInputStream(pathPart) != null -> pathPart
+            getInputStream(pathPart)?.use { true } == true -> pathPart
             else -> resolveZipPath(packageBasePath, pathPart)
         }
 
