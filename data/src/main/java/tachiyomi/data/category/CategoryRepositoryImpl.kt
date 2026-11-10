@@ -80,12 +80,15 @@ class CategoryRepositoryImpl(
         return database.categoriesQueries.getMangaIdsNotMatchingType(categoryId, isNovel).awaitAsList()
     }
 
-    override suspend fun updateContentType(categoryId: Long, contentType: Int) {
-        database.transaction {
-            contentType.isNovelTypeOrNull()?.let {
+    override suspend fun updateContentType(categoryId: Long, contentType: Int): List<Long> {
+        return database.transactionWithResult {
+            val removed = contentType.isNovelTypeOrNull()?.let {
+                val ids = database.categoriesQueries.getMangaIdsNotMatchingType(categoryId, it).awaitAsList()
                 database.categoriesQueries.deleteMangaNotMatchingType(categoryId, it)
-            }
+                ids
+            }.orEmpty()
             database.categoriesQueries.updateContentType(contentType.toLong(), categoryId)
+            removed
         }
     }
 
