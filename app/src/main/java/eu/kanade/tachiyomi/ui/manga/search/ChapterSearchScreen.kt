@@ -131,25 +131,24 @@ class ChapterSearchScreen(
 
         fun updateOptions(options: ChapterSearchOptions) {
             mutableState.update { it.copy(options = options, regexError = null) }
-            if (state.value.submittedQuery != null) search()
+            state.value.submittedQuery?.let(::search)
         }
 
         fun updateRange(from: String, to: String) {
             mutableState.update { it.copy(rangeFrom = from, rangeTo = to) }
             rangeJob?.cancel()
-            if (state.value.submittedQuery == null) return
+            val submitted = state.value.submittedQuery ?: return
             rangeJob = viewModelScope.launch {
                 delay(RANGE_SEARCH_DELAY)
-                search()
+                search(submitted)
             }
         }
 
-        fun search() {
+        fun search(query: String = state.value.query) {
             rangeJob?.cancel()
             searchJob?.cancel()
             val generation = searchGeneration.incrementAndGet()
             val current = state.value
-            val query = current.query
             if (query.isEmpty()) {
                 mutableState.update { it.copy(isSearching = false, pendingSearch = false) }
                 return
@@ -174,7 +173,16 @@ class ChapterSearchScreen(
             val from = parseRangeBound(current.rangeFrom)
             val to = parseRangeBound(current.rangeTo)
             if (from == null || to == null) {
-                mutableState.update { it.copy(isSearching = false, pendingSearch = false) }
+                mutableState.update {
+                    it.copy(
+                        isSearching = false,
+                        pendingSearch = false,
+                        results = emptyList(),
+                        searchedCount = 0,
+                        searchTotal = 0,
+                        failedCount = 0,
+                    )
+                }
                 return
             }
             val chapters = if (from.isNaN() && to.isNaN()) {
