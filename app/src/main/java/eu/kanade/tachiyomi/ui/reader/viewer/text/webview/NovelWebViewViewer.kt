@@ -29,6 +29,8 @@ import android.widget.FrameLayout
 import androidx.annotation.Keep
 import androidx.lifecycle.Lifecycle
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchTarget
+import eu.kanade.tachiyomi.ui.manga.search.ChapterTextSearch
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -81,6 +83,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
@@ -146,6 +149,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // stale event or the programmatic restore scroll can't persist against the new chapter's page.
     private var isRestoringScroll = false
     private var scrollRestoreToken = 0
+
+    // A chapter search match to show once the scroll restore with this token lands.
+    private var pendingSearchTarget: ChapterSearchTarget? = null
+    private var pendingSearchChapterId: Long? = null
+    private var pendingSearchToken = -1
 
     // Blocks flushing the backward-entry 1f baseline until a real scroll sample replaces it.
     private var awaitingFirstScrollSample = false
@@ -902,18 +910,28 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
         val savedProgress = page.chapter.chapter.last_page_read
         val isRead = page.chapter.chapter.read
+        // Opened at a chapter search match: restore to its relative position first, then
+        // showSearchMatch moves onto the match itself once that restore lands.
+        val searchTarget = activity.viewModel.takeSearchTarget(page.chapter.chapter.id)
 
-        val shouldRestore = if (!isRead) {
+        val shouldRestore = if (searchTarget != null) {
+            true
+        } else if (!isRead) {
             savedProgress > 0 && savedProgress <= 100
         } else {
             libraryPreferences.novelReadProgress100.get() && savedProgress > 0 && savedProgress <= 100
         }
         if (shouldRestore) {
-            val progress = savedProgress / 100f
+            val progress = searchTarget?.position ?: (savedProgress / 100f)
             lastSavedProgress = progress
             activity.onNovelProgressChanged(progress)
             isRestoringScroll = true
             val token = ++scrollRestoreToken
+            if (searchTarget != null) {
+                pendingSearchTarget = searchTarget
+                pendingSearchChapterId = page.chapter.chapter.id
+                pendingSearchToken = token
+            }
 
             if (isPagedModeActive()) {
                 evaluateJavascriptSafe(
@@ -2441,6 +2459,99 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             "(function(){ if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime && window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking) window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking(); })();",
             null,
         )
+        val searchTarget = pendingSearchTarget
+        if (searchTarget != null && token == pendingSearchToken) {
+            pendingSearchTarget = null
+            pendingSearchToken = -1
+            showSearchMatch(searchTarget, pendingSearchChapterId)
+        }
+    }
+
+    /**
+     * Highlights the chapter search match the reader was opened at and brings it into view, or
+     * leaves the reader at the match's relative position when the page no longer holds it.
+     */
+    private fun showSearchMatch(target: ChapterSearchTarget, chapterId: Long?) {
+        val collectText = """
+            (function() {
+                var root = document.querySelector('$CHAPTER_TAG_NAME[$CHAPTER_ID_ATTR="$chapterId"]') || document.body;
+                var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+                var nodes = [];
+                var text = '';
+                var node;
+                while ((node = walker.nextNode())) {
+                    var parent = node.parentNode ? node.parentNode.nodeName : '';
+                    if (parent === 'SCRIPT' || parent === 'STYLE' || parent === 'NOSCRIPT') continue;
+                    nodes.push(node);
+                    text += node.nodeValue;
+                }
+                window.__tdSearchNodes = nodes;
+                return text;
+            })();
+        """.trimIndent()
+        evaluateJavascriptSafe(collectText) { result ->
+            val text =
+                runCatching { Json.decodeFromString<String>(result) }.getOrNull() ?: return@evaluateJavascriptSafe
+            val match = runCatching {
+                ChapterTextSearch.locateMatch(
+                    text,
+                    target.buildRegex(),
+                    target.matchIndex,
+                    target.matchCount,
+                    target.position,
+                )
+            }.getOrNull() ?: return@evaluateJavascriptSafe
+            val highlightColor = ThemeUtils.colorToHex(preferences.novelTtsHighlightColor.get())
+            val highlightTextColor = ThemeUtils.colorToHex(preferences.novelTtsHighlightTextColor.get())
+            evaluateJavascriptSafe(
+                """
+                (function(start, end) {
+                    var nodes = window.__tdSearchNodes || [];
+                    window.__tdSearchNodes = null;
+                    if (!document.getElementById('td-search-hit-style')) {
+                        var style = document.createElement('style');
+                        style.id = 'td-search-hit-style';
+                        style.textContent = '.td-search-hit{background:$highlightColor!important;color:$highlightTextColor!important;border-radius:3px;}';
+                        document.head.appendChild(style);
+                    }
+                    var offset = 0;
+                    var first = null;
+                    for (var i = 0; i < nodes.length && offset < end; i++) {
+                        var node = nodes[i];
+                        var nodeStart = offset;
+                        offset += node.nodeValue.length;
+                        if (offset <= start) continue;
+                        var from = Math.max(start - nodeStart, 0);
+                        var to = Math.min(end - nodeStart, node.nodeValue.length);
+                        if (to <= from) continue;
+                        var range = document.createRange();
+                        range.setStart(node, from);
+                        range.setEnd(node, to);
+                        var hit = document.createElement('span');
+                        hit.className = 'td-search-hit';
+                        range.surroundContents(hit);
+                        if (!first) first = hit;
+                    }
+                    if (!first) return;
+                    var runtime = window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime;
+                    if (runtime && runtime.pagingEnabled && window.__tdPagedRepaginate) {
+                        // Paged mode lays the chapter out in columns one page wide and shifts them
+                        // sideways, so the match's page follows from its on-screen offset.
+                        var width = document.body.clientWidth || window.innerWidth || 1;
+                        var left = first.getBoundingClientRect().left - document.body.getBoundingClientRect().left;
+                        var count = runtime.pageCount || 1;
+                        var page = (runtime.pageIndex || 0) + Math.floor(left / width);
+                        page = Math.max(0, Math.min(page, count - 1));
+                        window.__tdPagedRepaginate((page + 1) / count);
+                    } else {
+                        var top = first.getBoundingClientRect().top + (window.scrollY || 0);
+                        window.scrollTo(0, Math.max(0, top - window.innerHeight / 3));
+                        window.dispatchEvent(new Event('scroll'));
+                    }
+                })(${match.first}, ${match.last + 1});
+                """.trimIndent(),
+            )
+        }
     }
 
     private suspend fun awaitPageText(page: ReaderPage, loader: PageLoader, timeoutMs: Long): Boolean =
