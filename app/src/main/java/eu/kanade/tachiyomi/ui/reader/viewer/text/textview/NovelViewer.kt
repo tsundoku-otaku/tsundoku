@@ -21,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
+import androidx.core.view.ViewCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
@@ -92,6 +93,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var currentPage: ReaderPage? = null
     private var currentChapters: ViewerChapters? = null
     private var renderGeneration = 0L
+    private var contentGeneration = 0L
 
     private data class LoadedChapter(
         val chapter: ReaderChapter,
@@ -677,8 +679,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun reloadContent() {
         activity.runOnUiThread {
             currentChapters?.let {
-                contentContainer.removeAllViews()
-                chapterQueue.clear()
+                clearChapters()
                 setChapters(it)
             }
         }
@@ -1402,6 +1403,30 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
+    // Needs the old content still attached: NestedScrollView ignores a DOWN without children,
+    // and only a DOWN aborts a running fling.
+    private fun resetScrollGestureState() {
+        val down = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_DOWN, 0f, 0f, 0)
+        scrollView.onTouchEvent(down)
+        down.recycle()
+        val cancel = MotionEvent.obtain(0L, 0L, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+        gestureDetector.onTouchEvent(cancel)
+        scrollView.onInterceptTouchEvent(cancel)
+        scrollView.onTouchEvent(cancel)
+        cancel.recycle()
+        scrollView.stopNestedScroll(ViewCompat.TYPE_TOUCH)
+        scrollView.stopNestedScroll(ViewCompat.TYPE_NON_TOUCH)
+        isRestoringScroll = false
+        pendingRestoreChapterId = null
+        contentGeneration++
+    }
+
+    private fun clearChapters() {
+        resetScrollGestureState()
+        contentContainer.removeAllViews()
+        chapterQueue.clear()
+    }
+
     override fun setChapters(chapters: ViewerChapters) {
         renderGeneration++
         // A getPageList failure leaves the chapter in Error state with no pages - must be checked
@@ -1426,8 +1451,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
 
         if (!preferences.novelInfiniteScroll.get() || !isAlreadyLoaded) {
-            contentContainer.removeAllViews()
-            chapterQueue.clear()
+            clearChapters()
         }
 
         if (page.status == Page.State.Ready && !page.text.isNullOrEmpty()) {
@@ -1726,7 +1750,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             pendingRestoreProgress = progress
         } else {
             lastSavedProgress = 0f
+            val generation = contentGeneration
             scrollView.post {
+                if (generation != contentGeneration) return@post
                 isRestoringScroll = true
                 scrollView.scrollTo(0, 0)
                 isRestoringScroll = false
@@ -1844,9 +1870,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         if (loaded.chapter.chapter.id == pendingRestoreChapterId) {
             pendingRestoreChapterId = null
             val progress = pendingRestoreProgress
+            val generation = contentGeneration
             // doOnPreDraw fires once, after measure and layout, so setScrollProgress uses the final
             // content height rather than the empty block height present when restoreProgress ran.
             scrollView.doOnPreDraw {
+                if (generation != contentGeneration) return@doOnPreDraw
                 isRestoringScroll = true
                 setScrollProgress(progress)
                 logcat(LogPriority.DEBUG) { "NovelViewer: Scroll restored to ${(progress * 100).toInt()}%" }
@@ -1875,6 +1903,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var initialLoadingView: TextView? = null
 
     private fun showLoadingIndicator() {
+        resetScrollGestureState()
         contentContainer.removeAllViews()
 
         initialLoadingView = TextView(activity).apply {
@@ -1973,6 +2002,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         errorContainer.addView(summaryView)
         errorContainer.addView(buttonRow)
 
+        resetScrollGestureState()
         contentContainer.removeAllViews()
         contentContainer.addView(errorContainer)
     }
