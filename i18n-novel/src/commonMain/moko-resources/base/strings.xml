@@ -245,8 +245,7 @@
     <string name="word_count_not_downloaded">%1$s of %2$s chapters are not downloaded and were not counted.</string>
     <string name="word_count_unreadable_some">%1$s of %2$s chapters could not be read and were skipped.</string>
     <string name="word_density_indicator">Word density %1$d</string>
-    <string name="word_density_indicator_range">Word density indicator %1$d of %2$d: averages of %3$s–%4$s words per chapter.</string>
-    <string name="word_density_indicator_range_top">Word density indicator %1$d of %2$d: averages above %3$s words per chapter.</string>
+    <string name="word_density_indicator_range">Word density indicator %1$d: averages of %2$s–%3$s words per chapter.</string>
     <string name="action_remove_chapters">Remove chapters</string>
     <string name="action_clear_covers">Clear covers</string>
     <string name="action_clear_descriptions">Clear descriptions</string>
