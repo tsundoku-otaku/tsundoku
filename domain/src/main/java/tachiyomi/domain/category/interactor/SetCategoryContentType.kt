@@ -14,9 +14,7 @@ class SetCategoryContentType(
 
     suspend fun await(categoryId: Long, contentType: Int): Result = withNonCancellableContext {
         try {
-            val removed = categoryRepository.getMangaIdsNotMatchingType(categoryId, contentType)
-            categoryRepository.updateContentType(categoryId, contentType)
-            Result.Success(removed)
+            Result.Success(categoryRepository.updateContentType(categoryId, contentType))
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             Result.InternalError(e)

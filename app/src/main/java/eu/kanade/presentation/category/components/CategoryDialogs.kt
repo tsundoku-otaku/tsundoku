@@ -179,8 +179,8 @@ fun CategoryEditDialog(
             TextButton(
                 enabled = name.isNotEmpty() && !nameError && (nameChanged || contentType != category.contentType),
                 onClick = {
-                    onConfirm(name, contentType)
                     onDismissRequest()
+                    onConfirm(name, contentType)
                 },
             ) {
                 Text(text = stringResource(MR.strings.action_ok))
