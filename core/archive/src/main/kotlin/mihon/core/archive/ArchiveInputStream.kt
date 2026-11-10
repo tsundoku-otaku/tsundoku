@@ -8,7 +8,11 @@ import java.nio.ByteBuffer
 import kotlin.concurrent.Volatile
 import mihon.core.archive.ArchiveEntry as MihonArchiveEntry
 
-internal class ArchiveInputStream(buffer: Long, size: Long) : InputStream() {
+/**
+ * @param streamableZip read [buffer] as a stream of ZIP entries starting at a local entry header, as
+ *   when opening a ZIP archive directly at one entry, instead of detecting the format of a whole archive.
+ */
+internal class ArchiveInputStream(buffer: Long, size: Long, streamableZip: Boolean = false) : InputStream() {
     private val lock = Any()
 
     @Volatile
@@ -19,8 +23,12 @@ internal class ArchiveInputStream(buffer: Long, size: Long) : InputStream() {
     init {
         try {
             Archive.setCharset(archive, Charsets.UTF_8.name().toByteArray())
-            Archive.readSupportFilterAll(archive)
-            Archive.readSupportFormatAll(archive)
+            if (streamableZip) {
+                Archive.readSupportFormatZipStreamable(archive)
+            } else {
+                Archive.readSupportFilterAll(archive)
+                Archive.readSupportFormatAll(archive)
+            }
             Archive.readOpenMemoryUnsafe(archive, buffer, size)
         } catch (e: ArchiveException) {
             close()
@@ -56,8 +64,16 @@ internal class ArchiveInputStream(buffer: Long, size: Long) : InputStream() {
         Archive.readFree(archive)
     }
 
+    /** Offset of the most recently read entry header within the archive. */
+    fun headerPosition(): Long = Archive.readHeaderPosition(archive)
+
+    /** Whether the most recently read entry header states the entry's size. */
+    var entrySizeKnown = false
+        private set
+
     fun getNextEntry(): MihonArchiveEntry? {
         return Archive.readNextHeader(archive).takeUnless { it == 0L }?.let { entry ->
+            entrySizeKnown = ArchiveEntry.sizeIsSet(entry)
             val name = ArchiveEntry.pathnameUtf8(entry) ?: ArchiveEntry.pathname(entry)?.decodeToString() ?: return null
             val isFile = ArchiveEntry.filetype(entry) == ArchiveEntry.AE_IFREG
             MihonArchiveEntry(name, isFile)

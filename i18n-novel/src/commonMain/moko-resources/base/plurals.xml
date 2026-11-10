@@ -14,4 +14,14 @@
         <item quantity="one">%d chapter could not be read</item>
         <item quantity="other">%d chapters could not be read</item>
     </plurals>
+
+    <plurals name="chapter_search_show_all">
+        <item quantity="one">Show all %d match</item>
+        <item quantity="other">Show all %d matches</item>
+    </plurals>
+
+    <plurals name="chapter_search_hidden_matches">
+        <item quantity="one">%d more match not shown</item>
+        <item quantity="other">%d more matches not shown</item>
+    </plurals>
 </resources>

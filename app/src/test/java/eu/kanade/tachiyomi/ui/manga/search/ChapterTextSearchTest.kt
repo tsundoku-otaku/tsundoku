@@ -93,4 +93,65 @@ class ChapterTextSearchTest {
             )
         }
     }
+
+    @Test
+    fun `snippets remember which match they show`() {
+        val result = ChapterTextSearch.findMatches(
+            "a b a b a",
+            ChapterTextSearch.buildRegex("a", ChapterSearchOptions()),
+            maxSnippets = 2,
+        )
+        assertEquals(listOf(0, 1), result.snippets.map { it.matchIndex })
+    }
+
+    @Test
+    fun `locate picks the same match when the reader text has the same matches`() {
+        val regex = ChapterTextSearch.buildRegex("rogue", ChapterSearchOptions())
+        // Reader text keeps paragraph breaks where the search text had spaces.
+        val readerText = "The Rogue ran.\n\nA rogue hid.\n\nNo ROGUE here."
+        assertEquals(
+            18 until 23,
+            ChapterTextSearch.locateMatch(readerText, regex, matchIndex = 1, matchCount = 3, position = 0.4f),
+        )
+        assertEquals(
+            4 until 9,
+            ChapterTextSearch.locateMatch(readerText, regex, matchIndex = 0, matchCount = 3, position = 0.9f),
+        )
+    }
+
+    @Test
+    fun `locate falls back to the match nearest the search position when counts differ`() {
+        val regex = ChapterTextSearch.buildRegex("x", ChapterSearchOptions())
+        val readerText = "x" + ".".repeat(98) + "x"
+        assertEquals(
+            99 until 100,
+            ChapterTextSearch.locateMatch(readerText, regex, matchIndex = 0, matchCount = 5, position = 0.8f),
+        )
+        assertEquals(
+            0 until 1,
+            ChapterTextSearch.locateMatch(readerText, regex, matchIndex = 4, matchCount = 5, position = 0.2f),
+        )
+    }
+
+    @Test
+    fun `locate finds nothing when the reader text lacks the match`() {
+        val regex = ChapterTextSearch.buildRegex("absent", ChapterSearchOptions())
+        assertEquals(
+            null,
+            ChapterTextSearch.locateMatch("some text", regex, matchIndex = 0, matchCount = 1, position = 0f),
+        )
+    }
+
+    @Test
+    fun `search target rebuilds the regex it was searched with`() {
+        val target = ChapterSearchTarget(
+            query = "play",
+            options = ChapterSearchOptions(wholeWord = true, caseSensitive = true),
+            matchIndex = 0,
+            matchCount = 1,
+            position = 0f,
+        )
+        assertEquals(1, ChapterTextSearch.findMatches("Play the player, play", target.buildRegex()).count)
+        assertEquals(target, ChapterSearchTarget.decode(target.encode()))
+    }
 }

@@ -25,6 +25,8 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchTarget
+import eu.kanade.tachiyomi.ui.manga.search.ChapterTextSearch
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -130,6 +132,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     // Set by restoreProgress, consumed by onChapterTextSet once the matching chapter's text is laid out.
     private var pendingRestoreChapterId: Long? = null
     private var pendingRestoreProgress = 0f
+
+    // Set by restoreProgress when the reader was opened at a chapter search match, consumed by
+    // onChapterTextSet like a progress restore.
+    private var pendingSearchChapterId: Long? = null
+    private var pendingSearchTarget: ChapterSearchTarget? = null
 
     // Cache the last resolved custom-font so content:// URIs are not re-copied on every style refresh.
     private var cachedFontUri: String? = null
@@ -1705,6 +1712,14 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun restoreProgress(page: ReaderPage) {
+        val searchTarget = activity.viewModel.takeSearchTarget(page.chapter.chapter.id)
+        if (searchTarget != null) {
+            lastSavedProgress = searchTarget.position
+            pendingRestoreChapterId = null
+            pendingSearchChapterId = page.chapter.chapter.id
+            pendingSearchTarget = searchTarget
+            return
+        }
         val savedProgress = page.chapter.chapter.last_page_read
         val isRead = page.chapter.chapter.read
         logcat(LogPriority.DEBUG) {
@@ -1732,6 +1747,59 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 isRestoringScroll = false
             }
         }
+    }
+
+    /**
+     * Scrolls to and highlights the chapter search match the reader was opened at. Falls back to
+     * the match's relative position when the rendered text no longer holds it.
+     */
+    private fun showSearchMatch(loaded: LoadedChapter, target: ChapterSearchTarget) {
+        val block = loaded.block
+        val match = block.fullText?.let { text ->
+            runCatching {
+                ChapterTextSearch.locateMatch(
+                    text,
+                    target.buildRegex(),
+                    target.matchIndex,
+                    target.matchCount,
+                    target.position,
+                )
+            }.getOrNull()
+        }
+        val chunkIndex = match?.let { range ->
+            block.chunkStarts.indices.lastOrNull { block.chunkStarts[it] <= range.first }
+        }
+        val chunkView = chunkIndex?.let { block.chunkViews.getOrNull(it) }
+        val layout = chunkView?.layout
+        isRestoringScroll = true
+        if (match == null || chunkView == null || layout == null) {
+            setScrollProgress(target.position)
+        } else {
+            val chunkStart = block.chunkStarts[chunkIndex]
+            val start = (match.first - chunkStart).coerceIn(0, chunkView.text.length)
+            val end = (match.last + 1 - chunkStart).coerceIn(start, chunkView.text.length)
+            (chunkView.text as? android.text.Spannable)?.let { spannable ->
+                spannable.setSpan(
+                    BackgroundColorSpan(preferences.novelTtsHighlightColor.get()),
+                    start,
+                    end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                spannable.setSpan(
+                    ForegroundColorSpan(preferences.novelTtsHighlightTextColor.get()),
+                    start,
+                    end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+            val lineTop = layout.getLineTop(layout.getLineForOffset(start))
+            val scrollY = block.container.top + chunkView.top + lineTop - scrollView.height / 3
+            scrollView.scrollTo(0, scrollY.coerceAtLeast(0))
+        }
+        isRestoringScroll = false
+        val progress = calculateCurrentChapterProgress(scrollView.scrollY)
+        lastSavedProgress = progress
+        activity.onNovelProgressChanged(progress)
     }
 
     private fun applyTextViewStyles(textView: TextView) {
@@ -1840,6 +1908,13 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private fun onChapterTextSet(loaded: LoadedChapter) {
         loaded.isTextSet = true
+
+        val searchTarget = pendingSearchTarget
+        if (searchTarget != null && loaded.chapter.chapter.id == pendingSearchChapterId) {
+            pendingSearchChapterId = null
+            pendingSearchTarget = null
+            scrollView.doOnPreDraw { showSearchMatch(loaded, searchTarget) }
+        }
 
         if (loaded.chapter.chapter.id == pendingRestoreChapterId) {
             pendingRestoreChapterId = null
