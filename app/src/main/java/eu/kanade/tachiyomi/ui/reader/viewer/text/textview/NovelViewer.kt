@@ -1433,12 +1433,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
         val page = chapters.currChapter.pages?.firstOrNull() ?: return
 
-        // A move to some other chapter abandons a start still waiting for its chapter.
         val newChapterId = chapters.currChapter.chapter.id
+        val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == newChapterId }
+        val clearsQueue = !preferences.novelInfiniteScroll.get() || !isAlreadyLoaded
+
+        // A move to some other chapter abandons a start still waiting for its chapter, also when that
+        // chapter is loaded but about to be cleared with the queue.
         val pendingChapterId = pendingTtsStart?.chapterId
         if (pendingChapterId != null && pendingChapterId != newChapterId &&
             newChapterId != currentChapters?.currChapter?.chapter?.id &&
-            loadedChapters.none { it.chapter.chapter.id == pendingChapterId }
+            (clearsQueue || loadedChapters.none { it.chapter.chapter.id == pendingChapterId })
         ) {
             stopTts()
         }
@@ -1447,13 +1451,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         currentPage = page
         currentChapters = chapters
 
-        val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == chapters.currChapter.chapter.id }
-
         if (preferences.novelInfiniteScroll.get() && loadedChapters.isNotEmpty() && isAlreadyLoaded) {
             return
         }
 
-        if (!preferences.novelInfiniteScroll.get() || !isAlreadyLoaded) {
+        if (clearsQueue) {
             contentContainer.removeAllViews()
             chapterQueue.clear()
         }
@@ -1618,6 +1620,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 contentContainer.removeView(block.container)
                 loadedChapter.separatorView?.let { contentContainer.removeView(it) }
                 chapterQueue.removeById(chapter.chapter.id)
+                if (pendingTtsStart?.chapterId == chapter.chapter.id) abortPendingTtsOnLoadFailure()
                 if (!isAppend) {
                     currentChapterIndex = (loadedChapters.size - 1).coerceAtLeast(0)
                 }
