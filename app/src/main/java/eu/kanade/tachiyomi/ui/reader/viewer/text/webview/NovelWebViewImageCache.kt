@@ -7,7 +7,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Semaphore
@@ -31,8 +30,12 @@ internal class NovelWebViewImageCache(
     private val prefetchPermits = Semaphore(MAX_CONCURRENT_PREFETCHES)
 
     init {
-        val cutoff = System.currentTimeMillis() - STALE_TMP_AGE_MS
-        cacheDir.listFiles { f -> f.name.endsWith(".tmp") && f.lastModified() < cutoff }?.forEach { it.delete() }
+        scope.launch(Dispatchers.IO) {
+            val cutoff = System.currentTimeMillis() - STALE_TMP_AGE_MS
+            cacheDir.listFiles { f ->
+                f.name.startsWith(FILE_PREFIX) && f.name.endsWith(".tmp") && f.lastModified() < cutoff
+            }?.forEach { it.delete() }
+        }
     }
 
     fun intercept(url: String, fallbackChapterId: Long?, fallbackLoader: PageLoader?): WebResourceResponse? {
@@ -124,8 +127,11 @@ internal class NovelWebViewImageCache(
                     if (cache[cacheKey]?.exists() == true) return@withPermit
                     val stream = loader.getPageDataStream(imagePath) ?: return@withPermit
                     val cachedFile = makeCachedFile(cacheKey, imagePath)
-                    stream.use { input -> writeAtomically(cachedFile, input) }
-                    if (isActive) cache[cacheKey] = cachedFile else runCatching { cachedFile.delete() }
+                    val job = coroutineContext[Job]
+                    val committed = stream.use { input ->
+                        writeAtomically(cachedFile, input) { job?.isActive != false }
+                    }
+                    if (committed) cache[cacheKey] = cachedFile
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -144,15 +150,18 @@ internal class NovelWebViewImageCache(
     }
 
     // A cancelled prefetch keeps copying (blocking IO) while intercept loads the same file, so each
-    // writer fills its own temp file and renames it into place.
-    private fun writeAtomically(target: File, input: InputStream) {
+    // writer fills its own temp file and renames it into place. A writer that should no longer commit
+    // only drops its temp file, never the target another writer may have published.
+    private fun writeAtomically(target: File, input: InputStream, commit: () -> Boolean = { true }): Boolean {
         val tmp = File.createTempFile(target.name, ".tmp", target.parentFile)
         try {
             tmp.outputStream().use { input.copyTo(it) }
+            if (!commit()) return false
             if (!tmp.renameTo(target)) {
                 target.delete()
                 check(tmp.renameTo(target)) { "rename failed for ${target.name}" }
             }
+            return true
         } finally {
             tmp.delete()
         }
@@ -172,7 +181,7 @@ internal class NovelWebViewImageCache(
             .take(16)
             .joinToString("") { "%02x".format(it) }
         cacheDir.mkdirs()
-        return File(cacheDir, "novel-image-$keyHash.$fileSuffix")
+        return File(cacheDir, "$FILE_PREFIX$keyHash.$fileSuffix")
     }
 
     private fun guessMimeType(imagePath: String): String =
@@ -204,6 +213,7 @@ internal class NovelWebViewImageCache(
     companion object {
         private const val MAX_CONCURRENT_PREFETCHES = 3
         private const val STALE_TMP_AGE_MS = 60 * 60 * 1000L
+        private const val FILE_PREFIX = "novel-image-"
         const val URL_SCHEME_NOVEL_IMAGE = NOVEL_IMAGE_SCHEME
         private val IMAGE_URL_PATTERN = Regex("${Regex.escape(URL_SCHEME_NOVEL_IMAGE)}([^\"'<>\\s]+)")
     }
