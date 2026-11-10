@@ -338,4 +338,24 @@ class MassImportTokenizeLineTest {
         val text = "Title,https://a.example.com/x\nhttps://a.example.com/x/\nurl,title"
         assertEquals(listOf("https://a.example.com/x"), massImport.parseUrls(text))
     }
+
+    @Test
+    fun `query comma before a CSV column ends the url`() {
+        assertEquals(
+            listOf("https://example.com/book?id=5", "Title", "3"),
+            MassImport.tokenizeLine("https://example.com/book?id=5,Title,3"),
+        )
+        assertEquals(
+            listOf("https://example.com/b?id=5"),
+            MassImport.urlTokens("https://example.com/b?id=5,My Book"),
+        )
+    }
+
+    @Test
+    fun `query comma is kept when another parameter follows`() {
+        assertEquals(
+            listOf("https://example.com/x?tags=a,b&page=2"),
+            MassImport.urlTokens("https://example.com/x?tags=a,b&page=2"),
+        )
+    }
 }

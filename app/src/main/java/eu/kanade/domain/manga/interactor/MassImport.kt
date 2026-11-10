@@ -131,19 +131,28 @@ class MassImport(
             for (i in bodyStart until line.length) {
                 val c = line[i]
                 if (isBreak(c) || c in URL_TERMINATORS) return i
-                if (c in LIST_SEPARATORS && separatorEndsUrl(line, i + 1, inQuery)) return i
+                if (c in LIST_SEPARATORS && separatorEndsUrl(line, c, i + 1, inQuery)) return i
                 if (c == '?' || c == '#') inQuery = true
                 if (i > bodyStart && line[i - 1] !in EMBEDDED_SCHEME_PREFIX && schemeLength(line, i) > 0) return i
             }
             return line.length
         }
 
-        // Query values use commas as list separators, so there only a clear field boundary ends
-        // the URL. In the path a comma is kept only before '_' or '%' (wiki-style titles).
-        private fun separatorEndsUrl(line: String, next: Int, inQuery: Boolean): Boolean {
+        // Query values use separators as lists, so there only a clear field boundary ends the URL.
+        // A query comma before a word with no further parameter is a CSV column. A comma is always
+        // kept before '_' or '%' (wiki-style titles).
+        private fun separatorEndsUrl(line: String, separator: Char, next: Int, inQuery: Boolean): Boolean {
             val n = line.getOrNull(next) ?: return true
             if (isBreak(n) || n in URL_TERMINATORS || n == '\'' || schemeLength(line, next) > 0) return true
-            return !inQuery && n != '_' && n != '%'
+            if (n == '_' || n == '%') return false
+            if (!inQuery) return true
+            if (separator != ',' || n.isDigit()) return false
+            for (j in next until line.length) {
+                val c = line[j]
+                if (c == '=' || c == '&') return false
+                if (isBreak(c) || c in URL_TERMINATORS || c in LIST_SEPARATORS || c == '#') return true
+            }
+            return true
         }
 
         private fun cleanUrl(line: String, start: Int, end: Int, singleQuoted: Boolean, prose: Boolean): String {
