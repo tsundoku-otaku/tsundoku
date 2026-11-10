@@ -609,4 +609,23 @@ class HtmlUtilsTest {
         val out = webView("<img src=x onerror=Android.x() ", keepJs = false)
         assertFalse(out.contains("onerror"))
     }
+
+    @Test
+    fun `sanitizeForRender keeps markup around an unmatched escaped comment`() {
+        val out = webView("<p>a</p><p>x &lt;!-- y</p>", keepJs = false)
+        assertEquals("<p>a</p><p>x &lt;!-- y</p>", out)
+    }
+
+    @Test
+    fun `sanitizeForRender keeps markup around an escaped comment spanning tags`() {
+        val out = webView("<p>&lt;!-- <b>ad</b> --&gt;</p><p>two</p>", keepJs = false)
+        assertTrue(out.contains("<b>ad</b>"), out)
+        assertTrue(out.contains("<p>two</p>"), out)
+    }
+
+    @Test
+    fun `sanitizeForRender removes meta refresh even when js is kept`() {
+        val out = webView("<meta http-equiv=\"refresh\" content=\"0;url=https://example.com\"><p>a</p>", keepJs = true)
+        assertFalse(out.contains("<meta"), out)
+    }
 }

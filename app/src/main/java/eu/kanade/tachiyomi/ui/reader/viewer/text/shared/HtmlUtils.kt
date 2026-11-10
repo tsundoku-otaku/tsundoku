@@ -10,7 +10,9 @@ import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Comment
+import org.jsoup.nodes.Document
 import org.jsoup.nodes.TextNode
+import org.jsoup.safety.Safelist
 
 object HtmlUtils {
 
@@ -230,7 +232,9 @@ object HtmlUtils {
             if (!pass.changed && pass.html == html) return html
             html = pass.html
         }
-        return escapeHtml(Jsoup.parseBodyFragment(html).text())
+        // Still mutating on reparse: keep the structure but only through a plain HTML safelist.
+        logcat(LogPriority.WARN) { "Chapter HTML did not settle after $MAX_SANITIZE_PASSES sanitize passes" }
+        return Jsoup.clean(html, "", Safelist.relaxed().preserveRelativeLinks(true), Document.OutputSettings().prettyPrint(false))
     }
 
     private class SanitizeResult(val html: String, val changed: Boolean)
@@ -255,11 +259,11 @@ object HtmlUtils {
             }
         }
 
-        removeAll("noscript, base")
+        removeAll("noscript, base, meta[http-equiv]")
         if (stripJs) {
             // Embedded documents run their own script; SVG animations can set href to javascript: at runtime.
             removeAll(
-                "script, meta[http-equiv], iframe, frame, frameset, object, embed, " +
+                "script, iframe, frame, frameset, object, embed, " +
                     "animate, set, animatemotion, animatetransform",
             )
         }
@@ -272,8 +276,11 @@ object HtmlUtils {
                     node.remove()
                     changed = true
                 } else if (node is TextNode && "<!--" in node.wholeText) {
-                    node.text(node.wholeText.replace(textCommentRegex, ""))
-                    changed = true
+                    val cleaned = node.wholeText.replace(textCommentRegex, "")
+                    if (cleaned != node.wholeText) {
+                        node.text(cleaned)
+                        changed = true
+                    }
                 }
             }
 
