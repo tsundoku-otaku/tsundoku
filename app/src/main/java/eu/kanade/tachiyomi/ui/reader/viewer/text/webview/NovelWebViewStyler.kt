@@ -91,8 +91,11 @@ internal class NovelWebViewStyler(
         val descendantBackgroundReset = if (sourceCssPriority) {
             ""
         } else {
-            "p, div, span, section, article, blockquote, font, b, i, em, strong, u, h1, h2, h3, h4, h5, h6, " +
-                "li, ul, ol, table, thead, tbody, tr, td, th, center { background-color: transparent !important; }"
+            listOf(
+                "p", "div", "span", "section", "article", "blockquote", "font", "b", "i", "em", "strong", "u",
+                "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol", "table", "thead", "tbody", "tr", "td", "th",
+                "center",
+            ).joinToString(", ") { "$CHAPTER_TAG_NAME $it" } + " { background-color: transparent !important; }"
         }
 
         val hideChapterTitleCss = if (hideChapterTitle) {

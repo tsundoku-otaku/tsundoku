@@ -30,7 +30,15 @@
         return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16), 1];
     }
 
-    var fg = parse(getComputedStyle(document.body).color);
+    var sample = document.body;
+    var paragraphs = document.querySelectorAll('tsundoku-chapter p');
+    for (var i = 0; i < paragraphs.length && i < 20; i++) {
+        if (paragraphs[i].textContent.trim()) {
+            sample = paragraphs[i];
+            break;
+        }
+    }
+    var fg = parse(getComputedStyle(sample).color);
     var bg = parse(getComputedStyle(document.body).backgroundColor);
     if (bg[3] === 0) {
         bg = parse(getComputedStyle(document.documentElement).backgroundColor);
@@ -40,6 +48,7 @@
 
     var style = document.createElement('style');
     style.id = '__GUARD_ID__';
-    style.textContent = 'html, body { color: __TEXT__ !important; background-color: __BG__ !important; }';
+    style.textContent = 'html, body { color: __TEXT__ !important; background-color: __BG__ !important; } ' +
+        'tsundoku-chapter * { color: inherit !important; }';
     document.head.appendChild(style);
 })();

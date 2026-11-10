@@ -351,10 +351,7 @@ internal fun ColumnScope.NovelAppearanceTab(viewModel: ReaderSettingsViewModel, 
                 onClick = {
                     when {
                         value == "custom" && backgroundColor == 0 -> showBgColorPicker = true
-                        value != "custom" && value != theme -> {
-                            viewModel.preferences.novelFontColor.set(0)
-                            viewModel.preferences.novelBackgroundColor.set(0)
-                        }
+                        value != "custom" && value != theme -> viewModel.preferences.novelFontColor.set(0)
                     }
                     if (value != "custom" || backgroundColor != 0) viewModel.preferences.novelTheme.set(value)
                 },
