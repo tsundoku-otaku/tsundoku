@@ -132,7 +132,7 @@
 
     function contentLineHeight() {
         var el = container();
-        var sample = el.querySelector('p, div, li, blockquote') || el;
+        var sample = el.querySelector('p') || el.querySelector('li, blockquote, div') || el;
         return window.getComputedStyle(sample).lineHeight;
     }
 
