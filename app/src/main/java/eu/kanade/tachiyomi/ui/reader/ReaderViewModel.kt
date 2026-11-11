@@ -458,6 +458,7 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun loadNewChapter(chapter: ReaderChapter) {
         val loader = loader ?: return
+        if (chapter !== state.value.viewerChapters?.currChapter) reloadJob?.cancel()
 
         viewModelScope.launchIO {
             logcat { "Loading ${chapter.chapter.url}" }
@@ -481,6 +482,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private suspend fun loadAdjacent(chapter: ReaderChapter): Boolean {
         val loader = loader ?: return false
         if (state.value.isLoadingAdjacentChapter) return false
+        reloadJob?.cancel()
 
         logcat { "Loading adjacent ${chapter.chapter.url}" }
 
