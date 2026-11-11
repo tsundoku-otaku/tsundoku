@@ -106,8 +106,8 @@ internal object LibraryPageSql {
         )
     }
 
-    /** Rows of [sourceIds], favorite or not, capped at [limit]. */
-    fun sourceRows(sourceIds: List<Long>, limit: Long): LibraryPageQuery = LibraryPageQuery(
+    /** Count of rows of [sourceIds], favorite or not, capped at [limit]. */
+    fun countSourceRows(sourceIds: List<Long>, limit: Long): LibraryPageQuery = LibraryPageQuery(
         "SELECT count(*) FROM (SELECT 1 FROM mangas INDEXED BY idx_mangas_source " +
             "WHERE source IN (${placeholders(sourceIds.size)}) LIMIT ?)",
         sourceIds + limit,
@@ -225,8 +225,22 @@ internal object LibraryPageSql {
         return LibraryPageQuery(sql, args)
     }
 
-    fun categoryMembers(categoryId: Long): LibraryPageQuery =
-        LibraryPageQuery("SELECT count(*) FROM mangas_categories WHERE category_id = ?", listOf(categoryId))
+    /** Favorites of [categoryId] a tab of [isNovel] can show, capped at [limit]. */
+    fun categoryMembers(categoryId: Long, isNovel: Boolean?, limit: Long): LibraryPageQuery {
+        val args = ArrayList<Any>()
+        val sql = buildString {
+            append("SELECT count(*) FROM (SELECT 1 FROM mangas_categories MC JOIN mangas M ON M._id = MC.manga_id ")
+            append("WHERE MC.category_id = ? AND M.favorite = 1")
+            args.add(categoryId)
+            if (isNovel != null) {
+                append(" AND M.is_novel = ?")
+                args.add(isNovel.toLong())
+            }
+            append(" LIMIT ?)")
+            args.add(limit)
+        }
+        return LibraryPageQuery(sql, args)
+    }
 
     /** With a [scanLimit], only that many favorites are checked. */
     fun hasUncategorized(isNovel: Boolean?, scanLimit: Long? = null): LibraryPageQuery {

@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.ui.library
 
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import androidx.paging.filter
 import dev.icerock.moko.resources.StringResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

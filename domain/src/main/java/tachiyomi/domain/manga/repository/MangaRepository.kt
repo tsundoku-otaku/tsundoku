@@ -140,7 +140,7 @@ interface MangaRepository {
     /** Whether [spec] is pinned to sources with at most [maxRows] rows, read best by source index. */
     suspend fun isLibraryPageSourceDriven(spec: LibraryPageSpec, maxRows: Long): Boolean
 
-    suspend fun countCategoryMembers(categoryId: Long): Long
+    suspend fun countCategoryMembers(categoryId: Long, isNovel: Boolean?, limit: Long): Long
 
     suspend fun countLibraryMangaPage(
         categoryId: Long,

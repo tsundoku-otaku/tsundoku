@@ -244,7 +244,9 @@ class LibraryPageSqlTest {
         single(LibraryPageSql.count(8L, false, spec)) shouldBe 10L
         single(LibraryPageSql.count(8L, false, spec, smallCategory = true)) shouldBe 10L
         single(LibraryPageSql.count(0L, false, spec)) shouldBe 2_990L
-        single(LibraryPageSql.categoryMembers(8L)) shouldBe 10L
+        single(LibraryPageSql.categoryMembers(8L, false, 100L)) shouldBe 10L
+        single(LibraryPageSql.categoryMembers(8L, true, 100L)) shouldBe 0L
+        single(LibraryPageSql.categoryMembers(8L, null, 5L)) shouldBe 5L
     }
 
     @Test
@@ -562,8 +564,8 @@ class LibraryPageSqlTest {
     fun `source rows count every entry of the sources up to the limit`() {
         insert((1L..10L).map { Row(it, "Title $it", source = it % 3, favorite = it % 2 == 0L) })
 
-        single(LibraryPageSql.sourceRows(listOf(1L, 2L), limit = 100)) shouldBe 7L
-        single(LibraryPageSql.sourceRows(listOf(1L, 2L), limit = 5)) shouldBe 5L
+        single(LibraryPageSql.countSourceRows(listOf(1L, 2L), limit = 100)) shouldBe 7L
+        single(LibraryPageSql.countSourceRows(listOf(1L, 2L), limit = 5)) shouldBe 5L
     }
 
     @Test
