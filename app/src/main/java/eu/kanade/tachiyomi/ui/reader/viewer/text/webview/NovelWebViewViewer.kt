@@ -2554,7 +2554,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         val claim = TtsHandoffState.PreFetching(anchorChapterId = anchor.chapter.id)
         handoffState = claim
         try {
-            val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor) ?: return
+            val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor)
+            if (preparedChapter == null) {
+                ttsMidpointChunkIndex = null
+                return
+            }
             val nextId = preparedChapter.chapter.id ?: return
             if (loadedChapterIds.contains(nextId)) return
 
@@ -3084,6 +3088,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private fun resolveTtsMidpointChunk(chapterId: Long?) {
         ttsMidpointChunkIndex = null
+        ttsPrefetchRetryAtMs = 0L
         val chunkParagraphIndexes = ttsController.ttsChunkParagraphIndexes
         if (chapterId == null) {
             ttsMidpointChunkIndex = TtsTextUtils.midpointChunkIndex(chunkParagraphIndexes, null)
