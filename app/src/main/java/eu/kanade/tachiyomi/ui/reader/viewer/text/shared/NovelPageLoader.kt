@@ -5,6 +5,7 @@ import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -68,6 +69,7 @@ object NovelPageLoader {
             val finalState = withTimeout(timeoutMs) {
                 var state = page.statusFlow.first(::settled)
                 while (state is Page.State.Queue) {
+                    scope.ensureActive()
                     loadJob = launchLoad()
                     state = page.statusFlow.first(::settled)
                 }

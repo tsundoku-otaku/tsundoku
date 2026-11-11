@@ -53,8 +53,7 @@ abstract class PageLoader {
     protected suspend fun onPageLoadFailed(page: ReaderPage, error: Throwable) {
         val context = currentCoroutineContext()
         if (!context.isActive) {
-            page.tryClaim(Page.State.LoadPage, Page.State.Queue) ||
-                page.tryClaim(Page.State.DownloadImage, Page.State.Queue)
+            page.tryClaim(Page.State.LoadPage, Page.State.Queue)
             context.ensureActive()
         }
         page.status = Page.State.Error(error)
