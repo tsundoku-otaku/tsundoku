@@ -73,6 +73,20 @@ private object FlexibleBoolAsIntSerializer : KSerializer<Int> {
     }
 }
 
+/**
+ * Imports LNReader backup files (.zip) into Tsundoku.
+ *
+ * LNReader backup format:
+ * ```
+ * backup.zip
+ * ├── Version.json
+ * ├── Category.json
+ * ├── NovelAndChapters/
+ * │   ├── {novelId}.json  (each contains novel info + chapters array)
+ * │   └── ...
+ * └── Setting.json
+ * ```
+ */
 class LNReaderBackupImporter(
     private val context: Context,
     private val notifier: BackupNotifier? = null,
@@ -403,17 +417,18 @@ class LNReaderBackupImporter(
         inputStream.use {
             ZipInputStream(it).use { zip ->
                 var entry = zip.nextEntry
-                while (entry != null) {
+                var seen = 0
+                while (entry != null && seen < totalNovels) {
                     val name = entry.name
                     if (name.startsWith("NovelAndChapters/") && name.endsWith(".json")) {
                         currentCoroutineContext().ensureActive()
                         val novel = try {
                             json.decodeFromStream<LNNovel>(zip)
-                        } catch (e: Exception) {
-                            logcat(LogPriority.WARN, e) { "LNReaderImport: Failed to parse $name" }
+                        } catch (_: Exception) {
                             null
                         }
                         if (novel != null && novel.name.isNotBlank()) {
+                            seen++
                             restoreNovel(novel)
                         }
                     }
