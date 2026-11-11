@@ -36,6 +36,7 @@ class GetLibraryMangaPaged(
 ) {
     private val indexMutex = Mutex()
     private var indexesReady = false
+    private var indexBuildFailed = false
     private val indexBuildState = MutableStateFlow(false)
 
     val pageSize: Int
@@ -95,6 +96,7 @@ class GetLibraryMangaPaged(
         private val cursors = HashMap<Int, LibraryPageCursor>()
 
         suspend fun fetch(limit: Int, offset: Int): LibraryPagingSource.Chunk = withContext(ioDispatcher) {
+            ensureIndexes()
             val mode = mutex.withLock { resolvedMode ?: resolveMode().also { resolvedMode = it } }
             val snapshot = if (mode == Mode.SOURCE || mode == Mode.NARROWED) {
                 mutex.withLock { snapshot ?: takeSnapshot(mode).also { snapshot = it } }
@@ -125,7 +127,7 @@ class GetLibraryMangaPaged(
         }
 
         private suspend fun resolveMode(): Mode = when {
-            isSmallCategory(categoryId) -> Mode.SMALL
+            isSmallCategory(categoryId, isNovel) -> Mode.SMALL
             isSourceDriven(spec) -> Mode.SOURCE
             spec.isNarrowed || categoryId == 0L -> Mode.NARROWED
             else -> Mode.WALK
@@ -152,7 +154,7 @@ class GetLibraryMangaPaged(
         isNovel: Boolean?,
         spec: LibraryPageSpec,
     ): List<LibraryManga> = withContext(ioDispatcher) {
-        val small = isSmallCategory(categoryId)
+        val small = isSmallCategory(categoryId, isNovel)
         if (small || !isSourceDriven(spec)) {
             return@withContext mangaRepository.getLibraryMangaPage(categoryId, isNovel, null, 0, spec, small)
         }
@@ -166,7 +168,7 @@ class GetLibraryMangaPaged(
         spec: LibraryPageSpec,
         predicate: (LibraryManga) -> Boolean,
     ): List<LibraryManga> = withContext(ioDispatcher) {
-        val small = isSmallCategory(categoryId)
+        val small = isSmallCategory(categoryId, isNovel)
         val bySource = !small && isSourceDriven(spec)
         val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, small, bySource)
         val result = ArrayList<LibraryManga>()
@@ -178,7 +180,7 @@ class GetLibraryMangaPaged(
 
     suspend fun awaitCount(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): Long =
         withContext(ioDispatcher) {
-            val small = isSmallCategory(categoryId)
+            val small = isSmallCategory(categoryId, isNovel)
             val bySource = !small && isSourceDriven(spec)
             mangaRepository.countLibraryMangaPage(categoryId, isNovel, spec, small, bySource)
         }
@@ -188,7 +190,7 @@ class GetLibraryMangaPaged(
         isNovel: Boolean?,
         spec: LibraryPageSpec,
     ): LibraryManga? = withContext(ioDispatcher) {
-        val small = isSmallCategory(categoryId)
+        val small = isSmallCategory(categoryId, isNovel)
         if (!small && isSourceDriven(spec)) {
             val id = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, bySource = true)
                 .randomOrNull() ?: return@withContext null
@@ -227,7 +229,7 @@ class GetLibraryMangaPaged(
     // Built lazily so only paged mode pays for the indexes.
     suspend fun ensureIndexes() {
         indexMutex.withLock {
-            if (indexesReady) return
+            if (indexesReady || indexBuildFailed) return
             try {
                 val start = System.currentTimeMillis()
                 val built = mangaRepository.ensureLibraryPagingIndexes { indexBuildState.value = true }
@@ -237,6 +239,7 @@ class GetLibraryMangaPaged(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                indexBuildFailed = true
                 logcat(LogPriority.ERROR, e) { "GetLibraryMangaPaged: failed to create paging indexes" }
             } finally {
                 indexBuildState.value = false
@@ -246,8 +249,10 @@ class GetLibraryMangaPaged(
 
     fun buildingIndexes(): StateFlow<Boolean> = indexBuildState.asStateFlow()
 
-    private suspend fun isSmallCategory(categoryId: Long): Boolean =
-        categoryId > 0L && mangaRepository.countCategoryMembers(categoryId) <= SMALL_CATEGORY_MEMBERS
+    private suspend fun isSmallCategory(categoryId: Long, isNovel: Boolean?): Boolean =
+        categoryId > 0L &&
+            mangaRepository.countCategoryMembers(categoryId, isNovel, SMALL_CATEGORY_MEMBERS + 1) <=
+            SMALL_CATEGORY_MEMBERS
 
     private fun config(): PagingConfig {
         val size = pageSize

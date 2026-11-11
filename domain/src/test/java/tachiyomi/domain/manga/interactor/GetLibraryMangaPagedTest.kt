@@ -38,7 +38,7 @@ class GetLibraryMangaPagedTest {
         deleted: Set<Long> = emptySet(),
     ): MangaRepository {
         val repository = mockk<MangaRepository>()
-        coEvery { repository.countCategoryMembers(any()) } returns 1_000_000
+        coEvery { repository.countCategoryMembers(any(), any(), any()) } returns 1_000_000
         coEvery { repository.isLibraryPageSourceDriven(any(), any()) } returns sourceDriven
         coEvery { repository.getLibraryMangaPage(any(), any(), any(), any(), any(), any()) } answers {
             val limit = arg<Long?>(2) ?: Long.MAX_VALUE
@@ -176,7 +176,7 @@ class GetLibraryMangaPagedTest {
     fun `the whole library count of a source pinned search reads the source index`() = runTest {
         val spec = LibraryPageSpec(search = LibraryPageSpec.Search(sourceIds = listOf(1L)))
         val repository = repository(emptyList(), sourceDriven = true)
-        coEvery { repository.countCategoryMembers(LibraryPageSpec.ALL_CATEGORIES) } returns 0
+        coEvery { repository.countCategoryMembers(LibraryPageSpec.ALL_CATEGORIES, any(), any()) } returns 0
         coEvery { repository.countLibraryMangaPage(any(), any(), any(), any(), any()) } returns 7
         val paged = GetLibraryMangaPaged(repository, mockk(), mockk(), StandardTestDispatcher(testScheduler))
 
@@ -201,7 +201,7 @@ class GetLibraryMangaPagedTest {
     @Test
     fun `a filtered load of a small category reads its members directly`() = runTest {
         val repository = repository((1L..5L).toList())
-        coEvery { repository.countCategoryMembers(3L) } returns 5
+        coEvery { repository.countCategoryMembers(3L, any(), any()) } returns 5
         val paged = GetLibraryMangaPaged(repository, mockk(), mockk(), StandardTestDispatcher(testScheduler))
 
         paged.awaitFiltered(3L, true, LibraryPageSpec()) { true }.map { it.id } shouldContainExactly (1L..5L).toList()

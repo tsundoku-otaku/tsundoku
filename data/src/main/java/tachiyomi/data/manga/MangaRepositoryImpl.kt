@@ -878,12 +878,14 @@ class MangaRepositoryImpl(
 
     override suspend fun isLibraryPageSourceDriven(spec: LibraryPageSpec, maxRows: Long): Boolean {
         val sources = LibraryPageSql.pinnedSources(spec) ?: return false
-        val rows = RawQuery(driver, LibraryPageSql.sourceRows(sources, maxRows + 1)) { it.getLong(0)!! }.awaitAsOne()
+        val rows = RawQuery(driver, LibraryPageSql.countSourceRows(sources, maxRows + 1)) { it.getLong(0)!! }
+            .awaitAsOne()
         return rows <= maxRows
     }
 
-    override suspend fun countCategoryMembers(categoryId: Long): Long {
-        return RawQuery(driver, LibraryPageSql.categoryMembers(categoryId)) { it.getLong(0)!! }.awaitAsOne()
+    override suspend fun countCategoryMembers(categoryId: Long, isNovel: Boolean?, limit: Long): Long {
+        return RawQuery(driver, LibraryPageSql.categoryMembers(categoryId, isNovel, limit)) { it.getLong(0)!! }
+            .awaitAsOne()
     }
 
     override suspend fun countLibraryMangaPage(

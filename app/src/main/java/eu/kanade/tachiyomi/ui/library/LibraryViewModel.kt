@@ -578,6 +578,8 @@ class LibraryViewModel(
             trackingFilters = inputs.trackingFilters.takeIf { inMemory || needsItemFilter },
             tracks = inputs.tracks.takeIf { inMemory || needsItemFilter },
             search = inputs.search.takeIf { searchInMemory },
+            randomSeed = libraryPreferences.randomSortSeed.get()
+                .takeIf { category.sort.type == LibrarySort.Type.Random },
         )
 
         val filter = if (needsItemFilter && !inMemory) {
@@ -789,6 +791,7 @@ class LibraryViewModel(
         val trackingFilters: Map<Long, TriState>?,
         val tracks: Map<Long, List<Track>>?,
         val search: SearchConfig?,
+        val randomSeed: Int?,
     )
 
     private sealed interface PagedSearch {
