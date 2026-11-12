@@ -44,6 +44,8 @@ data class Manga(
     val notes: String,
     val isNovel: Boolean = false,
     val memo: JsonObject,
+    /** Listed ahead of the unpinned entries in every library category. Only meaningful for favorites. */
+    val isPinned: Boolean = false,
 ) : JavaSerializable {
 
     val expectedNextUpdate: Instant?

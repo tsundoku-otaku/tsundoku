@@ -98,9 +98,11 @@ class MangaRepositoryImpl(
                 _,
                 _,
                 memo,
+                is_pinned,
             ->
             MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                 memo = memo,
+                isPinned = is_pinned,
             )
         }.awaitAsOne()
     }
@@ -145,9 +147,11 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     memo,
+                    is_pinned,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                     memo = memo,
+                    isPinned = is_pinned,
                 )
             }.awaitAsList()
         }
@@ -167,6 +171,14 @@ class MangaRepositoryImpl(
 
     override suspend fun clearCoversForMangaIds(ids: List<Long>, coverLastModified: Long) {
         clearFieldsForMangaIds(ids) { database.mangasQueries.clearThumbnailsForIds(coverLastModified, it) }
+    }
+
+    override suspend fun setPinned(ids: List<Long>, pinned: Boolean) {
+        if (ids.isEmpty()) return
+        database.transaction {
+            ids.chunked(SQLITE_VARIABLE_LIMIT).forEach { database.mangasQueries.setPinnedForIds(pinned, it) }
+        }
+        invalidateLibraryCacheInternal()
     }
 
     private suspend fun clearFieldsForMangaIds(ids: List<Long>, statement: suspend (List<Long>) -> Unit) {
@@ -216,9 +228,11 @@ class MangaRepositoryImpl(
                 _,
                 _,
                 memo,
+                is_pinned,
             ->
             MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                 memo = memo,
+                isPinned = is_pinned,
             )
         }.subscribeToOne()
     }
@@ -266,9 +280,11 @@ class MangaRepositoryImpl(
                 _,
                 _,
                 memo,
+                is_pinned,
             ->
             MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                 memo = memo,
+                isPinned = is_pinned,
             )
         }.awaitAsOneOrNull()
     }
@@ -374,9 +390,11 @@ class MangaRepositoryImpl(
                 _,
                 _,
                 memo,
+                is_pinned,
             ->
             MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                 memo = memo,
+                isPinned = is_pinned,
             )
         }.subscribeToOneOrNull()
     }
@@ -417,9 +435,11 @@ class MangaRepositoryImpl(
                 _,
                 _,
                 memo,
+                is_pinned,
             ->
             MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                 memo = memo,
+                isPinned = is_pinned,
             )
         }.awaitAsList()
     }
@@ -460,9 +480,11 @@ class MangaRepositoryImpl(
                 _,
                 _,
                 memo,
+                is_pinned,
             ->
             MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                 memo = memo,
+                isPinned = is_pinned,
             )
         }.awaitAsList()
     }
@@ -671,9 +693,11 @@ class MangaRepositoryImpl(
                 _,
                 _,
                 memo,
+                is_pinned,
             ->
             MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                 memo = memo,
+                isPinned = is_pinned,
             )
         }.awaitAsList()
     }
@@ -757,6 +781,7 @@ class MangaRepositoryImpl(
                 lastRead,
                 bookmarkCount,
                 categories,
+                isPinned,
             ->
             MangaMapper.mapLibraryManga(
                 id = id,
@@ -793,6 +818,7 @@ class MangaRepositoryImpl(
                 lastRead = lastRead,
                 bookmarkCount = bookmarkCount,
                 categories = categories,
+                isPinned = isPinned,
             )
         }.awaitAsList()
 
@@ -869,6 +895,7 @@ class MangaRepositoryImpl(
                 lastRead,
                 bookmarkCount,
                 categories,
+                isPinned,
             ->
             MangaMapper.mapLibraryManga(
                 id = id,
@@ -905,6 +932,7 @@ class MangaRepositoryImpl(
                 lastRead = lastRead,
                 bookmarkCount = bookmarkCount,
                 categories = categories,
+                isPinned = isPinned,
             )
         }.awaitAsList()
     }
@@ -945,6 +973,7 @@ class MangaRepositoryImpl(
                 lastRead,
                 bookmarkCount,
                 categories,
+                isPinned,
             ->
             MangaMapper.mapLibraryManga(
                 id = id,
@@ -981,6 +1010,7 @@ class MangaRepositoryImpl(
                 lastRead = lastRead,
                 bookmarkCount = bookmarkCount,
                 categories = categories,
+                isPinned = isPinned,
             )
         }.awaitAsOneOrNull()
     }
@@ -1022,6 +1052,7 @@ class MangaRepositoryImpl(
                 lastRead,
                 bookmarkCount,
                 categories,
+                isPinned,
             ->
             MangaMapper.mapLibraryManga(
                 id = id,
@@ -1058,6 +1089,7 @@ class MangaRepositoryImpl(
                 lastRead = lastRead,
                 bookmarkCount = bookmarkCount,
                 categories = categories,
+                isPinned = isPinned,
             )
         }.awaitAsList()
     }
@@ -1139,6 +1171,7 @@ class MangaRepositoryImpl(
                 lastRead,
                 bookmarkCount,
                 categories,
+                isPinned,
             ->
             MangaMapper.mapLibraryManga(
                 id = id,
@@ -1175,6 +1208,7 @@ class MangaRepositoryImpl(
                 lastRead = lastRead,
                 bookmarkCount = bookmarkCount,
                 categories = categories,
+                isPinned = isPinned,
             )
         }.subscribeToList()
             // Log when debounce passes through
@@ -1227,9 +1261,11 @@ class MangaRepositoryImpl(
                 _,
                 _,
                 memo,
+                is_pinned,
             ->
             MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                 memo = memo,
+                isPinned = is_pinned,
             )
         }.subscribeToList()
     }
@@ -1804,9 +1840,11 @@ class MangaRepositoryImpl(
                     _,
                     _,
                     memo,
+                    is_pinned,
                 ->
                 MangaMapper.mapManga(id, source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, favorite_modified_at, version, is_syncing, notes, is_novel).copy(
                     memo = memo,
+                    isPinned = is_pinned,
                 )
             }
             .subscribeToList()
@@ -1958,6 +1996,7 @@ class MangaRepositoryImpl(
                     notes = value.notes,
                     isNovel = value.isNovel,
                     memo = value.memo?.let(MemoColumnAdapter::encode),
+                    isPinned = value.isPinned,
                 )
             }
             val favoriteChangedIds = mangaUpdates.filter { it.favorite != null }.map { it.id }
@@ -2067,6 +2106,7 @@ class MangaRepositoryImpl(
                                 notes = null,
                                 isNovel = null,
                                 memo = null,
+                                isPinned = null,
                             )
                             seen.add(key)
                             count++
@@ -2270,6 +2310,7 @@ class MangaRepositoryImpl(
                                 notes = null,
                                 isNovel = null,
                                 memo = null,
+                                isPinned = null,
                                 mangaId = mangaId,
                             )
                             count++

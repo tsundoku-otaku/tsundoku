@@ -130,6 +130,7 @@ class MangaRestorer(
             status = newer.status,
             initialized = this.initialized || newer.initialized,
             version = newer.version,
+            isPinned = this.isPinned || newer.isPinned,
         )
     }
 
@@ -163,6 +164,9 @@ class MangaRestorer(
             }?.let { AlternativeTitlesColumnAdapter.encode(it) },
             isNovel = manga.isNovel,
             memo = manga.memo.let(MemoColumnAdapter::encode),
+            // Only ever sets the pin: null leaves an existing pin alone, and a pin on an entry that is
+            // not in the library is meaningless.
+            isPinned = true.takeIf { manga.isPinned && manga.favorite },
         )
         return manga
     }
@@ -297,6 +301,7 @@ class MangaRestorer(
             alternativeTitles = manga.alternativeTitles,
             isNovel = manga.isNovel,
             memo = manga.memo,
+            isPinned = manga.isPinned && manga.favorite,
         )
             .awaitAsOne()
     }

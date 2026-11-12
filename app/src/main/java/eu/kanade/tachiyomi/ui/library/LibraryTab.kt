@@ -173,6 +173,8 @@ data object LibraryTab : Tab {
             bottomBar = {
                 LibraryBottomActionMenu(
                     visible = state.selectionMode,
+                    isPinned = state.selectedManga.fastAll { it.isPinned },
+                    onPinClicked = viewModel::togglePinSelection,
                     onChangeCategoryClicked = viewModel::openChangeCategoryDialog,
                     onMarkAsReadClicked = { viewModel.showMarkReadConfirmation(true) },
                     onMarkAsUnreadClicked = { viewModel.showMarkReadConfirmation(false) },

@@ -1,0 +1,12 @@
+-- Library pin: an entry pinned from the library selection menu is listed first in every category
+-- and in the default view. It is a property of the entry, not of one category.
+ALTER TABLE mangas ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0;
+
+-- A pin only has meaning while the entry is in the library. Clearing it whenever the entry is
+-- unfavorited (from any code path) keeps a re-added entry from coming back pinned.
+CREATE TRIGGER reset_is_pinned_when_unfavorited
+AFTER UPDATE OF favorite ON mangas
+WHEN new.favorite = 0 AND new.is_pinned = 1
+BEGIN
+    UPDATE mangas SET is_pinned = 0 WHERE _id = new._id;
+END;

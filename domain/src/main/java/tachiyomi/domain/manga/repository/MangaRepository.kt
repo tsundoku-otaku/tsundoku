@@ -50,6 +50,9 @@ interface MangaRepository {
 
     suspend fun clearCoversForMangaIds(ids: List<Long>, coverLastModified: Long)
 
+    /** Pins or unpins library entries. The pin belongs to the entry, so it applies in every category. */
+    suspend fun setPinned(ids: List<Long>, pinned: Boolean)
+
     suspend fun getMangaByUrlAndSourceId(url: String, sourceId: Long): Manga?
 
     suspend fun getLiteMangaByUrlAndSourceId(url: String, sourceId: Long): Manga?

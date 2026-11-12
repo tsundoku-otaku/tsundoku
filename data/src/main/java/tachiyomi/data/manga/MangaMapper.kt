@@ -104,12 +104,13 @@ object MangaMapper {
         @Suppress("UNUSED_PARAMETER") lastRead: Long,
         @Suppress("UNUSED_PARAMETER") bookmarkCount: Long,
         memo: JsonObject,
+        isPinned: Boolean,
     ): Manga = mapManga(
         id, source, url, artist, author, description, genre, title, alternativeTitles,
         status, thumbnailUrl, favorite, lastUpdate, nextUpdate, initialized, viewerFlags,
         chapterFlags, coverLastModified, dateAdded, updateStrategy, calculateInterval,
         lastModifiedAt, favoriteModifiedAt, version, 0, notes, isNovel,
-    ).copy(memo = memo)
+    ).copy(memo = memo, isPinned = isPinned)
 
     fun mapLibraryManga(
         id: Long,
@@ -146,6 +147,7 @@ object MangaMapper {
         lastRead: Long,
         bookmarkCount: Double,
         categories: String,
+        isPinned: Boolean,
     ): LibraryManga = LibraryManga(
         manga = mapManga(
             id,
@@ -175,7 +177,7 @@ object MangaMapper {
             isSyncing,
             notes,
             isNovel,
-        ),
+        ).copy(isPinned = isPinned),
         categories = categories.split(",")
             .mapNotNull { it.toLongOrNull() },
         totalChapters = totalCount,
