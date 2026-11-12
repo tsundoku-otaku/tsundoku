@@ -49,6 +49,7 @@ class BackupManga(
     // Fork fields use a reserved 8000+ ProtoNumber block so they never collide with new upstream fields.
     @ProtoNumber(8000) var isNovel: Boolean = false,
     @ProtoNumber(8001) var alternativeTitles: List<String> = emptyList(),
+    @ProtoNumber(8002) var isPinned: Boolean = false,
 ) {
     fun getMangaImpl(): Manga {
         return Manga.create().copy(
@@ -73,6 +74,7 @@ class BackupManga(
             notes = this@BackupManga.notes,
             initialized = this@BackupManga.initialized,
             isNovel = this@BackupManga.isNovel,
+            isPinned = this@BackupManga.isPinned,
             memo = MemoColumnAdapter.decode(this@BackupManga.memo),
         )
     }

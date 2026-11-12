@@ -131,5 +131,6 @@ private fun Manga.toBackupManga() =
         notes = this.notes,
         initialized = this.initialized,
         isNovel = this.isNovel,
+        isPinned = this.isPinned,
         memo = MemoColumnAdapter.encode(this.memo),
     )

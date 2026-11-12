@@ -58,7 +58,6 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.toCommonCheckboxState
 import tachiyomi.core.common.preference.TriState
-import tachiyomi.core.common.util.lang.compareToWithCollator
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.lang.withIOContext
@@ -81,6 +80,7 @@ import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.interactor.GetManga
 import tachiyomi.domain.manga.interactor.SearchMangaMetadata
+import tachiyomi.domain.manga.interactor.SetMangaPinned
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaUpdate
 import tachiyomi.domain.manga.model.applyFilter
@@ -94,7 +94,6 @@ import tachiyomi.source.local.isLocal
 import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import kotlin.random.Random
 
 class LibraryViewModel(
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
@@ -106,6 +105,7 @@ class LibraryViewModel(
     private val setReadStatus: SetReadStatus = Injekt.get(),
     private val updateManga: UpdateManga = Injekt.get(),
     private val setMangaCategories: SetMangaCategories = Injekt.get(),
+    private val setMangaPinned: SetMangaPinned = Injekt.get(),
     private val searchChapterNames: SearchChapterNames = Injekt.get(),
     private val searchMangaMetadata: SearchMangaMetadata = Injekt.get(),
     private val getManga: GetManga = Injekt.get(),
@@ -598,14 +598,7 @@ class LibraryViewModel(
         trackMap: Map<Long, List<Track>>,
         loggedInTrackerIds: Set<Long>,
     ): Map<Category, List</* LibraryItem */ Long>> {
-        val sortAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
-            manga1.libraryManga.manga.title.compareToWithCollator(manga2.libraryManga.manga.title)
-        }
-
-        val defaultTrackerScoreSortValue = -1.0
-        val needsSourceName = keys.any { it.sort.type == LibrarySort.Type.SourceName }
         val needsTrackerMean = keys.any { it.sort.type == LibrarySort.Type.TrackerMean }
-        val sourceNameCache = if (needsSourceName) HashMap<Long, String>() else null
         val trackerScores = if (needsTrackerMean) {
             val trackerMap = trackerManager.getAll(loggedInTrackerIds).associateBy { e -> e.id }
             trackMap.mapValues { entry ->
@@ -621,71 +614,15 @@ class LibraryViewModel(
             emptyMap()
         }
 
-        fun LibrarySort.comparator(): Comparator<LibraryItem> = Comparator { manga1, manga2 ->
-            when (this.type) {
-                LibrarySort.Type.Alphabetical -> {
-                    sortAlphabetically(manga1, manga2)
-                }
-                LibrarySort.Type.LastRead -> {
-                    manga1.libraryManga.lastRead.compareTo(manga2.libraryManga.lastRead)
-                }
-                LibrarySort.Type.LastUpdate -> {
-                    manga1.libraryManga.manga.lastUpdate.compareTo(manga2.libraryManga.manga.lastUpdate)
-                }
-                LibrarySort.Type.UnreadCount -> when {
-                    // Ensure unread content comes first
-                    manga1.libraryManga.unreadCount == manga2.libraryManga.unreadCount -> 0
-                    manga1.libraryManga.unreadCount == 0L -> if (this.isAscending) 1 else -1
-                    manga2.libraryManga.unreadCount == 0L -> if (this.isAscending) -1 else 1
-                    else -> manga1.libraryManga.unreadCount.compareTo(manga2.libraryManga.unreadCount)
-                }
-                LibrarySort.Type.TotalChapters -> {
-                    manga1.libraryManga.totalChapters.compareTo(manga2.libraryManga.totalChapters)
-                }
-                LibrarySort.Type.DownloadedChapters -> {
-                    manga1.downloadCount.compareTo(manga2.downloadCount)
-                }
-                LibrarySort.Type.LatestChapter -> {
-                    manga1.libraryManga.latestUpload.compareTo(manga2.libraryManga.latestUpload)
-                }
-                LibrarySort.Type.ChapterFetchDate -> {
-                    manga1.libraryManga.chapterFetchedAt.compareTo(manga2.libraryManga.chapterFetchedAt)
-                }
-                LibrarySort.Type.DateAdded -> {
-                    manga1.libraryManga.manga.dateAdded.compareTo(manga2.libraryManga.manga.dateAdded)
-                }
-                LibrarySort.Type.TrackerMean -> {
-                    val item1Score = trackerScores[manga1.id] ?: defaultTrackerScoreSortValue
-                    val item2Score = trackerScores[manga2.id] ?: defaultTrackerScoreSortValue
-                    item1Score.compareTo(item2Score)
-                }
-                LibrarySort.Type.SourceName -> {
-                    val sourceName1 = sourceNameCache!!.getOrPut(manga1.libraryManga.manga.source) {
-                        sourceManager.getOrStub(manga1.libraryManga.manga.source).name
-                    }
-                    val sourceName2 = sourceNameCache.getOrPut(manga2.libraryManga.manga.source) {
-                        sourceManager.getOrStub(manga2.libraryManga.manga.source).name
-                    }
-                    sourceName1.compareToWithCollator(sourceName2)
-                }
-                LibrarySort.Type.Random -> {
-                    error("Why Are We Still Here? Just To Suffer?")
-                }
-            }
-        }
-
         return mapValues { (key, value) ->
-            if (key.sort.type == LibrarySort.Type.Random) {
-                return@mapValues value.shuffled(Random(libraryPreferences.randomSortSeed.get()))
-            }
-
-            val manga = value.mapNotNull { favoritesById[it] }
-
-            val comparator = key.sort.comparator()
-                .let { if (key.sort.isAscending) it else it.reversed() }
-                .thenComparator(sortAlphabetically)
-
-            manga.sortedWith(comparator).map { it.id }
+            value.mapNotNull { favoritesById[it] }
+                .sortedForLibrary(
+                    sort = key.sort,
+                    trackerScores = trackerScores,
+                    sourceName = { sourceManager.getOrStub(it).name },
+                    randomSeed = libraryPreferences.randomSortSeed.get(),
+                )
+                .map { it.id }
         }
     }
 
@@ -950,6 +887,26 @@ class LibraryViewModel(
             }
             // Start background worker with notification
             TranslationJob.start(Injekt.get<android.app.Application>())
+        }
+    }
+
+    /**
+     * Pins the selected entries to the top of the library, or unpins them when every selected entry
+     * is already pinned. A mixed selection pins, so one more tap unpins the whole set.
+     */
+    fun togglePinSelection() {
+        val selection = state.value.selectedManga
+        if (selection.isEmpty()) return
+        val pin = selection.any { !it.isPinned }
+        val ids = selection.map { it.id }
+        clearSelection()
+        viewModelScope.launchNonCancellable {
+            setMangaPinned.await(ids, pin)
+            getLibraryManga.applyBatchMangaDetailUpdates(
+                ids.associateWith { { manga: Manga -> manga.copy(isPinned = pin) } },
+            )
+            // Paged mode loads each category in DB order, which now has the pinned entries first.
+            if (getLibraryManga.isPaginationEnabled()) getLibraryManga.refreshForced()
         }
     }
 

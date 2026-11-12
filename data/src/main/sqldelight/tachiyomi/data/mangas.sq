@@ -39,7 +39,8 @@ CREATE TABLE mangas(
     chapter_fetched_at INTEGER NOT NULL DEFAULT 0,
     last_read INTEGER NOT NULL DEFAULT 0,
     bookmark_count INTEGER NOT NULL DEFAULT 0,
-    memo BLOB AS JsonObject NOT NULL DEFAULT '{}'
+    memo BLOB AS JsonObject NOT NULL DEFAULT '{}',
+    is_pinned INTEGER AS Boolean NOT NULL DEFAULT 0
 );
 
 CREATE INDEX library_favorite_index ON mangas(favorite) WHERE favorite = 1;
@@ -54,6 +55,15 @@ BEGIN
   UPDATE mangas
   SET favorite_modified_at = strftime('%s', 'now')
   WHERE _id = new._id;
+END;
+
+-- A pin only has meaning while the entry is in the library; clear it on unfavorite so a re-added
+-- entry does not come back pinned.
+CREATE TRIGGER reset_is_pinned_when_unfavorited
+AFTER UPDATE OF favorite ON mangas
+WHEN new.favorite = 0 AND new.is_pinned = 1
+BEGIN
+  UPDATE mangas SET is_pinned = 0 WHERE _id = new._id;
 END;
 
 CREATE TRIGGER update_last_modified_at_mangas
@@ -101,6 +111,9 @@ UPDATE mangas SET description = '', genre = '' WHERE _id IN :ids;
 
 clearThumbnailsForIds:
 UPDATE mangas SET thumbnail_url = '', cover_last_modified = :coverLastModified WHERE _id IN :ids;
+
+setPinnedForIds:
+UPDATE mangas SET is_pinned = :isPinned WHERE _id IN :ids;
 
 setIsSyncingForIds:
 UPDATE mangas SET is_syncing = :value WHERE _id IN :ids;
@@ -504,8 +517,8 @@ DELETE FROM mangas
 WHERE _id IN :mangaIds;
 
 insertReturningId:
-INSERT INTO mangas(source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, version, notes, is_novel, memo)
-VALUES (:source, :url, :artist, :author, :description, :genre, :title, :alternativeTitles, :status, :thumbnailUrl, :favorite, :lastUpdate, :nextUpdate, :initialized, :viewerFlags, :chapterFlags, :coverLastModified, :dateAdded, :updateStrategy, :calculateInterval, 0, :version, :notes, :isNovel, :memo)
+INSERT INTO mangas(source, url, artist, author, description, genre, title, alternative_titles, status, thumbnail_url, favorite, last_update, next_update, initialized, viewer, chapter_flags, cover_last_modified, date_added, update_strategy, calculate_interval, last_modified_at, version, notes, is_novel, memo, is_pinned)
+VALUES (:source, :url, :artist, :author, :description, :genre, :title, :alternativeTitles, :status, :thumbnailUrl, :favorite, :lastUpdate, :nextUpdate, :initialized, :viewerFlags, :chapterFlags, :coverLastModified, :dateAdded, :updateStrategy, :calculateInterval, 0, :version, :notes, :isNovel, :memo, :isPinned)
 RETURNING _id;
 
 update:
@@ -534,7 +547,8 @@ UPDATE mangas SET
     is_syncing = coalesce(:isSyncing, is_syncing),
     notes = coalesce(:notes, notes),
     is_novel = coalesce(:isNovel, is_novel),
-    memo = coalesce(:memo, memo)
+    memo = coalesce(:memo, memo),
+    is_pinned = coalesce(:isPinned, is_pinned)
 WHERE _id = :mangaId;
 
 selectLastInsertedRowId:
@@ -682,7 +696,8 @@ SELECT
     M.chapter_fetched_at AS chapterFetchedAt,
     M.last_read AS lastRead,
     CAST(M.bookmark_count AS REAL) AS bookmarkCount,
-    coalesce(MC.categories, '0') AS categories
+    coalesce(MC.categories, '0') AS categories,
+    M.is_pinned
 FROM mangas M
 LEFT JOIN (
     SELECT manga_id, group_concat(category_id) AS categories
@@ -732,7 +747,8 @@ SELECT
     M.chapter_fetched_at AS chapterFetchedAt,
     M.last_read AS lastRead,
     CAST(M.bookmark_count AS REAL) AS bookmarkCount,
-    coalesce(MC.categories, '0') AS categories
+    coalesce(MC.categories, '0') AS categories,
+    M.is_pinned
 FROM mangas M
 LEFT JOIN (
     SELECT manga_id, group_concat(category_id) AS categories
@@ -785,6 +801,8 @@ WHERE M.favorite = 1
 -- sort key (last_read, unread, total_count, latest_upload, chapter_fetched_at) changes between page
 -- fetches can shift position and be skipped until the next reset; acceptable for this mode.
 ORDER BY
+    -- Pinned entries are listed first whatever the sort type or direction.
+    M.is_pinned DESC,
     CASE WHEN :sortType = 0 AND :sortAscending = 1 THEN M.title END COLLATE NOCASE ASC,
     CASE WHEN :sortType = 0 AND :sortAscending = 0 THEN M.title END COLLATE NOCASE DESC,
     CASE WHEN :sortType = 1 AND :sortAscending = 1 THEN M.last_read END ASC,
@@ -840,7 +858,8 @@ SELECT
     M.chapter_fetched_at AS chapterFetchedAt,
     M.last_read AS lastRead,
     CAST(M.bookmark_count AS REAL) AS bookmarkCount,
-    coalesce(MC.categories, '0') AS categories
+    coalesce(MC.categories, '0') AS categories,
+    M.is_pinned
 FROM mangas M
 LEFT JOIN (
     SELECT manga_id, group_concat(category_id) AS categories
@@ -885,7 +904,8 @@ SELECT
     M.chapter_fetched_at AS chapterFetchedAt,
     M.last_read AS lastRead,
     CAST(M.bookmark_count AS REAL) AS bookmarkCount,
-    coalesce(MC.categories, '0') AS categories
+    coalesce(MC.categories, '0') AS categories,
+    M.is_pinned
 FROM mangas M
 LEFT JOIN (
     SELECT manga_id, group_concat(category_id) AS categories

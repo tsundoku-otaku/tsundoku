@@ -29,8 +29,12 @@ data class MangaUpdate(
     val notes: String? = null,
     val isNovel: Boolean? = null,
     val memo: JsonObject? = null,
+    val isPinned: Boolean? = null,
 )
 
+// isPinned is deliberately not copied: many callers load a Manga from a projection that does not
+// carry it, so writing it back here could silently unpin an entry. Pin changes go through
+// MangaRepository.setPinned.
 fun Manga.toMangaUpdate(): MangaUpdate {
     return MangaUpdate(
         id = id,
