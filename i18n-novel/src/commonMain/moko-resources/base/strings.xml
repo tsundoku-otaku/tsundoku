@@ -60,7 +60,7 @@
     <string name="local_novel_source_open_folder">Open folder</string>
     <string name="local_novel_source_refresh_covers">Refresh covers</string>
     <string name="local_novel_source_delete_title">Delete novels?</string>
-    <string name="local_novel_source_delete_message">This will permanently delete the folder and all files for each selected novel, and remove them from the library. This cannot be undone.</string>
+    <string name="local_novel_source_delete_message">This will permanently delete the folder or file for each selected novel, and remove them from the library. This cannot be undone.</string>
     <string name="local_novel_source_add_to_library">Add to library</string>
     <string name="local_novel_source_covers_refreshed">Covers refreshed for %d novel(s)</string>
     <string name="local_novel_source_select_category">Select category</string>

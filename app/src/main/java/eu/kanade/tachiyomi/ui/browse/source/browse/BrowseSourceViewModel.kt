@@ -67,6 +67,7 @@ import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.translation.model.TranslationResult
 import tachiyomi.domain.translation.service.TranslationPreferences
 import tachiyomi.source.local.LocalNovelSource
+import tachiyomi.source.local.deleteLocalNovelEntries
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.time.Clock
@@ -914,22 +915,19 @@ class BrowseSourceViewModel(
     fun deleteLocalNovels(mangas: Set<Manga>, onComplete: (deleted: Int, failed: Int) -> Unit = { _, _ -> }) {
         val localSource = source as? LocalNovelSource ?: return
         viewModelScope.launchIO {
-            var deleted = 0
-            var failed = 0
-            mangas.forEach { manga ->
+            val result = deleteLocalNovelEntries(mangas) { manga -> localSource.deleteNovelEntry(manga.url) }
+            result.deleted.forEach { manga ->
                 try {
-                    localSource.deleteNovelDirectory(manga.url)
                     updateManga.await(MangaUpdate(id = manga.id, favorite = false))
                     manga.removeCovers(coverCache)
-                    deleted++
-                } catch (_: Exception) {
-                    failed++
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN) { "Failed to update library entry for deleted novel ${manga.url}: ${e.message}" }
                 }
             }
             clearSelection()
             setDialog(null)
             refreshBrowseResults()
-            onComplete(deleted, failed)
+            onComplete(result.deleted.size, result.failed.size)
         }
     }
 
