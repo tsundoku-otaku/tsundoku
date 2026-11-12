@@ -545,8 +545,12 @@ class LocalNovelSource : CatalogueSource, UnmeteredSource {
 
     fun getLocalSourceDir(): android.net.Uri? = fileSystem.getBaseDirectory()?.uri
 
-    fun deleteNovelDirectory(mangaUrl: String): Boolean =
-        fileSystem.getNovelDirectory(mangaUrl)?.delete() == true
+    /**
+     * Deletes the folder or single file that [mangaUrl] resolves to in the base folder.
+     * Returns false if no such entry exists or it could not be deleted.
+     */
+    fun deleteNovelEntry(mangaUrl: String): Boolean =
+        resolveNovelEntry(mangaUrl)?.delete() == true
 
     fun findCoverUri(mangaUrl: String): String? =
         coverManager.find(mangaUrl)?.uri?.toString()
@@ -578,11 +582,12 @@ class LocalNovelSource : CatalogueSource, UnmeteredSource {
     }
 
     private fun resolveNovelEntry(url: String): UniFile? {
-        val base = fileSystem.getBaseDirectory() ?: return null
-        return base.findFile(url)
-            ?: base.listFiles().orEmpty().firstOrNull {
-                !it.isDirectory && it.nameWithoutExtension.orEmpty().equals(url, ignoreCase = true)
-            }
+        return resolveLocalNovelEntry(
+            url = url,
+            entries = fileSystem.getFilesInBaseDirectory(),
+            nameOf = { it.name },
+            isDirectory = { it.isDirectory },
+        )
     }
 
     private fun resolveChapterFile(filePath: String): UniFile? {
