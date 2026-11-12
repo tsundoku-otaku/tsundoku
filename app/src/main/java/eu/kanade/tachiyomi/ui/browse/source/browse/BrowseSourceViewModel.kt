@@ -921,7 +921,9 @@ class BrowseSourceViewModel(
                     updateManga.await(MangaUpdate(id = manga.id, favorite = false))
                     manga.removeCovers(coverCache)
                 } catch (e: Exception) {
-                    logcat(LogPriority.WARN) { "Failed to update library entry for deleted novel ${manga.url}: ${e.message}" }
+                    logcat(LogPriority.WARN) {
+                        "Failed to update library entry for deleted novel ${manga.url}: ${e.message}"
+                    }
                 }
             }
             clearSelection()
