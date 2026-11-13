@@ -589,6 +589,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * Used when switching between already-appended chapters during novel infinite-scroll.
      */
     private fun setActiveChapterWithoutReload(chapter: ReaderChapter) {
+        if (chapter !== state.value.viewerChapters?.currChapter) reloadJob?.cancel()
         viewModelScope.launchIO {
             flushReadTimerAndRestart()
 
@@ -672,7 +673,12 @@ class ReaderViewModel @JvmOverloads constructor(
 
                 // Notify the viewer to refresh, including with a new error so it can be retried again
                 withUIContext {
-                    state.value.viewerChapters?.let { state.value.viewer?.setChapters(it) }
+                    try {
+                        state.value.viewerChapters?.let { state.value.viewer?.setChapters(it) }
+                    } catch (e: Throwable) {
+                        if (e is CancellationException) throw e
+                        logcat(LogPriority.ERROR, e) { "Failed to show reloaded chapter" }
+                    }
                 }
             } finally {
                 if (previousLoader != null) {
