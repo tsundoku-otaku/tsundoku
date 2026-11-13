@@ -62,7 +62,9 @@ import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -456,6 +458,7 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun loadNewChapter(chapter: ReaderChapter) {
         val loader = loader ?: return
+        if (chapter !== state.value.viewerChapters?.currChapter) reloadJob?.cancel()
 
         viewModelScope.launchIO {
             logcat { "Loading ${chapter.chapter.url}" }
@@ -479,6 +482,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private suspend fun loadAdjacent(chapter: ReaderChapter): Boolean {
         val loader = loader ?: return false
         if (state.value.isLoadingAdjacentChapter) return false
+        reloadJob?.cancel()
 
         logcat { "Loading adjacent ${chapter.chapter.url}" }
 
@@ -585,6 +589,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * Used when switching between already-appended chapters during novel infinite-scroll.
      */
     private fun setActiveChapterWithoutReload(chapter: ReaderChapter) {
+        if (chapter !== state.value.viewerChapters?.currChapter) reloadJob?.cancel()
         viewModelScope.launchIO {
             flushReadTimerAndRestart()
 
@@ -642,30 +647,48 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
+    private var reloadJob: Job? = null
+
     /**
      * Reloads the current chapter. If fromSource is true, it will fetch from the source,
-     * otherwise it will reload the local/downloaded version.
+     * otherwise it will reload the local/downloaded version. Returns false if nothing was reloaded.
      */
-    fun reloadChapter(fromSource: Boolean = false) {
-        val currChapter = state.value.viewerChapters?.currChapter ?: return
-        val loader = loader ?: return
+    fun reloadChapter(fromSource: Boolean = false): Boolean {
+        val currChapter = state.value.viewerChapters?.currChapter ?: return false
+        val loader = loader ?: return false
 
-        viewModelScope.launchIO {
+        val previousJob = reloadJob
+        reloadJob = viewModelScope.launchIO {
+            // Serialized so each reload sees the loader the previous one left behind.
+            previousJob?.cancelAndJoin()
+            val previousLoader = currChapter.pageLoader
+            currChapter.state = ReaderChapter.State.Wait
             try {
-                // Reset chapter state to force reload
-                currChapter.state = ReaderChapter.State.Wait
-
-                loadChapter(loader, currChapter, forceFromSource = fromSource)
-
-                // Notify the viewer to refresh
-                withUIContext {
-                    state.value.viewer?.setChapters(state.value.viewerChapters!!)
+                try {
+                    loadChapter(loader, currChapter, forceFromSource = fromSource)
+                } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
+                    logcat(LogPriority.ERROR, e) { "Failed to reload chapter" }
                 }
-            } catch (e: Throwable) {
-                if (e is CancellationException) throw e
-                logcat(LogPriority.ERROR, e) { "Failed to reload chapter" }
+
+                // Notify the viewer to refresh, including with a new error so it can be retried again
+                withUIContext {
+                    try {
+                        state.value.viewerChapters?.let { state.value.viewer?.setChapters(it) }
+                    } catch (e: Throwable) {
+                        if (e is CancellationException) throw e
+                        logcat(LogPriority.ERROR, e) { "Failed to show reloaded chapter" }
+                    }
+                }
+            } finally {
+                if (previousLoader != null) {
+                    withContext(NonCancellable) {
+                        withUIContext { currChapter.retirePageLoader(previousLoader) }
+                    }
+                }
             }
         }
+        return true
     }
 
     /**

@@ -24,6 +24,8 @@ data class ReaderChapter(val chapter: Chapter) {
 
     private var references = 0
 
+    private val retiredPageLoaders = mutableListOf<PageLoader>()
+
     constructor(chapter: tachiyomi.domain.chapter.model.Chapter) : this(chapter.toDbChapter())
 
     fun ref() {
@@ -38,8 +40,24 @@ data class ReaderChapter(val chapter: Chapter) {
             }
             pageLoader?.recycle()
             pageLoader = null
+            recycleRetiredPageLoaders()
             state = State.Wait
         }
+    }
+
+    /**
+     * Recycles a [loader] replaced by a reload once this chapter is unreferenced, since a viewer
+     * that kept the old content on screen may still read from it.
+     */
+    fun retirePageLoader(loader: PageLoader) {
+        if (loader === pageLoader || loader.isRecycled || loader in retiredPageLoaders) return
+        retiredPageLoaders += loader
+        if (references <= 0) recycleRetiredPageLoaders()
+    }
+
+    private fun recycleRetiredPageLoaders() {
+        retiredPageLoaders.forEach { if (!it.isRecycled) it.recycle() }
+        retiredPageLoaders.clear()
     }
 
     sealed interface State {
