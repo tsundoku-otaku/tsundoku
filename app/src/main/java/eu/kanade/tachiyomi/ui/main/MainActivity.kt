@@ -571,8 +571,11 @@ class MainActivity : BaseActivity() {
                         pushGlobalSearch(navigator, query, null, novelAction)
                     } else {
                         // On a cold start the extensions are still loading when the intent arrives
+                        val root = navigator.lastItem
                         lifecycleScope.launch {
                             val sources = extensionManager.awaitInstalledExtension(filter)?.sources.orEmpty()
+                            // The user moved on while the extensions loaded
+                            if (navigator.lastItem !== root) return@launch
                             // A single-type extension decides; a mixed one leaves it to the action
                             val isNovel = sources.map { it.isNovelSource() }.distinct().singleOrNull() ?: novelAction
                             // A package that isn't an installed extension (e.g. a JS plugin id) matches no
