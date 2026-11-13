@@ -72,7 +72,6 @@ class ManageFilterPresetsTest {
         assertNull(manage.getPreset(1L, 42L))
     }
 
-
     @Test
     fun `search queries are stored apart from the presets and dropped on delete`() {
         manage.savePreset(1L, "p", filters(true), searchQuery = "query")
@@ -96,7 +95,8 @@ class ManageFilterPresetsTest {
         assertTrue(presets.first { it.name == "b" }.isDefault)
     }
 
-    private class Choice(name: String, values: Array<String>, state: Int = 0) : Filter.Select<String>(name, values, state)
+    private class Choice(name: String, values: Array<String>, state: Int = 0) :
+        Filter.Select<String>(name, values, state)
 
     private class Order(values: Array<String>, state: Selection? = null) : Filter.Sort("Order", values, state)
 
@@ -218,5 +218,23 @@ class ManageFilterPresetsTest {
         val items = (target[0] as Tags).state
         assertTrue(items[1].state)
         assertFalse(items[0].state)
+    }
+
+    @Test
+    fun `a renamed filter falls back to its saved position in the same layout`() {
+        val target = FilterList(Flag("Erledigt"), Flag("b"))
+
+        restore(FilterList(Flag("Completed", true), Flag("b")), target)
+
+        assertTrue((target[0] as Flag).state)
+    }
+
+    @Test
+    fun `relabelled select options fall back to the saved index`() {
+        val target = FilterList(Choice("Status", arrayOf("Alle", "Laufend", "Fertig")))
+
+        restore(FilterList(Choice("Status", arrayOf("All", "Ongoing", "Done"), 2)), target)
+
+        assertEquals(2, (target[0] as Choice).state)
     }
 }

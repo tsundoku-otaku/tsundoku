@@ -169,6 +169,7 @@ class ManageFilterPresets(
                 )
                 if (filter is Filter.Select<*>) {
                     selectOptionName(filter, filter.state)?.let { entry["value"] = JsonPrimitive(it) }
+                    entry["options"] = JsonPrimitive(filter.values.size)
                 }
                 JsonObject(entry)
             }
@@ -187,14 +188,32 @@ class ManageFilterPresets(
                 return
             }
             val slots = NameSlots(filters.map { it.name })
+            val unmatched = mutableListOf<JsonObject>()
             states.forEach { element ->
                 try {
                     val entry = element.jsonObject
                     val state = entry["state"] ?: JsonNull
                     val name = entry["name"]?.jsonPrimitive?.contentOrNull ?: return@forEach
                     // Stateless entries still claim their slot so a same-named filter after them keeps its own.
-                    val filter = slots.next(name) { filters[it].holds(state) }?.let { filters[it] } ?: return@forEach
-                    if (state !is JsonNull) applyFilterState(filter, entry, state)
+                    val slot = slots.next(name) { filters[it].holds(state) }
+                    if (slot == null) {
+                        unmatched += entry
+                    } else if (state !is JsonNull) {
+                        applyFilterState(filters[slot], entry, state)
+                    }
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN) { "FilterPresets: Skipped a filter: ${e.message}" }
+                }
+            }
+            // Same layout but a name that no longer matches (relabelled or localized): fall back to the
+            // saved position, as long as nothing else claimed it and the filter there is the same kind.
+            if (states.size != filters.size) return
+            unmatched.forEach { entry ->
+                try {
+                    val state = entry["state"] ?: JsonNull
+                    val index = entry["index"]?.asPrimitive()?.intOrNull ?: return@forEach
+                    if (index !in filters.indices || !filters[index].holds(state) || !slots.claim(index)) return@forEach
+                    if (state !is JsonNull) applyFilterState(filters[index], entry, state)
                 } catch (e: Exception) {
                     logcat(LogPriority.WARN) { "FilterPresets: Skipped a filter: ${e.message}" }
                 }
@@ -249,10 +268,13 @@ class ManageFilterPresets(
             val savedName = entry["value"]?.asPrimitive()?.contentOrNull ?: return savedIndex
             if (savedIndex != null && filter.values[savedIndex].toString() == savedName) return savedIndex
             val byName = filter.values.indexOfFirst { it.toString() == savedName }
+            val sameOptionCount = entry["options"]?.asPrimitive()?.intOrNull == filter.values.size
             return when {
                 byName >= 0 -> byName
                 // Options without their own toString() get a new name every launch.
                 IDENTITY_NAME.matches(savedName) -> savedIndex
+                // Same number of options under other labels (relabelled or localized).
+                sameOptionCount -> savedIndex
                 else -> null
             }
         }
@@ -280,6 +302,9 @@ class ManageFilterPresets(
                 queue.remove(index)
                 return index
             }
+
+            /** Takes [index] if no entry matched it yet. */
+            fun claim(index: Int): Boolean = slots.values.any { it.remove(index) }
         }
     }
 }
