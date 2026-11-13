@@ -229,7 +229,7 @@ internal class NovelWebViewStyler(
 
     fun injectContrastGuard() {
         if (!preferences.novelSourceCssPriority.get()) {
-            evaluateJs("document.getElementById('$STYLE_ID_CONTRAST_GUARD')?.remove();")
+            evaluateJs("(function(){var g=document.getElementById('$STYLE_ID_CONTRAST_GUARD');if(g)g.remove();})();")
             return
         }
         val (bg, text) = ThemeUtils.getThemeColors(activity, preferences, preferences.novelTheme.get())
