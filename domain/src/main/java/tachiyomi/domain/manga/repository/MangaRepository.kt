@@ -161,8 +161,6 @@ interface MangaRepository {
     /** Returns true when an index had to be built, calling [onBuild] first. */
     suspend fun ensureLibraryPagingIndexes(onBuild: () -> Unit = {}): Boolean
 
-    suspend fun dropLibraryPagingIndexes()
-
     suspend fun markFavoritesAsNovel(sourceIds: List<Long>)
 
     /**

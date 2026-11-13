@@ -46,8 +46,6 @@ internal object LibraryPageSql {
         "CREATE INDEX IF NOT EXISTS $name ON mangas(is_novel, $key) WHERE favorite = 1"
     }
 
-    fun dropIndexStatements(): List<String> = indexes.map { (name, _) -> "DROP INDEX IF EXISTS $name" }
-
     fun page(
         categoryId: Long,
         isNovel: Boolean?,
