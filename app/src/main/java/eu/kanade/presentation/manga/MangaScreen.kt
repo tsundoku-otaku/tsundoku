@@ -136,7 +136,7 @@ fun MangaScreen(
     onMultiBookmarkClicked: (List<Chapter>, bookmarked: Boolean) -> Unit,
     onMultiMarkAsReadClicked: (List<Chapter>, markAsRead: Boolean) -> Unit,
     onMarkPreviousAsReadClicked: (Chapter) -> Unit,
-    onMultiDeleteClicked: (List<Chapter>) -> Unit,
+    onMultiDeleteClicked: ((List<Chapter>) -> Unit)?,
     onMultiRemoveFromDbClicked: (List<Chapter>) -> Unit,
     onMultiDeleteTranslationClicked: (List<Chapter>) -> Unit,
     onTranslateSelectedClicked: ((List<Chapter>) -> Unit)? = null,
@@ -315,7 +315,7 @@ private fun MangaScreenSmallImpl(
     onMultiBookmarkClicked: (List<Chapter>, bookmarked: Boolean) -> Unit,
     onMultiMarkAsReadClicked: (List<Chapter>, markAsRead: Boolean) -> Unit,
     onMarkPreviousAsReadClicked: (Chapter) -> Unit,
-    onMultiDeleteClicked: (List<Chapter>) -> Unit,
+    onMultiDeleteClicked: ((List<Chapter>) -> Unit)?,
     onMultiRemoveFromDbClicked: (List<Chapter>) -> Unit,
     onMultiDeleteTranslationClicked: (List<Chapter>) -> Unit,
     onTranslateSelectedClicked: ((List<Chapter>) -> Unit)? = null,
@@ -623,7 +623,7 @@ fun MangaScreenLargeImpl(
     onMultiBookmarkClicked: (List<Chapter>, bookmarked: Boolean) -> Unit,
     onMultiMarkAsReadClicked: (List<Chapter>, markAsRead: Boolean) -> Unit,
     onMarkPreviousAsReadClicked: (Chapter) -> Unit,
-    onMultiDeleteClicked: (List<Chapter>) -> Unit,
+    onMultiDeleteClicked: ((List<Chapter>) -> Unit)?,
     onMultiRemoveFromDbClicked: (List<Chapter>) -> Unit,
     onMultiDeleteTranslationClicked: (List<Chapter>) -> Unit,
     onTranslateSelectedClicked: ((List<Chapter>) -> Unit)? = null,
@@ -884,7 +884,7 @@ private fun SharedMangaBottomActionMenu(
     onMultiMarkAsReadClicked: (List<Chapter>, markAsRead: Boolean) -> Unit,
     onMarkPreviousAsReadClicked: (Chapter) -> Unit,
     onDownloadChapter: ((List<ChapterList.Item>, ChapterDownloadAction) -> Unit)?,
-    onMultiDeleteClicked: (List<Chapter>) -> Unit,
+    onMultiDeleteClicked: ((List<Chapter>) -> Unit)?,
     onMultiRemoveFromDbClicked: (List<Chapter>) -> Unit,
     onDeleteRangeClicked: (() -> Unit)?,
     onMultiDeleteTranslationClicked: ((List<Chapter>) -> Unit)? = null,
@@ -916,10 +916,12 @@ private fun SharedMangaBottomActionMenu(
         }.takeIf {
             onDownloadChapter != null && selected.fastAny { it.downloadState != Download.State.DOWNLOADED }
         },
-        onDeleteClicked = {
-            onMultiDeleteClicked(selected.fastMap { it.chapter })
-        }.takeIf {
-            selected.fastAny { it.downloadState == Download.State.DOWNLOADED }
+        onDeleteClicked = onMultiDeleteClicked?.let { onDelete ->
+            {
+                onDelete(selected.fastMap { it.chapter })
+            }.takeIf {
+                selected.fastAny { it.downloadState == Download.State.DOWNLOADED }
+            }
         },
         onRemoveFromDbClicked = {
             onMultiRemoveFromDbClicked(selected.fastMap { it.chapter })

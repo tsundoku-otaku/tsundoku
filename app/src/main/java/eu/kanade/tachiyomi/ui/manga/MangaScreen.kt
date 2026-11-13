@@ -71,6 +71,7 @@ import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.CustomMangaInfo
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
@@ -135,8 +136,8 @@ class MangaScreen(
             snackbarHostState = viewModel.snackbarHostState,
             nextUpdate = successState.manga.expectedNextUpdate,
             isTabletUi = isTabletUi(),
-            chapterSwipeStartAction = viewModel.chapterSwipeStartAction,
-            chapterSwipeEndAction = viewModel.chapterSwipeEndAction,
+            chapterSwipeStartAction = viewModel.chapterSwipeStartAction.withoutDownloadFor(successState.manga),
+            chapterSwipeEndAction = viewModel.chapterSwipeEndAction.withoutDownloadFor(successState.manga),
             navigateUp = navigator::pop,
             onChapterClicked = { openChapter(context, it) },
             onDownloadChapter = viewModel::runChapterDownloadActions.takeIf { !successState.source.isLocalOrStub() },
@@ -220,7 +221,8 @@ class MangaScreen(
             onMultiBookmarkClicked = viewModel::bookmarkChapters,
             onMultiMarkAsReadClicked = viewModel::markChaptersRead,
             onMarkPreviousAsReadClicked = viewModel::markPreviousChapterRead,
-            onMultiDeleteClicked = viewModel::showDeleteChapterDialog,
+            // Local novel chapters are the user's files, not downloads.
+            onMultiDeleteClicked = viewModel::showDeleteChapterDialog.takeIf { !successState.manga.isLocalNovel() },
             onMultiRemoveFromDbClicked = viewModel::showRemoveChaptersFromDbDialog,
             onMultiDeleteTranslationClicked = viewModel::deleteTranslations,
             onTranslateSelectedClicked = { chapters ->
@@ -577,3 +579,10 @@ class MangaScreen(
         context.copyToClipboard(url, url)
     }
 }
+
+private fun LibraryPreferences.ChapterSwipeAction.withoutDownloadFor(manga: Manga) =
+    if (this == LibraryPreferences.ChapterSwipeAction.Download && manga.isLocalNovel()) {
+        LibraryPreferences.ChapterSwipeAction.Disabled
+    } else {
+        this
+    }

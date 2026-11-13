@@ -1781,11 +1781,16 @@ class MangaViewModel(
     }
 
     private suspend fun queueTranslations(manga: Manga, chapters: List<Chapter>, forceRetranslate: Boolean) {
-        translationService.enqueueAll(manga, chapters, TranslationService.PRIORITY_NORMAL, forceRetranslate)
+        val queued = translationService.enqueueAll(
+            manga,
+            chapters,
+            TranslationService.PRIORITY_NORMAL,
+            forceRetranslate,
+        )
         TranslationJob.start(context)
         withUIContext {
             snackbarHostState.showSnackbar(
-                context.stringResource(TDMR.strings.translation_queued, chapters.size),
+                context.stringResource(TDMR.strings.translation_queued, queued),
             )
         }
     }

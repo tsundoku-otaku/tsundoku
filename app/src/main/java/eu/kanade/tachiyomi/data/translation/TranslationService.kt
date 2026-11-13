@@ -140,8 +140,8 @@ class TranslationService(
         chapter: Chapter,
         priority: Int = 0,
         forceRetranslate: Boolean = false,
-    ) {
-        if (!translationPreferences.translationEnabled().get()) return
+    ): Boolean {
+        if (!translationPreferences.translationEnabled().get()) return false
 
         val task = TranslationTask(
             id = enqueueSequence.incrementAndGet(),
@@ -160,13 +160,13 @@ class TranslationService(
 
         // Don't re-queue the chapter currently translating (auto-translate fires when
         // the download this service itself triggered completes)
-        if (!forceRetranslate && chapter.id == currentTask?.chapterId) return
+        if (!forceRetranslate && chapter.id == currentTask?.chapterId) return false
 
         // Atomic: only inserts if the key is absent (fix 4.1)
-        if (queueMap.putIfAbsent(chapter.id, task) == null) {
-            publishQueueState()
-            start()
-        }
+        if (queueMap.putIfAbsent(chapter.id, task) != null) return false
+        publishQueueState()
+        start()
+        return true
     }
 
     /**
@@ -178,11 +178,11 @@ class TranslationService(
         chapters: List<Chapter>,
         priority: Int = 0,
         forceRetranslate: Boolean = false,
-    ) {
-        if (!translationPreferences.translationEnabled().get()) return
+    ): Int {
+        if (!translationPreferences.translationEnabled().get()) return 0
 
         // Oldest chapters first, same as Downloader.queueChapters
-        chapters.sortedByDescending { it.sourceOrder }.forEach { chapter ->
+        return chapters.sortedByDescending { it.sourceOrder }.count { chapter ->
             enqueue(manga, chapter, priority, forceRetranslate)
         }
     }
