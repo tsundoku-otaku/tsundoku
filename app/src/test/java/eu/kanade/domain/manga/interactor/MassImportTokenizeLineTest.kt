@@ -1,10 +1,10 @@
 package eu.kanade.domain.manga.interactor
 
 import io.mockk.mockk
-import java.time.Duration
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTimeoutPreemptively
 import org.junit.jupiter.api.Test
+import java.time.Duration
 
 class MassImportTokenizeLineTest {
 
