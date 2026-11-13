@@ -481,6 +481,8 @@
     <string name="novel_sample_input">Sample Input</string>
     <string name="novel_pattern_empty">Pattern is empty</string>
     <string name="novel_invalid_regex">Invalid regex</string>
+    <string name="novel_regex_timed_out">Pattern took too long and was stopped</string>
+    <string name="novel_regex_disabled">This pattern timed out earlier and stays off until you edit it</string>
     <string name="novel_run_test">Run Test</string>
     <string name="novel_output_format">Output: %s</string>
     <string name="novel_error_format">Error: %s</string>
