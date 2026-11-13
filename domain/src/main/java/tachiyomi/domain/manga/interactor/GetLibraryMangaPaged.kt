@@ -36,7 +36,7 @@ class GetLibraryMangaPaged(
 ) {
     private val indexMutex = Mutex()
     private var indexesReady = false
-    private var indexBuildFailed = false
+    private var indexRetryAt = 0L
     private val indexBuildState = MutableStateFlow(false)
 
     val pageSize: Int
@@ -229,7 +229,8 @@ class GetLibraryMangaPaged(
     // Built lazily so only paged mode pays for the indexes.
     suspend fun ensureIndexes() {
         indexMutex.withLock {
-            if (indexesReady || indexBuildFailed) return
+            // A failed build (often a locked database) is retried later rather than on every page load.
+            if (indexesReady || System.currentTimeMillis() < indexRetryAt) return
             try {
                 val start = System.currentTimeMillis()
                 val built = mangaRepository.ensureLibraryPagingIndexes { indexBuildState.value = true }
@@ -239,7 +240,7 @@ class GetLibraryMangaPaged(
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                indexBuildFailed = true
+                indexRetryAt = System.currentTimeMillis() + INDEX_RETRY_DELAY_MS
                 logcat(LogPriority.ERROR, e) { "GetLibraryMangaPaged: failed to create paging indexes" }
             } finally {
                 indexBuildState.value = false
@@ -274,6 +275,7 @@ class GetLibraryMangaPaged(
 
         // Above this, walking the sort index beats reading and sorting all members per page.
         private const val SMALL_CATEGORY_MEMBERS = 30_000L
+        private const val INDEX_RETRY_DELAY_MS = 5 * 60 * 1000L
 
         internal const val SNAPSHOT_SIZE = 10_000
 
