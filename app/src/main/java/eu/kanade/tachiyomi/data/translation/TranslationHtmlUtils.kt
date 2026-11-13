@@ -38,6 +38,8 @@ object TranslationHtmlUtils {
         val images = mutableMapOf<String, String>()
         var index = 0
         doc.select(MEDIA_SELECTOR).forEach { element: Element ->
+            // Media inside media (img in figure or picture, source in video) goes out with its parent.
+            if (element.parents().any { it.`is`(MEDIA_SELECTOR) }) return@forEach
             val placeholder = "[IMG_PLACEHOLDER_$index]"
             images[placeholder] = element.outerHtml()
             element.replaceWith(org.jsoup.nodes.TextNode("\n$placeholder\n"))
