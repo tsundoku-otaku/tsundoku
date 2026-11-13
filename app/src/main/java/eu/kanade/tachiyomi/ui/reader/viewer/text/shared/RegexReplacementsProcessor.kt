@@ -6,7 +6,6 @@ import logcat.LogPriority
 import logcat.logcat
 import java.util.Collections
 import java.util.LinkedHashMap
-import java.util.concurrent.ConcurrentHashMap
 
 object RegexReplacementsProcessor {
 
@@ -21,7 +20,26 @@ object RegexReplacementsProcessor {
     @Volatile
     internal var ruleTimeoutMs: Long = DEFAULT_REGEX_TIMEOUT_MS
 
-    private val timedOutRules: MutableSet<String> = ConcurrentHashMap.newKeySet()
+    // Rules skipped after a timeout. One whose timed-out match later completes was only slow and runs
+    // again; one still running, or stopped by its deadline, stays skipped until its pattern changes.
+    private val timedOutRules = HashSet<String>()
+
+    // A slow match can complete before its timeout is recorded.
+    private val completedLate = HashSet<String>()
+    private val timeoutLock = Any()
+
+    private fun isTimedOut(key: String) = synchronized(timeoutLock) { key in timedOutRules }
+
+    private fun recordTimeout(key: String) = synchronized(timeoutLock) {
+        if (!completedLate.remove(key)) timedOutRules.add(key)
+    }
+
+    private fun recordLateFinish(key: String, completed: Boolean) {
+        if (!completed) return
+        synchronized(timeoutLock) {
+            if (!timedOutRules.remove(key)) completedLate.add(key)
+        }
+    }
 
     private val cache: MutableMap<String, List<CompiledRule>> =
         Collections.synchronizedMap(
@@ -42,19 +60,17 @@ object RegexReplacementsProcessor {
 
         var result = content
         for (rule in compiled) {
-            if (rule.isRegex && rule.key in timedOutRules) continue
+            if (rule.isRegex && isTimedOut(rule.key)) continue
             try {
                 result = run(rule, result)
             } catch (e: RegexTimeoutException) {
                 logcat(LogPriority.WARN) {
-                    "Regex '${rule.regex.pattern}' timed out, disabled until its pattern changes"
+                    "Regex '${rule.regex.pattern}' timed out, skipped until it finishes or its pattern changes"
                 }
             } catch (e: StackOverflowError) {
                 logcat(LogPriority.WARN) {
                     "Regex '${rule.regex.pattern}' overflowed the stack, disabled until its pattern changes"
                 }
-            } catch (e: RegexBusyException) {
-                logcat(LogPriority.WARN) { "Regex '${rule.regex.pattern}' skipped, timed out rules still running" }
             } catch (e: InterruptedException) {
                 Thread.currentThread().interrupt()
                 return result
@@ -72,19 +88,22 @@ object RegexReplacementsProcessor {
      */
     fun test(rule: RegexReplacement, input: String): String {
         val compiled = compileRule(rule)
-        if (compiled.isRegex && compiled.key in timedOutRules) throw RegexDisabledException()
+        if (compiled.isRegex && isTimedOut(compiled.key)) throw RegexDisabledException()
         return run(compiled, input)
     }
 
     private fun run(rule: CompiledRule, input: String): String {
         if (!rule.isRegex) return rule.regex.replace(input, rule.replacement)
+        val key = rule.key
         try {
-            return rule.regex.replaceWithTimeout(input, rule.replacement, ruleTimeoutMs)
+            return rule.regex.replaceWithTimeout(input, rule.replacement, ruleTimeoutMs) { completed ->
+                recordLateFinish(key, completed)
+            }
         } catch (e: RegexTimeoutException) {
-            timedOutRules.add(rule.key)
+            recordTimeout(key)
             throw e
         } catch (e: StackOverflowError) {
-            timedOutRules.add(rule.key)
+            synchronized(timeoutLock) { timedOutRules.add(key) }
             throw e
         }
     }
