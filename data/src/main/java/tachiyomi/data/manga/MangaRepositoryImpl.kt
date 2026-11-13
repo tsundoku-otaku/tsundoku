@@ -2,10 +2,20 @@
 
 package tachiyomi.data.manga
 
+import app.cash.sqldelight.ExecutableQuery
+import app.cash.sqldelight.Query
 import app.cash.sqldelight.async.coroutines.awaitAsList
 import app.cash.sqldelight.async.coroutines.awaitAsOne
 import app.cash.sqldelight.async.coroutines.awaitAsOneOrNull
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlCursor
+import app.cash.sqldelight.db.SqlDriver
+import eu.kanade.tachiyomi.source.model.UpdateStrategy
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.onEach
@@ -24,8 +34,11 @@ import tachiyomi.data.UpdateStrategyColumnAdapter
 import tachiyomi.data.subscribeToList
 import tachiyomi.data.subscribeToOne
 import tachiyomi.data.subscribeToOneOrNull
+import tachiyomi.domain.library.model.LibraryKeyedPage
 import tachiyomi.domain.library.model.LibraryManga
 import tachiyomi.domain.library.model.LibraryMangaForUpdate
+import tachiyomi.domain.library.model.LibraryPageCursor
+import tachiyomi.domain.library.model.LibraryPageSpec
 import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.manga.model.MangaSelectionMetric
@@ -39,8 +52,11 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.time.Clock
 
+private const val AGGREGATE_CHUNK_SIZE = 400
+
 class MangaRepositoryImpl(
     private val database: Database,
+    private val driver: SqlDriver,
 ) : MangaRepository {
 
     private data class UrlMaintenanceRow(
@@ -323,7 +339,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = cover_last_modified,
                 dateAdded = date_added,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -504,7 +520,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = cover_last_modified,
                 dateAdded = 0,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -549,7 +565,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = cover_last_modified,
                 dateAdded = 0,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -594,7 +610,7 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = cover_last_modified,
                 dateAdded = 0,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
                 calculateInterval = 0,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
@@ -743,7 +759,7 @@ class MangaRepositoryImpl(
                 coverLastModified,
                 dateAdded,
                 _,
-                _,
+                calculateInterval,
                 _,
                 _,
                 _,
@@ -778,8 +794,8 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -809,104 +825,198 @@ class MangaRepositoryImpl(
 
     override suspend fun getLibraryMangaPage(
         categoryId: Long,
-        isNovel: Boolean,
+        isNovel: Boolean?,
+        limit: Long?,
+        offset: Long,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean,
+    ): List<LibraryManga> {
+        val query = LibraryPageSql.page(categoryId, isNovel, spec, limit, offset, smallCategory)
+        return RawQuery(driver, query, ::mapLibraryPageRow).awaitAsList()
+    }
+
+    override suspend fun getLibraryMangaKeyedPage(
+        categoryId: Long,
+        isNovel: Boolean?,
         limit: Long,
         offset: Long,
-        spec: tachiyomi.domain.library.model.LibraryPageSpec,
-    ): List<LibraryManga> {
-        // NOT IN () is invalid, so pad an empty exclusion list with a non-existent source id.
-        val excluded = spec.excludedSourceIds.ifEmpty { listOf(-1L) }
-        return database.mangasQueries.libraryPageFiltered(
-            isNovel = isNovel,
-            categoryId = categoryId,
-            filterUnread = spec.filterUnread.toLong(),
-            filterStarted = spec.filterStarted.toLong(),
-            filterBookmarked = spec.filterBookmarked.toLong(),
-            filterCompleted = spec.filterCompleted.toLong(),
-            filterIntervalCustom = spec.filterIntervalCustom.toLong(),
-            filterChapterCount = spec.filterChapterCount.toLong(),
-            chapterCountThreshold = spec.filterChapterCountThreshold.toLong(),
-            excludedSourceIds = excluded,
-            searchTerm = spec.searchTerm,
-            searchAltTitles = if (spec.searchAlternativeTitles) 1L else 0L,
-            includedTagsCsv = spec.includedTagsCsv,
-            sortType = spec.sortType.toLong(),
-            sortAscending = if (spec.sortAscending) 1L else 0L,
-            limit = limit,
-            offset = offset,
-        ) {
-                id,
-                source,
-                url,
-                _,
-                _,
-                _,
-                genre,
-                title,
-                _,
-                status,
-                thumbnailUrl,
-                favorite,
-                lastUpdate,
-                nextUpdate,
-                _,
-                _,
-                _,
-                coverLastModified,
-                dateAdded,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-                notes,
-                isNovel,
-                totalCount,
-                readCount,
-                latestUpload,
-                chapterFetchedAt,
-                lastRead,
-                bookmarkCount,
-                categories,
-            ->
-            MangaMapper.mapLibraryManga(
-                id = id,
-                source = source,
-                url = url,
-                artist = null,
-                author = null,
-                description = null,
-                genre = genre,
-                title = title,
-                alternativeTitles = null,
-                status = status,
-                thumbnailUrl = thumbnailUrl,
-                favorite = favorite,
-                lastUpdate = lastUpdate,
-                nextUpdate = nextUpdate,
-                initialized = false,
-                viewerFlags = 0,
-                chapterFlags = 0,
-                coverLastModified = coverLastModified,
-                dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
-                lastModifiedAt = 0,
-                favoriteModifiedAt = null,
-                version = 0,
-                isSyncing = 0,
-                notes = notes,
-                isNovel = isNovel,
-                totalCount = totalCount,
-                readCount = readCount,
-                latestUpload = latestUpload,
-                chapterFetchedAt = chapterFetchedAt,
-                lastRead = lastRead,
-                bookmarkCount = bookmarkCount,
-                categories = categories,
-            )
+        after: LibraryPageCursor?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean,
+    ): LibraryKeyedPage {
+        val query = LibraryPageSql.keyedPage(categoryId, isNovel, spec, limit, offset, after, smallCategory)
+        val textKey = LibraryPageSql.hasTextKey(spec)
+        val rows = RawQuery(driver, query) { cursor ->
+            val key: Any = if (textKey) cursor.getString(KEY_COLUMN)!! else cursor.getLong(KEY_COLUMN)!!
+            mapLibraryPageRow(cursor) to key
         }.awaitAsList()
+        val last = rows.lastOrNull()?.let { (row, key) -> LibraryPageCursor(key, row.id) }
+        return LibraryKeyedPage(rows.map { it.first }, last)
+    }
+
+    override suspend fun getLibraryMangaPageIds(
+        categoryId: Long,
+        isNovel: Boolean?,
+        limit: Long,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean,
+        bySource: Boolean,
+    ): List<Long> {
+        val query = LibraryPageSql.ids(categoryId, isNovel, spec, limit, smallCategory, bySource)
+        return RawQuery(driver, query) { it.getLong(0)!! }.awaitAsList()
+    }
+
+    override suspend fun getLibraryMangaPageRows(
+        ids: List<Long>,
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): List<LibraryManga> {
+        if (ids.isEmpty()) return emptyList()
+        val query = LibraryPageSql.rows(ids, categoryId, isNovel, spec)
+        return RawQuery(driver, query, ::mapLibraryPageRow).awaitAsList()
+    }
+
+    override suspend fun isLibraryPageSourceDriven(spec: LibraryPageSpec, maxRows: Long): Boolean {
+        val sources = LibraryPageSql.pinnedSources(spec) ?: return false
+        val rows = RawQuery(driver, LibraryPageSql.countSourceRows(sources, maxRows + 1)) { it.getLong(0)!! }
+            .awaitAsOne()
+        return rows <= maxRows
+    }
+
+    override suspend fun countCategoryMembers(categoryId: Long, isNovel: Boolean?, limit: Long): Long {
+        return RawQuery(driver, LibraryPageSql.categoryMembers(categoryId, isNovel, limit)) { it.getLong(0)!! }
+            .awaitAsOne()
+    }
+
+    override suspend fun countLibraryMangaPage(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        smallCategory: Boolean,
+        bySource: Boolean,
+    ): Long {
+        val query = LibraryPageSql.count(categoryId, isNovel, spec, smallCategory, bySource)
+        return RawQuery(driver, query) { it.getLong(0)!! }.awaitAsOne()
+    }
+
+    override suspend fun countFavorites(isNovel: Boolean?): Long {
+        return RawQuery(driver, LibraryPageSql.countFavorites(isNovel)) { it.getLong(0)!! }.awaitAsOne()
+    }
+
+    override suspend fun hasUncategorizedFavorites(isNovel: Boolean?, scanLimit: Long?): Boolean {
+        val query = LibraryPageSql.hasUncategorized(isNovel, scanLimit)
+        return RawQuery(driver, query) { it.getLong(0)!! }.awaitAsOne() != 0L
+    }
+
+    override fun libraryTableChanges(): Flow<Unit> = callbackFlow {
+        val listener = Query.Listener { trySend(Unit) }
+        driver.addListener("mangas", "mangas_categories", listener = listener)
+        awaitClose { driver.removeListener("mangas", "mangas_categories", listener = listener) }
+    }.conflate()
+
+    override fun categoryMembershipChanges(): Flow<Unit> = callbackFlow {
+        val listener = Query.Listener { trySend(Unit) }
+        driver.addListener("mangas_categories", listener = listener)
+        awaitClose { driver.removeListener("mangas_categories", listener = listener) }
+    }.conflate()
+
+    override suspend fun ensureLibraryPagingIndexes(onBuild: () -> Unit): Boolean {
+        val existing = RawQuery(
+            driver,
+            LibraryPageQuery(
+                "SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'mangas'",
+                emptyList(),
+            ),
+        ) { it.getString(0)!! to it.getString(1) }.awaitAsList().toMap()
+        val statements = LibraryPageSql.createIndexStatements()
+        val outdated = LibraryPageSql.indexes.indices.filter { index ->
+            val definition = existing[LibraryPageSql.indexes[index].first]
+            definition == null ||
+                LibraryPageSql.normalizeDdl(definition) != LibraryPageSql.normalizeDdl(statements[index])
+        }
+        if (outdated.isEmpty()) return false
+        onBuild()
+        outdated.forEachIndexed { i, index ->
+            // Each build holds the write lock; a pause between them lets queued writes through
+            // instead of failing with "database is locked".
+            if (i > 0) delay(INDEX_BUILD_PAUSE_MS)
+            driver.execute(null, "DROP INDEX IF EXISTS ${LibraryPageSql.indexes[index].first}", 0).await()
+            driver.execute(null, statements[index], 0).await()
+        }
+        // The index build leaves a WAL about as big as the indexes.
+        RawQuery(driver, LibraryPageQuery("PRAGMA wal_checkpoint(TRUNCATE)", emptyList())) { it.getLong(0) ?: 0L }
+            .awaitAsList()
+        return true
+    }
+
+    override suspend fun markFavoritesAsNovel(sourceIds: List<Long>) {
+        if (sourceIds.isEmpty()) return
+        val placeholders = LibraryPageSql.placeholders(sourceIds.size)
+        val changed = driver.execute(
+            null,
+            "UPDATE mangas SET is_novel = 1 WHERE favorite = 1 AND is_novel = 0 AND source IN ($placeholders)",
+            sourceIds.size,
+        ) {
+            sourceIds.forEachIndexed { index, id -> bindLong(index, id) }
+        }.await()
+        // Raw driver writes skip SQLDelight's query notifications.
+        if (changed > 0) driver.notifyListeners("mangas")
+    }
+
+    private fun mapLibraryPageRow(cursor: SqlCursor): LibraryManga = MangaMapper.mapLibraryManga(
+        id = cursor.getLong(0)!!,
+        source = cursor.getLong(1)!!,
+        url = cursor.getString(2)!!,
+        artist = null,
+        author = null,
+        description = null,
+        genre = cursor.getString(3)?.let(StringListColumnAdapter::decode),
+        title = cursor.getString(4)!!,
+        alternativeTitles = null,
+        status = cursor.getLong(5)!!,
+        thumbnailUrl = cursor.getString(6),
+        favorite = cursor.getLong(7)!! != 0L,
+        lastUpdate = cursor.getLong(8),
+        nextUpdate = cursor.getLong(9),
+        initialized = false,
+        viewerFlags = 0,
+        chapterFlags = 0,
+        coverLastModified = cursor.getLong(10)!!,
+        dateAdded = cursor.getLong(11)!!,
+        updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+        calculateInterval = cursor.getLong(12)!!,
+        lastModifiedAt = 0,
+        favoriteModifiedAt = null,
+        version = 0,
+        isSyncing = 0,
+        notes = "",
+        isNovel = cursor.getLong(13)!! != 0L,
+        totalCount = cursor.getLong(14)!!,
+        readCount = cursor.getLong(15)!!.toDouble(),
+        latestUpload = cursor.getLong(16)!!,
+        chapterFetchedAt = cursor.getLong(17)!!,
+        lastRead = cursor.getLong(18)!!,
+        bookmarkCount = cursor.getLong(19)!!.toDouble(),
+        categories = cursor.getString(20)!!,
+    )
+
+    private class RawQuery<T : Any>(
+        private val driver: SqlDriver,
+        private val query: LibraryPageQuery,
+        mapper: (SqlCursor) -> T,
+    ) : ExecutableQuery<T>(mapper) {
+        override fun <R> execute(mapper: (SqlCursor) -> QueryResult<R>): QueryResult<R> {
+            return driver.executeQuery(null, query.sql, mapper, query.args.size) {
+                query.args.forEachIndexed { index, arg ->
+                    when (arg) {
+                        is Long -> bindLong(index, arg)
+                        is String -> bindString(index, arg)
+                        else -> error("Unsupported argument type ${arg::class}")
+                    }
+                }
+            }
+        }
     }
 
     override suspend fun getLibraryMangaById(mangaId: Long): LibraryManga? {
@@ -931,7 +1041,7 @@ class MangaRepositoryImpl(
                 coverLastModified,
                 dateAdded,
                 _,
-                _,
+                calculateInterval,
                 _,
                 _,
                 _,
@@ -966,8 +1076,8 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -1008,7 +1118,7 @@ class MangaRepositoryImpl(
                 coverLastModified,
                 dateAdded,
                 _,
-                _,
+                calculateInterval,
                 _,
                 _,
                 _,
@@ -1043,8 +1153,8 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -1125,7 +1235,7 @@ class MangaRepositoryImpl(
                 coverLastModified,
                 dateAdded,
                 _,
-                _,
+                calculateInterval,
                 _,
                 _,
                 _,
@@ -1160,8 +1270,8 @@ class MangaRepositoryImpl(
                 chapterFlags = 0,
                 coverLastModified = coverLastModified,
                 dateAdded = dateAdded,
-                updateStrategy = eu.kanade.tachiyomi.source.model.UpdateStrategy.ALWAYS_UPDATE,
-                calculateInterval = 0,
+                updateStrategy = UpdateStrategy.ALWAYS_UPDATE,
+                calculateInterval = calculateInterval,
                 lastModifiedAt = 0,
                 favoriteModifiedAt = null,
                 version = 0,
@@ -2196,8 +2306,53 @@ class MangaRepositoryImpl(
             "MangaRepositoryImpl.refreshLibraryCacheForMangas: Recomputing aggregates for ${mangaIds.size} manga"
         }
         database.transaction {
-            database.mangasQueries.recomputeAggregatesForMangas(mangaIds)
+            mangaIds.chunked(AGGREGATE_CHUNK_SIZE).forEach { chunk ->
+                // SQLDelight can't compile UPDATE ... FROM.
+                val idPlaceholders = LibraryPageSql.placeholders(chunk.size)
+                val sql = """
+                    |UPDATE mangas
+                    |SET total_count = agg.total_count, read_count = agg.read_count,
+                    |    latest_upload = agg.latest_upload, chapter_fetched_at = agg.chapter_fetched_at,
+                    |    last_read = agg.last_read, bookmark_count = agg.bookmark_count
+                    |FROM (
+                    |    SELECT
+                    |        ids._id AS id,
+                    |        coalesce(c.total_count, 0) AS total_count,
+                    |        coalesce(c.read_count, 0) AS read_count,
+                    |        coalesce(c.latest_upload, 0) AS latest_upload,
+                    |        coalesce(c.chapter_fetched_at, 0) AS chapter_fetched_at,
+                    |        coalesce(c.last_read, 0) AS last_read,
+                    |        coalesce(c.bookmark_count, 0) AS bookmark_count
+                    |    FROM mangas ids
+                    |    LEFT JOIN (
+                    |        SELECT
+                    |            chapters.manga_id AS id,
+                    |            count(*) AS total_count,
+                    |            sum(chapters.read) AS read_count,
+                    |            max(chapters.date_upload) AS latest_upload,
+                    |            max(chapters.date_fetch) AS chapter_fetched_at,
+                    |            max(history.last_read) AS last_read,
+                    |            sum(chapters.bookmark) AS bookmark_count
+                    |        FROM chapters
+                    |        LEFT JOIN excluded_scanlators ON chapters.manga_id = excluded_scanlators.manga_id
+                    |            AND chapters.scanlator = excluded_scanlators.scanlator
+                    |        LEFT JOIN history ON chapters._id = history.chapter_id
+                    |        WHERE chapters.manga_id IN ($idPlaceholders) AND excluded_scanlators.scanlator IS NULL
+                    |        GROUP BY chapters.manga_id
+                    |    ) AS c ON c.id = ids._id
+                    |    WHERE ids._id IN ($idPlaceholders)
+                    |) AS agg
+                    |WHERE mangas._id = agg.id
+                """.trimMargin()
+                driver.execute(null, sql, chunk.size * 2) {
+                    var i = 0
+                    chunk.forEach { id -> bindLong(i++, id) }
+                    chunk.forEach { id -> bindLong(i++, id) }
+                }.await()
+            }
         }
+        // Raw driver writes skip SQLDelight's query notifications.
+        driver.notifyListeners("mangas")
     }
 
     /**
@@ -2293,5 +2448,9 @@ class MangaRepositoryImpl(
 
     companion object {
         private const val SQLITE_VARIABLE_LIMIT = 900
+        private const val INDEX_BUILD_PAUSE_MS = 1_000L
     }
 }
+
+// Right after the columns mapLibraryPageRow reads.
+private const val KEY_COLUMN = 21

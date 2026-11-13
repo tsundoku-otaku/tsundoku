@@ -49,6 +49,7 @@ import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.ListGroupHeader
 import tachiyomi.presentation.core.components.material.DISABLED_ALPHA
 import tachiyomi.presentation.core.components.material.padding
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.selectedBackground
 
@@ -309,7 +310,11 @@ private fun UpdatesNovelGroupItem(
                     )
                 }
                 Text(
-                    text = "${group.chapterCount} new chapter${if (group.chapterCount > 1) "s" else ""}",
+                    text = pluralStringResource(
+                        TDMR.plurals.updates_new_chapters_latest_batch,
+                        group.chapterCount,
+                        group.chapterCount,
+                    ),
                     maxLines = 1,
                     style = MaterialTheme.typography.bodySmall,
                     color = LocalContentColor.current.copy(alpha = if (group.hasUnreadChapters) 1f else DISABLED_ALPHA),

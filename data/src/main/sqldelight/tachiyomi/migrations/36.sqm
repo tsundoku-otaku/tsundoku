@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS mangas_is_novel_index;
+CREATE INDEX IF NOT EXISTS idx_mangas_library_is_novel ON mangas(is_novel) WHERE favorite = 1;

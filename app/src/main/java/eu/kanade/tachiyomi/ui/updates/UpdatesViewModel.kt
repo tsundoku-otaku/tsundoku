@@ -60,6 +60,8 @@ import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import kotlin.time.Clock
 
+private const val UPDATE_BATCH_GAP_MS = 5_000L
+
 enum class UpdatesFilter {
     ALL,
     MANGA,
@@ -80,7 +82,19 @@ data class UpdatesNovelGroup(
     val chapters: List<UpdatesItem>,
     val isNovel: Boolean = false,
 ) {
-    val chapterCount: Int get() = chapters.size
+    // A sync stamps its chapters with consecutive date_fetch millis, so the latest batch is the run
+    // of close fetch times ending at the newest one.
+    val chapterCount: Int by lazy {
+        val byFetch = chapters.sortedByDescending { it.update.dateFetch }
+        var batchSize = byFetch.size
+        for (i in 1 until byFetch.size) {
+            if (byFetch[i - 1].update.dateFetch - byFetch[i].update.dateFetch > UPDATE_BATCH_GAP_MS) {
+                batchSize = i
+                break
+            }
+        }
+        batchSize
+    }
     val hasUnreadChapters: Boolean get() = chapters.any { !it.update.read }
     val hasDownloaded: Boolean get() = chapters.any { it.downloadStateProvider() == Download.State.DOWNLOADED }
 }
