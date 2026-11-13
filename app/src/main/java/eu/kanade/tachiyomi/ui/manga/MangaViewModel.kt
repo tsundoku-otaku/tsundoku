@@ -1790,7 +1790,11 @@ class MangaViewModel(
         TranslationJob.start(context)
         withUIContext {
             snackbarHostState.showSnackbar(
-                context.stringResource(TDMR.strings.translation_queued, queued),
+                if (queued > 0) {
+                    context.stringResource(TDMR.strings.translation_queued, queued)
+                } else {
+                    context.stringResource(TDMR.strings.translation_nothing_queued)
+                },
             )
         }
     }

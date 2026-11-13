@@ -221,7 +221,6 @@ class MangaScreen(
             onMultiBookmarkClicked = viewModel::bookmarkChapters,
             onMultiMarkAsReadClicked = viewModel::markChaptersRead,
             onMarkPreviousAsReadClicked = viewModel::markPreviousChapterRead,
-            // Local novel chapters are the user's files, not downloads.
             onMultiDeleteClicked = viewModel::showDeleteChapterDialog.takeIf { !successState.manga.isLocalNovel() },
             onMultiRemoveFromDbClicked = viewModel::showRemoveChaptersFromDbDialog,
             onMultiDeleteTranslationClicked = viewModel::deleteTranslations,
