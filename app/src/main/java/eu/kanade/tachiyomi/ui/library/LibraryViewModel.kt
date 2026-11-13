@@ -423,9 +423,13 @@ class LibraryViewModel(
         // The full probe scans every favorite once they are all categorized, so the first answer checks only a few
         // and the probe follows only total and category changes eagerly.
         val uncategorizedFlow = flow {
-            emit(getLibraryMangaPaged.awaitHasUncategorized(isNovel, UNCATEGORIZED_QUICK_SCAN))
+            val quick = getLibraryMangaPaged.awaitHasUncategorized(isNovel, UNCATEGORIZED_QUICK_SCAN)
+            emit(quick)
+            // Only a "no" from the quick scan needs the full one to be sure.
+            if (!quick) emit(getLibraryMangaPaged.awaitHasUncategorized(isNovel))
             merge(
-                totalFlow.map { },
+                // The replayed current total is what the scans above already answered.
+                totalFlow.drop(1).map { },
                 controller.categoryInvalidations(),
                 controller.slowInvalidations(COUNT_INVALIDATION_WINDOW),
             )

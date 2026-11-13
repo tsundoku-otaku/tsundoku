@@ -67,16 +67,6 @@ class GetLibraryManga(
             logcat(LogPriority.INFO) { "GetLibraryManga: Loading library from mangas table" }
             refreshInternal(force = false)
         }
-        if (!paginationEnabled) {
-            scope.launch {
-                try {
-                    mangaRepository.dropLibraryPagingIndexes()
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    logcat(LogPriority.WARN, e) { "GetLibraryManga: failed to drop paging indexes" }
-                }
-            }
-        }
     }
 
     /**

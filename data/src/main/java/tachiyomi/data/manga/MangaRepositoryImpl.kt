@@ -12,6 +12,7 @@ import app.cash.sqldelight.db.SqlCursor
 import app.cash.sqldelight.db.SqlDriver
 import eu.kanade.tachiyomi.source.model.UpdateStrategy
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
@@ -936,7 +937,10 @@ class MangaRepositoryImpl(
         }
         if (outdated.isEmpty()) return false
         onBuild()
-        outdated.forEach { index ->
+        outdated.forEachIndexed { i, index ->
+            // Each build holds the write lock; a pause between them lets queued writes through
+            // instead of failing with "database is locked".
+            if (i > 0) delay(INDEX_BUILD_PAUSE_MS)
             driver.execute(null, "DROP INDEX IF EXISTS ${LibraryPageSql.indexes[index].first}", 0).await()
             driver.execute(null, statements[index], 0).await()
         }
@@ -944,10 +948,6 @@ class MangaRepositoryImpl(
         RawQuery(driver, LibraryPageQuery("PRAGMA wal_checkpoint(TRUNCATE)", emptyList())) { it.getLong(0) ?: 0L }
             .awaitAsList()
         return true
-    }
-
-    override suspend fun dropLibraryPagingIndexes() {
-        LibraryPageSql.dropIndexStatements().forEach { driver.execute(null, it, 0).await() }
     }
 
     override suspend fun markFavoritesAsNovel(sourceIds: List<Long>) {
@@ -2448,6 +2448,7 @@ class MangaRepositoryImpl(
 
     companion object {
         private const val SQLITE_VARIABLE_LIMIT = 900
+        private const val INDEX_BUILD_PAUSE_MS = 1_000L
     }
 }
 
