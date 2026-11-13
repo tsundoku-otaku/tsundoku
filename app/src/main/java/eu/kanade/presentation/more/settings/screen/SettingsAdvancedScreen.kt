@@ -62,6 +62,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
+import eu.kanade.domain.manga.interactor.MassImport
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.advanced.ClearDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.debug.DebugInfoScreen
@@ -1006,8 +1007,9 @@ object SettingsAdvancedScreen : SearchableSettings {
                                                     val uri = java.net.URI(url)
                                                     val path =
                                                         uri.path?.removePrefix("/")?.removeSuffix("/") ?: continue
+                                                    // A bare domain would match every favorite.
+                                                    if (path.isEmpty()) continue
 
-                                                    // Find all favorite manga matching this URL pattern
                                                     val matchingIds = favorites.filter { (_, mangaUrl) ->
                                                         val mangaPath = try {
                                                             val mangaUri = java.net.URI(mangaUrl)
@@ -1016,11 +1018,14 @@ object SettingsAdvancedScreen : SearchableSettings {
                                                             mangaUrl.removePrefix("/").removeSuffix("/")
                                                         }
 
-                                                        // Match if paths are similar (contains or equals)
-                                                        mangaPath != null &&
+                                                        // Whole path segments only, so a short path can't match
+                                                        // unrelated entries.
+                                                        !mangaPath.isNullOrEmpty() &&
                                                             (
-                                                                mangaPath == path || mangaPath.contains(path) ||
-                                                                    path.contains(mangaPath)
+                                                                mangaPath == path ||
+                                                                    path.startsWith("$mangaPath/") ||
+                                                                    path.endsWith("/$mangaPath") ||
+                                                                    mangaPath.endsWith("/$path")
                                                                 )
                                                     }.map { it.first }
 
@@ -1044,10 +1049,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     pendingUrls
                                         .lineSequence()
                                         .forEach { rawLine ->
-                                            rawLine.split(',', ';')
-                                                .asSequence()
-                                                .map { it.trim() }
-                                                .filter { it.startsWith("http://") || it.startsWith("https://") }
+                                            MassImport.urlTokens(rawLine)
                                                 .forEach { url ->
                                                     validUrlCount++
                                                     buffer.add(url)

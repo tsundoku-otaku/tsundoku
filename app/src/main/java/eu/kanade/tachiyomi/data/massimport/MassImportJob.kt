@@ -214,7 +214,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     // Streaming count for the progress denominator; materializing would OOM.
                     // Same tokenizer as the flow below so the denominator matches what is walked.
                     val totalCount = file.bufferedReader().useLines { lines ->
-                        lines.sumOf { raw -> MassImport.tokenizeLine(raw).size }
+                        lines.sumOf { raw -> MassImport.urlTokens(raw).size }
                     }
 
                     // Cold flow re-reads the file on collection; O(1) memory. No dedup: the
@@ -222,7 +222,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     val urlFlow = kotlinx.coroutines.flow.flow {
                         file.bufferedReader().useLines { lines ->
                             for (raw in lines) {
-                                for (t in MassImport.tokenizeLine(raw)) emit(t)
+                                for (t in MassImport.urlTokens(raw)) emit(t)
                             }
                         }
                     }
@@ -415,7 +415,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // recounted: seed completed at the persisted progress and suppress all tallies for stream
         // indices below it (see shouldCount), so repeated resumes can't inflate counts past total
         // or regress the progress bar.
-        val countBaseline = seed?.progress ?: 0
+        // Clamped because a batch saved by an older tokenizer can have more progress than tokens now.
+        val countBaseline = (seed?.progress ?: 0).coerceIn(0, totalCount)
         val completedCount = AtomicInteger(countBaseline)
         val addedCount = AtomicInteger(seed?.added ?: 0)
         val skippedCount = AtomicInteger(seed?.skipped ?: 0)
@@ -539,7 +540,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 .interleaveByHost(MAX_LOOKAHEAD)
                 .flatMapMerge(concurrency) { (urlIndex, url) ->
                     val shouldCount = urlIndex >= countBaseline
-                    if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+                    if (url.isBlank() || !MassImport.isHttpUrl(url)) {
                         return@flatMapMerge flow {
                             if (shouldCount) {
                                 skippedCount.incrementAndGet()
@@ -1410,7 +1411,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // Lazy, no dedup: persisted count and the worker's progress total must agree, so both
         // tokenize identically. Never materializes the full list.
         private fun rawTextTokenSequence(rawText: String): Sequence<String> {
-            return rawText.lineSequence().flatMap { MassImport.tokenizeLine(it).asSequence() }
+            return rawText.lineSequence().flatMap { MassImport.urlTokens(it).asSequence() }
         }
 
         fun restoreActiveJobsFromWorkManager(context: Context) {
@@ -1697,7 +1698,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 val count = runCatching {
                     staged.bufferedReader().useLines { lines ->
                         val tokens = lines
-                            .flatMap { MassImport.tokenizeLine(it).asSequence() }
+                            .flatMap { MassImport.urlTokens(it).asSequence() }
                             .onEach { if (preview.size < URL_PREVIEW_LIMIT) preview.add(it) }
                         MassImportStore.saveUrlsStreaming(appContext, batchId, tokens)
                     }
@@ -1829,7 +1830,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     for (raw in lines) {
                         // Tokenize first so multi-URL lines route per-host instead of failing URI
                         // parse and spilling to overflow.
-                        for (line in MassImport.tokenizeLine(raw)) {
+                        for (line in MassImport.urlTokens(raw)) {
                             val host = splitHostKey(line)
                             val writer = if (host == null) overflowWriter() else writerFor(host)
                             writer.write(line)
@@ -1989,33 +1990,58 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         ?.toBatch(emptyList())
                     ?: return@launch abortResume("no batch state")
                 val cacheFile = File(appContext.cacheDir, "mass_import_$batchId.txt")
-                // Stream store -> cache file; the url list can be huge.
+                // Stream store -> cache file; the url list can be huge. Batches staged by an older
+                // tokenizer stored non-URL columns as lines and counted them in progress, so the
+                // lines are re-tokenized and progress is mapped onto the URL tokens.
+                var storedLines = 0
+                var tokenCount = 0
+                var mappedProgress = 0
                 val staged = runCatching {
                     MassImportStore.openUrlsReader(appContext, batchId)?.use { reader ->
-                        var any = false
                         cacheFile.bufferedWriter().use { w ->
                             reader.lineSequence().forEach { line ->
                                 val t = line.trim()
                                 if (t.isNotEmpty()) {
-                                    w.write(t)
-                                    w.newLine()
-                                    any = true
+                                    for (url in MassImport.urlTokens(t)) {
+                                        w.write(url)
+                                        w.newLine()
+                                        tokenCount++
+                                    }
+                                    storedLines++
+                                    if (storedLines == batch.progress) mappedProgress = tokenCount
                                 }
                             }
                         }
-                        any
+                        tokenCount > 0
                     } ?: false
                 }.getOrDefault(false)
                 if (!staged) {
                     runCatching { cacheFile.delete() }
                     return@launch abortResume("no persisted urls")
                 }
+                val progress = if (batch.progress >= storedLines) tokenCount else mappedProgress
+                if (tokenCount != storedLines) {
+                    // Keep the stored list in the same token space as the new progress, which the
+                    // error-retry path indexes by line.
+                    val saved = cacheFile.bufferedReader().useLines { lines ->
+                        MassImportStore.saveUrlsStreaming(appContext, batchId, lines)
+                    }
+                    if (saved != tokenCount) {
+                        logcat(LogPriority.WARN) { "MassImport: could not rewrite persisted urls for $batchId" }
+                    }
+                }
+                if (progress != batch.progress || tokenCount != batch.total) {
+                    _sharedQueue.update { list ->
+                        list.map { if (it.id == batchId) it.copy(progress = progress, total = tokenCount) else it }
+                    }
+                    persistMeta(appContext, batchId, force = true)
+                }
 
                 // Restart a bit before the saved progress, not exactly at it: URLs finish out
                 // of order and the interleave buffer holds some back, so a few just past the
                 // saved count may still be unfinished. Re-doing that overlap is cheap (already
                 // imported ones skip instantly); skipping it could drop a URL.
-                val resumeOffset = (batch.progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
+                val resumeOffset = (progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
                 val payload = mutableListOf<Pair<String, Any?>>(
                     KEY_CATEGORY_ID to batch.categoryId,
                     KEY_ADD_TO_LIBRARY to batch.addToLibrary,
