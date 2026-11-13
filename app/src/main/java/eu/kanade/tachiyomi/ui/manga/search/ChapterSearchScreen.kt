@@ -129,9 +129,10 @@ class ChapterSearchScreen(
             mutableState.update { it.copy(query = query, regexError = null) }
         }
 
+        // Toggling an option is a new search for the text on screen, once anything was searched.
         fun updateOptions(options: ChapterSearchOptions) {
             mutableState.update { it.copy(options = options, regexError = null) }
-            state.value.submittedQuery?.let(::search)
+            if (state.value.submittedQuery != null) search()
         }
 
         fun updateRange(from: String, to: String) {
@@ -160,6 +161,7 @@ class ChapterSearchScreen(
                 mutableState.update { it.copy(regexError = e.description, isSearching = false) }
                 return
             }
+            mutableState.update { it.copy(regexError = null) }
 
             val manga = current.manga
             val allChapters = current.chapters

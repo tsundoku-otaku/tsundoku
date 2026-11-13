@@ -57,4 +57,10 @@ class HtmlTextScannerTest {
     fun `decodes every entity and drops soft hyphens`() {
         assertEquals("caf\u00E9 \uD83D\uDE00 cafe", scan("caf&eacute; &#128512; ca&shy;f\u00ADe"))
     }
+
+    @Test
+    fun `apostrophe in an unquoted attribute does not swallow text`() {
+        assertEquals("|a long text|", scan("<p title=don't>a long text</p>"))
+        assertEquals("|x >y|", scan("<p title='x > y'>x >y</p>"))
+    }
 }

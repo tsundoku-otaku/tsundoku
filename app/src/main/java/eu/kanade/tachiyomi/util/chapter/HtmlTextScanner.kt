@@ -100,17 +100,20 @@ object HtmlTextScanner {
         Parser.unescapeEntities(entity, false).takeIf { it != entity }
 
     // Quoted attribute values may contain '>'. A '<' before the closing '>' means the first one was
-    // plain text; an unclosed quote falls back to the first '>'.
+    // plain text; an unclosed quote falls back to the first '>'. Only a quote right after '=' opens a
+    // value, so an apostrophe inside an unquoted one (title=don't) is plain text.
     private fun tagEnd(content: String, start: Int): Int {
         var quote = 0.toChar()
+        var afterEquals = false
         for (i in start + 1 until content.length) {
             val char = content[i]
             when {
                 quote != 0.toChar() -> if (char == quote) quote = 0.toChar()
-                char == '"' || char == '\'' -> quote = char
+                (char == '"' || char == '\'') && afterEquals -> quote = char
                 char == '>' -> return i
                 char == '<' -> return -1
             }
+            if (!char.isWhitespace()) afterEquals = quote == 0.toChar() && char == '='
         }
         return content.indexOf('>', start)
     }
