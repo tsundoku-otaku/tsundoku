@@ -21,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
+import androidx.core.view.doOnLayout
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
@@ -677,6 +678,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun reloadContent() {
         activity.runOnUiThread {
             currentChapters?.let {
+                // Only the current chapter is rendered again, so a start waiting on another one
+                // would never fire.
+                val pendingChapterId = pendingTtsStart?.chapterId
+                if (pendingChapterId != null && pendingChapterId != it.currChapter.chapter.id) stopTts()
                 contentContainer.removeAllViews()
                 chapterQueue.clear()
                 setChapters(it)
@@ -1888,7 +1893,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
 
         val pending = pendingTtsStart
-        if (pending != null && pending.chapterId == loaded.chapter.chapter.id) {
+        // A start saved before any chapter id was known takes the first chapter that renders.
+        if (pending != null && (pending.chapterId == null || pending.chapterId == loaded.chapter.chapter.id)) {
             pendingTtsStart = null
             if (loaded.block.fullText.isNullOrEmpty()) {
                 logcat(LogPriority.WARN) { "TTS: deferred chapter rendered no text, stopping" }
@@ -1906,7 +1912,14 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     activity.onNovelProgressChanged(0f)
                 }
             }
-            if (pending.fromViewport) startTtsFromViewport() else startTts()
+            if (pending.fromViewport) {
+                // The visible paragraph is only known once the new text is laid out.
+                loaded.block.container.doOnLayout {
+                    if (ttsController.isTtsAutoPlay && pendingTtsStart == null) startTtsFromViewport()
+                }
+            } else {
+                startTts()
+            }
         }
     }
 
