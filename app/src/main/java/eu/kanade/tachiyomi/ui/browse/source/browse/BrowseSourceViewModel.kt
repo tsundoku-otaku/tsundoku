@@ -1023,7 +1023,7 @@ class BrowseSourceViewModel(
         val isUserQuery get() = listing is Listing.Search && !listing.query.isNullOrEmpty()
 
         /** The query applying the filter sheet would search with; unsubmitted toolbar text isn't it. */
-        val pendingQuery get() = pendingPreset?.query ?: listing.query
+        val pendingQuery get() = pendingPreset?.query ?: (listing as? Listing.Search)?.query
     }
 
     /** A preset loaded into the filter sheet but not applied yet, with what dismissing it puts back. */
