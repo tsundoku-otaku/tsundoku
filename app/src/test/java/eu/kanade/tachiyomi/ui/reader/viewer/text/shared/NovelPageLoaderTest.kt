@@ -67,4 +67,18 @@ class NovelPageLoaderTest {
         assertTrue(NovelPageLoader.awaitPageText("test", page, loader, 5_000, this))
         assertEquals(1, loader.loads.get())
     }
+
+    @Test
+    fun `a load stuck past the timeout fails so the next call can retry it`() = runBlocking {
+        val loader = FakeLoader()
+        val page = ReaderPage(0, "/c")
+        page.status = Page.State.LoadPage
+
+        val timedOut = runCatching { NovelPageLoader.awaitPageText("test", page, loader, 50, this@runBlocking) }
+        assertTrue(timedOut.exceptionOrNull() is kotlinx.coroutines.TimeoutCancellationException)
+        assertTrue(page.status is Page.State.Error)
+
+        assertTrue(NovelPageLoader.awaitPageText("test", page, loader, 5_000, this@runBlocking))
+        assertEquals(1, loader.loads.get())
+    }
 }

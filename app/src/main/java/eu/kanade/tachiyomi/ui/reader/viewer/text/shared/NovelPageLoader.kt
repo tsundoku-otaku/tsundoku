@@ -2,9 +2,11 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
+import eu.kanade.tachiyomi.ui.reader.loader.tryClaim
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -87,6 +89,12 @@ object NovelPageLoader {
                 }
                 else -> false
             }
+        } catch (e: TimeoutCancellationException) {
+            // A fetch that ignores cancellation would hold the page in LoadPage, where every later
+            // load waits on it and retry has no Error to reset, so fail it here.
+            loadJob?.cancel()
+            page.tryClaim(Page.State.LoadPage, Page.State.Error(e))
+            throw e
         } finally {
             loadJob?.cancel()
         }

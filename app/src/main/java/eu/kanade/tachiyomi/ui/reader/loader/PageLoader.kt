@@ -68,3 +68,11 @@ abstract class PageLoader {
         isRecycled = true
     }
 }
+
+// Page belongs to the extension API, so the claim lives app-side and relies on every claim going
+// through this lock.
+internal fun Page.tryClaim(from: Page.State, to: Page.State): Boolean = synchronized(this) {
+    if (status != from) return false
+    status = to
+    true
+}
