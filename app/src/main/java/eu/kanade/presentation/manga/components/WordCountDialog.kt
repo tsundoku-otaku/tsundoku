@@ -144,7 +144,7 @@ private fun StatRow(label: String, value: String) {
     }
 }
 
-/** The square 1..[WordDensity.MAX_TIER] indicator suggested in the feature request. */
+/** Square tier indicator, one tier per [WordDensity.TIER_STEP_WORDS] average words. */
 @Composable
 private fun WordDensityBadge(tier: Int) {
     val description = stringResource(TDMR.strings.word_density_indicator, tier)
@@ -166,21 +166,10 @@ private fun WordDensityBadge(tier: Int) {
 
 @Composable
 private fun wordDensityTierDescription(tier: Int, numberFormat: NumberFormat): String {
-    val maxWords = WordDensity.tierMaxWords(tier)
-    return if (maxWords == null) {
-        stringResource(
-            TDMR.strings.word_density_indicator_range_top,
-            tier,
-            WordDensity.MAX_TIER,
-            numberFormat.format(WordDensity.tierMinWords(tier) - 1),
-        )
-    } else {
-        stringResource(
-            TDMR.strings.word_density_indicator_range,
-            tier,
-            WordDensity.MAX_TIER,
-            numberFormat.format(WordDensity.tierMinWords(tier)),
-            numberFormat.format(maxWords),
-        )
-    }
+    return stringResource(
+        TDMR.strings.word_density_indicator_range,
+        tier,
+        numberFormat.format(WordDensity.tierMinWords(tier)),
+        numberFormat.format(WordDensity.tierMaxWords(tier)),
+    )
 }

@@ -162,6 +162,35 @@ class ReaderViewModel @JvmOverloads constructor(
 
     val hasValidArgs = mangaId != -1L && initialChapterId != -1L
 
+    private var pendingJumpProgress = savedState.get<Int>("search_progress")?.takeIf { it in 1..100 }
+
+    // A chapter opened at a search match is only marked read once its end is reached.
+    private var jumpedChapterId: Long? = null
+
+    // Progress saved before the jump; reading around an earlier match must not overwrite it.
+    private var jumpBaselineProgress: Int? = null
+
+    // Leaving the jumped chapter ends the jump; coming back later reads it normally.
+    private fun endSearchJumpUnless(chapter: ReaderChapter) {
+        if (chapter.chapter.id == jumpedChapterId) return
+        jumpedChapterId = null
+        jumpBaselineProgress = null
+    }
+
+    /** Returned once so later restores, including after process death, use the saved progress. */
+    fun takeJumpProgress(chapter: ReaderChapter): Int? {
+        val chapterId = chapter.chapter.id
+        if (chapterId == null || chapterId != initialChapterId) return null
+        val progress = pendingJumpProgress ?: return null
+        pendingJumpProgress = null
+        savedState.remove<Int>("search_progress")
+        jumpedChapterId = chapterId
+        jumpBaselineProgress = chapter.chapter.last_page_read.takeIf { !chapter.chapter.read && it > progress }
+        // The backward-jump guard then measures from the match instead of the old position.
+        chapter.chapter.last_page_read = progress
+        return progress
+    }
+
     private val eventChannel = Channel<Event>()
     val eventFlow = eventChannel.receiveAsFlow()
 
@@ -456,6 +485,7 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun loadNewChapter(chapter: ReaderChapter) {
         val loader = loader ?: return
+        endSearchJumpUnless(chapter)
 
         viewModelScope.launchIO {
             logcat { "Loading ${chapter.chapter.url}" }
@@ -479,6 +509,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private suspend fun loadAdjacent(chapter: ReaderChapter): Boolean {
         val loader = loader ?: return false
         if (state.value.isLoadingAdjacentChapter) return false
+        endSearchJumpUnless(chapter)
 
         logcat { "Loading adjacent ${chapter.chapter.url}" }
 
@@ -585,6 +616,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * Used when switching between already-appended chapters during novel infinite-scroll.
      */
     private fun setActiveChapterWithoutReload(chapter: ReaderChapter) {
+        endSearchJumpUnless(chapter)
         viewModelScope.launchIO {
             flushReadTimerAndRestart()
 
@@ -816,10 +848,17 @@ class ReaderViewModel @JvmOverloads constructor(
 
                 selectedChapter.chapter.last_page_read = clampedProgress
 
+                if (selectedChapter.chapter.id == jumpedChapterId) {
+                    val baseline = jumpBaselineProgress
+                    if (baseline != null && clampedProgress <= baseline) return@withLock
+                    jumpBaselineProgress = null
+                }
+
                 // Mark as read if at the configured threshold or more
                 val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.get()
                 val wasRead = selectedChapter.chapter.read
-                if (clampedProgress >= markAsReadThreshold && !wasRead) {
+                val threshold = if (selectedChapter.chapter.id == jumpedChapterId) 100 else markAsReadThreshold
+                if (clampedProgress >= threshold && !wasRead) {
                     selectedChapter.chapter.read = true
                     updateTrackChapterRead(selectedChapter)
                     deleteChapterIfNeeded(selectedChapter)

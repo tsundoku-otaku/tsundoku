@@ -11,19 +11,28 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
@@ -32,9 +41,11 @@ import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchOptions
 import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchResult
 import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchScreen
 import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchSnippet
+import eu.kanade.tachiyomi.ui.manga.search.ChapterTextSearch
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
+import tachiyomi.presentation.core.components.FastScrollLazyColumn
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.components.material.padding
 import tachiyomi.presentation.core.i18n.pluralStringResource
@@ -50,7 +61,8 @@ fun ChapterSearchScreenContent(
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
     onOptionsChange: (ChapterSearchOptions) -> Unit,
-    onResultClick: (Chapter) -> Unit,
+    onRangeChange: (from: String, to: String) -> Unit,
+    onResultClick: (Chapter, Int?) -> Unit,
 ) {
     Scaffold(
         topBar = { scrollBehavior ->
@@ -65,7 +77,7 @@ fun ChapterSearchScreenContent(
                         navigateUp = navigateUp,
                         scrollBehavior = scrollBehavior,
                     )
-                    val total = state.chapters?.size ?: 0
+                    val total = state.searchTotal
                     if (state.isSearching && total > 0) {
                         LinearProgressIndicator(
                             progress = { state.searchedCount / total.toFloat() },
@@ -76,6 +88,7 @@ fun ChapterSearchScreenContent(
                     }
                 }
                 SearchOptionsRow(options = state.options, onOptionsChange = onOptionsChange)
+                RangeRow(state = state, onRangeChange = onRangeChange, onSearch = onSearch)
             }
         },
     ) { contentPadding ->
@@ -105,7 +118,7 @@ fun ChapterSearchScreenContent(
             }
             else -> SearchResults(
                 state = state,
-                totalChapters = chapters.size,
+                totalChapters = state.searchTotal,
                 contentPadding = contentPadding,
                 onResultClick = onResultClick,
             )
@@ -143,13 +156,50 @@ private fun SearchOptionsRow(
 }
 
 @Composable
+private fun RangeRow(
+    state: ChapterSearchScreen.State,
+    onRangeChange: (from: String, to: String) -> Unit,
+    onSearch: () -> Unit,
+) {
+    val keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Search)
+    val keyboardActions = KeyboardActions(onSearch = { onSearch() })
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = MaterialTheme.padding.medium),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.padding.small),
+    ) {
+        OutlinedTextField(
+            value = state.rangeFrom,
+            onValueChange = { onRangeChange(it, state.rangeTo) },
+            label = { Text(stringResource(TDMR.strings.chapter_search_range_from)) },
+            isError = ChapterSearchScreen.Model.parseRangeBound(state.rangeFrom) == null,
+            singleLine = true,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            modifier = Modifier.weight(1f),
+        )
+        OutlinedTextField(
+            value = state.rangeTo,
+            onValueChange = { onRangeChange(state.rangeFrom, it) },
+            label = { Text(stringResource(TDMR.strings.chapter_search_range_to)) },
+            isError = ChapterSearchScreen.Model.parseRangeBound(state.rangeTo) == null,
+            singleLine = true,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
 private fun SearchResults(
     state: ChapterSearchScreen.State,
     totalChapters: Int,
     contentPadding: PaddingValues,
-    onResultClick: (Chapter) -> Unit,
+    onResultClick: (Chapter, Int?) -> Unit,
 ) {
-    LazyColumn(
+    FastScrollLazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding,
     ) {
@@ -157,7 +207,7 @@ private fun SearchResults(
             SearchSummary(state = state, totalChapters = totalChapters)
         }
         items(items = state.results, key = { it.chapter.id }) { result ->
-            SearchResultItem(result = result, onClick = { onResultClick(result.chapter) })
+            SearchResultItem(result = result, onResultClick = onResultClick)
         }
     }
 }
@@ -202,15 +252,23 @@ private fun SearchSummary(
 @Composable
 private fun SearchResultItem(
     result: ChapterSearchResult,
-    onClick: () -> Unit,
+    onResultClick: (Chapter, Int?) -> Unit,
 ) {
+    var expanded by rememberSaveable(result.chapter.id) { mutableStateOf(false) }
+    val collapsedCount = ChapterTextSearch.COLLAPSED_SNIPPETS
+    val hiddenCount = result.snippets.size - collapsedCount
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.small),
+            .padding(vertical = MaterialTheme.padding.small),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onResultClick(result.chapter, null) }
+                .padding(horizontal = MaterialTheme.padding.medium),
+        ) {
             Text(
                 text = result.chapter.name,
                 style = MaterialTheme.typography.titleSmall,
@@ -225,14 +283,35 @@ private fun SearchResultItem(
                 modifier = Modifier.padding(start = MaterialTheme.padding.small),
             )
         }
-        result.snippets.forEach { snippet ->
-            SnippetText(snippet = snippet)
+        val shown = if (expanded) result.snippets else result.snippets.take(collapsedCount)
+        shown.forEach { snippet ->
+            SnippetText(
+                snippet = snippet,
+                onClick = { onResultClick(result.chapter, snippet.progressPercent()) },
+            )
+        }
+        if (hiddenCount > 0) {
+            TextButton(
+                onClick = { expanded = !expanded },
+                modifier = Modifier.padding(horizontal = MaterialTheme.padding.small),
+            ) {
+                Text(
+                    text = if (expanded) {
+                        stringResource(TDMR.strings.chapter_search_show_less)
+                    } else {
+                        stringResource(TDMR.strings.chapter_search_show_more, hiddenCount)
+                    },
+                )
+            }
         }
     }
 }
 
+// 0 means no jump, so a match at the very top opens at 1%.
+private fun ChapterSearchSnippet.progressPercent(): Int = (position * 100).toInt().coerceIn(1, 100)
+
 @Composable
-private fun SnippetText(snippet: ChapterSearchSnippet) {
+private fun SnippetText(snippet: ChapterSearchSnippet, onClick: () -> Unit) {
     val highlight = SpanStyle(
         color = MaterialTheme.colorScheme.primary,
         fontWeight = FontWeight.Bold,
@@ -250,6 +329,9 @@ private fun SnippetText(snippet: ChapterSearchSnippet) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = MaterialTheme.padding.extraSmall),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = MaterialTheme.padding.medium, vertical = MaterialTheme.padding.extraSmall),
     )
 }
