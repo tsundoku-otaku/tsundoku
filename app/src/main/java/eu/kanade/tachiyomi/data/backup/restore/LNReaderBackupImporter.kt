@@ -320,6 +320,8 @@ class LNReaderBackupImporter(
                 pluginsZipFile?.delete()
                 novelFilesZipFile?.delete()
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "LNReaderImport: Failed to import backup" }
             errors.add(Date() to "Fatal error: ${e.message}")
@@ -414,28 +416,36 @@ class LNReaderBackupImporter(
             errors.add(Date() to "Could not reopen the backup file to restore novels")
             return novelCount to skippedCount
         }
-        inputStream.use {
-            ZipInputStream(it).use { zip ->
-                var entry = zip.nextEntry
-                var seen = 0
-                while (entry != null && seen < totalNovels) {
-                    val name = entry.name
-                    if (name.startsWith("NovelAndChapters/") && name.endsWith(".json")) {
-                        currentCoroutineContext().ensureActive()
-                        val novel = try {
-                            json.decodeFromStream<LNNovel>(zip)
-                        } catch (_: Exception) {
-                            null
+        // A read error partway keeps what was restored so far and lets the asset restore still run.
+        try {
+            inputStream.use {
+                ZipInputStream(it).use { zip ->
+                    var entry = zip.nextEntry
+                    var seen = 0
+                    while (entry != null && seen < totalNovels) {
+                        val name = entry.name
+                        if (name.startsWith("NovelAndChapters/") && name.endsWith(".json")) {
+                            currentCoroutineContext().ensureActive()
+                            val novel = try {
+                                json.decodeFromStream<LNNovel>(zip)
+                            } catch (_: Exception) {
+                                null
+                            }
+                            if (novel != null && novel.name.isNotBlank()) {
+                                seen++
+                                restoreNovel(novel)
+                            }
                         }
-                        if (novel != null && novel.name.isNotBlank()) {
-                            seen++
-                            restoreNovel(novel)
-                        }
+                        zip.closeEntry()
+                        entry = zip.nextEntry
                     }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "LNReaderImport: Backup read failed after $index novels" }
+            errors.add(Date() to "Backup read failed after $index of $totalNovels novels: ${e.message}")
         }
 
         return novelCount to skippedCount
@@ -773,6 +783,8 @@ class LNReaderBackupImporter(
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "LNReaderImport: Failed to restore downloaded assets from $zipFile" }
             errors.add(Date() to "Failed to restore downloaded assets from $zipFile: ${e.message}")
