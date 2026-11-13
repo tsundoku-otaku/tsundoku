@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import logcat.LogPriority
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -26,6 +27,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.source.service.SourceManager
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -272,15 +274,18 @@ private fun patchHttpSourceForCustomBaseUrl(source: HttpSource, customBaseUrl: S
 
     // Never patch the shared SourceManager instance: the rewrite would leak onto the extension's
     // own requests and onto every other custom source based on it.
-    val target = source.freshCopyOrNull()
-        ?: throw IllegalStateException(
-            "${source.name} can't be redirected to $targetBaseUrl (no standalone instance available)",
-        )
+    // When the requests can't be redirected, the extension keeps fetching from its own domain, as
+    // before mirrors were supported, instead of the custom source failing outright.
+    val target = source.freshCopyOrNull() ?: run {
+        source.logcat(LogPriority.WARN) { "${source.name}: no standalone instance, requests stay on $sourceBaseUrl" }
+        return source
+    }
     val rewrittenClient = createBaseUrlRewriteClient(target.client, sourceBaseUrl, targetBaseUrl)
     if (!replaceSourceClient(target, rewrittenClient)) {
-        throw IllegalStateException(
-            "${source.name} can't be redirected to $targetBaseUrl (its network client can't be replaced)",
-        )
+        source.logcat(LogPriority.WARN) {
+            "${source.name}: network client can't be replaced, requests stay on $sourceBaseUrl"
+        }
+        return source
     }
     // Keep baseUrl original so the interceptor still matches outgoing requests.
     return target
@@ -489,11 +494,6 @@ class CustomNovelSource(
         val originalBaseUrl: String?,
     )
 
-    private class FailedBase(val original: Any, val error: Throwable)
-
-    @Volatile
-    private var failedBase: FailedBase? = null
-
     @Volatile
     private var resolvedBase: ResolvedBase? = null
     private val resolveLock = Any()
@@ -512,10 +512,8 @@ class CustomNovelSource(
             val original = Injekt.get<SourceManager>().get(sourceId)
                 ?: throw IllegalStateException("Base source for $name is not installed or not loaded yet")
             resolvedBase?.takeIf { it.original === original }?.let { return it.source }
-            failedBase?.takeIf { it.original === original }?.let { throw it.error }
             return synchronized(resolveLock) {
                 resolvedBase?.takeIf { it.original === original }?.let { return@synchronized it.source }
-                failedBase?.takeIf { it.original === original }?.let { throw it.error }
                 if (original is CustomNovelSource) {
                     throw IllegalStateException("$name can't be based on another custom source")
                 }
@@ -529,12 +527,7 @@ class CustomNovelSource(
                 val patched = when {
                     catalogue is JsSource && baseUrl.isNotBlank() -> catalogue.withSiteOverride(baseUrl)
                     catalogue is HttpSource && baseUrl.isNotBlank() ->
-                        try {
-                            patchHttpSourceForCustomBaseUrl(catalogue, baseUrl)
-                        } catch (e: IllegalStateException) {
-                            failedBase = FailedBase(original, e)
-                            throw e
-                        }
+                        patchHttpSourceForCustomBaseUrl(catalogue, baseUrl)
                     else -> catalogue
                 }
                 resolvedBase = ResolvedBase(original, patched, originalBaseUrl)
@@ -755,7 +748,7 @@ class CustomNovelSource(
                 val firstPage = guard == 1
                 val doc = firstDoc ?: fetchChapterListPage(url, firstPage) ?: break
                 firstDoc = null
-                addNew(parseChapterElements(doc, selectors))
+                val fresh = addNew(parseChapterElements(doc, selectors))
 
                 // First page, all already known => no updates; stop and keep the existing list.
                 if (firstPage && knownUrls.isNotEmpty() && all.isNotEmpty() &&
@@ -763,6 +756,8 @@ class CustomNovelSource(
                 ) {
                     return context!!.existingChapters
                 }
+                // Repeats only: a "next" link that changes every time without leading anywhere new.
+                if (!firstPage && fresh.isEmpty()) break
 
                 val next = if (selectors.nextPage.isNullOrBlank()) {
                     null
@@ -995,7 +990,8 @@ class CustomNovelSource(
             // returned), so hand them the same path getPageList delegation uses. An absolute URL
             // here was glued onto their baseUrl ("https://site.comhttps://site.com/...").
             if (bs is HttpSource) {
-                return bs.fetchPageText(toBaseSourcePage(page))
+                // Content the extension placed on another host keeps its absolute URL.
+                return bs.fetchPageText(if (isOnOtherHost(page.url)) page else toBaseSourcePage(page))
             }
             val absoluteUrl = buildAbsoluteUrl(page.url)
             // mapCustomUrlToSourceUrl() converts custom base to source base if mirror
@@ -1303,6 +1299,13 @@ class CustomNovelSource(
         return SChapter.create().also { sourceChapter ->
             sourceChapter.copyFrom(chapter)
             sourceChapter.url = toBaseSourceUrl(chapter.url, override) ?: chapter.url
+        }
+    }
+
+    private fun isOnOtherHost(url: String?): Boolean {
+        val host = normalizeCustomUrl(url)?.toHttpUrlOrNull()?.host?.removePrefix("www.") ?: return false
+        return listOfNotNull(baseUrl, effectiveRebaseUrl).none {
+            it.toHttpUrlOrNull()?.host?.removePrefix("www.").equals(host, ignoreCase = true)
         }
     }
 
