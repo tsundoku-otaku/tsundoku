@@ -154,8 +154,7 @@ class ElementSelectorViewModel(
                 initialSourceName.ifEmpty { "Custom Source" }
             },
             baseUrl = baseUrl,
-            language = language.trim().takeIf { it.isNotEmpty() }?.lowercase()?.replace('_', '-')
-                ?: normalizeLanguageCode(detectedLanguageState.value),
+            language = typedLanguageCode(language) ?: normalizeLanguageCode(detectedLanguageState.value),
             reverseChapters = selectorConfig.reverseChapters,
             popularUrl = popularUrl,
             latestUrl = latestUrl,
@@ -300,6 +299,15 @@ class ElementSelectorViewModel(
 }
 
 // "en-US" / "pt_BR" -> "en" / "pt"; blank or junk -> "en".
+// Typed codes keep their region in the form extensions use: "pt_br" -> "pt-BR". Null when blank.
+internal fun typedLanguageCode(raw: String): String? {
+    val parts = raw.trim().replace('_', '-').split('-').filter { it.isNotEmpty() }
+    if (parts.isEmpty()) return null
+    val primary = parts.first().lowercase()
+    val region = parts.getOrNull(1)?.let { if (it.length == 2) it.uppercase() else it }
+    return if (region == null) primary else "$primary-$region"
+}
+
 internal fun normalizeLanguageCode(raw: String): String {
     val primary = raw.trim().substringBefore('-').substringBefore('_').lowercase()
     return primary.takeIf { it.length in 2..3 && it.all { c -> c in 'a'..'z' } } ?: "en"
