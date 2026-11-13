@@ -4,6 +4,7 @@ import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.tachiyomi.jsplugin.source.JsSource
 import eu.kanade.tachiyomi.source.custom.CustomNovelSource
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.source.local.LocalNovelSource
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -23,7 +24,7 @@ fun Source.getNameForMangaInfo(): String {
     }
 }
 
-fun Source.isLocalOrStub(): Boolean = isLocal() || this is StubSource
+fun Source.isLocalOrStub(): Boolean = isLocal() || id == LocalNovelSource.ID || this is StubSource
 
 enum class SourceTypeTag(val label: String) {
     JS("JS"),

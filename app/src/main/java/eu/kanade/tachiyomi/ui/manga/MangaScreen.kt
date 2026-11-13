@@ -71,10 +71,12 @@ import mihon.feature.migration.dialog.MigrateMangaDialog
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
+import tachiyomi.domain.library.service.LibraryPreferences
 import tachiyomi.domain.manga.model.CustomMangaInfo
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
+import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
 import tachiyomi.source.local.isLocalNovel
@@ -134,8 +136,8 @@ class MangaScreen(
             snackbarHostState = viewModel.snackbarHostState,
             nextUpdate = successState.manga.expectedNextUpdate,
             isTabletUi = isTabletUi(),
-            chapterSwipeStartAction = viewModel.chapterSwipeStartAction,
-            chapterSwipeEndAction = viewModel.chapterSwipeEndAction,
+            chapterSwipeStartAction = viewModel.chapterSwipeStartAction.withoutDownloadFor(successState.manga),
+            chapterSwipeEndAction = viewModel.chapterSwipeEndAction.withoutDownloadFor(successState.manga),
             navigateUp = navigator::pop,
             onChapterClicked = { openChapter(context, it) },
             onDownloadChapter = viewModel::runChapterDownloadActions.takeIf { !successState.source.isLocalOrStub() },
@@ -208,7 +210,7 @@ class MangaScreen(
                 null
             },
             onTranslateClicked = viewModel::translateMangaDetails,
-            onTranslateDownloadedClicked = viewModel::translateDownloadedChapters,
+            onTranslateDownloadedClicked = { viewModel.translateDownloadedChapters() }.takeIf { successState.isNovel },
             onExportEpubClicked = viewModel::showExportEpubDialog.takeIf { successState.isNovel },
             onSearchChaptersClicked = {
                 navigator.push(ChapterSearchScreen(successState.manga.id))
@@ -219,7 +221,7 @@ class MangaScreen(
             onMultiBookmarkClicked = viewModel::bookmarkChapters,
             onMultiMarkAsReadClicked = viewModel::markChaptersRead,
             onMarkPreviousAsReadClicked = viewModel::markPreviousChapterRead,
-            onMultiDeleteClicked = viewModel::showDeleteChapterDialog,
+            onMultiDeleteClicked = viewModel::showDeleteChapterDialog.takeIf { !successState.manga.isLocalNovel() },
             onMultiRemoveFromDbClicked = viewModel::showRemoveChaptersFromDbDialog,
             onMultiDeleteTranslationClicked = viewModel::deleteTranslations,
             onTranslateSelectedClicked = { chapters ->
@@ -431,6 +433,26 @@ class MangaScreen(
                     },
                 )
             }
+            is MangaViewModel.Dialog.ConfirmTranslateChapters -> {
+                AlertDialog(
+                    onDismissRequest = onDismissRequest,
+                    title = { Text(stringResource(TDMR.strings.action_translate_downloaded)) },
+                    text = {
+                        val count = dialog.chapters.size
+                        Text(pluralStringResource(TDMR.plurals.translate_chapters_confirm, count, count))
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.confirmTranslateChapters(dialog) }) {
+                            Text(stringResource(TDMR.strings.action_translate))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = onDismissRequest) {
+                            Text(stringResource(MR.strings.action_cancel))
+                        }
+                    },
+                )
+            }
             is MangaViewModel.Dialog.WordCount -> {
                 eu.kanade.presentation.manga.components.WordCountDialog(
                     checkedChapters = dialog.checkedChapters,
@@ -556,3 +578,10 @@ class MangaScreen(
         context.copyToClipboard(url, url)
     }
 }
+
+private fun LibraryPreferences.ChapterSwipeAction.withoutDownloadFor(manga: Manga) =
+    if (this == LibraryPreferences.ChapterSwipeAction.Download && manga.isLocalNovel()) {
+        LibraryPreferences.ChapterSwipeAction.Disabled
+    } else {
+        this
+    }
