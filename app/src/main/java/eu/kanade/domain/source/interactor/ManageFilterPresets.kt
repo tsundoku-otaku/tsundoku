@@ -3,15 +3,19 @@ package eu.kanade.domain.source.interactor
 import eu.kanade.domain.source.model.FilterPreset
 import eu.kanade.domain.source.model.FilterPresetList
 import eu.kanade.domain.source.service.SourcePreferences
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -23,13 +27,21 @@ class ManageFilterPresets(
     private val preferences: SourcePreferences,
 ) {
     fun getPresets(sourceId: Long): FilterPresetList {
-        val presets = preferences.filterPresets(sourceId).get()
-        return presets
+        return withQueries(preferences.filterPresets(sourceId).get(), preferences.filterPresetQueries(sourceId).get())
     }
 
     fun getPresetsFlow(sourceId: Long): Flow<List<FilterPreset>> {
-        return preferences.filterPresets(sourceId).changes()
+        return combine(
+            preferences.filterPresets(sourceId).changes(),
+            preferences.filterPresetQueries(sourceId).changes(),
+            ::withQueries,
+        )
             .map { it.presets }
+    }
+
+    private fun withQueries(list: FilterPresetList, queries: Map<Long, String>): FilterPresetList {
+        if (queries.isEmpty()) return list
+        return FilterPresetList(list.presets.map { it.copy(searchQuery = queries[it.id]) })
     }
 
     fun savePreset(
@@ -37,6 +49,7 @@ class ManageFilterPresets(
         name: String,
         filters: FilterList,
         setAsDefault: Boolean = false,
+        searchQuery: String? = null,
     ): Result<Unit> {
         return runCatching {
             val filterState = serializeFilters(filters)
@@ -59,18 +72,18 @@ class ManageFilterPresets(
             preferences.filterPresets(sourceId).set(
                 FilterPresetList(updatedPresets),
             )
+            if (searchQuery != null) {
+                val queries = preferences.filterPresetQueries(sourceId)
+                queries.set(queries.get() + (newPreset.id to searchQuery))
+            }
             logcat(LogPriority.INFO) { "FilterPresets: Saved preset '$name' for sourceId=$sourceId" }
         }.onFailure { error ->
             logcat(LogPriority.ERROR) { "FilterPresets: Failed to save preset: ${error.message}" }
         }
     }
 
-    fun loadPresetState(sourceId: Long, presetId: Long): String? {
-        val preset = getPresets(sourceId).presets.find { it.id == presetId }
-        if (preset == null) {
-            logcat(LogPriority.WARN) { "FilterPresets: Preset $presetId not found for sourceId=$sourceId" }
-        }
-        return preset?.filterState
+    fun getPreset(sourceId: Long, presetId: Long): FilterPreset? {
+        return getPresets(sourceId).presets.find { it.id == presetId }
     }
 
     fun deletePreset(sourceId: Long, presetId: Long) {
@@ -80,10 +93,15 @@ class ManageFilterPresets(
         preferences.filterPresets(sourceId).set(
             FilterPresetList(updatedPresets),
         )
+        val queries = preferences.filterPresetQueries(sourceId)
+        val storedQueries = queries.get()
+        if (presetId in storedQueries) queries.set(storedQueries - presetId)
         logcat(LogPriority.INFO) { "FilterPresets: Deleted preset ${presetToDelete?.name ?: presetId}" }
     }
 
     fun setDefaultPreset(sourceId: Long, presetId: Long?) {
+        // Auto-apply only restores filters, so a preset with search text can't be the default
+        if (presetId != null && getPreset(sourceId, presetId)?.searchQuery != null) return
         val currentPresets = preferences.filterPresets(sourceId).get()
         val updatedPresets = currentPresets.presets.map { preset ->
             preset.copy(isDefault = preset.id == presetId)
@@ -96,8 +114,7 @@ class ManageFilterPresets(
     }
 
     fun getDefaultPresetState(sourceId: Long): String? {
-        val preset = getPresets(sourceId).presets.find { it.isDefault }
-        return preset?.filterState
+        return preferences.filterPresets(sourceId).get().presets.find { it.isDefault }?.filterState
     }
 
     fun getAutoApplyEnabled(): Boolean {
@@ -113,27 +130,25 @@ class ManageFilterPresets(
         fun serializeFilters(filters: FilterList): String {
             val filterStates = filters.mapIndexed { index, filter ->
                 val stateJson = when (filter) {
-                    is eu.kanade.tachiyomi.source.model.Filter.CheckBox -> JsonPrimitive(filter.state)
-                    is eu.kanade.tachiyomi.source.model.Filter.TriState -> JsonPrimitive(filter.state)
-                    is eu.kanade.tachiyomi.source.model.Filter.Text -> JsonPrimitive(filter.state)
-                    is eu.kanade.tachiyomi.source.model.Filter.Select<*> -> JsonPrimitive(filter.state)
-                    is eu.kanade.tachiyomi.source.model.Filter.Sort -> JsonObject(
-                        mapOf(
-                            "index" to JsonPrimitive(filter.state?.index ?: 0),
-                            "ascending" to JsonPrimitive(filter.state?.ascending ?: true),
-                        ),
+                    is Filter.CheckBox -> JsonPrimitive(filter.state)
+                    is Filter.TriState -> JsonPrimitive(filter.state)
+                    is Filter.Text -> JsonPrimitive(filter.state)
+                    is Filter.Select<*> -> JsonPrimitive(filter.state)
+                    is Filter.Sort -> JsonObject(
+                        filter.state?.let {
+                            mapOf("index" to JsonPrimitive(it.index), "ascending" to JsonPrimitive(it.ascending))
+                        }.orEmpty(),
                     )
-                    is eu.kanade.tachiyomi.source.model.Filter.Group<*> -> JsonArray(
+                    is Filter.Group<*> -> JsonArray(
                         filter.state.mapIndexed { i, groupFilter ->
-                            // Break the long conditional into multiple lines to avoid exceeding max line length
-                            val name = if (groupFilter is eu.kanade.tachiyomi.source.model.Filter<*>) {
+                            val name = if (groupFilter is Filter<*>) {
                                 groupFilter.name
                             } else {
                                 ""
                             }
                             val groupState = when (groupFilter) {
-                                is eu.kanade.tachiyomi.source.model.Filter.CheckBox -> JsonPrimitive(groupFilter.state)
-                                is eu.kanade.tachiyomi.source.model.Filter.TriState -> JsonPrimitive(groupFilter.state)
+                                is Filter.CheckBox -> JsonPrimitive(groupFilter.state)
+                                is Filter.TriState -> JsonPrimitive(groupFilter.state)
                                 else -> JsonNull
                             }
                             JsonObject(
@@ -145,87 +160,151 @@ class ManageFilterPresets(
                             )
                         },
                     )
-                    is eu.kanade.tachiyomi.source.model.Filter.Header -> JsonNull
-                    is eu.kanade.tachiyomi.source.model.Filter.Separator -> JsonNull
                     else -> JsonNull
                 }
-                JsonObject(
-                    mapOf(
-                        "index" to JsonPrimitive(index),
-                        "name" to JsonPrimitive(filter.name),
-                        "state" to stateJson,
-                    ),
+                val entry = mutableMapOf(
+                    "index" to JsonPrimitive(index),
+                    "name" to JsonPrimitive(filter.name),
+                    "state" to stateJson,
                 )
+                if (filter is Filter.Select<*>) {
+                    selectOptionName(filter, filter.state)?.let { entry["value"] = JsonPrimitive(it) }
+                    entry["options"] = JsonPrimitive(filter.values.size)
+                }
+                JsonObject(entry)
             }
-            val result = JsonArray(filterStates).toString()
-            return result
+            return JsonArray(filterStates).toString()
         }
 
+        /**
+         * Restores saved state by filter name, so filters a source added, removed or reordered since
+         * the preset was saved are skipped or still matched instead of receiving another filter's state.
+         */
         fun applyPresetState(filters: FilterList, presetState: String) {
-            try {
-                val states = Json.parseToJsonElement(presetState).jsonArray
+            val states = try {
+                Json.parseToJsonElement(presetState).jsonArray
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR) { "FilterPresets: Failed to parse preset: ${e.message}" }
+                return
+            }
+            val slots = NameSlots(filters.map { it.name })
+            val unmatched = mutableListOf<JsonObject>()
+            states.forEach { element ->
+                try {
+                    val entry = element.jsonObject
+                    val state = entry["state"] ?: JsonNull
+                    val name = entry["name"]?.jsonPrimitive?.contentOrNull ?: return@forEach
+                    // Stateless entries still claim their slot so a same-named filter after them keeps its own.
+                    val slot = slots.next(name) { filters[it].holds(state) }
+                    if (slot == null) {
+                        unmatched += entry
+                    } else if (state !is JsonNull) {
+                        applyFilterState(filters[slot], entry, state)
+                    }
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN) { "FilterPresets: Skipped a filter: ${e.message}" }
+                }
+            }
+            // Same layout but a name that no longer matches (relabelled or localized): fall back to the
+            // saved position, as long as nothing else claimed it and the filter there is the same kind.
+            if (states.size != filters.size) return
+            unmatched.forEach { entry ->
+                try {
+                    val state = entry["state"] ?: JsonNull
+                    val index = entry["index"]?.asPrimitive()?.intOrNull ?: return@forEach
+                    if (index !in filters.indices || !filters[index].holds(state) || !slots.claim(index)) return@forEach
+                    if (state !is JsonNull) applyFilterState(filters[index], entry, state)
+                } catch (e: Exception) {
+                    logcat(LogPriority.WARN) { "FilterPresets: Skipped a filter: ${e.message}" }
+                }
+            }
+        }
 
-                states.forEach { stateElement ->
-                    val stateMap = stateElement.jsonObject
-                    val index = stateMap["index"]?.jsonPrimitive?.intOrNull ?: return@forEach
-                    if (index >= filters.size) return@forEach
-
-                    val filter = filters[index]
-                    val state = stateMap["state"]
-
-                    when (filter) {
-                        is eu.kanade.tachiyomi.source.model.Filter.CheckBox -> {
-                            state?.jsonPrimitive?.booleanOrNull?.let { filter.state = it }
+        private fun applyFilterState(filter: Filter<*>, entry: JsonObject, state: JsonElement) {
+            when (filter) {
+                is Filter.CheckBox -> state.asPrimitive()?.booleanOrNull?.let { filter.state = it }
+                is Filter.TriState -> state.asPrimitive()?.intOrNull?.takeIf { it in 0..2 }?.let { filter.state = it }
+                is Filter.Text -> state.asPrimitive()?.takeIf { it.isString }?.let { filter.state = it.content }
+                is Filter.Select<*> -> selectIndex(filter, entry, state)?.let { filter.state = it }
+                is Filter.Sort -> {
+                    val sort = state as? JsonObject ?: return
+                    if (sort.isEmpty()) {
+                        filter.state = null
+                        return
+                    }
+                    val index = sort["index"]?.asPrimitive()?.intOrNull ?: return
+                    if (index !in filter.values.indices) return
+                    val ascending = sort["ascending"]?.asPrimitive()?.booleanOrNull ?: true
+                    filter.state = Filter.Sort.Selection(index, ascending)
+                }
+                is Filter.Group<*> -> {
+                    val items = filter.state
+                    val slots = NameSlots(items.map { (it as? Filter<*>)?.name.orEmpty() })
+                    (state as? JsonArray)?.forEach { element ->
+                        val item = element as? JsonObject ?: return@forEach
+                        val name = item["name"]?.asPrimitive()?.contentOrNull ?: return@forEach
+                        val itemState = item["state"]?.asPrimitive()
+                        val slot = slots.next(name) {
+                            val stateful = items[it] is Filter.CheckBox || items[it] is Filter.TriState
+                            stateful == (itemState != null)
                         }
-                        is eu.kanade.tachiyomi.source.model.Filter.TriState -> {
-                            state?.jsonPrimitive?.intOrNull?.let { filter.state = it }
+                        when (val groupFilter = slot?.let { items[it] }) {
+                            is Filter.CheckBox -> itemState?.booleanOrNull?.let { groupFilter.state = it }
+                            is Filter.TriState ->
+                                itemState?.intOrNull?.takeIf { it in 0..2 }?.let { groupFilter.state = it }
+                            else -> Unit
                         }
-                        is eu.kanade.tachiyomi.source.model.Filter.Text -> {
-                            state?.jsonPrimitive?.content?.let { filter.state = it }
-                        }
-                        is eu.kanade.tachiyomi.source.model.Filter.Select<*> -> {
-                            state?.jsonPrimitive?.intOrNull?.let { filter.state = it }
-                        }
-                        is eu.kanade.tachiyomi.source.model.Filter.Sort -> {
-                            val sortState = state?.jsonObject
-                            if (sortState != null) {
-                                val sortIndex = sortState["index"]?.jsonPrimitive?.intOrNull ?: 0
-                                val ascending = sortState["ascending"]?.jsonPrimitive?.booleanOrNull ?: true
-                                filter.state = eu.kanade.tachiyomi.source.model.Filter.Sort.Selection(
-                                    index = sortIndex,
-                                    ascending = ascending,
-                                )
-                            }
-                        }
-                        is eu.kanade.tachiyomi.source.model.Filter.Group<*> -> {
-                            val groupStates = state?.jsonArray ?: return@forEach
-                            groupStates.forEach { groupElement ->
-                                val groupState = groupElement.jsonObject
-                                val groupIndex = groupState["index"]?.jsonPrimitive?.intOrNull ?: return@forEach
-                                if (groupIndex >= filter.state.size) return@forEach
-
-                                val groupFilter = filter.state[groupIndex]
-                                val groupFilterState = groupState["state"]
-
-                                when (groupFilter) {
-                                    is eu.kanade.tachiyomi.source.model.Filter.CheckBox -> {
-                                        groupFilterState?.jsonPrimitive?.booleanOrNull?.let { groupFilter.state = it }
-                                    }
-                                    is eu.kanade.tachiyomi.source.model.Filter.TriState -> {
-                                        groupFilterState?.jsonPrimitive?.intOrNull?.let { groupFilter.state = it }
-                                    }
-                                    else -> Unit // Ignore other types
-                                }
-                            }
-                        }
-                        is eu.kanade.tachiyomi.source.model.Filter.Header -> Unit // No state to restore
-                        is eu.kanade.tachiyomi.source.model.Filter.Separator -> Unit // No state to restore
-                        else -> Unit
                     }
                 }
-            } catch (e: Exception) {
-                logcat(LogPriority.ERROR) { "FilterPresets: Failed to applyPresetState: ${e.message}" }
+                else -> Unit
             }
+        }
+
+        private fun selectOptionName(filter: Filter.Select<*>, index: Int): String? =
+            filter.values.getOrNull(index)?.toString()
+
+        private fun selectIndex(filter: Filter.Select<*>, entry: JsonObject, state: JsonElement): Int? {
+            val savedIndex = state.asPrimitive()?.intOrNull?.takeIf { it in filter.values.indices }
+            val savedName = entry["value"]?.asPrimitive()?.contentOrNull ?: return savedIndex
+            if (savedIndex != null && filter.values[savedIndex].toString() == savedName) return savedIndex
+            val byName = filter.values.indexOfFirst { it.toString() == savedName }
+            val sameOptionCount = entry["options"]?.asPrimitive()?.intOrNull == filter.values.size
+            return when {
+                byName >= 0 -> byName
+                // Options without their own toString() get a new name every launch.
+                IDENTITY_NAME.matches(savedName) -> savedIndex
+                // Same number of options under other labels (relabelled or localized).
+                sameOptionCount -> savedIndex
+                else -> null
+            }
+        }
+
+        private fun Filter<*>.holds(state: JsonElement): Boolean = when (this) {
+            is Filter.CheckBox, is Filter.TriState, is Filter.Text, is Filter.Select<*> ->
+                state is JsonPrimitive && state !is JsonNull
+            is Filter.Sort -> state is JsonObject
+            is Filter.Group<*> -> state is JsonArray
+            else -> state is JsonNull
+        }
+
+        private val IDENTITY_NAME = Regex("""[\w.$]+@[0-9a-f]+""")
+
+        private fun JsonElement.asPrimitive(): JsonPrimitive? = (this as? JsonPrimitive)?.takeIf { it !is JsonNull }
+
+        private class NameSlots(names: List<String>) {
+            private val slots = names.withIndex()
+                .groupBy({ it.value }, { it.index })
+                .mapValues { ArrayDeque(it.value) }
+
+            fun next(name: String, fits: (Int) -> Boolean): Int? {
+                val queue = slots[name] ?: return null
+                val index = queue.firstOrNull(fits) ?: return null
+                queue.remove(index)
+                return index
+            }
+
+            /** Takes [index] if no entry matched it yet. */
+            fun claim(index: Int): Boolean = slots.values.any { it.remove(index) }
         }
     }
 }
