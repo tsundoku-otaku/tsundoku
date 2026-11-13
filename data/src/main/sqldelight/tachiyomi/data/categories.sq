@@ -89,6 +89,23 @@ UPDATE categories
 SET sort = :order
 WHERE _id = :categoryId;
 
+updateContentType:
+UPDATE categories
+SET content_type = :contentType
+WHERE _id = :categoryId;
+
+getMangaIdsNotMatchingType:
+SELECT MC.manga_id
+FROM mangas_categories MC
+JOIN mangas M ON M._id = MC.manga_id
+WHERE MC.category_id = :categoryId AND M.is_novel != :isNovel;
+
+deleteMangaNotMatchingType:
+DELETE FROM mangas_categories
+WHERE category_id = :categoryId AND manga_id IN (
+    SELECT _id FROM mangas WHERE is_novel != :isNovel
+);
+
 updateFlags:
 UPDATE categories
 SET flags = :flags

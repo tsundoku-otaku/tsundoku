@@ -14,4 +14,9 @@
         <item quantity="one">%d chapter could not be read</item>
         <item quantity="other">%d chapters could not be read</item>
     </plurals>
+
+    <plurals name="category_content_type_change_message">
+        <item quantity="one">%1$d entry in \"%2$s\" doesn\'t match the new type and will be removed from it.</item>
+        <item quantity="other">%1$d entries in \"%2$s\" don\'t match the new type and will be removed from it.</item>
+    </plurals>
 </resources>
