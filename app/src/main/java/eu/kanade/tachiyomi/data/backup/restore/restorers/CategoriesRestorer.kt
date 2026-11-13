@@ -25,12 +25,10 @@ class CategoriesRestorer(
                 .sortedBy { it.order }
                 .map {
                     val sameName = dbCategoriesByName[it.name].orEmpty()
-                    sameName.restoreMatch(it.contentType)?.let { dbCategory -> return@map dbCategory }
-                    // Names are unique in the UI, so widen a conflicting type instead of adding a duplicate
-                    sameName.firstOrNull()?.let { dbCategory ->
-                        database.categoriesQueries.updateContentType(Category.CONTENT_TYPE_ALL.toLong(), dbCategory.id)
-                        return@map dbCategory.copy(contentType = Category.CONTENT_TYPE_ALL)
-                    }
+                    // Names are unique in the UI, so a same-name category of another type is reused as
+                    // the user set it; entries it can't hold are skipped when their categories restore.
+                    (sameName.restoreMatch(it.contentType) ?: sameName.firstOrNull())
+                        ?.let { dbCategory -> return@map dbCategory }
                     val order = nextOrder++
                     database.categoriesQueries.insert(it.name, order, it.flags, it.contentType.toLong())
                     database.categoriesQueries.selectLastInsertedRowId()
@@ -45,6 +43,15 @@ class CategoriesRestorer(
             )
         }
     }
+}
+
+internal fun List<Category>.restoreTarget(contentType: Int, isNovel: Boolean): Category? =
+    (listOfNotNull(restoreMatch(contentType)) + this).firstOrNull { it.accepts(isNovel) }
+
+private fun Category.accepts(isNovel: Boolean): Boolean = when (contentType) {
+    Category.CONTENT_TYPE_NOVEL -> isNovel
+    Category.CONTENT_TYPE_MANGA -> !isNovel
+    else -> true
 }
 
 internal fun List<Category>.restoreMatch(contentType: Int): Category? =

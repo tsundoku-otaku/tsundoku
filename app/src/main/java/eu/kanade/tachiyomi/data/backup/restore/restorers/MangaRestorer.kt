@@ -337,9 +337,8 @@ class MangaRestorer(
 
         val mangaCategoriesToUpdate = categories.mapNotNull { backupCategoryOrder ->
             backupCategoriesByOrder[backupCategoryOrder]?.let { backupCategory ->
-                val dbCategory = dbCategoriesByName[backupCategory.name]?.let {
-                    it.restoreMatch(backupCategory.contentType) ?: it.firstOrNull()
-                }
+                val dbCategory = dbCategoriesByName[backupCategory.name]
+                    ?.restoreTarget(backupCategory.contentType, manga.isNovel)
                 dbCategory?.let { Pair(manga.id, it.id) }
             }
         }
