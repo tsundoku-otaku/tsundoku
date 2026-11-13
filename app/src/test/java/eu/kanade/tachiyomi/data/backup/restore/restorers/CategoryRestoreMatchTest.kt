@@ -62,4 +62,11 @@ class CategoryRestoreMatchTest {
 
         assertEquals(2L, categories.restoreTarget(Category.CONTENT_TYPE_MANGA, isNovel = true)?.id)
     }
+
+    @Test
+    fun `an entry not flagged as a novel keeps the category its backup names`() {
+        val categories = listOf(category(1, Category.CONTENT_TYPE_NOVEL))
+
+        assertEquals(1L, categories.restoreTarget(Category.CONTENT_TYPE_NOVEL, isNovel = false)?.id)
+    }
 }

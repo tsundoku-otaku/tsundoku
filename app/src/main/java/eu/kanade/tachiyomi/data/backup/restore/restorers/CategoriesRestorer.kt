@@ -45,8 +45,12 @@ class CategoriesRestorer(
     }
 }
 
-internal fun List<Category>.restoreTarget(contentType: Int, isNovel: Boolean): Category? =
-    (listOfNotNull(restoreMatch(contentType)) + this).firstOrNull { it.accepts(isNovel) }
+// Backups made before entries carried is_novel restore novels as false, so only a novel flag can veto
+// the category the backup names.
+internal fun List<Category>.restoreTarget(contentType: Int, isNovel: Boolean): Category? {
+    restoreMatch(contentType)?.takeIf { !isNovel || it.accepts(true) }?.let { return it }
+    return firstOrNull { it.accepts(isNovel) }
+}
 
 private fun Category.accepts(isNovel: Boolean): Boolean = when (contentType) {
     Category.CONTENT_TYPE_NOVEL -> isNovel
