@@ -1799,6 +1799,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         val theme = preferences.novelTheme.get()
         val (finalBgColor, finalTextColor) = getThemeColors(theme)
         val errorColorHex = ThemeUtils.colorToHex(ThemeUtils.getErrorColor(finalBgColor))
+        val mutedColorHex = ThemeUtils.colorToHex(ThemeUtils.getMutedColor(finalBgColor, finalTextColor))
+        val accentColorHex = ThemeUtils.colorToHex(ThemeUtils.getLinkColor(activity, finalBgColor, finalTextColor))
         val bgColorHex = ThemeUtils.colorToHex(finalBgColor)
         val textColorHex = ThemeUtils.colorToHex(finalTextColor)
 
@@ -1821,11 +1823,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
               body { margin: 0; padding: 24px 16px; background: $bgColorHex; color: $textColorHex; font-family: sans-serif; }
               .err { max-width: 600px; margin: 0 auto; text-align: center; padding-top: 10vh; }
               .category { color: $errorColorHex; font-size: 18px; font-weight: bold; margin-bottom: 12px; }
-              .summary { color: #888; font-size: 14px; margin-bottom: 24px; word-break: break-word; }
+              .summary { color: $mutedColorHex; font-size: 14px; margin-bottom: 24px; word-break: break-word; }
               .copy-btn, .retry-btn { background: transparent; color: $textColorHex; border: 1px solid $textColorHex; border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer; margin-bottom: 12px; margin-right: 8px; }
-              .retry-btn { border-color: #4a90d9; color: #4a90d9; }
+              .retry-btn { border-color: $accentColorHex; color: $accentColorHex; }
               details { text-align: left; margin-top: 4px; }
-              summary { cursor: pointer; color: #777; font-size: 13px; padding: 8px 0; user-select: none; }
+              summary { cursor: pointer; color: $mutedColorHex; font-size: 13px; padding: 8px 0; user-select: none; }
               pre { background: rgba(128,128,128,0.2); color: $textColorHex; padding: 12px; border-radius: 6px; font-size: 11px; white-space: pre-wrap; word-break: break-all; max-height: 280px; overflow-y: auto; margin: 0; }
             </style>
             </head>
