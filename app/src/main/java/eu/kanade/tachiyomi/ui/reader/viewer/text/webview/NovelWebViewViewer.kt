@@ -294,6 +294,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (isEditingMode) return false
                 if (e.eventTime - e.downTime >= android.view.ViewConfiguration.getLongPressTimeout()) return true
+                // The page handles a tapped link (an in-chapter jump or navigation), not the tap zones.
+                when (webView.hitTestResult.type) {
+                    WebView.HitTestResult.SRC_ANCHOR_TYPE,
+                    WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE,
+                    -> return true
+                }
 
                 val pos = android.graphics.PointF(
                     e.x / container.width.toFloat(),
@@ -710,6 +716,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     if (loadedDocumentIsPaged) styler.injectPagedReader()
                     // Fresh DOM lost the --tsundoku-safe-* vars and menuVisible flag; re-apply them.
                     pushReaderChrome()
+                    styler.injectFragmentLinks()
                     restoreScrollPosition()
                     syncShortChapterProgressIfNeeded()
                     // Paged mode's own edge-swipe chevron replaces this button; it would also
