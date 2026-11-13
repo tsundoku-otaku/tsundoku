@@ -52,20 +52,17 @@ internal class NovelWebViewStyler(
         val marginRight = preferences.novelMarginRight.get()
         val marginTop = preferences.novelMarginTop.get()
         val marginBottom = preferences.novelMarginBottom.get()
-        val fontColor = preferences.novelFontColor.get()
-        val backgroundColor = preferences.novelBackgroundColor.get()
         val paragraphIndent = preferences.novelParagraphIndent.get()
         val paragraphSpacing = preferences.novelParagraphSpacing.get()
         val textAlign = preferences.novelTextAlign.get()
         val theme = preferences.novelTheme.get()
         val hideChapterTitle = preferences.novelHideChapterTitle.get()
 
-        val (themeBgColor, themeTextColor) = ThemeUtils.getThemeColors(activity, preferences, theme)
-        val finalBgColor = if (theme == "custom" && backgroundColor != 0) backgroundColor else themeBgColor
-        val finalTextColor = if (fontColor != 0) fontColor else themeTextColor
+        val (finalBgColor, finalTextColor) = ThemeUtils.getThemeColors(activity, preferences, theme)
 
         val bgColorHex = ThemeUtils.colorToHex(finalBgColor)
         val textColorHex = ThemeUtils.colorToHex(finalTextColor)
+        val linkColorHex = ThemeUtils.colorToHex(ThemeUtils.getLinkColor(activity, finalBgColor, finalTextColor))
 
         val customCss = preferences.novelCustomCss.get()
         val useOriginalFonts = preferences.novelUseOriginalFonts.get()
@@ -88,6 +85,20 @@ internal class NovelWebViewStyler(
         val textSelect = if (preferences.novelTextSelectable.get()) "text" else "none"
 
         val (fontInheritOverride, headingSizeRules) = fontOverrideCss(sourceCssPriority, useOriginalFonts)
+
+        // Source/inline backgrounds on content blocks would leave light boxes on a dark theme. With
+        // source CSS priority on, the site's look is wanted, so only the contrast guard steps in.
+        // Inline text keeps its background, as do spoilers, which hide text by matching it.
+        val descendantBackgroundReset = if (sourceCssPriority) {
+            ""
+        } else {
+            listOf(
+                "p", "div", "section", "article", "blockquote",
+                "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol", "table", "thead", "tbody", "tr", "td", "th",
+                "center",
+            ).joinToString(", ") { "$CHAPTER_TAG_NAME $it:not([class*=\"spoiler\" i])" } +
+                " { background-color: transparent !important; }"
+        }
 
         val hideChapterTitleCss = if (hideChapterTitle) {
             "$CHAPTER_TAG_NAME h1:first-of-type, $CHAPTER_TAG_NAME h2:first-of-type, " +
@@ -120,6 +131,8 @@ internal class NovelWebViewStyler(
                 color: inherit$styleImportance;
                 $fontInheritOverride
             }
+            a:link, a:visited { color: $linkColorHex$styleImportance; }
+            $descendantBackgroundReset
             $headingSizeRules
             $hideChapterTitleCss
             $customCss
@@ -210,6 +223,27 @@ internal class NovelWebViewStyler(
             ),
         )
         evaluateJs(js)
+        evaluateJs(ThemeUtils.getThemeTokens(activity, preferences, preferences.novelTheme.get()).updateJs)
+        injectContrastGuard()
+    }
+
+    fun injectContrastGuard() {
+        if (!preferences.novelSourceCssPriority.get()) {
+            evaluateJs("(function(){var g=document.getElementById('$STYLE_ID_CONTRAST_GUARD');if(g)g.remove();})();")
+            return
+        }
+        val (bg, text) = ThemeUtils.getThemeColors(activity, preferences, preferences.novelTheme.get())
+        evaluateJs(
+            NovelWebViewJsAssets.loadWith(
+                activity,
+                "contrast-guard.js",
+                mapOf(
+                    "GUARD_ID" to STYLE_ID_CONTRAST_GUARD,
+                    "BG" to ThemeUtils.colorToHex(bg),
+                    "TEXT" to ThemeUtils.colorToHex(text),
+                ),
+            ),
+        )
     }
 
     fun injectScript(
@@ -218,6 +252,7 @@ internal class NovelWebViewStyler(
         buildTsundokuScript: () -> String,
     ) {
         evaluateJs(buildTsundokuScript())
+        if (!isAppend) injectContrastGuard()
 
         // Appends re-run only runOnAppend snippets; one-shot code stays on the initial load so it
         // doesn't fire again on every appended chapter.
@@ -318,6 +353,7 @@ internal class NovelWebViewStyler(
 
     companion object {
         const val STYLE_ID_CUSTOM = "tsundoku-custom-style"
+        const val STYLE_ID_CONTRAST_GUARD = "tsundoku-contrast-guard"
         const val ID_NEXT_CHAPTER_BTN_CONTAINER = "next-chapter-btn-container"
 
         // Sentinel URL the injected @font-face points at; resolved by interceptFont() in the

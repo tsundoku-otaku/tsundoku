@@ -19,7 +19,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
@@ -230,6 +229,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         // Disable long press handling so TextView can handle text selection
         setIsLongpressEnabled(false)
     }
+
+    private enum class ChromeColor { MUTED, ACCENT, ERROR, BUTTON }
+
+    private val themedChrome = java.util.WeakHashMap<TextView, ChromeColor>()
 
     init {
         config.navigationModeChangedListener = {
@@ -777,6 +780,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 loaded.block.chunkViews.forEach(::applyTextViewStyles)
             }
         }
+        themedChrome.forEach { (view, role) -> applyChromeColor(view, role) }
         applyBackgroundColor()
     }
 
@@ -896,12 +900,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     "outline" -> {
                         spanned.setSpan(
                             RoundedOutlineSpan(highlightColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
-                        spanned.setSpan(
-                            ForegroundColorSpan(highlightTextColor),
                             localStart,
                             localEnd,
                             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -1031,7 +1029,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     val headerView = TextView(activity).apply {
                         text = preparedChapter.chapter.name
                         textSize = 18f
-                        setTextColor(0xFF888888.toInt())
+                        themed(ChromeColor.MUTED)
                         gravity = Gravity.CENTER
                         setPadding(16, 32, 16, 16)
                         isVisible = false
@@ -1089,7 +1087,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             val separator = TextView(activity).apply {
                 text = "──────────"
                 textSize = 16f
-                setTextColor(0xFF888888.toInt())
+                themed(ChromeColor.MUTED)
                 gravity = Gravity.CENTER
                 setPadding(16, 48, 16, 48)
                 layoutParams = LinearLayout.LayoutParams(
@@ -1502,7 +1500,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val headerView = TextView(activity).apply {
             text = chapter.chapter.name
             textSize = 18f
-            setTextColor(0xFF888888.toInt())
+            themed(ChromeColor.MUTED)
             gravity = Gravity.CENTER
             setPadding(16, 32, 16, 16)
             // Never show a chapter boundary indicator during infinite scroll.
@@ -1542,7 +1540,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             val separator = TextView(activity).apply {
                 text = "──────────"
                 textSize = 16f
-                setTextColor(0xFF888888.toInt())
+                themed(ChromeColor.MUTED)
                 gravity = Gravity.CENTER
                 setPadding(16, 48, 16, 48)
                 layoutParams = LinearLayout.LayoutParams(
@@ -1657,12 +1655,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             text = activity.stringResource(TDMR.strings.novel_chapter_next)
             isAllCaps = false
             textSize = 16f
-            setTextColor(android.graphics.Color.BLACK)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor("#ADD8E6".toColorInt())
-                setStroke(2, android.graphics.Color.BLACK)
-                cornerRadius = 12f
-            }
+            themed(ChromeColor.BUTTON)
             setPadding(32, 24, 32, 24)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1741,7 +1734,6 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val marginRight = preferences.novelMarginRight.get()
         val marginTop = preferences.novelMarginTop.get()
         val marginBottom = preferences.novelMarginBottom.get()
-        val fontColor = preferences.novelFontColor.get()
         val theme = preferences.novelTheme.get()
         val textAlign = preferences.novelTextAlign.get()
         val fontFamily = preferences.novelFontFamily.get()
@@ -1806,9 +1798,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
         }
 
-        val (_, themeTextColor) = getThemeColors(theme)
-        val finalTextColor = if (fontColor != 0) fontColor else themeTextColor
-        textView.setTextColor(finalTextColor)
+        val (themeBgColor, themeTextColor) = getThemeColors(theme)
+        textView.setTextColor(themeTextColor)
+        textView.setLinkTextColor(ThemeUtils.getLinkColor(activity, themeBgColor, themeTextColor))
 
         // textSize/typeface above can drift from the metrics baked into an existing
         // PrecomputedText, and the framework's own drag-thumbnail path (long-press to
@@ -1829,6 +1821,28 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private fun getThemeColors(theme: String): Pair<Int, Int> =
         ThemeUtils.getThemeColors(activity, preferences, theme)
+
+    private fun TextView.themed(role: ChromeColor) {
+        themedChrome[this] = role
+        applyChromeColor(this, role)
+    }
+
+    private fun applyChromeColor(view: TextView, role: ChromeColor) {
+        val (bg, text) = getThemeColors(preferences.novelTheme.get())
+        when (role) {
+            ChromeColor.MUTED -> view.setTextColor(ThemeUtils.getMutedColor(bg, text))
+            ChromeColor.ACCENT -> view.setTextColor(ThemeUtils.getLinkColor(activity, bg, text))
+            ChromeColor.ERROR -> view.setTextColor(ThemeUtils.getErrorColor(bg))
+            ChromeColor.BUTTON -> {
+                view.setTextColor(text)
+                view.background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(androidx.core.graphics.ColorUtils.setAlphaComponent(text, 0x26))
+                    setStroke(2, text)
+                    cornerRadius = 12f
+                }
+            }
+        }
+    }
 
     private fun setChapterContent(loaded: LoadedChapter, processed: ProcessedContent) {
         textRenderer.render(
@@ -1882,7 +1896,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             textSize = 16f
             gravity = Gravity.CENTER
             setPadding(32, 64, 32, 64)
-            setTextColor(0xFF888888.toInt())
+            themed(ChromeColor.MUTED)
         }
 
         contentContainer.addView(initialLoadingView)
@@ -1914,7 +1928,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val categoryView = TextView(activity).apply {
             text = fmt.category.localized(activity)
             textSize = 16f
-            setTextColor(0xFFFF5555.toInt())
+            themed(ChromeColor.ERROR)
             gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
             layoutParams = LinearLayout.LayoutParams(
@@ -1926,7 +1940,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         val summaryView = TextView(activity).apply {
             text = fmt.summary
             textSize = 14f
-            setTextColor(0xFF888888.toInt())
+            themed(ChromeColor.MUTED)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1943,7 +1957,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             text = activity.stringResource(TDMR.strings.novel_error_retry)
             isAllCaps = false
             textSize = 14f
-            setTextColor(0xFF4A90D9.toInt())
+            themed(ChromeColor.ACCENT)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
