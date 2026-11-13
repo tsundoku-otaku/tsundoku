@@ -44,4 +44,22 @@ class CategoryRestoreMatchTest {
         assertNull(categories.restoreMatch(Category.CONTENT_TYPE_MANGA))
         assertNull(categories.restoreMatch(Category.CONTENT_TYPE_ALL))
     }
+
+    @Test
+    fun `restore target never puts an entry in a category of the other type`() {
+        val manga = listOf(category(1, Category.CONTENT_TYPE_MANGA))
+
+        assertNull(manga.restoreTarget(Category.CONTENT_TYPE_ALL, isNovel = true))
+        assertEquals(1L, manga.restoreTarget(Category.CONTENT_TYPE_ALL, isNovel = false)?.id)
+    }
+
+    @Test
+    fun `restore target falls back to a same-name category that accepts the entry`() {
+        val categories = listOf(
+            category(1, Category.CONTENT_TYPE_MANGA),
+            category(2, Category.CONTENT_TYPE_NOVEL),
+        )
+
+        assertEquals(2L, categories.restoreTarget(Category.CONTENT_TYPE_MANGA, isNovel = true)?.id)
+    }
 }

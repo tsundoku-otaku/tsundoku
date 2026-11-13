@@ -65,8 +65,8 @@ class CategoryScreen : Screen() {
             is CategoryDialog.ConfirmContentType -> {
                 CategoryContentTypeChangeDialog(
                     onDismissRequest = viewModel::dismissDialog,
-                    onConfirm = { viewModel.changeContentType(dialog.category, dialog.contentType) },
-                    category = dialog.category.name,
+                    onConfirm = { viewModel.confirmEdit(dialog) },
+                    category = dialog.name,
                     mismatchedCount = dialog.mismatchedCount,
                 )
             }

@@ -95,33 +95,40 @@ class CategoryViewModel(
 
     fun editCategory(category: Category, name: String, contentType: Int) {
         viewModelScope.launch {
-            if (name != category.name) {
-                if (renameCategory.await(category, name) is RenameCategory.Result.InternalError) {
-                    _events.send(CategoryEvent.InternalError)
+            if (contentType != category.contentType) {
+                val mismatched = setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
+                if (mismatched.isNotEmpty()) {
+                    // Nothing is saved until the removal is confirmed, so Cancel discards the whole edit.
+                    showDialog(CategoryDialog.ConfirmContentType(category, name, contentType, mismatched.size))
                     return@launch
                 }
             }
-            if (contentType == category.contentType) return@launch
-
-            val mismatched = setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
-            if (mismatched.isEmpty()) {
-                changeContentType(category, contentType)
-            } else {
-                showDialog(CategoryDialog.ConfirmContentType(category.copy(name = name), contentType, mismatched.size))
-            }
+            saveEdit(category, name, contentType)
         }
     }
 
-    fun changeContentType(category: Category, contentType: Int) {
-        viewModelScope.launch {
-            when (val result = setCategoryContentType.await(category.id, contentType)) {
-                is SetCategoryContentType.Result.InternalError -> _events.send(CategoryEvent.InternalError)
-                is SetCategoryContentType.Result.Success -> getLibraryManga.applyCategoryUpdates(
-                    mangaIds = result.removedMangaIds,
-                    addCategories = emptyList(),
-                    removeCategories = listOf(category.id),
-                )
-            }
+    fun confirmEdit(dialog: CategoryDialog.ConfirmContentType) {
+        viewModelScope.launch { saveEdit(dialog.category, dialog.name, dialog.contentType) }
+    }
+
+    private suspend fun saveEdit(category: Category, name: String, contentType: Int) {
+        if (name != category.name &&
+            renameCategory.await(category, name) is RenameCategory.Result.InternalError
+        ) {
+            _events.send(CategoryEvent.InternalError)
+            return
+        }
+        if (contentType != category.contentType) changeContentType(category, contentType)
+    }
+
+    private suspend fun changeContentType(category: Category, contentType: Int) {
+        when (val result = setCategoryContentType.await(category.id, contentType)) {
+            is SetCategoryContentType.Result.InternalError -> _events.send(CategoryEvent.InternalError)
+            is SetCategoryContentType.Result.Success -> getLibraryManga.applyCategoryUpdates(
+                mangaIds = result.removedMangaIds,
+                addCategories = emptyList(),
+                removeCategories = listOf(category.id),
+            )
         }
     }
 
@@ -147,8 +154,12 @@ class CategoryViewModel(
 sealed interface CategoryDialog {
     data object Create : CategoryDialog
     data class Edit(val category: Category) : CategoryDialog
-    data class ConfirmContentType(val category: Category, val contentType: Int, val mismatchedCount: Int) :
-        CategoryDialog
+    data class ConfirmContentType(
+        val category: Category,
+        val name: String,
+        val contentType: Int,
+        val mismatchedCount: Int,
+    ) : CategoryDialog
     data class Delete(val category: Category) : CategoryDialog
 }
 
