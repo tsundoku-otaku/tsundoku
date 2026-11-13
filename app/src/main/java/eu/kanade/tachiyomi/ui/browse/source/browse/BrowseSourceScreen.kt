@@ -551,7 +551,7 @@ data class BrowseSourceScreen(
                 val presets by viewModel.filterPresets.collectAsState()
                 val autoApplyEnabled by viewModel.autoApplyFilterPresets.collectAsState()
                 FilterPresetsDialog(
-                    onDismissRequest = viewModel::dismissFilterDialog,
+                    onDismissRequest = viewModel::closePresetSheet,
                     presets = presets,
                     currentFilters = state.pendingFilters,
                     currentSearchQuery = state.pendingQuery,
