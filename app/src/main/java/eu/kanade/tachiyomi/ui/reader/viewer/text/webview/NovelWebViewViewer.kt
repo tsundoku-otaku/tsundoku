@@ -2605,8 +2605,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             handoffState = TtsHandoffState.Idle
             val (preparedChapter, page) = cached
             val nextId = preparedChapter.chapter.id ?: return false
-            // A prefetch that raced a cold append caches a chapter that is already in the DOM.
-            if (loadedChapterIds.contains(nextId)) return appendNextChapterIfAvailable(silent)
+            // A prefetch that raced a cold append caches a chapter that is already in the DOM; that
+            // counts as appended so TTS moves onto it, even when it is the novel's last chapter.
+            if (loadedChapterIds.contains(nextId)) return true
             logcat(LogPriority.DEBUG) {
                 "NovelWebViewViewer: using pre-fetched chapter $nextId (${preparedChapter.chapter.name})"
             }
