@@ -206,26 +206,41 @@ class RegexReplacementsProcessorTest {
     }
 
     @Test
-    fun `stuck workers block regex rules only until they finish`() {
+    fun `stuck workers never block other rules`() {
         val rules = rulesJson(rule("x+", "y", isRegex = true))
         val release = CountDownLatch(1)
-        repeat(MAX_STUCK_REGEX_WORKERS) {
+        repeat(8) {
             assertThrows(RegexTimeoutException::class.java) {
                 runWithRegexTimeout(20) { release.awaitUninterruptibly() }
             }
         }
         try {
-            assertThrows(RegexBusyException::class.java) { runWithRegexTimeout(1_000) {} }
-            assertEquals("axxb", RegexReplacementsProcessor.apply("axxb", prefs(rules)))
+            assertEquals("ayb", RegexReplacementsProcessor.apply("axxb", prefs(rules)))
         } finally {
             release.countDown()
         }
-        val deadline = System.nanoTime() + 2_000_000_000L
-        var result: String
-        do {
-            result = RegexReplacementsProcessor.apply("axxb", prefs(rules))
-        } while (result != "ayb" && System.nanoTime() < deadline)
-        assertEquals("ayb", result)
+        awaitNoStuckWorkers()
+    }
+
+    @Test
+    fun `a timed out task reports whether it completed later`() {
+        val release = CountDownLatch(1)
+        val finished = CountDownLatch(2)
+        val results = java.util.Collections.synchronizedList(mutableListOf<Boolean>())
+        assertThrows(RegexTimeoutException::class.java) {
+            runWithRegexTimeout(20, onLateFinish = { results += it; finished.countDown() }) {
+                release.awaitUninterruptibly()
+            }
+        }
+        assertThrows(RegexTimeoutException::class.java) {
+            runWithRegexTimeout(20, onLateFinish = { results += it; finished.countDown() }) {
+                release.awaitUninterruptibly()
+                error("failed")
+            }
+        }
+        release.countDown()
+        finished.awaitUninterruptibly()
+        assertEquals(setOf(true, false), results.toSet())
         awaitNoStuckWorkers()
     }
 
@@ -274,7 +289,6 @@ class RegexReplacementsProcessorTest {
             try {
                 runWithRegexTimeout(0) {}
             } catch (_: RegexTimeoutException) {
-            } catch (_: RegexBusyException) {
             }
         }
         awaitNoStuckWorkers()

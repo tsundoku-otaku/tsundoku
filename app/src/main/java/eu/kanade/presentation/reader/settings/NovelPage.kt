@@ -74,7 +74,6 @@ import androidx.compose.ui.unit.dp
 import eu.kanade.tachiyomi.data.font.FontManager
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsViewModel
-import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexBusyException
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexDisabledException
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexReplacementsProcessor
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.RegexTimeoutException
@@ -1461,7 +1460,6 @@ private fun RegexEditDialog(
     val patternEmptyText = stringResource(TDMR.strings.novel_pattern_empty)
     val invalidRegexText = stringResource(TDMR.strings.novel_invalid_regex)
     val regexTimedOutText = stringResource(TDMR.strings.novel_regex_timed_out)
-    val regexBusyText = stringResource(TDMR.strings.novel_regex_busy)
     val regexDisabledText = stringResource(TDMR.strings.novel_regex_disabled)
     val invalidRegexFormatText = stringResource(TDMR.strings.novel_invalid_regex_format, "%s")
 
@@ -1633,8 +1631,6 @@ private fun RegexEditDialog(
                                 throw e
                             } catch (e: RegexTimeoutException) {
                                 null to regexTimedOutText
-                            } catch (e: RegexBusyException) {
-                                null to regexBusyText
                             } catch (e: RegexDisabledException) {
                                 null to regexDisabledText
                             } catch (e: StackOverflowError) {

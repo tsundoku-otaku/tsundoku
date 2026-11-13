@@ -11,8 +11,6 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class RegexTimeoutException : RuntimeException("Regex timed out")
 
-class RegexBusyException : RuntimeException("Too many timed out regex workers still running")
-
 class RegexDisabledException : RuntimeException("Regex disabled after an earlier timeout")
 
 const val DEFAULT_REGEX_TIMEOUT_MS = 2_000L
@@ -22,8 +20,6 @@ private const val DEADLINE_CHECK_MASK = 0x3FF
 private val regexThreadCount = AtomicInteger()
 
 private const val REGEX_WORKER_STACK_BYTES = 8L * 1024 * 1024
-
-internal const val MAX_STUCK_REGEX_WORKERS = 4
 
 private val stuckRegexWorkers = AtomicInteger()
 
@@ -45,8 +41,7 @@ private val regexExecutor = ThreadPoolExecutor(
 }
 
 // Only stops the worker on the JVM; Android's Matcher copies the input to a String and matches natively,
-// so a timed-out match keeps its thread busy until it ends on its own. While MAX_STUCK_REGEX_WORKERS of
-// them are running every regex rule is skipped.
+// so a timed-out match keeps its thread busy until it ends on its own.
 private class DeadlineCharSequence(
     private val inner: CharSequence,
     private val deadlineNanos: Long,
@@ -72,16 +67,27 @@ private fun deadline(timeoutMs: Long): Long = System.nanoTime() + timeoutMs * 1_
 
 internal fun stuckRegexWorkerCount(): Int = stuckRegexWorkers.get()
 
-internal fun <T> runWithRegexTimeout(timeoutMs: Long, block: () -> T): T {
-    if (stuckRegexWorkers.get() >= MAX_STUCK_REGEX_WORKERS) throw RegexBusyException()
+/**
+ * Runs [block] on a worker for up to [timeoutMs]. When it times out but keeps running, [onLateFinish] is
+ * called once it ends, with whether it completed (true) or failed.
+ */
+internal fun <T> runWithRegexTimeout(
+    timeoutMs: Long,
+    onLateFinish: (completed: Boolean) -> Unit = {},
+    block: () -> T,
+): T {
     val state = AtomicInteger(TASK_PENDING)
     val future = regexExecutor.submit(
         Callable {
             if (!state.compareAndSet(TASK_PENDING, TASK_RUNNING)) throw CancellationException()
+            var completed = false
             try {
-                block()
+                block().also { completed = true }
             } finally {
-                if (state.getAndSet(TASK_DONE) == TASK_ABANDONED) stuckRegexWorkers.decrementAndGet()
+                if (state.getAndSet(TASK_DONE) == TASK_ABANDONED) {
+                    stuckRegexWorkers.decrementAndGet()
+                    onLateFinish(completed)
+                }
             }
         },
     )
@@ -126,7 +132,8 @@ fun Regex.replaceWithTimeout(
     input: CharSequence,
     replacement: String,
     timeoutMs: Long = DEFAULT_REGEX_TIMEOUT_MS,
-): String = runWithRegexTimeout(timeoutMs) {
+    onLateFinish: (completed: Boolean) -> Unit = {},
+): String = runWithRegexTimeout(timeoutMs, onLateFinish) {
     replace(DeadlineCharSequence(input, deadline(timeoutMs)), replacement)
 }
 
