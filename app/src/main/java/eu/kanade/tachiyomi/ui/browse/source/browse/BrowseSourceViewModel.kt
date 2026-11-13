@@ -627,6 +627,12 @@ class BrowseSourceViewModel(
         setDialog(Dialog.FilterPresets)
     }
 
+    // The presets list is opened from the filter sheet, so closing it goes back there with any loaded
+    // preset still pending.
+    fun closePresetSheet() {
+        setDialog(Dialog.Filter)
+    }
+
     private fun refreshFilterPresets() {
         _filterPresets.value = manageFilterPresets.getPresets(sourceId).presets
     }
