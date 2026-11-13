@@ -88,14 +88,16 @@ internal class NovelWebViewStyler(
 
         // Source/inline backgrounds on content blocks would leave light boxes on a dark theme. With
         // source CSS priority on, the site's look is wanted, so only the contrast guard steps in.
+        // Inline text keeps its background, as do spoilers, which hide text by matching it.
         val descendantBackgroundReset = if (sourceCssPriority) {
             ""
         } else {
             listOf(
-                "p", "div", "span", "section", "article", "blockquote", "font", "b", "i", "em", "strong", "u",
+                "p", "div", "section", "article", "blockquote",
                 "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol", "table", "thead", "tbody", "tr", "td", "th",
                 "center",
-            ).joinToString(", ") { "$CHAPTER_TAG_NAME $it" } + " { background-color: transparent !important; }"
+            ).joinToString(", ") { "$CHAPTER_TAG_NAME $it:not([class*=\"spoiler\" i])" } +
+                " { background-color: transparent !important; }"
         }
 
         val hideChapterTitleCss = if (hideChapterTitle) {
@@ -226,7 +228,10 @@ internal class NovelWebViewStyler(
     }
 
     fun injectContrastGuard() {
-        if (!preferences.novelSourceCssPriority.get()) return
+        if (!preferences.novelSourceCssPriority.get()) {
+            evaluateJs("document.getElementById('$STYLE_ID_CONTRAST_GUARD')?.remove();")
+            return
+        }
         val (bg, text) = ThemeUtils.getThemeColors(activity, preferences, preferences.novelTheme.get())
         evaluateJs(
             NovelWebViewJsAssets.loadWith(

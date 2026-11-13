@@ -348,12 +348,14 @@ internal fun ColumnScope.NovelAppearanceTab(viewModel: ReaderSettingsViewModel, 
         novelThemes.forEach { (labelRes, value) ->
             FilterChip(
                 selected = theme == value,
+                // The custom font color is kept; getThemeColors falls back to the theme's text color
+                // when it isn't readable on the new background.
                 onClick = {
-                    when {
-                        value == "custom" && backgroundColor == 0 -> showBgColorPicker = true
-                        value != "custom" && value != theme -> viewModel.preferences.novelFontColor.set(0)
+                    if (value == "custom" && backgroundColor == 0) {
+                        showBgColorPicker = true
+                    } else {
+                        viewModel.preferences.novelTheme.set(value)
                     }
-                    if (value != "custom" || backgroundColor != 0) viewModel.preferences.novelTheme.set(value)
                 },
                 label = { Text(stringResource(labelRes)) },
             )

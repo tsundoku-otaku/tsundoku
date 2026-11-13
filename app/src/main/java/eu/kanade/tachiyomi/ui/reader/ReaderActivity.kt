@@ -12,6 +12,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.drawable.ColorDrawable
 import android.graphics.Paint
 import android.net.Uri
 import android.os.Build
@@ -1388,16 +1389,20 @@ class ReaderActivity : BaseActivity() {
         }
     }
 
-    // Bars sit over the reader background while the menu is hidden, so match their icons to it.
+    // With the menu hidden the bars sit over the reader: the novel page in fullscreen, otherwise the
+    // inset area around the viewer.
     private fun updateSystemBarIcons(menuVisible: Boolean) {
         val viewer = viewModel.state.value.viewer
         val isNovel = viewer is NovelViewer || viewer is NovelWebViewViewer
-        val light = if (isNovel && !menuVisible) {
-            val (bg, _) = ThemeUtils.getThemeColors(this, readerPreferences, readerPreferences.novelTheme.get())
-            ThemeUtils.isLight(bg)
-        } else {
-            (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES
+        val backdrop = when {
+            !isNovel || menuVisible -> null
+            readerPreferences.fullscreen.get() ->
+                ThemeUtils.getThemeColors(this, readerPreferences, readerPreferences.novelTheme.get()).first
+            else -> (viewer?.getView()?.background as? ColorDrawable)?.color
+                ?: (binding.readerContainer.background as? ColorDrawable)?.color
         }
+        val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        val light = backdrop?.let(ThemeUtils::isLight) ?: (nightMode != Configuration.UI_MODE_NIGHT_YES)
         windowInsetsController.isAppearanceLightStatusBars = light
         windowInsetsController.isAppearanceLightNavigationBars = light
     }
@@ -2221,6 +2226,7 @@ class ReaderActivity : BaseActivity() {
             ) { fullscreen, drawUnderCutout -> fullscreen to drawUnderCutout }
                 .onEach { (fullscreen, drawUnderCutout) ->
                     updateViewerInset(fullscreen, drawUnderCutout)
+                    updateSystemBarIcons(viewModel.state.value.menuVisible)
                 }
                 .launchIn(lifecycleScope)
 
