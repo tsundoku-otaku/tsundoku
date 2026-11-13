@@ -358,4 +358,36 @@ class MassImportTokenizeLineTest {
             MassImport.urlTokens("https://example.com/x?tags=a,b&page=2"),
         )
     }
+
+    @Test
+    fun `query list values are kept`() {
+        assertEquals(
+            listOf("https://example.com/x?tags=action,romance"),
+            MassImport.urlTokens("https://example.com/x?tags=action,romance"),
+        )
+        assertEquals(
+            listOf("https://example.com/x?tags=action,romance,comedy"),
+            MassImport.urlTokens("https://example.com/x?tags=action,romance,comedy see this"),
+        )
+        assertEquals(
+            listOf("https://example.com/x?a=1;b=2"),
+            MassImport.urlTokens("https://example.com/x?a=1;b=2"),
+        )
+    }
+
+    @Test
+    fun `semicolon and pipe rows end a query url`() {
+        assertEquals(
+            listOf("https://example.com/b?id=5"),
+            MassImport.urlTokens("https://example.com/b?id=5;title;3"),
+        )
+        assertEquals(
+            listOf("https://example.com/b?id=5"),
+            MassImport.urlTokens("|https://example.com/b?id=5|Title|3|"),
+        )
+        assertEquals(
+            listOf("https://example.com/b?tag=a"),
+            MassImport.urlTokens("title,https://example.com/b?tag=a,author"),
+        )
+    }
 }

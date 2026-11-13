@@ -131,29 +131,42 @@ class MassImport(
             for (i in bodyStart until line.length) {
                 val c = line[i]
                 if (isBreak(c) || c in URL_TERMINATORS) return i
-                if (c in LIST_SEPARATORS && separatorEndsUrl(line, c, i + 1, inQuery)) return i
+                if (c in LIST_SEPARATORS && separatorEndsUrl(line, c, i + 1, inQuery, start)) return i
                 if (c == '?' || c == '#') inQuery = true
                 if (i > bodyStart && line[i - 1] !in EMBEDDED_SCHEME_PREFIX && schemeLength(line, i) > 0) return i
             }
             return line.length
         }
 
-        // Query values use separators as lists, so there only a clear field boundary ends the URL.
-        // A query comma before a word with no further parameter is a CSV column. A comma is always
-        // kept before '_' or '%' (wiki-style titles).
-        private fun separatorEndsUrl(line: String, separator: Char, next: Int, inQuery: Boolean): Boolean {
+        // Query values use separators as lists, so there only a clear field boundary ends the URL:
+        // the same separator right before the URL (a delimited row), or a comma or semicolon before
+        // a field with no further parameter that is capitalized (comma) or any word (semicolon).
+        // A separator is always kept before '_' or '%' (wiki-style titles).
+        private fun separatorEndsUrl(
+            line: String,
+            separator: Char,
+            next: Int,
+            inQuery: Boolean,
+            urlStart: Int,
+        ): Boolean {
             val n = line.getOrNull(next) ?: return true
             if (isBreak(n) || n in URL_TERMINATORS || n == '\'' || schemeLength(line, next) > 0) return true
             if (n == '_' || n == '%') return false
             if (!inQuery) return true
-            if (separator != ',' || n.isDigit()) return false
+            if (precedingSeparator(line, urlStart) == separator) return true
+            if (separator == '|' || n.isDigit()) return false
             for (j in next until line.length) {
                 val c = line[j]
                 if (c == '=' || c == '&') return false
-                if (isBreak(c) || c in URL_TERMINATORS || c in LIST_SEPARATORS || c == '#') return true
+                if (isBreak(c) || c in URL_TERMINATORS || c in LIST_SEPARATORS || c == '#') break
             }
-            return true
+            return separator == ';' || n.isUpperCase()
         }
+
+        // Only a separator glued to the URL marks a delimited row; a quoted URL ends at its quote
+        // and ", " is a hand-written list.
+        private fun precedingSeparator(line: String, urlStart: Int): Char? =
+            line.getOrNull(urlStart - 1)?.takeIf { it in LIST_SEPARATORS }
 
         private fun cleanUrl(line: String, start: Int, end: Int, singleQuoted: Boolean, prose: Boolean): String {
             val bodyStart = start + schemeLength(line, start)
