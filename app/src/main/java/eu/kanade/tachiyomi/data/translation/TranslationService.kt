@@ -473,6 +473,8 @@ class TranslationService(
         // Extract text from HTML (delegated — fix DRY 2.4)
         val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
         if (plainText.replace(MEDIA_PLACEHOLDER_REGEX, "").isBlank()) {
+            // An empty chapter (failed download, wrong selector) must not be cached as translated.
+            if (preservedImages.isEmpty()) throw IllegalStateException("Chapter has no text to translate")
             logcat(LogPriority.DEBUG) { "Nothing to translate in ${locator.chapterName}" }
             val html = TranslationHtmlUtils.buildTranslatedHtml(translateTitle(title, task, engine), emptyList()) +
                 preservedImages.values.joinToString("")
@@ -625,7 +627,12 @@ class TranslationService(
                         "Translation exception chunk ${chunkIndex + 1}/${chunks.size} (attempt $attempt)"
                     }
                     if (attempt < MAX_CHUNK_RETRIES) {
-                        delay(RETRY_DELAY_MS)
+                        try {
+                            delay(RETRY_DELAY_MS)
+                        } catch (c: CancellationException) {
+                            saveProgress(chunkIndex)
+                            throw c
+                        }
                         continue
                     }
                     break
