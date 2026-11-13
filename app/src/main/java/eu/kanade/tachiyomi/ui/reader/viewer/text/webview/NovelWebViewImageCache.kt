@@ -122,14 +122,14 @@ internal class NovelWebViewImageCache(
         if (cache[cacheKey]?.exists() == true) return
 
         val job = scope.launch(start = CoroutineStart.LAZY, context = Dispatchers.IO) {
+            val self = coroutineContext[Job]
             try {
                 prefetchPermits.withPermit {
                     if (cache[cacheKey]?.exists() == true) return@withPermit
                     val stream = loader.getPageDataStream(imagePath) ?: return@withPermit
                     val cachedFile = makeCachedFile(cacheKey, imagePath)
-                    val job = coroutineContext[Job]
                     val committed = stream.use { input ->
-                        writeAtomically(cachedFile, input) { job?.isActive != false }
+                        writeAtomically(cachedFile, input) { self?.isActive != false }
                     }
                     if (committed) cache[cacheKey] = cachedFile
                 }
@@ -138,7 +138,8 @@ internal class NovelWebViewImageCache(
             } catch (e: Exception) {
                 logcat(LogPriority.DEBUG) { "NovelWebViewImageCache: prefetch $imagePath failed: ${e.message}" }
             } finally {
-                prefetchJobs.remove(cacheKey)
+                // Only its own entry: intercept may have replaced it with a newer prefetch.
+                if (self != null) prefetchJobs.remove(cacheKey, self)
             }
         }
 
@@ -149,18 +150,24 @@ internal class NovelWebViewImageCache(
         job.start()
     }
 
-    // A cancelled prefetch keeps copying (blocking IO) while intercept loads the same file, so each
-    // writer fills its own temp file and renames it into place. A writer that should no longer commit
-    // only drops its temp file, never the target another writer may have published.
+    // Each writer fills its own temp file and renames it into place, so a reader never sees a partial
+    // or missing target. A writer that should no longer commit stops copying at the next buffer
+    // (releasing its prefetch permit) and only drops its temp file.
     private fun writeAtomically(target: File, input: InputStream, commit: () -> Boolean = { true }): Boolean {
         val tmp = File.createTempFile(target.name, ".tmp", target.parentFile)
         try {
-            tmp.outputStream().use { input.copyTo(it) }
-            if (!commit()) return false
-            if (!tmp.renameTo(target)) {
-                target.delete()
-                check(tmp.renameTo(target)) { "rename failed for ${target.name}" }
+            tmp.outputStream().use { out ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    if (!commit()) return false
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    out.write(buffer, 0, read)
+                }
             }
+            if (!commit()) return false
+            // A failed rename onto a target another writer already published still leaves a whole file.
+            check(tmp.renameTo(target) || target.exists()) { "rename failed for ${target.name}" }
             return true
         } finally {
             tmp.delete()
