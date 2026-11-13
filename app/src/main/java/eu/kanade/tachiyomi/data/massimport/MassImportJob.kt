@@ -1990,33 +1990,58 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         ?.toBatch(emptyList())
                     ?: return@launch abortResume("no batch state")
                 val cacheFile = File(appContext.cacheDir, "mass_import_$batchId.txt")
-                // Stream store -> cache file; the url list can be huge.
+                // Stream store -> cache file; the url list can be huge. Batches staged by an older
+                // tokenizer stored non-URL columns as lines and counted them in progress, so the
+                // lines are re-tokenized and progress is mapped onto the URL tokens.
+                var storedLines = 0
+                var tokenCount = 0
+                var mappedProgress = 0
                 val staged = runCatching {
                     MassImportStore.openUrlsReader(appContext, batchId)?.use { reader ->
-                        var any = false
                         cacheFile.bufferedWriter().use { w ->
                             reader.lineSequence().forEach { line ->
                                 val t = line.trim()
                                 if (t.isNotEmpty()) {
-                                    w.write(t)
-                                    w.newLine()
-                                    any = true
+                                    for (url in MassImport.urlTokens(t)) {
+                                        w.write(url)
+                                        w.newLine()
+                                        tokenCount++
+                                    }
+                                    storedLines++
+                                    if (storedLines == batch.progress) mappedProgress = tokenCount
                                 }
                             }
                         }
-                        any
+                        tokenCount > 0
                     } ?: false
                 }.getOrDefault(false)
                 if (!staged) {
                     runCatching { cacheFile.delete() }
                     return@launch abortResume("no persisted urls")
                 }
+                val progress = if (batch.progress >= storedLines) tokenCount else mappedProgress
+                if (tokenCount != storedLines) {
+                    // Keep the stored list in the same token space as the new progress, which the
+                    // error-retry path indexes by line.
+                    val saved = cacheFile.bufferedReader().useLines { lines ->
+                        MassImportStore.saveUrlsStreaming(appContext, batchId, lines)
+                    }
+                    if (saved != tokenCount) {
+                        logcat(LogPriority.WARN) { "MassImport: could not rewrite persisted urls for $batchId" }
+                    }
+                }
+                if (progress != batch.progress || tokenCount != batch.total) {
+                    _sharedQueue.update { list ->
+                        list.map { if (it.id == batchId) it.copy(progress = progress, total = tokenCount) else it }
+                    }
+                    persistMeta(appContext, batchId, force = true)
+                }
 
                 // Restart a bit before the saved progress, not exactly at it: URLs finish out
                 // of order and the interleave buffer holds some back, so a few just past the
                 // saved count may still be unfinished. Re-doing that overlap is cheap (already
                 // imported ones skip instantly); skipping it could drop a URL.
-                val resumeOffset = (batch.progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
+                val resumeOffset = (progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
                 val payload = mutableListOf<Pair<String, Any?>>(
                     KEY_CATEGORY_ID to batch.categoryId,
                     KEY_ADD_TO_LIBRARY to batch.addToLibrary,
