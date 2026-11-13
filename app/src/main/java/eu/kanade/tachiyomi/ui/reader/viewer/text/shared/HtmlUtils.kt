@@ -12,6 +12,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Comment
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.TextNode
+import org.jsoup.parser.Parser
 import org.jsoup.safety.Safelist
 
 object HtmlUtils {
@@ -21,6 +22,7 @@ object HtmlUtils {
     private val frontMatterRegex = Regex("^\\uFEFF?---\\s*\\r?\\n([\\s\\S]*?)\\r?\\n---\\s*(\\r?\\n|$)")
     private const val CHAPTER_TITLE_SEARCH_LIMIT = 3000
     private const val MAX_SANITIZE_PASSES = 4
+    private const val CHAPTER_CONTAINER_TAG = "tsundoku-chapter"
 
     private val htmlTagRegex = Regex(
         "<\\s*(html|head|body|div|p|span|br|h[1-6]|img|a|table|ul|ol|li|blockquote|article|section|!doctype)\\b",
@@ -234,8 +236,35 @@ object HtmlUtils {
         }
         // Still mutating on reparse: keep the structure but only through a plain HTML safelist.
         logcat(LogPriority.WARN) { "Chapter HTML did not settle after $MAX_SANITIZE_PASSES sanitize passes" }
-        return Jsoup.clean(html, "", Safelist.relaxed().preserveRelativeLinks(true), Document.OutputSettings().prettyPrint(false))
+        return cleanWithSafelist(html, keepCss = !stripCss, blockMedia = blockMedia)
     }
+
+    // Relative links only survive cleaning when resolvable, so clean against a placeholder base;
+    // preserveRelativeLinks keeps them relative in the output.
+    internal fun cleanWithSafelist(html: String, keepCss: Boolean, blockMedia: Boolean): String =
+        Jsoup.clean(
+            html,
+            "https://chapter.tsundoku.invalid/",
+            fallbackSafelist(keepCss, blockMedia),
+            Document.OutputSettings().prettyPrint(false),
+        )
+
+    private fun fallbackSafelist(keepCss: Boolean, blockMedia: Boolean): Safelist =
+        Safelist.relaxed()
+            .preserveRelativeLinks(true)
+            .addTags(
+                "hr", "s", "del", "ins", "mark", "ruby", "rt", "rp", "section", "article", "aside",
+                "header", "footer", "figure", "figcaption", "center",
+            )
+            .addAttributes(":all", "class", "id", "dir", "lang", "title")
+            .addProtocols("img", "src", "data")
+            .apply {
+                if (keepCss) {
+                    addTags("style")
+                    addAttributes(":all", "style")
+                }
+                if (blockMedia) removeTags("img")
+            }
 
     private class SanitizeResult(val html: String, val changed: Boolean)
 
@@ -246,9 +275,12 @@ object HtmlUtils {
         stripCss: Boolean,
         blockMedia: Boolean,
     ): SanitizeResult {
-        val doc = Jsoup.parseBodyFragment(content)
+        // Parsed in the chapter element, where the WebView inserts the content, so a pass that is
+        // stable here is stable there too.
+        val doc = Document.createShell("")
         doc.outputSettings().prettyPrint(false)
-        val body = doc.body()
+        val body = doc.body().appendElement(CHAPTER_CONTAINER_TAG)
+        body.appendChildren(Parser.parseFragment(content, body, ""))
         var changed = false
 
         fun removeAll(query: String) {

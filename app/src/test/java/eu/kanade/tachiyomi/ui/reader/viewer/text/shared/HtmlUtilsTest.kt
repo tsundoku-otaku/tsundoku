@@ -628,4 +628,32 @@ class HtmlUtilsTest {
         val out = webView("<meta http-equiv=\"refresh\" content=\"0;url=https://example.com\"><p>a</p>", keepJs = true)
         assertFalse(out.contains("<meta"), out)
     }
+
+    @Test
+    fun `safelist fallback keeps relative links, classes and chapter css`() {
+        val out = HtmlUtils.cleanWithSafelist(
+            "<style>p{color:red}</style><p class=\"c\" style=\"margin:0\"><img src=\"images/a.jpg\">" +
+                "<a href=\"../ch2.html\">next</a><a href=\"javascript:x()\">bad</a></p>",
+            keepCss = true,
+            blockMedia = false,
+        )
+        assertTrue(out.contains("<style>p{color:red}</style>"), out)
+        assertTrue(out.contains("class=\"c\""), out)
+        assertTrue(out.contains("style=\"margin:0\""), out)
+        assertTrue(out.contains("src=\"images/a.jpg\""), out)
+        assertTrue(out.contains("href=\"../ch2.html\""), out)
+        assertFalse(out.contains("javascript"), out)
+    }
+
+    @Test
+    fun `safelist fallback drops css when it is stripped`() {
+        val out = HtmlUtils.cleanWithSafelist("<style>p{}</style><p style=\"x:y\">a</p>", keepCss = false, blockMedia = false)
+        assertEquals("<p>a</p>", out)
+    }
+
+    @Test
+    fun `sanitizeForRender parses like the chapter element`() {
+        val out = webView("<p>a</p></tsundoku-chapter><p>b</p>", keepJs = false)
+        assertEquals("<p>a</p><p>b</p>", out)
+    }
 }
