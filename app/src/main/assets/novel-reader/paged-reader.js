@@ -106,7 +106,10 @@
         var cs = window.getComputedStyle(document.body);
         var hMargin = (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
         document.body.style.boxSizing = 'border-box';
-        document.body.style.width = Math.floor(document.documentElement.clientWidth - hMargin) + 'px';
+        // Before the WebView has a width this would pin body to 0 and keep pageWidth() at 0, which
+        // also hides the resize the initial restore waits for.
+        var viewportW = document.documentElement.clientWidth;
+        document.body.style.width = viewportW - hMargin > 0 ? Math.floor(viewportW - hMargin) + 'px' : '';
         var w = pageWidth();
         el.style.columnWidth = w + 'px';
         el.style.MozColumnWidth = w + 'px';
@@ -241,8 +244,22 @@
         reportPageInfo(idx, pc);
         reportProgress(p.lastRatio);
         publishProgress(p.lastRatio, idx, pc);
-        // An animated turn captures once its transition ends (see the transitionend listener)
-        pageAnchor = animate ? null : textAtPageStart();
+        captureAnchorAfterTurn(animate);
+    }
+
+    // An animated turn captures once its transition ends (see the transitionend listener). A turn
+    // that doesn't move, or runs with transitions off, never gets a transitionend, so a timer past
+    // the transition's duration captures it instead.
+    var anchorTimer = null;
+    function captureAnchorAfterTurn(animate) {
+        clearTimeout(anchorTimer);
+        if (!animate) {
+            pageAnchor = textAtPageStart();
+            return;
+        }
+        pageAnchor = null;
+        var duration = (parseFloat(window.getComputedStyle(container()).transitionDuration) || 0) * 1000;
+        anchorTimer = setTimeout(function () { pageAnchor = textAtPageStart(); }, duration + 50);
     }
 
     // The text at the top of the current page, taken once the page settles and before any later
@@ -261,7 +278,8 @@
     var hasPendingRepaginate = false;
 
     function repaginate(ratio) {
-        if (!enabled) return;
+        // Edit mode runs in normal flow; pinning the column layout there would clip the editor.
+        if (!enabled || isSuspended()) return;
         if (drag) {
             hasPendingRepaginate = true;
             pendingRepaginateRatio = ratio;
@@ -643,7 +661,9 @@
             .observe(container(), { childList: true, characterData: true, subtree: true });
     }
     container().addEventListener('transitionend', function (e) {
-        if (e.target === container() && e.propertyName === 'transform') pageAnchor = textAtPageStart();
+        if (e.target !== container() || e.propertyName !== 'transform') return;
+        clearTimeout(anchorTimer);
+        pageAnchor = textAtPageStart();
     });
     container().addEventListener('load', onContentReflow, true);
     container().addEventListener('error', onContentReflow, true);
