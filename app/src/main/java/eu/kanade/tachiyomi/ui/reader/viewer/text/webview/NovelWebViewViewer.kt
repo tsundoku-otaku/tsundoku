@@ -83,6 +83,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import logcat.logcat
+import org.json.JSONObject
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
@@ -478,6 +479,206 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             """.trimIndent(),
         )
     }
+
+    // region Find in chapter (WebView path)
+    //
+    // Matches are located natively-in-JS and addressed by (paragraph index, offset within the
+    // paragraph's concatenated text) so they survive unwrapping: the current match is wrapped in
+    // a <span> for highlighting and unwrapped before the next jump, with the paragraph's text
+    // re-walked from scratch each time. The search is scoped to the current chapter element so
+    // infinite-scroll chapters further down the document are not searched.
+
+    /**
+     * Searches [query] in the current chapter and jumps to the first match.
+     * Reports the result through [ReaderActivity.onNovelFindResult].
+     */
+    fun searchInChapter(query: String) {
+        if (query.isBlank()) {
+            clearFind()
+            return
+        }
+        val chapterId = currentPage?.chapter?.chapter?.id ?: return
+        val q = quoteForJson(query.trim())
+        evaluateJavascriptSafe(findEngineJs(chapterId.toString()) + "window.__tdFind.prepare($q);") { result ->
+            val count = parseFindResult(result).first
+            if (count > 0) stepFind(1) else activity.onNovelFindResult(0, -1)
+        }
+    }
+
+    fun findNext() = stepFind(1)
+
+    fun findPrevious() = stepFind(-1)
+
+    fun clearFind() {
+        val chapterId = currentPage?.chapter?.chapter?.id
+        evaluateJavascriptSafe(
+            buildString {
+                if (chapterId != null) append(findEngineJs(chapterId.toString()))
+                append("if (window.__tdFind) { window.__tdFind.clear(); }")
+            },
+        )
+        activity.onNovelFindResult(0, -1)
+    }
+
+    private fun stepFind(dir: Int) {
+        val chapterId = currentPage?.chapter?.chapter?.id ?: return
+        evaluateJavascriptSafe(findEngineJs(chapterId.toString()) + "window.__tdFind.go($dir);") { result ->
+            parseFindResult(result).let { (total, current) ->
+                if (total > 0) activity.onNovelFindResult(total, current)
+            }
+        }
+    }
+
+    /** Returns (total, current) from a JSON-encoded JS completion value; (-1, -1) if unusable. */
+    private fun parseFindResult(result: String?): Pair<Int, Int> {
+        if (result == null || result == "null") return -1 to -1
+        return try {
+            val obj = JSONObject(result)
+            obj.optInt("count", 0) to obj.optInt("current", -1)
+        } catch (_: Exception) {
+            -1 to -1
+        }
+    }
+
+    /**
+     * The find engine, idempotently installed on window. Works against the same paragraph
+     * enumeration as the TTS highlight so scrolling behaves identically (paged mode uses
+     * __tdPagedGoToElement; scroll mode uses scrollIntoView).
+     */
+    private fun findEngineJs(chapterId: String): String {
+        val tagName = NovelWebViewChapterMeta.CHAPTER_TAG_NAME
+        val idAttr = NovelWebViewChapterMeta.CHAPTER_ID_ATTR
+        return """
+            (function() {
+                if (window.__tdFind) { return; }
+                var S = window.__tdFindState || (window.__tdFindState = { spans: [], matches: [], current: -1, styleEl: null });
+                function ensureStyle() {
+                    if (S.styleEl) { return; }
+                    S.styleEl = document.createElement('style');
+                    S.styleEl.textContent =
+                        '.td-find-match{background:rgba(255,145,0,.35);border-radius:3px;}' +
+                        '.td-find-current{background:rgba(255,145,0,.95);color:#101010;border-radius:3px;}';
+                    document.head.appendChild(S.styleEl);
+                }
+                function scope() {
+                    return document.querySelector('$tagName[$idAttr="$chapterId"]') || document.body;
+                }
+                function paragraphs(root) {
+                    var sel = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
+                    var list = Array.prototype.slice.call(root.querySelectorAll(sel)).filter(function(el) {
+                        return !!(el.innerText && el.innerText.trim().length);
+                    });
+                    if (!list.length) {
+                        list = Array.prototype.slice.call(root.children).filter(function(el) {
+                            return !!(el.innerText && el.innerText.trim().length);
+                        });
+                    }
+                    return list;
+                }
+                function textNodes(root) {
+                    var out = [];
+                    var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+                        acceptNode: function(n) {
+                            var p = n.parentNode;
+                            if (!p || p.nodeName === 'SCRIPT' || p.nodeName === 'STYLE') { return NodeFilter.FILTER_REJECT; }
+                            return NodeFilter.FILTER_ACCEPT;
+                        }
+                    });
+                    while (w.nextNode()) { out.push(w.currentNode); }
+                    return out;
+                }
+                function clearSpans() {
+                    S.spans.forEach(function(s) {
+                        if (s.parentNode) { s.replaceWith(document.createTextNode(s.textContent)); }
+                    });
+                    S.spans = [];
+                }
+                function prepare(q) {
+                    ensureStyle();
+                    clearSpans();
+                    S.current = -1;
+                    S.matches = [];
+                    if (!q) { return { count: 0, current: -1 }; }
+                    var lower = q.toLowerCase();
+                    var paras = paragraphs(scope());
+                    for (var pi = 0; pi < paras.length; pi++) {
+                        var base = 0;
+                        var nodes = textNodes(paras[pi]);
+                        for (var ni = 0; ni < nodes.length; ni++) {
+                            var data = nodes[ni].data;
+                            var dl = data.toLowerCase();
+                            var idx = dl.indexOf(lower);
+                            while (idx !== -1) {
+                                S.matches.push({ para: pi, offset: base + idx, len: q.length });
+                                idx = dl.indexOf(lower, idx + lower.length);
+                            }
+                            base += data.length;
+                        }
+                    }
+                    return { count: S.matches.length, current: -1 };
+                }
+                function wrapCurrent() {
+                    var m = S.matches[S.current];
+                    if (!m) { return null; }
+                    var para = paragraphs(scope())[m.para];
+                    if (!para) { return null; }
+                    var acc = 0;
+                    var span = null;
+                    var nodes = textNodes(para);
+                    for (var ni = 0; ni < nodes.length; ni++) {
+                        var len = nodes[ni].data.length;
+                        if (acc + len <= m.offset) { acc += len; continue; }
+                        var local = m.offset - acc;
+                        if (local + m.len <= len) {
+                            try {
+                                var range = document.createRange();
+                                range.setStart(nodes[ni], local);
+                                range.setEnd(nodes[ni], local + m.len);
+                                span = document.createElement('span');
+                                span.className = 'td-find-match td-find-current';
+                                range.surroundContents(span);
+                                S.spans.push(span);
+                            } catch (e) { span = null; }
+                            break;
+                        }
+                        acc += len;
+                    }
+                    return span;
+                }
+                function scrollToEl(el) {
+                    var T = window.$TSUNDOKU_OBJECT_NAME;
+                    if (T && T.runtime && T.runtime.pagingEnabled && window.__tdPagedGoToElement) {
+                        window.__tdPagedGoToElement(el);
+                    } else {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+                    }
+                }
+                function go(dir) {
+                    ensureStyle();
+                    var count = S.matches.length;
+                    if (!count) { return { count: 0, current: -1 }; }
+                    var cur = S.current;
+                    clearSpans();
+                    S.current = cur === -1
+                        ? (dir > 0 ? 0 : count - 1)
+                        : (((cur + dir) % count) + count) % count;
+                    var span = wrapCurrent();
+                    if (span) { scrollToEl(span); }
+                    return { count: count, current: S.current };
+                }
+                function clearAll() {
+                    clearSpans();
+                    S.matches = [];
+                    S.current = -1;
+                    if (S.styleEl && S.styleEl.parentNode) { S.styleEl.remove(); }
+                    S.styleEl = null;
+                }
+                window.__tdFind = { prepare: prepare, go: go, clear: clearAll };
+            })();
+        """.trimIndent()
+    }
+    // endregion
+
 
     private fun loadNextChapterForTts(_anchorChapterIndex: Int = ttsController.ttsPlaybackChapterIndex) {
         logcat(LogPriority.DEBUG) {

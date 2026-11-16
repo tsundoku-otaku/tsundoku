@@ -17,6 +17,7 @@ enum class BottomBarItem(val id: String) {
     SETTINGS("settings"),
     EDIT("edit"),
     QUOTES("quotes"),
+    SEARCH("search"),
 }
 
 data class BottomBarItemState(
@@ -34,6 +35,7 @@ val DefaultBottomBarItems = listOf(
     BottomBarItemState(BottomBarItem.AUTO_SCROLL, defaultEnabled = false),
     BottomBarItemState(BottomBarItem.TTS, defaultEnabled = true),
     BottomBarItemState(BottomBarItem.QUOTES, defaultEnabled = true),
+    BottomBarItemState(BottomBarItem.SEARCH, defaultEnabled = true),
     BottomBarItemState(BottomBarItem.ORIENTATION, defaultEnabled = false),
     BottomBarItemState(BottomBarItem.SETTINGS, defaultEnabled = true),
     BottomBarItemState(BottomBarItem.EDIT, defaultEnabled = false),

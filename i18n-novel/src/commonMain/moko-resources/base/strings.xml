@@ -192,6 +192,11 @@
     <string name="action_edit_appbar">Edit Bottom Bar</string>
     <string name="action_scroll_to_top">Scroll to top</string>
     <string name="action_scroll_to_bottom">Scroll to bottom</string>
+    <string name="action_find_in_chapter">Search in chapter</string>
+    <string name="find_in_chapter_hint">Find in chapter</string>
+    <string name="find_no_matches">No matches</string>
+    <string name="find_next_match">Next match</string>
+    <string name="find_previous_match">Previous match</string>
     <string name="action_scroll_to_next_unread">Scroll to next unread</string>
     <string name="manga_no_unread_chapter">No unread chapter in the list</string>
     <string name="pref_manga_scroll_actions_in_overflow">Scroll actions in overflow menu</string>
