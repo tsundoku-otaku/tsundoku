@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.FormatQuote
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.RecordVoiceOver
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Translate
@@ -155,6 +156,7 @@ fun NovelReaderAppBars(
     onToggleEdit: () -> Unit = {},
     isWebView: Boolean = true,
     onQuotes: () -> Unit,
+    onFind: () -> Unit = {},
 
     // Toolbar customization
     bottomBarItems: List<BottomBarItemState>,
@@ -310,6 +312,7 @@ fun NovelReaderAppBars(
                         isWebView = isWebView,
                         onToggleEdit = onToggleEdit,
                         onQuotes = onQuotes,
+                        onFind = onFind,
                     )
                 }
             }
@@ -441,6 +444,7 @@ private fun NovelReaderBottomBar(
     isWebView: Boolean,
     onToggleEdit: () -> Unit,
     onQuotes: () -> Unit,
+    onFind: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val enabledItems = remember(items, isWebView, hideAutoScroll) {
@@ -624,6 +628,18 @@ private fun NovelReaderBottomBar(
                         )
                     }
 
+                    // Find in chapter
+                    BottomBarItem.SEARCH -> IconButton(
+                        onClick = onFind,
+                        modifier = Modifier.size(buttonSize),
+                    ) {
+                        Icon(
+                            Icons.Outlined.Search,
+                            contentDescription = stringResource(TDMR.strings.action_find_in_chapter),
+                            modifier = Modifier.size(iconSize),
+                        )
+                    }
+
                     // Edit
                     BottomBarItem.EDIT -> androidx.compose.material3.Surface(
                         modifier = Modifier
@@ -724,6 +740,7 @@ internal fun bottomBarItemInfo(
     BottomBarItem.TTS_PREV_PARAGRAPH -> Icons.Outlined.FastRewind to stringResource(TDMR.strings.tts_prev_paragraph)
     BottomBarItem.TTS_NEXT_PARAGRAPH -> Icons.Outlined.FastForward to stringResource(TDMR.strings.tts_next_paragraph)
     BottomBarItem.QUOTES -> Icons.Outlined.FormatQuote to stringResource(TDMR.strings.action_quotes)
+    BottomBarItem.SEARCH -> Icons.Outlined.Search to stringResource(TDMR.strings.action_find_in_chapter)
     BottomBarItem.ORIENTATION -> orientation.icon to stringResource(MR.strings.rotation_type)
     BottomBarItem.SETTINGS -> Icons.Outlined.Settings to stringResource(MR.strings.action_settings)
     BottomBarItem.EDIT -> Icons.Outlined.Edit to stringResource(MR.strings.action_edit)

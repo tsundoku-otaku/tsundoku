@@ -1305,6 +1305,34 @@ class MangaViewModel(
         }
     }
 
+    /**
+     * Selects every chapter between the lowest and highest currently selected
+     * chapters (inclusive). Used by the "Select between" action mode button:
+     * select the first and last chapter, then this fills everything in range.
+     * Derived from the chapter list itself so it matches the button's visibility
+     * condition even when [selectedPositions] is stale (e.g. after select all).
+     */
+    fun selectBetween() {
+        updateSuccessState { successState ->
+            val chapters = successState.processedChapters
+            val first = chapters.indexOfFirst { it.selected }
+            val last = chapters.indexOfLast { it.selected }
+            if (first < 0 || last <= first) return@updateSuccessState successState
+            selectedPositions[0] = first
+            selectedPositions[1] = last
+            val newChapters = chapters.toMutableList().apply {
+                for (index in first..last) {
+                    val item = get(index)
+                    if (!item.selected) {
+                        selectedChapterIds.add(item.id)
+                        set(index, item.copy(selected = true))
+                    }
+                }
+            }
+            successState.copy(chapters = newChapters)
+        }
+    }
+
     fun invertSelection() {
         updateSuccessState { successState ->
             val newChapters = successState.chapters.map {

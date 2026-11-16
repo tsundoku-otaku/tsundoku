@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.FlipToBack
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.surfaceColorAtElevation
@@ -62,6 +63,8 @@ fun MangaToolbar(
     actionModeCounter: Int,
     onCancelActionMode: () -> Unit,
     onSelectAll: () -> Unit,
+    onSelectBetween: () -> Unit,
+    canSelectBetween: Boolean,
     onInvertSelection: () -> Unit,
 
     titleAlphaProvider: () -> Float,
@@ -106,6 +109,16 @@ fun MangaToolbar(
                                 onClick = onSelectAll,
                             ),
                         )
+                        // Only useful when two separated selections can be bridged
+                        if (canSelectBetween) {
+                            add(
+                                AppBar.Action(
+                                    title = stringResource(TDMR.strings.action_select_between),
+                                    icon = Icons.Outlined.UnfoldMore,
+                                    onClick = onSelectBetween,
+                                ),
+                            )
+                        }
                         add(
                             AppBar.Action(
                                 title = stringResource(MR.strings.action_select_inverse),

@@ -231,6 +231,7 @@ class MangaScreen(
             onChapterSwipe = viewModel::chapterSwipe,
             onChapterSelected = viewModel::toggleSelection,
             onAllChapterSelected = viewModel::toggleAllSelection,
+            onSelectBetween = viewModel::selectBetween,
             onInvertSelection = viewModel::invertSelection,
         )
 

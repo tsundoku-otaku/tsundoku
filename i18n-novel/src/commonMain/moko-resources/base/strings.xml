@@ -192,6 +192,12 @@
     <string name="action_edit_appbar">Edit Bottom Bar</string>
     <string name="action_scroll_to_top">Scroll to top</string>
     <string name="action_scroll_to_bottom">Scroll to bottom</string>
+    <string name="action_select_between">Select between</string>
+    <string name="action_find_in_chapter">Search in chapter</string>
+    <string name="find_in_chapter_hint">Find in chapter</string>
+    <string name="find_no_matches">No matches</string>
+    <string name="find_next_match">Next match</string>
+    <string name="find_previous_match">Previous match</string>
     <string name="action_scroll_to_next_unread">Scroll to next unread</string>
     <string name="manga_no_unread_chapter">No unread chapter in the list</string>
     <string name="pref_manga_scroll_actions_in_overflow">Scroll actions in overflow menu</string>
@@ -1004,6 +1010,8 @@
 
     <string name="pref_novel_status_bar">Reading status bar</string>
     <string name="pref_novel_status_bar_show_time">Show current time</string>
+    <string name="pref_novel_status_bar_use_12h_clock">12-hour clock</string>
+    <string name="pref_novel_status_bar_show_am_pm">Show AM/PM</string>
     <string name="pref_novel_status_bar_show_battery">Show battery percentage</string>
     <string name="pref_novel_status_bar_show_progress">Show reading progress</string>
     <string name="pref_novel_status_bar_position">Status bar position</string>

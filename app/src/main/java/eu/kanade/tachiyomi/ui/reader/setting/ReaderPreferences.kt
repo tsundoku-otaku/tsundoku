@@ -438,6 +438,14 @@ class ReaderPreferences(
         "pref_novel_status_bar_show_time",
         true,
     )
+    val novelStatusBarUse12HourClock: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_novel_status_bar_use_12h_clock",
+        false,
+    )
+    val novelStatusBarShowAmPm: Preference<Boolean> = preferenceStore.getBoolean(
+        "pref_novel_status_bar_show_am_pm",
+        false,
+    )
     val novelStatusBarShowBattery: Preference<Boolean> = preferenceStore.getBoolean(
         "pref_novel_status_bar_show_battery",
         true,

@@ -4,6 +4,8 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.textview
 
 import android.graphics.Canvas
 import android.graphics.text.LineBreaker
+import android.text.Spannable
+import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
@@ -940,6 +942,148 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
+    // region Find in chapter (TextView path)
+
+    private class FindMatch(
+        val block: ChapterTextBlock,
+        val view: TextView,
+        val start: Int,
+        val end: Int,
+    )
+
+    private var findQuery: String? = null
+    private val findMatches = mutableListOf<FindMatch>()
+    private var findCurrent = -1
+    private val findSpans = mutableListOf<Pair<Spannable, Any>>()
+
+    /**
+     * Searches [query] case-insensitively across all loaded chapter blocks and jumps to the
+     * first match. Reports the result through [ReaderActivity.onNovelFindResult].
+     */
+    fun searchInChapter(query: String) {
+        activity.runOnUiThread {
+            val q = query.trim()
+            if (q.isEmpty()) {
+                clearFind()
+                return@runOnUiThread
+            }
+            if (q != findQuery) {
+                rebuildFindMatches(q)
+            }
+            if (findMatches.isEmpty()) {
+                activity.onNovelFindResult(0, -1)
+            } else if (findCurrent == -1) {
+                goToFindMatch(0)
+            } else {
+                applyFindHighlight()
+                activity.onNovelFindResult(findMatches.size, findCurrent)
+            }
+        }
+    }
+
+    fun findNext() {
+        activity.runOnUiThread {
+            if (findMatches.isEmpty()) return@runOnUiThread
+            goToFindMatch((findCurrent + 1) % findMatches.size)
+        }
+    }
+
+    fun findPrevious() {
+        activity.runOnUiThread {
+            if (findMatches.isEmpty()) return@runOnUiThread
+            goToFindMatch((findCurrent - 1 + findMatches.size) % findMatches.size)
+        }
+    }
+
+    fun clearFind() {
+        activity.runOnUiThread {
+            clearFindSpans()
+            findMatches.clear()
+            findCurrent = -1
+            findQuery = null
+            activity.onNovelFindResult(0, -1)
+        }
+    }
+
+    /** Drops stale find state when chapter content changes underneath (load, translation). */
+    private fun resetFindState() {
+        clearFindSpans()
+        findMatches.clear()
+        findCurrent = -1
+        findQuery = null
+    }
+
+    private fun rebuildFindMatches(q: String) {
+        resetFindState()
+        findQuery = q
+        val needle = q.lowercase()
+        loadedChapters.forEach { loaded ->
+            if (!loaded.isLoaded) return@forEach
+            loaded.block.chunkViews.forEach { view ->
+                val text = view.text?.toString() ?: return@forEach
+                if (text.isEmpty()) return@forEach
+                val lower = text.lowercase()
+                var idx = lower.indexOf(needle)
+                while (idx != -1) {
+                    findMatches.add(FindMatch(loaded.block, view, idx, idx + q.length))
+                    idx = lower.indexOf(needle, idx + q.length)
+                }
+            }
+        }
+    }
+
+    private fun goToFindMatch(index: Int) {
+        findCurrent = index
+        applyFindHighlight()
+        scrollToFindMatch(findMatches[index])
+        activity.onNovelFindResult(findMatches.size, findCurrent)
+    }
+
+    private fun applyFindHighlight() {
+        clearFindSpans()
+        val allColor = 0x59FF9800.toInt()
+        val currentColor = 0xF0FF9800.toInt()
+        findMatches.forEachIndexed { i, match ->
+            val spannable = spannableOf(match.view) ?: return@forEachIndexed
+            val start = match.start.coerceAtMost(spannable.length)
+            val end = match.end.coerceAtMost(spannable.length)
+            if (end <= start) return@forEachIndexed
+            val span = BackgroundColorSpan(if (i == findCurrent) currentColor else allColor)
+            spannable.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            findSpans.add(spannable to span)
+        }
+    }
+
+    private fun spannableOf(view: TextView): Spannable? {
+        val current = view.text ?: return null
+        if (current is Spannable) return current
+        // Chunk text is usually set as plain String; convert once so highlight spans stick.
+        return SpannableStringBuilder(current).also { view.text = it }
+    }
+
+    private fun clearFindSpans() {
+        findSpans.forEach { (spannable, span) -> spannable.removeSpan(span) }
+        findSpans.clear()
+    }
+
+    private fun scrollToFindMatch(match: FindMatch) {
+        val scrollTarget = match.view
+        val localStart = match.start
+        fun doScroll() {
+            val layout = scrollTarget.layout ?: return
+            if (layout.text.isEmpty()) return
+            val line = layout.getLineForOffset(localStart.coerceAtMost(layout.text.length - 1).coerceAtLeast(0))
+            val targetInChunk = layout.getLineTop(line)
+            val targetInScroll =
+                match.block.container.top + scrollTarget.top + targetInChunk - (scrollView.height / 3)
+            scrollView.smoothScrollTo(0, targetInScroll.coerceAtLeast(0))
+        }
+        if (scrollTarget.layout != null) doScroll() else scrollTarget.post { doScroll() }
+    }
+
+    // endregion
+
+
     private fun loadNextChapterForTts(anchorChapterIndex: Int = currentChapterIndex) {
         logcat(LogPriority.DEBUG) {
             "TTS: Auto-loading next chapter ts=${System.currentTimeMillis()} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
@@ -1418,6 +1562,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         loadJob?.cancel()
         currentPage = page
         currentChapters = chapters
+        resetFindState()
 
         val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == chapters.currChapter.chapter.id }
 

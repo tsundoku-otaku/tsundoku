@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,6 +76,7 @@ import eu.kanade.presentation.reader.ReadingModeSelectDialog
 import eu.kanade.presentation.reader.TranslationLanguageSelectDialog
 import eu.kanade.presentation.reader.appbars.BottomBarEditorSheet
 import eu.kanade.presentation.reader.appbars.BottomBarItem
+import eu.kanade.presentation.reader.appbars.FindInChapterDialog
 import eu.kanade.presentation.reader.appbars.NovelReaderAppBars
 import eu.kanade.presentation.reader.appbars.QuotesSheet
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
@@ -237,6 +239,10 @@ class ReaderActivity : BaseActivity() {
 
     // Quotes functionality
     private var showQuotesSheet by mutableStateOf(false)
+    private var showFindDialog by mutableStateOf(false)
+    private var findQuery by mutableStateOf("")
+    private var findTotal by mutableStateOf(0)
+    private var findCurrent by mutableStateOf(-1)
 
     /**
      * Called when the activity is created. Initializes the presenter and configuration.
@@ -400,6 +406,8 @@ class ReaderActivity : BaseActivity() {
         val autoTranslateEnabled by readerPreferences.autoTranslate.collectAsState()
         val novelStatusBarEnabled by readerPreferences.novelStatusBarEnabled.collectAsState()
         val novelStatusBarShowTime by readerPreferences.novelStatusBarShowTime.collectAsState()
+        val novelStatusBarUse12HourClock by readerPreferences.novelStatusBarUse12HourClock.collectAsState()
+        val novelStatusBarShowAmPm by readerPreferences.novelStatusBarShowAmPm.collectAsState()
         val novelStatusBarShowBattery by readerPreferences.novelStatusBarShowBattery.collectAsState()
         val novelStatusBarShowChapterNumber by readerPreferences.novelStatusBarShowChapterNumber.collectAsState()
         val novelStatusBarShowChapterTitle by readerPreferences.novelStatusBarShowChapterTitle.collectAsState()
@@ -519,6 +527,8 @@ class ReaderActivity : BaseActivity() {
                     pagedPageCount = effectivePagedPageCount(state),
                     order = statusBarOrder,
                     showTime = novelStatusBarShowTime,
+                    use12HourClock = novelStatusBarUse12HourClock,
+                    showAmPm = novelStatusBarShowAmPm,
                     showChapter = showChapterSegment,
                     showProgress = novelStatusBarShowProgress,
                     showBattery = novelStatusBarShowBattery,
@@ -532,6 +542,35 @@ class ReaderActivity : BaseActivity() {
                     modifier = Modifier
                         .align(if (statusBarAtBottom) Alignment.BottomCenter else Alignment.TopCenter)
                         .then(if (statusBarAtBottom) Modifier else Modifier.statusBarsPadding()),
+                )
+            }
+
+            // Find-in-chapter bar (top overlay). Last child so it draws above the toolbars.
+            androidx.activity.compose.BackHandler(enabled = showFindDialog) {
+                dismissFindDialog()
+            }
+
+            if (showFindDialog) {
+                FindInChapterDialog(
+                    query = findQuery,
+                    total = findTotal,
+                    current = findCurrent,
+                    onQueryChange = { query ->
+                        findQuery = query
+                        searchInChapter(query)
+                    },
+                    onDismiss = ::dismissFindDialog,
+                    onNext = ::findInChapterNext,
+                    onPrevious = ::findInChapterPrevious,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(
+                            top = if (state.menuVisible) {
+                                with(density) { menuTopBarPx.intValue.toDp() }
+                            } else {
+                                0.dp
+                            },
+                        ),
                 )
             }
         }
@@ -1233,6 +1272,7 @@ class ReaderActivity : BaseActivity() {
                 isWebView = state.viewer is NovelWebViewViewer,
                 bottomBarItems = bottomBarItems,
                 onQuotes = ::onQuotesClicked,
+                onFind = ::onFindClicked,
                 ttsOverlayBottomPadding = ttsOverlayBottomPadding,
                 onTopBarHeight = onTopBarHeight,
                 onBottomBarHeight = onBottomBarHeight,
@@ -2001,6 +2041,51 @@ class ReaderActivity : BaseActivity() {
      */
     fun onQuotesClicked() {
         showQuotesSheet = true
+    }
+
+    /**
+     * Called when the find-in-chapter button is clicked.
+     */
+    fun onFindClicked() {
+        showFindDialog = true
+    }
+
+    /** Match state reported by the active viewer while the find dialog is open. */
+    fun onNovelFindResult(total: Int, current: Int) {
+        findTotal = total
+        findCurrent = current
+    }
+
+    fun dismissFindDialog() {
+        showFindDialog = false
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.clearFind()
+            is NovelWebViewViewer -> viewer.clearFind()
+        }
+        findQuery = ""
+        findTotal = 0
+        findCurrent = -1
+    }
+
+    private fun searchInChapter(query: String) {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.searchInChapter(query)
+            is NovelWebViewViewer -> viewer.searchInChapter(query)
+        }
+    }
+
+    private fun findInChapterNext() {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.findNext()
+            is NovelWebViewViewer -> viewer.findNext()
+        }
+    }
+
+    private fun findInChapterPrevious() {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.findPrevious()
+            is NovelWebViewViewer -> viewer.findPrevious()
+        }
     }
 
     /**
