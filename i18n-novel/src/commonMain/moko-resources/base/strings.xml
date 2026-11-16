@@ -1009,6 +1009,8 @@
 
     <string name="pref_novel_status_bar">Reading status bar</string>
     <string name="pref_novel_status_bar_show_time">Show current time</string>
+    <string name="pref_novel_status_bar_use_12h_clock">12-hour clock</string>
+    <string name="pref_novel_status_bar_show_am_pm">Show AM/PM</string>
     <string name="pref_novel_status_bar_show_battery">Show battery percentage</string>
     <string name="pref_novel_status_bar_show_progress">Show reading progress</string>
     <string name="pref_novel_status_bar_position">Status bar position</string>

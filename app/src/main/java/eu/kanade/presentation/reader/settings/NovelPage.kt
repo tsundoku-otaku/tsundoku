@@ -796,6 +796,17 @@ internal fun ColumnScope.NovelControlsTab(viewModel: ReaderSettingsViewModel, re
             label = stringResource(TDMR.strings.pref_novel_status_bar_show_time),
             pref = viewModel.preferences.novelStatusBarShowTime,
         )
+        val statusBarUse12HourClock by viewModel.preferences.novelStatusBarUse12HourClock.collectAsState()
+        CheckboxItem(
+            label = stringResource(TDMR.strings.pref_novel_status_bar_use_12h_clock),
+            pref = viewModel.preferences.novelStatusBarUse12HourClock,
+        )
+        if (statusBarUse12HourClock) {
+            CheckboxItem(
+                label = stringResource(TDMR.strings.pref_novel_status_bar_show_am_pm),
+                pref = viewModel.preferences.novelStatusBarShowAmPm,
+            )
+        }
         CheckboxItem(
             label = stringResource(TDMR.strings.pref_novel_status_bar_show_battery),
             pref = viewModel.preferences.novelStatusBarShowBattery,

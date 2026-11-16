@@ -74,6 +74,8 @@ val EstimatedStatusBarHeight = 40.dp
  * @param progressPercent   Current scroll position, 0-100.
  * @param order             Element ids in render order.
  * @param showTime          Whether to include the clock segment.
+ * @param use12HourClock    When true, render the clock in 12-hour format.
+ * @param showAmPm          When true (and 12-hour clock is on), append the AM/PM marker.
  * @param showChapter       Whether to include the chapter segment.
  * @param showProgress      Whether to include the progress % segment.
  * @param showBattery       Whether to include battery % + icon.
@@ -92,6 +94,8 @@ fun NovelStatusBar(
     pagedPageCount: Int = 0,
     order: List<StatusBarItem>,
     showTime: Boolean,
+    use12HourClock: Boolean = false,
+    showAmPm: Boolean = false,
     showChapter: Boolean,
     showProgress: Boolean,
     showBattery: Boolean,
@@ -113,15 +117,18 @@ fun NovelStatusBar(
     val contentColor = textColor
     val dimColor = textColor.copy(alpha = 0.45f)
 
-    // Clock — aligned to the minute boundary so it never lags
-    var timeText by remember { mutableStateOf(currentTimeHHmm()) }
-    LaunchedEffect(Unit) {
+    // Clock — aligned to the minute boundary so it never lags. Keyed on the
+    // format flags so a settings change re-renders immediately.
+    var timeText by remember(use12HourClock, showAmPm) {
+        mutableStateOf(currentTimeText(use12HourClock, showAmPm))
+    }
+    LaunchedEffect(use12HourClock, showAmPm) {
         val msUntilNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L)
         delay(msUntilNextMinute)
-        timeText = currentTimeHHmm()
+        timeText = currentTimeText(use12HourClock, showAmPm)
         while (true) {
             delay(60_000L)
-            timeText = currentTimeHHmm()
+            timeText = currentTimeText(use12HourClock, showAmPm)
         }
     }
 
@@ -241,5 +248,11 @@ private fun batteryIcon(percent: Int, charging: Boolean): ImageVector = when {
     else -> Icons.Outlined.Battery6Bar
 }
 
-private fun currentTimeHHmm(): String =
-    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+private fun currentTimeText(use12HourClock: Boolean, showAmPm: Boolean): String {
+    val pattern = when {
+        !use12HourClock -> "HH:mm"
+        showAmPm -> "h:mm a"
+        else -> "h:mm"
+    }
+    return SimpleDateFormat(pattern, Locale.getDefault()).format(Date())
+}

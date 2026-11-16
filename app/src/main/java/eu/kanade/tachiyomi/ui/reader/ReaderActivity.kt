@@ -406,6 +406,8 @@ class ReaderActivity : BaseActivity() {
         val autoTranslateEnabled by readerPreferences.autoTranslate.collectAsState()
         val novelStatusBarEnabled by readerPreferences.novelStatusBarEnabled.collectAsState()
         val novelStatusBarShowTime by readerPreferences.novelStatusBarShowTime.collectAsState()
+        val novelStatusBarUse12HourClock by readerPreferences.novelStatusBarUse12HourClock.collectAsState()
+        val novelStatusBarShowAmPm by readerPreferences.novelStatusBarShowAmPm.collectAsState()
         val novelStatusBarShowBattery by readerPreferences.novelStatusBarShowBattery.collectAsState()
         val novelStatusBarShowChapterNumber by readerPreferences.novelStatusBarShowChapterNumber.collectAsState()
         val novelStatusBarShowChapterTitle by readerPreferences.novelStatusBarShowChapterTitle.collectAsState()
@@ -525,6 +527,8 @@ class ReaderActivity : BaseActivity() {
                     pagedPageCount = effectivePagedPageCount(state),
                     order = statusBarOrder,
                     showTime = novelStatusBarShowTime,
+                    use12HourClock = novelStatusBarUse12HourClock,
+                    showAmPm = novelStatusBarShowAmPm,
                     showChapter = showChapterSegment,
                     showProgress = novelStatusBarShowProgress,
                     showBattery = novelStatusBarShowBattery,
