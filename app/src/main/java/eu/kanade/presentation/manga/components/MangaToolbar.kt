@@ -8,6 +8,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.FlipToBack
 import androidx.compose.material.icons.outlined.SelectAll
+import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.surfaceColorAtElevation
@@ -62,6 +63,7 @@ fun MangaToolbar(
     actionModeCounter: Int,
     onCancelActionMode: () -> Unit,
     onSelectAll: () -> Unit,
+    onSelectBetween: () -> Unit,
     onInvertSelection: () -> Unit,
 
     titleAlphaProvider: () -> Float,
@@ -104,6 +106,13 @@ fun MangaToolbar(
                                 title = stringResource(MR.strings.action_select_all),
                                 icon = Icons.Outlined.SelectAll,
                                 onClick = onSelectAll,
+                            ),
+                        )
+                        add(
+                            AppBar.Action(
+                                title = stringResource(TDMR.strings.action_select_between),
+                                icon = Icons.Outlined.UnfoldMore,
+                                onClick = onSelectBetween,
                             ),
                         )
                         add(

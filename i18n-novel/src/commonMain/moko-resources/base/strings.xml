@@ -192,6 +192,7 @@
     <string name="action_edit_appbar">Edit Bottom Bar</string>
     <string name="action_scroll_to_top">Scroll to top</string>
     <string name="action_scroll_to_bottom">Scroll to bottom</string>
+    <string name="action_select_between">Select between</string>
     <string name="action_find_in_chapter">Search in chapter</string>
     <string name="find_in_chapter_hint">Find in chapter</string>
     <string name="find_no_matches">No matches</string>
