@@ -366,6 +366,9 @@ private fun MangaScreenSmallImpl(
             val selectedChapterCount = remember(chapters) {
                 chapters.count { it.selected }
             }
+            val canSelectBetween = remember(chapters) {
+                chapters.hasSelectionGap()
+            }
             val isFirstItemVisible by remember {
                 derivedStateOf { chapterListState.firstVisibleItemIndex == 0 }
             }
@@ -407,6 +410,7 @@ private fun MangaScreenSmallImpl(
                 onCancelActionMode = { onAllChapterSelected(false) },
                 onSelectAll = { onAllChapterSelected(true) },
                 onSelectBetween = onSelectBetween,
+                canSelectBetween = canSelectBetween,
                 onInvertSelection = { onInvertSelection() },
                 titleAlphaProvider = { titleAlpha },
                 backgroundAlphaProvider = { backgroundAlpha },
@@ -676,6 +680,9 @@ fun MangaScreenLargeImpl(
             val selectedChapterCount = remember(chapters) {
                 chapters.count { it.selected }
             }
+            val canSelectBetween = remember(chapters) {
+                chapters.hasSelectionGap()
+            }
             MangaToolbar(
                 modifier = Modifier.onSizeChanged { topBarHeight = it.height },
                 title = state.manga.title,
@@ -704,6 +711,7 @@ fun MangaScreenLargeImpl(
                 actionModeCounter = selectedChapterCount,
                 onSelectAll = { onAllChapterSelected(true) },
                 onSelectBetween = onSelectBetween,
+                canSelectBetween = canSelectBetween,
                 onInvertSelection = { onInvertSelection() },
                 titleAlphaProvider = { 1f },
                 backgroundAlphaProvider = { 1f },
@@ -877,6 +885,16 @@ fun MangaScreenLargeImpl(
 // Items each layout's LazyColumn shows before the chapter rows.
 private const val ONE_PANE_HEADER_ITEMS = 4
 private const val TWO_PANE_HEADER_ITEMS = 1
+
+/**
+ * "Select between" is only useful when at least two chapters are selected and
+ * something between the first and the last selection is still unselected.
+ */
+private fun List<ChapterList.Item>.hasSelectionGap(): Boolean {
+    val first = indexOfFirst { it.selected }
+    val last = indexOfLast { it.selected }
+    return first >= 0 && last > first && subList(first + 1, last).any { !it.selected }
+}
 
 private class ChapterScrollActions(
     val toTop: () -> Unit,

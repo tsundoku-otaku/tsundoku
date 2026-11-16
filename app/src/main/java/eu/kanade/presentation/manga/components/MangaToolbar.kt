@@ -64,6 +64,7 @@ fun MangaToolbar(
     onCancelActionMode: () -> Unit,
     onSelectAll: () -> Unit,
     onSelectBetween: () -> Unit,
+    canSelectBetween: Boolean,
     onInvertSelection: () -> Unit,
 
     titleAlphaProvider: () -> Float,
@@ -108,13 +109,16 @@ fun MangaToolbar(
                                 onClick = onSelectAll,
                             ),
                         )
-                        add(
-                            AppBar.Action(
-                                title = stringResource(TDMR.strings.action_select_between),
-                                icon = Icons.Outlined.UnfoldMore,
-                                onClick = onSelectBetween,
-                            ),
-                        )
+                        // Only useful when two separated selections can be bridged
+                        if (canSelectBetween) {
+                            add(
+                                AppBar.Action(
+                                    title = stringResource(TDMR.strings.action_select_between),
+                                    icon = Icons.Outlined.UnfoldMore,
+                                    onClick = onSelectBetween,
+                                ),
+                            )
+                        }
                         add(
                             AppBar.Action(
                                 title = stringResource(MR.strings.action_select_inverse),
