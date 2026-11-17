@@ -251,15 +251,22 @@
     // that doesn't move, or runs with transitions off, never gets a transitionend, so a timer past
     // the transition's duration captures it instead.
     var anchorTimer = null;
+    // True while a turn animates: the screen still shows the old page, so nothing may be read from it.
+    var turning = false;
     function captureAnchorAfterTurn(animate) {
         clearTimeout(anchorTimer);
         if (!animate) {
+            turning = false;
             pageAnchor = textAtPageStart();
             return;
         }
+        turning = true;
         pageAnchor = null;
         var duration = (parseFloat(window.getComputedStyle(container()).transitionDuration) || 0) * 1000;
-        anchorTimer = setTimeout(function () { pageAnchor = textAtPageStart(); }, duration + 50);
+        anchorTimer = setTimeout(function () {
+            turning = false;
+            pageAnchor = textAtPageStart();
+        }, duration + 50);
     }
 
     // The text at the top of the current page, taken once the page settles and before any later
@@ -646,8 +653,9 @@
         clearTimeout(reflowDebounce);
         reflowDebounce = setTimeout(function run() {
             if (!enabled || isSuspended()) { reflowKeepsText = true; return; }
-            // Mid-swipe the deferred repaginate would land by ratio, so wait for the release
-            if (drag) { reflowDebounce = setTimeout(run, 150); return; }
+            // Mid-swipe the deferred repaginate would land by ratio, and mid-turn the text on screen is
+            // still the previous page's, so wait for the release or the turn to settle
+            if (drag || turning) { reflowDebounce = setTimeout(run, 150); return; }
             var keep = reflowKeepsText;
             reflowKeepsText = true;
             // Text can move without the page count changing, so a keep-text reflow always checks
@@ -663,6 +671,7 @@
     container().addEventListener('transitionend', function (e) {
         if (e.target !== container() || e.propertyName !== 'transform') return;
         clearTimeout(anchorTimer);
+        turning = false;
         pageAnchor = textAtPageStart();
     });
     container().addEventListener('load', onContentReflow, true);
