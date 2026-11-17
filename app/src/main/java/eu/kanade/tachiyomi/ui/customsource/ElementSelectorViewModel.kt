@@ -132,12 +132,9 @@ class ElementSelectorViewModel(
         }
 
         // No captured search URL means no search, not a guessed one.
-        val searchUrl = if (features.hasSearch) {
-            selectorConfig.searchUrl
-        } else {
-            ""
-        }
-        val searchPagedUrl = if (features.hasSearch && features.searchPagination) {
+        val hasSearch = features.hasSearch && selectorConfig.searchUrl.isNotBlank()
+        val searchUrl = if (hasSearch) selectorConfig.searchUrl else ""
+        val searchPagedUrl = if (hasSearch && features.searchPagination) {
             val p1 = selectorConfig.searchSampleUrl.trim()
             val p2 = selectorConfig.searchPage2Url.trim()
             if (p1.isNotBlank() && p2.isNotBlank()) {
@@ -163,7 +160,7 @@ class ElementSelectorViewModel(
             latestPagedUrl = latestPagedUrl,
             searchPagedUrl = searchPagedUrl,
             sampleNovelUrl = selectorConfig.sampleNovelUrl.ifBlank { null },
-            testSearchQuery = if (features.hasSearch) selectorConfig.searchKeyword.ifBlank { null } else null,
+            testSearchQuery = if (hasSearch) selectorConfig.searchKeyword.ifBlank { null } else null,
             selectors = SourceSelectors(
                 popular = MangaListSelectors(
                     list = if (features.hasPopular) cardList else "",
@@ -181,7 +178,7 @@ class ElementSelectorViewModel(
                 } else {
                     null
                 },
-                search = if (features.hasSearch) {
+                search = if (hasSearch) {
                     MangaListSelectors(
                         list = cardList,
                         link = cardTitle,
