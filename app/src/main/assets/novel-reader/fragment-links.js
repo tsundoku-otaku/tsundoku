@@ -24,6 +24,7 @@
         if (!target) return;
         e.preventDefault();
         e.stopPropagation();
+        if (window.Android && window.Android.onFragmentLinkTapped) window.Android.onFragmentLinkTapped();
         var t = window.__TSUNDOKU_OBJECT_NAME__;
         if (t && t.actions && t.actions.goToElement) t.actions.goToElement(target);
         else target.scrollIntoView({ block: 'start' });

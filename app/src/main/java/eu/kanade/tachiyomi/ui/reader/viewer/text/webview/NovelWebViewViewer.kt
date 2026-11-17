@@ -294,12 +294,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (isEditingMode) return false
                 if (e.eventTime - e.downTime >= android.view.ViewConfiguration.getLongPressTimeout()) return true
-                // The page handles a tapped link (an in-chapter jump or navigation), not the tap zones.
-                when (webView.hitTestResult.type) {
-                    WebView.HitTestResult.SRC_ANCHOR_TYPE,
-                    WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE,
-                    -> return true
-                }
+                // An in-chapter link jump is the tap's action; any other link tap still uses the tap zones.
+                if (fragmentLinkTappedAt >= e.downTime) return true
 
                 val pos = android.graphics.PointF(
                     e.x / container.width.toFloat(),
@@ -679,6 +675,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             }
 
             webViewClient = object : WebViewClient() {
+                // Tapped links never navigate the reader away from the chapter.
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: android.webkit.WebResourceRequest?,
+                ): Boolean {
+                    return request != null && request.isForMainFrame && request.hasGesture()
+                }
+
                 override fun shouldInterceptRequest(
                     view: WebView?,
                     request: android.webkit.WebResourceRequest?,
@@ -2085,9 +2089,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     override fun handleGenericMotionEvent(event: MotionEvent): Boolean = false
 
+    // Uptime of the last tap that fragment-links.js turned into an in-chapter jump.
+    @Volatile
+    private var fragmentLinkTappedAt = 0L
+
     @Keep
     @Suppress("unused")
     inner class WebViewInterface {
+        @JavascriptInterface
+        fun onFragmentLinkTapped() {
+            fragmentLinkTappedAt = android.os.SystemClock.uptimeMillis()
+        }
+
         @JavascriptInterface
         fun onContentEdited() {
             activity.runOnUiThread {
