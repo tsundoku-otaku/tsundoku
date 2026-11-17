@@ -187,6 +187,10 @@ class TranslationService(
         }
     }
 
+    /** Whether [enqueue] would skip [chapterId] because it is already queued or being translated. */
+    fun isQueued(chapterId: Long, forceRetranslate: Boolean = false): Boolean =
+        chapterId in queueMap || (!forceRetranslate && chapterId == currentTask?.chapterId)
+
     /**
      * Remove a chapter from the queue.
      */

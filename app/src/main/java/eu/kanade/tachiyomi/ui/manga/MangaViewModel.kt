@@ -66,6 +66,7 @@ import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.source.interactor.UpdateMangaFromRemote
+import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.core.common.preference.CheckboxState
 import tachiyomi.core.common.preference.TriState
@@ -1775,9 +1776,10 @@ class MangaViewModel(
         chapters: List<Chapter>,
         forceRetranslate: Boolean,
     ): List<Chapter> {
-        if (forceRetranslate) return chapters
-        val translatedIds = translatedChapterIdsFor(manga, chapters)
-        return chapters.filter { it.id !in translatedIds }
+        val notQueued = chapters.filter { !translationService.isQueued(it.id, forceRetranslate) }
+        if (forceRetranslate) return notQueued
+        val translatedIds = translatedChapterIdsFor(manga, notQueued)
+        return notQueued.filter { it.id !in translatedIds }
     }
 
     private suspend fun queueTranslations(manga: Manga, chapters: List<Chapter>, forceRetranslate: Boolean) {
@@ -1791,7 +1793,7 @@ class MangaViewModel(
         withUIContext {
             snackbarHostState.showSnackbar(
                 if (queued > 0) {
-                    context.stringResource(TDMR.strings.translation_queued, queued)
+                    context.pluralStringResource(TDMR.plurals.translation_queued, queued, queued)
                 } else {
                     context.stringResource(TDMR.strings.translation_nothing_queued)
                 },

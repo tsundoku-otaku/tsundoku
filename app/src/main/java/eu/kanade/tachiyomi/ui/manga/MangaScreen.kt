@@ -79,6 +79,7 @@ import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.i18n.pluralStringResource
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.screens.LoadingScreen
+import tachiyomi.source.local.isLocal
 import tachiyomi.source.local.isLocalNovel
 
 class MangaScreen(
@@ -580,7 +581,7 @@ class MangaScreen(
 }
 
 private fun LibraryPreferences.ChapterSwipeAction.withoutDownloadFor(manga: Manga) =
-    if (this == LibraryPreferences.ChapterSwipeAction.Download && manga.isLocalNovel()) {
+    if (this == LibraryPreferences.ChapterSwipeAction.Download && (manga.isLocal() || manga.isLocalNovel())) {
         LibraryPreferences.ChapterSwipeAction.Disabled
     } else {
         this
