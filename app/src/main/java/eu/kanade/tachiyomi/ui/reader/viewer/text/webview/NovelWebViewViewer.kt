@@ -189,6 +189,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // Mode the currently-rendered DOM was built in (not a live pref read - can diverge from it).
     private var loadedDocumentIsPaged = false
 
+    // A document built without a chapter id has no chapter wrapper, so nothing in it can be saved.
+    private var loadedDocumentHasChapter = false
+
     private var isAutoScrolling = false
     private var autoScrollStartAttempt = 0
 
@@ -234,6 +237,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     //   READY         real content committed; TTS may read the body and appends may splice onto it
     //   ERROR         error placeholder committed; body counts as ready but has no DOM to append onto
     private enum class DocState { LOADING, LOADING_REAL, READY, ERROR }
+
+    /** Emits when edit mode ends without the user leaving it, e.g. the chapter failed to load. */
+    val editModeEnded = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private var docState = DocState.LOADING
 
     // Real content or an error placeholder is committed. Error counts as ready so a failed load
@@ -1571,6 +1577,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         chapterQueue.clear()
         currentChapterIndex = 0
+        loadedDocumentHasChapter = chapterId != -1L
 
         // Inputs are gathered on Main (touch viewer state), but the heavy work - the image-URL
         // regex scan and the Jsoup parse + full-document string build - runs off the main thread.
@@ -1799,6 +1806,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // infinite-scroll appends forever) while marking the body un-appendable.
         docState = DocState.ERROR
         releasePagedChapterSwitchIfPending()
+        if (isEditingMode) {
+            // The error page replaces the edited document, so nothing is left to save.
+            isEditingMode = false
+            activity.viewModel.setHasUnsavedChanges(false)
+            hideKeyboard()
+            editModeEnded.tryEmit(Unit)
+        }
 
         val theme = preferences.novelTheme.get()
         val backgroundColor = preferences.novelBackgroundColor.get()
@@ -1919,7 +1933,24 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         return false
     }
 
-    fun toggleEditMode(isEditing: Boolean, save: Boolean = true) {
+    private fun hideKeyboard() {
+        val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(webView.windowToken, 0)
+    }
+
+    fun toggleEditMode(isEditing: Boolean, save: Boolean = true): Boolean {
+        val blockedReason = when {
+            !isEditing -> null
+            docState == DocState.ERROR -> TDMR.strings.error_cant_edit_error_page
+            docState != DocState.READY -> TDMR.strings.error_cant_edit_while_loading
+            !loadedDocumentHasChapter -> TDMR.strings.error_cant_edit_no_chapter
+            else -> null
+        }
+        if (blockedReason != null) {
+            activity.toast(activity.stringResource(blockedReason))
+            return false
+        }
+
         if (!isEditing && !save) {
             this.isEditingMode = false
             webView.evaluateJavascript(
@@ -1927,13 +1958,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 null,
             )
             webView.clearFocus()
-            val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.hideSoftInputFromWindow(webView.windowToken, 0)
+            hideKeyboard()
 
             // Reload chapter to discard edits
             chapterQueue.clear()
             activity.viewModel.reloadChapter(fromSource = false)
-            return
+            return true
         }
 
         this.isEditingMode = isEditing
@@ -1984,8 +2014,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 null,
             )
             webView.clearFocus()
-            val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-            imm?.hideSoftInputFromWindow(webView.windowToken, 0)
+            hideKeyboard()
         }
 
         val script = """
@@ -2005,17 +2034,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                             document.head.appendChild(style);
                         }
 
+                        // Only chapter wrappers are editable, since only they are saved.
                         var editTargets = document.querySelectorAll('${CHAPTER_TAG_NAME}');
-                        if (editTargets.length === 0 && document.body) {
-                            document.body.setAttribute('contenteditable', 'true');
-                            document.body.setAttribute('${ATTR_DATA_EDITABLE}', '1');
-                            document.body.setAttribute('tabindex', '0');
-                        } else {
-                            for (var i = 0; i < editTargets.length; i++) {
-                                editTargets[i].setAttribute('contenteditable', 'true');
-                                editTargets[i].setAttribute('${ATTR_DATA_EDITABLE}', '1');
-                                editTargets[i].setAttribute('tabindex', '0');
-                            }
+                        for (var i = 0; i < editTargets.length; i++) {
+                            editTargets[i].setAttribute('contenteditable', 'true');
+                            editTargets[i].setAttribute('${ATTR_DATA_EDITABLE}', '1');
+                            editTargets[i].setAttribute('tabindex', '0');
                         }
 
                         window.$TSUNDOKU_OBJECT_NAME = window.$TSUNDOKU_OBJECT_NAME || {};
@@ -2049,15 +2073,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
                         var contents = [];
                         var nodes = document.querySelectorAll('${CHAPTER_TAG_NAME}');
-                        if (nodes.length > 0) {
-                            for (var i = 0; i < nodes.length; i++) {
-                                var html = nodes[i].innerHTML;
-                                var chapterId = nodes[i].getAttribute('${CHAPTER_ID_ATTR}');
-                                contents.push({id: chapterId, content: html});
-                            }
-                        } else if (document.body) {
-                            var currentId = '${currentChapters?.currChapter?.chapter?.id ?: -1}';
-                            contents.push({id: currentId, content: document.body.innerHTML});
+                        for (var i = 0; i < nodes.length; i++) {
+                            var html = nodes[i].innerHTML;
+                            var chapterId = nodes[i].getAttribute('${CHAPTER_ID_ATTR}');
+                            contents.push({id: chapterId, content: html});
                         }
                         if (window.Android && window.Android.onSaveEditedContent) {
                             window.Android.onSaveEditedContent(JSON.stringify(contents));
@@ -2074,6 +2093,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         """.trimIndent()
 
         webView.evaluateJavascript(script, null)
+        return true
     }
 
     override fun handleGenericMotionEvent(event: MotionEvent): Boolean = false
@@ -2323,7 +2343,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         @JavascriptInterface
         fun retryChapterLoad() {
-            activity.runOnUiThread { activity.viewModel.reloadChapter(fromSource = false) }
+            activity.runOnUiThread {
+                if (docState != DocState.ERROR) return@runOnUiThread
+                isInfiniteScrollPrepend = false
+                // The view model's chapters point at the failed chapter even when its page list failed.
+                val page = activity.viewModel.state.value.viewerChapters?.currChapter?.pages?.firstOrNull()
+                // The error page replaced every chapter, so none may be skipped as already loaded.
+                chapterQueue.clear()
+                if (activity.viewModel.reloadChapter(fromSource = shouldRetryFromSource(page))) {
+                    // Leaves ERROR, so further taps are ignored until the reload shows its result.
+                    showLoadingIndicator()
+                }
+            }
         }
 
         @JavascriptInterface
@@ -3310,3 +3341,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 }
+
+/** Only a page that loaded with no text at all can get different text by skipping the local copy. */
+internal fun shouldRetryFromSource(page: Page?): Boolean =
+    page?.status == Page.State.Ready && page.text.isNullOrBlank()

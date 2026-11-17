@@ -1023,4 +1023,7 @@
     <string name="novel_status_bar_element_chapter">Chapter</string>
     <string name="novel_status_bar_element_progress">Progress</string>
     <string name="novel_status_bar_element_battery">Battery</string>
+    <string name="error_cant_edit_error_page">Can\'t edit an error page</string>
+    <string name="error_cant_edit_while_loading">Can\'t edit while the chapter is loading</string>
+    <string name="error_cant_edit_no_chapter">Nothing to edit in this chapter</string>
 </resources>

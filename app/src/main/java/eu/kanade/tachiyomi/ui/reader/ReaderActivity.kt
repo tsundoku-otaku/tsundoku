@@ -949,6 +949,13 @@ class ReaderActivity : BaseActivity() {
             var showBottomBarEditor by remember { mutableStateOf(false) }
             var showEditSaveDialog by remember { mutableStateOf(false) }
             var isEditing by remember { mutableStateOf(false) }
+            val novelWebViewer = state.viewer as? NovelWebViewViewer
+            LaunchedEffect(novelWebViewer) {
+                novelWebViewer?.editModeEnded?.collect {
+                    isEditing = false
+                    showEditSaveDialog = false
+                }
+            }
 
             NovelReaderAppBars(
                 visible = state.menuVisible,
@@ -1222,11 +1229,8 @@ class ReaderActivity : BaseActivity() {
                             isEditing = false
                             (viewer as? NovelWebViewViewer)?.toggleEditMode(isEditing = false, save = false)
                         }
-                    } else {
-                        isEditing = true
-                        if (viewer is NovelWebViewViewer) {
-                            viewer.toggleEditMode(true)
-                        }
+                    } else if (viewer is NovelWebViewViewer) {
+                        isEditing = viewer.toggleEditMode(true)
                     }
                 },
 
