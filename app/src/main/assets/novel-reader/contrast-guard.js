@@ -38,12 +38,16 @@
             break;
         }
     }
-    var fg = parse(getComputedStyle(sample).color);
-    var bg = parse(getComputedStyle(document.body).backgroundColor);
-    if (bg[3] === 0) {
-        bg = parse(getComputedStyle(document.documentElement).backgroundColor);
-        if (bg[3] === 0) bg = hex('__BG__');
+    // The background the sample text is actually drawn on: a site's own box counts, not just the page.
+    function effectiveBackground(el) {
+        for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
+            var c = parse(getComputedStyle(n).backgroundColor);
+            if (c.length < 4 || c[3] > 0) return c;
+        }
+        return hex('__BG__');
     }
+    var fg = parse(getComputedStyle(sample).color);
+    var bg = effectiveBackground(sample);
     if (contrast(fg, bg) >= 3) return;
 
     var style = document.createElement('style');

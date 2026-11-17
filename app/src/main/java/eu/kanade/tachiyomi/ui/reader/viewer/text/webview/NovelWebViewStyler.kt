@@ -88,7 +88,8 @@ internal class NovelWebViewStyler(
 
         // Source/inline backgrounds on content blocks would leave light boxes on a dark theme. With
         // source CSS priority on, the site's look is wanted, so only the contrast guard steps in.
-        // Inline text keeps its background, as do spoilers, which hide text by matching it.
+        // Inline text keeps its background, as do spoilers, which hide text by matching it, and the
+        // TTS highlight, whose own rule is less specific than this one.
         val descendantBackgroundReset = if (sourceCssPriority) {
             ""
         } else {
@@ -96,7 +97,7 @@ internal class NovelWebViewStyler(
                 "p", "div", "section", "article", "blockquote",
                 "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol", "table", "thead", "tbody", "tr", "td", "th",
                 "center",
-            ).joinToString(", ") { "$CHAPTER_TAG_NAME $it:not([class*=\"spoiler\" i])" } +
+            ).joinToString(", ") { "$CHAPTER_TAG_NAME $it:not([class*=\"spoiler\" i]):not(.td-tts-highlight-bg)" } +
                 " { background-color: transparent !important; }"
         }
 
