@@ -140,11 +140,8 @@ data class MigrateSourceSearchScreen(
                     onFilter = { viewModel.applyFilters() },
                     onUpdate = viewModel::setFilters,
                     onOpenPresets = { /* Migration search doesn't support presets */ },
-                    presets = emptyList(),
                     currentSearchQuery = null,
                     onSavePreset = { _, _, _ -> },
-                    onLoadPreset = { },
-                    onDeletePreset = { },
                 )
             }
             is BrowseSourceViewModel.Dialog.Migrate -> {
