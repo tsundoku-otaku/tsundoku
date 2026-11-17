@@ -667,7 +667,17 @@ class ReaderViewModel @JvmOverloads constructor(
                 try {
                     loadChapter(loader, currChapter, forceFromSource = fromSource)
                 } catch (e: Throwable) {
-                    if (e is CancellationException) throw e
+                    if (e is CancellationException) {
+                        // The loader records a cancelled load as an error; a reload that was only
+                        // cancelled leaves the chapter to be loaded again when next shown.
+                        val state = currChapter.state
+                        if (state == ReaderChapter.State.Loading ||
+                            (state is ReaderChapter.State.Error && state.error is CancellationException)
+                        ) {
+                            currChapter.state = ReaderChapter.State.Wait
+                        }
+                        throw e
+                    }
                     logcat(LogPriority.ERROR, e) { "Failed to reload chapter" }
                 }
 
