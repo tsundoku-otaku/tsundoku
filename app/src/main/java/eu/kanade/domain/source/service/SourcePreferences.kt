@@ -116,9 +116,19 @@ class SourcePreferences(
     fun filterPresets(sourceId: Long) = preferenceStore.getObjectFromString(
         "filter_presets_$sourceId",
         FilterPresetList(),
-        { Json.encodeToString(it) },
-        { Json.decodeFromString(it) },
+        { presetJson.encodeToString(it) },
+        { presetJson.decodeFromString(it) },
     )
+
+    // Kept apart from the presets so builds that don't know search queries still decode them.
+    fun filterPresetQueries(sourceId: Long) = preferenceStore.getObjectFromString(
+        "filter_preset_queries_$sourceId",
+        emptyMap<Long, String>(),
+        { presetJson.encodeToString(it) },
+        { presetJson.decodeFromString(it) },
+    )
+
+    private val presetJson = Json { ignoreUnknownKeys = true }
 
     val autoApplyFilterPresets: Preference<Boolean> = preferenceStore.getBoolean("auto_apply_filter_presets", true)
 }
