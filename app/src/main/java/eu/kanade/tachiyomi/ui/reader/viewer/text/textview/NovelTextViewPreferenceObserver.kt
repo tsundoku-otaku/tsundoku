@@ -2,7 +2,9 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.textview
 
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -15,6 +17,7 @@ internal class NovelTextViewPreferenceObserver(
     private val onTtsSettingsChanged: () -> Unit,
 ) {
 
+    @OptIn(FlowPreview::class)
     fun observe() {
         scope.launch {
             merge(
@@ -31,6 +34,7 @@ internal class NovelTextViewPreferenceObserver(
                 preferences.novelBackgroundColor.changes(),
             )
                 .drop(STYLE_PREF_COUNT)
+                .debounce(STYLE_DEBOUNCE_MS)
                 .collect { onStylePrefChanged() }
         }
 
@@ -88,5 +92,6 @@ internal class NovelTextViewPreferenceObserver(
         private const val CONTENT_PREF_COUNT = 7
         private const val LOWERCASE_AND_TITLE_PREF_COUNT = 2
         private const val TTS_PREF_COUNT = 3
+        private const val STYLE_DEBOUNCE_MS = 120L
     }
 }
