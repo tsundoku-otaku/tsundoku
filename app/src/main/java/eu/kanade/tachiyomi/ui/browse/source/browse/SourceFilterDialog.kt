@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import eu.kanade.domain.source.model.FilterPreset
 import eu.kanade.presentation.components.AdaptiveSheet
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -49,11 +48,8 @@ fun SourceFilterDialog(
     onFilter: () -> Unit,
     onUpdate: (FilterList) -> Unit,
     onOpenPresets: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") presets: List<FilterPreset>,
     currentSearchQuery: String?,
     onSavePreset: (name: String, setAsDefault: Boolean, includeSearchText: Boolean) -> Unit,
-    @Suppress("UNUSED_PARAMETER") onLoadPreset: (Long) -> Unit,
-    @Suppress("UNUSED_PARAMETER") onDeletePreset: (Long) -> Unit,
 ) {
     val updateFilters = { onUpdate(filters) }
     var showSaveDialog by remember { mutableStateOf(false) }

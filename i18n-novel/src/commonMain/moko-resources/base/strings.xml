@@ -1023,4 +1023,13 @@
     <string name="filter_preset_name">Preset name</string>
     <string name="filter_preset_set_default">Set as default preset</string>
     <string name="filter_preset_include_search_text">Also include current search text</string>
+    <string name="filter_presets_title">Filter presets</string>
+    <string name="filter_preset_auto_apply">Auto-apply default preset when opening source</string>
+    <string name="filter_preset_save_current">Save current filters as preset</string>
+    <string name="filter_preset_none">No saved presets</string>
+    <string name="filter_preset_default">Default preset</string>
+    <string name="filter_preset_remove_default">Remove default</string>
+    <string name="filter_preset_delete">Delete preset</string>
+    <string name="filter_preset_search_text">Search: %1$s</string>
+    <string name="filter_preset_search_not_default">Includes search text, so it can\'t be the default</string>
 </resources>

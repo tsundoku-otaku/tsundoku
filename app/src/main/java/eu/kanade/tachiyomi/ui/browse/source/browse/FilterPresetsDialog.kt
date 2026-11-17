@@ -17,6 +17,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -28,10 +29,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import eu.kanade.domain.source.model.FilterPreset
 import eu.kanade.presentation.components.AdaptiveSheet
-import eu.kanade.tachiyomi.source.model.FilterList
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
 import tachiyomi.presentation.core.components.material.Button
@@ -41,7 +42,6 @@ import tachiyomi.presentation.core.i18n.stringResource
 fun FilterPresetsDialog(
     onDismissRequest: () -> Unit,
     presets: List<FilterPreset>,
-    currentFilters: FilterList,
     currentSearchQuery: String?,
     autoApplyEnabled: Boolean,
     onSavePreset: (name: String, setAsDefault: Boolean, includeSearchText: Boolean) -> Unit,
@@ -58,7 +58,7 @@ fun FilterPresetsDialog(
         ) {
             item {
                 Text(
-                    text = "Filter Presets",
+                    text = stringResource(TDMR.strings.filter_presets_title),
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(bottom = 16.dp),
                 )
@@ -76,7 +76,7 @@ fun FilterPresetsDialog(
                         onCheckedChange = onToggleAutoApply,
                     )
                     Text(
-                        text = "Auto-apply default preset when opening source",
+                        text = stringResource(TDMR.strings.filter_preset_auto_apply),
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
@@ -93,7 +93,7 @@ fun FilterPresetsDialog(
                         .fillMaxWidth()
                         .padding(vertical = 8.dp),
                 ) {
-                    Text("Save Current Filters as Preset")
+                    Text(stringResource(TDMR.strings.filter_preset_save_current))
                 }
             }
 
@@ -112,7 +112,7 @@ fun FilterPresetsDialog(
             if (presets.isEmpty()) {
                 item {
                     Text(
-                        text = "No saved presets",
+                        text = stringResource(TDMR.strings.filter_preset_none),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),
@@ -156,32 +156,49 @@ private fun PresetItem(
             )
             if (preset.isDefault) {
                 Text(
-                    text = "Default preset",
+                    text = stringResource(TDMR.strings.filter_preset_default),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            preset.searchQuery?.let { query ->
+                Text(
+                    text = stringResource(TDMR.strings.filter_preset_search_text, query),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = stringResource(TDMR.strings.filter_preset_search_not_default),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
 
         Row {
             // Auto-apply only restores filters, so a preset with search text can't be the default
-            if (preset.isDefault || preset.searchQuery == null) {
-                IconButton(onClick = onSetDefault) {
-                    Icon(
-                        imageVector = if (preset.isDefault) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                        contentDescription = if (preset.isDefault) "Remove default" else "Set as default",
-                        tint = if (preset.isDefault) {
-                            MaterialTheme.colorScheme.primary
+            IconButton(
+                onClick = onSetDefault,
+                enabled = preset.isDefault || preset.searchQuery == null,
+            ) {
+                Icon(
+                    imageVector = if (preset.isDefault) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    contentDescription = stringResource(
+                        if (preset.isDefault) {
+                            TDMR.strings.filter_preset_remove_default
                         } else {
-                            MaterialTheme.colorScheme.onSurface
+                            TDMR.strings.filter_preset_set_default
                         },
-                    )
-                }
+                    ),
+                    tint = if (preset.isDefault) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+                )
             }
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Filled.Delete,
-                    contentDescription = "Delete preset",
+                    contentDescription = stringResource(TDMR.strings.filter_preset_delete),
                 )
             }
         }

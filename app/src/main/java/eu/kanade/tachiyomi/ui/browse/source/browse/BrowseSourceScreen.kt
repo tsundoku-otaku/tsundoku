@@ -532,7 +532,6 @@ data class BrowseSourceScreen(
         val onDismissRequest = { viewModel.setDialog(null) }
         when (val dialog = state.dialog) {
             is BrowseSourceViewModel.Dialog.Filter -> {
-                val presets by viewModel.filterPresets.collectAsState()
                 SourceFilterDialog(
                     onDismissRequest = viewModel::dismissFilterDialog,
                     filters = state.pendingFilters, // Use pendingFilters for editing
@@ -540,11 +539,8 @@ data class BrowseSourceScreen(
                     onFilter = { viewModel.applyFilters() },
                     onUpdate = viewModel::setFilters,
                     onOpenPresets = viewModel::openPresetSheet,
-                    presets = presets,
                     currentSearchQuery = state.pendingQuery,
                     onSavePreset = viewModel::saveFilterPreset,
-                    onLoadPreset = viewModel::loadFilterPreset,
-                    onDeletePreset = viewModel::deleteFilterPreset,
                 )
             }
             is BrowseSourceViewModel.Dialog.FilterPresets -> {
@@ -553,7 +549,6 @@ data class BrowseSourceScreen(
                 FilterPresetsDialog(
                     onDismissRequest = viewModel::closePresetSheet,
                     presets = presets,
-                    currentFilters = state.pendingFilters,
                     currentSearchQuery = state.pendingQuery,
                     autoApplyEnabled = autoApplyEnabled,
                     onSavePreset = { name, setAsDefault, includeSearchText ->
