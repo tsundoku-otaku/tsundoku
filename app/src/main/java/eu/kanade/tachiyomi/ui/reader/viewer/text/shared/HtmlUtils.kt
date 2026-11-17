@@ -9,8 +9,10 @@ import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Attribute
 import org.jsoup.nodes.Comment
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import org.jsoup.nodes.TextNode
 import org.jsoup.parser.Parser
 import org.jsoup.safety.Safelist
@@ -231,12 +233,24 @@ object HtmlUtils {
         var html = first.html
         repeat(MAX_SANITIZE_PASSES) {
             val pass = sanitizePass(html, target, stripJs, stripCss, blockMedia)
-            if (!pass.changed && pass.html == html) return html
+            if (!pass.changed && pass.html == html && settlesAsDocumentBody(html, target, stripCss, blockMedia)) {
+                return html
+            }
             html = pass.html
         }
         // Still mutating on reparse: keep the structure but only through a plain HTML safelist.
         logcat(LogPriority.WARN) { "Chapter HTML did not settle after $MAX_SANITIZE_PASSES sanitize passes" }
         return cleanWithSafelist(html, keepCss = !stripCss, blockMedia = blockMedia)
+    }
+
+    // The first chapter of a page goes through a whole-document parse (its body) before the WebView
+    // parses it, so that serialization must be clean too.
+    private fun settlesAsDocumentBody(html: String, target: RenderTarget, stripCss: Boolean, blockMedia: Boolean): Boolean {
+        val doc = Jsoup.parse(html)
+        doc.outputSettings().prettyPrint(false)
+        val body = doc.body().html()
+        if (body == html) return true
+        return !sanitizePass(body, target, stripJs = true, stripCss = stripCss, blockMedia = blockMedia).changed
     }
 
     // Relative links only survive cleaning when resolvable, so clean against a placeholder base;
@@ -250,21 +264,39 @@ object HtmlUtils {
         )
 
     private fun fallbackSafelist(keepCss: Boolean, blockMedia: Boolean): Safelist =
-        Safelist.relaxed()
+        DataAttributeSafelist()
             .preserveRelativeLinks(true)
             .addTags(
                 "hr", "s", "del", "ins", "mark", "ruby", "rt", "rp", "section", "article", "aside",
                 "header", "footer", "figure", "figcaption", "center",
+                "video", "audio", "source", "track", "picture",
             )
             .addAttributes(":all", "class", "id", "dir", "lang", "title")
-            .addProtocols("img", "src", "data")
+            .addAttributes("video", "src", "poster", "controls", "loop", "muted", "width", "height", "preload")
+            .addAttributes("audio", "src", "controls", "loop", "muted", "preload")
+            .addAttributes("source", "src", "srcset", "type", "media", "sizes")
+            .addAttributes("track", "src", "kind", "srclang", "label", "default")
+            .addAttributes("img", "srcset", "sizes", "loading")
+            .addProtocols("img", "src", "http", "https", "data")
+            .addProtocols("video", "src", "http", "https")
+            .addProtocols("video", "poster", "http", "https", "data")
+            .addProtocols("audio", "src", "http", "https")
+            .addProtocols("source", "src", "http", "https")
+            .addProtocols("track", "src", "http", "https")
             .apply {
                 if (keepCss) {
                     addTags("style")
                     addAttributes(":all", "style")
                 }
-                if (blockMedia) removeTags("img")
+                if (blockMedia) removeTags("img", "video", "audio", "source", "track", "picture")
             }
+
+    // data-* attributes carry lazy-load sources and reader state; their names can't be listed upfront.
+    private class DataAttributeSafelist : Safelist(Safelist.relaxed()) {
+        override fun isSafeAttribute(tagName: String, el: Element, attr: Attribute): Boolean =
+            super.isSafeAttribute(tagName, el, attr) ||
+                (attr.key.startsWith("data-") && !attr.value.contains("javascript:", ignoreCase = true))
+    }
 
     private class SanitizeResult(val html: String, val changed: Boolean)
 
@@ -291,6 +323,7 @@ object HtmlUtils {
             }
         }
 
+        if (resolveAgainstBase(body)) changed = true
         removeAll("noscript, base, meta[http-equiv]")
         if (stripJs) {
             // Embedded documents run their own script; SVG animations can set href to javascript: at runtime.
@@ -339,6 +372,29 @@ object HtmlUtils {
 
         return SanitizeResult(body.html(), changed)
     }
+
+    // <base> is dropped so a chapter can't repoint the reader's own URLs, but the chapter's relative
+    // links and media were written against it, so they are made absolute first.
+    private fun resolveAgainstBase(root: Element): Boolean {
+        val href = root.selectFirst("base[href]")?.attr("href")?.trim().orEmpty()
+        val base = runCatching { java.net.URI(href) }.getOrNull()
+            ?.takeIf { it.scheme.equals("http", true) || it.scheme.equals("https", true) }
+            ?: return false
+        var resolved = false
+        for (element in root.select("[src], [href], [poster]")) {
+            for (key in BASE_RESOLVED_ATTRIBUTES) {
+                val value = element.attr(key).trim()
+                if (value.isEmpty() || value.startsWith("#") || SCHEME_PREFIX.containsMatchIn(value)) continue
+                val absolute = runCatching { base.resolve(value).toString() }.getOrNull() ?: continue
+                element.attr(key, absolute)
+                resolved = true
+            }
+        }
+        return resolved
+    }
+
+    private val BASE_RESOLVED_ATTRIBUTES = listOf("src", "href", "poster")
+    private val SCHEME_PREFIX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
     private fun isUnsafeAttribute(tag: String, key: String, value: String): Boolean {
         val name = key.lowercase()
