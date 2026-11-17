@@ -126,10 +126,12 @@ object MassImportStore {
         }
         var count = 0
         val name = urlsName(batchId)
+        // Written aside and swapped in, so a failed rewrite keeps the existing list.
+        val tmpName = "$name.tmp"
         synchronized(ioLock) {
             runCatching {
-                dir.findFile(name)?.delete()
-                val file = dir.createFile(name) ?: return@runCatching
+                dir.findFile(tmpName)?.delete()
+                val file = dir.createFile(tmpName) ?: error("could not create $tmpName")
                 file.openOutputStream().bufferedWriter().use { writer ->
                     for (url in urls) {
                         if (count > 0) writer.write("\n")
@@ -137,10 +139,12 @@ object MassImportStore {
                         count++
                     }
                 }
+                dir.findFile(name)?.delete()
+                check(file.renameTo(name)) { "could not rename $tmpName" }
                 logcat(LogPriority.DEBUG) { "MassImportStore: streamed $count urls -> $name" }
             }.onFailure {
                 logcat(LogPriority.WARN, it) { "MassImportStore: failed to stream urls for $batchId" }
-                runCatching { dir.findFile(name)?.delete() }
+                runCatching { dir.findFile(tmpName)?.delete() }
                 count = -1
             }
         }

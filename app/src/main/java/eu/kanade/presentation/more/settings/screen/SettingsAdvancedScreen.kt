@@ -62,6 +62,7 @@ import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.domain.extension.interactor.TrustExtension
+import eu.kanade.domain.manga.interactor.MassImport
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.presentation.more.settings.screen.advanced.ClearDatabaseScreen
 import eu.kanade.presentation.more.settings.screen.debug.DebugInfoScreen
@@ -993,7 +994,9 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     val setMangaCategories = Injekt.get<SetMangaCategories>()
 
                                     val chunkSize = 50
-                                    val favorites = mangaRepo.getFavoriteIdAndUrl()
+                                    val massImport = Injekt.get<MassImport>()
+                                    val favorites = mangaRepo.getFavoriteIdUrlAndSource()
+                                        .groupBy({ it.third }, { it.first to it.second })
                                     val allMatchedIds = mutableSetOf<Long>()
 
                                     fun processChunk(urlChunk: List<String>) {
@@ -1002,29 +1005,7 @@ object SettingsAdvancedScreen : SearchableSettings {
 
                                             for (url in urlChunk) {
                                                 try {
-                                                    // Extract path from URL
-                                                    val uri = java.net.URI(url)
-                                                    val path =
-                                                        uri.path?.removePrefix("/")?.removeSuffix("/") ?: continue
-
-                                                    // Find all favorite manga matching this URL pattern
-                                                    val matchingIds = favorites.filter { (_, mangaUrl) ->
-                                                        val mangaPath = try {
-                                                            val mangaUri = java.net.URI(mangaUrl)
-                                                            mangaUri.path?.removePrefix("/")?.removeSuffix("/")
-                                                        } catch (e: Exception) {
-                                                            mangaUrl.removePrefix("/").removeSuffix("/")
-                                                        }
-
-                                                        // Match if paths are similar (contains or equals)
-                                                        mangaPath != null &&
-                                                            (
-                                                                mangaPath == path || mangaPath.contains(path) ||
-                                                                    path.contains(mangaPath)
-                                                                )
-                                                    }.map { it.first }
-
-                                                    toUnfavorite.addAll(matchingIds)
+                                                    toUnfavorite.addAll(massImport.matchFavorites(url, favorites))
                                                 } catch (e: Exception) {
                                                     logcat(LogPriority.ERROR, e) { "Error processing URL: $url" }
                                                     errorCount++
@@ -1044,10 +1025,7 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     pendingUrls
                                         .lineSequence()
                                         .forEach { rawLine ->
-                                            rawLine.split(',', ';')
-                                                .asSequence()
-                                                .map { it.trim() }
-                                                .filter { it.startsWith("http://") || it.startsWith("https://") }
+                                            MassImport.urlTokens(rawLine)
                                                 .forEach { url ->
                                                     validUrlCount++
                                                     buffer.add(url)
