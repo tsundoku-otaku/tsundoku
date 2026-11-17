@@ -404,7 +404,10 @@ class LNReaderBackupImporter(
                     "LNReaderImport: Restored novel '${novel.name}' ($index/$totalNovels)"
                 }
             } catch (e: CancellationException) {
-                throw e
+                // Only the import being cancelled stops it; a timeout inside one novel's restore
+                // fails just that novel.
+                currentCoroutineContext().ensureActive()
+                errors.add(Date() to "${novel.name} [${novel.pluginId}]: ${e.message}")
             } catch (e: Exception) {
                 errors.add(Date() to "${novel.name} [${novel.pluginId}]: ${e.message}")
             }
@@ -426,9 +429,11 @@ class LNReaderBackupImporter(
                         val name = entry.name
                         if (name.startsWith("NovelAndChapters/") && name.endsWith(".json")) {
                             currentCoroutineContext().ensureActive()
+                            // A malformed entry is skipped and reported; a read error ends the pass below.
                             val novel = try {
                                 json.decodeFromStream<LNNovel>(zip)
-                            } catch (_: Exception) {
+                            } catch (e: IllegalArgumentException) {
+                                errors.add(Date() to "Unreadable novel entry $name: ${e.message}")
                                 null
                             }
                             if (novel != null && novel.name.isNotBlank()) {
