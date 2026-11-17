@@ -72,7 +72,6 @@ class ManageFilterPresetsTest {
         assertNull(manage.getPreset(1L, 42L))
     }
 
-
     @Test
     fun `search queries are stored apart from the presets and dropped on delete`() {
         manage.savePreset(1L, "p", filters(true), searchQuery = "query")

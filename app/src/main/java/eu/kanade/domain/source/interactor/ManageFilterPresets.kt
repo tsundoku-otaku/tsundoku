@@ -67,13 +67,15 @@ class ManageFilterPresets(
                 currentPresets.presets + newPreset
             }
 
-            preferences.filterPresets(sourceId).set(
-                FilterPresetList(updatedPresets),
-            )
+            // Query first: a query whose preset failed to save is never read, a preset without its
+            // query would load as a plain filter preset.
             if (searchQuery != null) {
                 val queries = preferences.filterPresetQueries(sourceId)
                 queries.set(queries.get() + (newPreset.id to searchQuery))
             }
+            preferences.filterPresets(sourceId).set(
+                FilterPresetList(updatedPresets),
+            )
             logcat(LogPriority.INFO) { "FilterPresets: Saved preset '$name' for sourceId=$sourceId" }
         }.onFailure { error ->
             logcat(LogPriority.ERROR) { "FilterPresets: Failed to save preset: ${error.message}" }
