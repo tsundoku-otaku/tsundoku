@@ -89,4 +89,29 @@ class SelectorUrlAlgorithmsTest {
             deriveSearchUrl("https://www.site.com/search?keyword=World", "https://site.com", "World"),
         )
     }
+
+    @Test
+    fun `language code keeps the primary subtag and falls back to en`() {
+        assertEquals("en", normalizeLanguageCode("en-US"))
+        assertEquals("pt", normalizeLanguageCode("pt_BR"))
+        assertEquals("ja", normalizeLanguageCode(" JA "))
+        assertEquals("en", normalizeLanguageCode(""))
+        assertEquals("en", normalizeLanguageCode("x"))
+    }
+
+    @Test
+    fun `typed language codes use the extension form`() {
+        assertEquals("pt-BR", typedLanguageCode(" pt_br "))
+        assertEquals("zh-Hans", typedLanguageCode("ZH-Hans"))
+        assertEquals("ja", typedLanguageCode("JA"))
+        assertEquals(null, typedLanguageCode("  "))
+    }
+
+    @Test
+    fun `js results decode to the string they hold`() {
+        assertEquals("div.a > span", decodeJsString("\"div.a > span\""))
+        assertEquals("a<b", decodeJsString("\"a\\u003Cb\""))
+        assertEquals("", decodeJsString("null"))
+        assertEquals("", decodeJsString(null))
+    }
 }
