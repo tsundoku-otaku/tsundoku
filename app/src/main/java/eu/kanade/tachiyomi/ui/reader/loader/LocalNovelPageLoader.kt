@@ -6,6 +6,10 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.util.lang.withIOContext
@@ -51,9 +55,21 @@ class LocalNovelPageLoader(
     }
 
     override suspend fun loadPage(page: ReaderPage) = withIOContext {
-        if (page.status == Page.State.Ready) return@withIOContext
-
-        page.status = Page.State.LoadPage
+        // Claim the page so concurrent callers share one fetch instead of each starting their own.
+        while (true) {
+            when (val status = page.status) {
+                Page.State.Ready -> return@withIOContext
+                Page.State.LoadPage -> {
+                    // Another caller's fetch ended; only its cancellation (back to Queue) needs a new attempt.
+                    // One that never ends is taken over instead of waited on forever.
+                    val next = withTimeoutOrNull(LOAD_WAIT_TIMEOUT_MS) {
+                        page.statusFlow.first { it != Page.State.LoadPage }
+                    } ?: break
+                    if (next != Page.State.Queue) return@withIOContext
+                }
+                else -> if (page.tryClaim(status, Page.State.LoadPage)) break
+            }
+        }
         try {
             if (source.isNovelSource) {
                 page.text = source.fetchPageText(Page(page.index, page.url, page.imageUrl))
@@ -62,10 +78,14 @@ class LocalNovelPageLoader(
                 throw IllegalStateException("Source is not a NovelSource")
             }
         } catch (e: Throwable) {
-            logcat(LogPriority.ERROR) {
-                "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}"
+            if (currentCoroutineContext().isActive) {
+                logcat(LogPriority.ERROR) {
+                    "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}"
+                }
             }
-            page.status = Page.State.Error(e)
+            onPageLoadFailed(page, e)
         }
     }
 }
+
+private const val LOAD_WAIT_TIMEOUT_MS = 30_000L
