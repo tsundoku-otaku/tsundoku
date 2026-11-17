@@ -303,13 +303,28 @@ class BrowseSourceViewModel(
         }
 
         // Reset pendingFilters to the potentially preset-applied filters; a loaded preset's
-        // search text goes with the rest of it
+        // search text goes with the rest of it, and so does search text an applied preset set
         mutableState.update {
-            it.copy(
-                pendingFilters = freshFilters,
-                toolbarQuery = it.pendingPreset?.previousToolbarQuery ?: it.toolbarQuery,
-                pendingPreset = null,
-            )
+            val previous = it.pendingPreset
+            val previousToolbarQuery = previous?.previousToolbarQuery ?: it.toolbarQuery
+            if (it.searchesAppliedPresetQuery) {
+                it.copy(
+                    pendingFilters = freshFilters,
+                    toolbarQuery = null,
+                    pendingPreset = PendingPreset(
+                        query = null,
+                        previousToolbarQuery = previousToolbarQuery,
+                        previousFilters = previous?.previousFilters ?: it.pendingFilters,
+                        dropsQuery = true,
+                    ),
+                )
+            } else {
+                it.copy(
+                    pendingFilters = freshFilters,
+                    toolbarQuery = previousToolbarQuery,
+                    pendingPreset = null,
+                )
+            }
         }
     }
 
@@ -379,7 +394,10 @@ class BrowseSourceViewModel(
 
     fun applyFilters() {
         // Unsubmitted toolbar text is ignored like a plain filter apply, except a loaded preset's query
-        search(query = state.value.pendingPreset?.query, filters = state.value.pendingFilters)
+        val preset = state.value.pendingPreset
+        val query = preset?.query ?: "".takeIf { preset?.dropsQuery == true }
+        search(query = query, filters = state.value.pendingFilters)
+        if (preset != null) mutableState.update { it.copy(appliedPresetQuery = preset.query) }
     }
 
     fun dismissFilterDialog() {
@@ -622,13 +640,17 @@ class BrowseSourceViewModel(
             mutableState.update {
                 // Loading another preset on top keeps what was there before the first one
                 val previous = it.pendingPreset
+                val previousToolbarQuery = previous?.previousToolbarQuery ?: it.toolbarQuery
+                // A preset without search text drops the text an earlier applied preset searched with
+                val dropsQuery = preset.searchQuery == null && it.searchesAppliedPresetQuery
                 it.copy(
                     pendingFilters = filters,
-                    toolbarQuery = preset.searchQuery ?: previous?.previousToolbarQuery ?: it.toolbarQuery,
+                    toolbarQuery = preset.searchQuery ?: previousToolbarQuery.takeIf { !dropsQuery },
                     pendingPreset = PendingPreset(
                         query = preset.searchQuery,
-                        previousToolbarQuery = previous?.previousToolbarQuery ?: it.toolbarQuery,
+                        previousToolbarQuery = previousToolbarQuery,
                         previousFilters = previous?.previousFilters ?: it.pendingFilters,
+                        dropsQuery = dropsQuery,
                     ),
                     dialog = Dialog.Filter,
                 )
@@ -966,6 +988,8 @@ class BrowseSourceViewModel(
         val pendingFilters: FilterList = FilterList(), // Filters being edited in dialog
         val toolbarQuery: String? = null,
         val pendingPreset: PendingPreset? = null,
+        // Search text the last applied preset set; a later preset without text or a reset clears it.
+        val appliedPresetQuery: String? = null,
         val dialog: Dialog? = null,
         val selectionMode: Boolean = false,
         val selection: Set<Manga> = emptySet(),
@@ -975,7 +999,13 @@ class BrowseSourceViewModel(
         val isUserQuery get() = listing is Listing.Search && !listing.query.isNullOrEmpty()
 
         /** The query applying the filter sheet would search with; unsubmitted toolbar text isn't it. */
-        val pendingQuery get() = pendingPreset?.query ?: (listing as? Listing.Search)?.query
+        val pendingQuery get() = when {
+            pendingPreset?.dropsQuery == true -> null
+            else -> pendingPreset?.query ?: (listing as? Listing.Search)?.query
+        }
+
+        val searchesAppliedPresetQuery get() =
+            appliedPresetQuery != null && (listing as? Listing.Search)?.query == appliedPresetQuery
     }
 
     /** A preset loaded into the filter sheet but not applied yet, with what dismissing it puts back. */
@@ -984,5 +1014,6 @@ class BrowseSourceViewModel(
         val query: String?,
         val previousToolbarQuery: String?,
         val previousFilters: FilterList,
+        val dropsQuery: Boolean = false,
     )
 }
