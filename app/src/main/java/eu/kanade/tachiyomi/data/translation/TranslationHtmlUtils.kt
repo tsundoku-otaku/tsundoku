@@ -10,6 +10,13 @@ import org.jsoup.parser.Parser
  * Extracted from [TranslationService] to satisfy SRP and allow reuse
  * from other call-sites (e.g. real-time reader translation).
  */
+data class PartialTranslation(
+    val title: String?,
+    val paragraphs: List<String>,
+    val sourceParagraphs: Int?,
+    val runId: Long?,
+)
+
 object TranslationHtmlUtils {
 
     private const val SOURCE_HASH_COMMENT_PREFIX = "<!-- tsundoku-source-hash:"
@@ -25,12 +32,21 @@ object TranslationHtmlUtils {
      *
      * @return the modified HTML **and** a map of placeholder → original outer-HTML.
      */
+    /**
+     * Whether [html] has media inside other media. Partials saved before [extractImages] kept such
+     * media whole numbered their placeholders differently.
+     */
+    fun hasNestedMedia(html: String): Boolean =
+        Jsoup.parse(html).select(MEDIA_SELECTOR).any { element -> element.parents().any { it.`is`(MEDIA_SELECTOR) } }
+
     fun extractImages(html: String): Pair<String, Map<String, String>> {
         val doc = Jsoup.parse(html)
         doc.outputSettings().prettyPrint(false)
         val images = mutableMapOf<String, String>()
         var index = 0
         doc.select(MEDIA_SELECTOR).forEach { element: Element ->
+            // Media inside media (img in figure or picture, source in video) goes out with its parent.
+            if (element.parents().any { it.`is`(MEDIA_SELECTOR) }) return@forEach
             val placeholder = "[IMG_PLACEHOLDER_$index]"
             images[placeholder] = element.outerHtml()
             element.replaceWith(org.jsoup.nodes.TextNode("\n$placeholder\n"))
@@ -124,6 +140,36 @@ object TranslationHtmlUtils {
         translatedParagraphs.forEach { paragraph ->
             append("<p>${escapeHtml(paragraph.trim()).replace("\n", "<br/>")}</p>")
         }
+    }
+
+    private val PARTIAL_MARKER = Regex("""<!--tsundoku-partial:run=(-?\d+);src=(\d+)-->""")
+
+    /** A partial (.tmp) translation of the first [sourceParagraphs] source paragraphs, from the run started at [runId]. */
+    fun buildPartialHtml(
+        runId: Long,
+        sourceParagraphs: Int,
+        translatedTitle: String?,
+        translatedParagraphs: List<String>,
+    ): String = "<!--tsundoku-partial:run=$runId;src=$sourceParagraphs-->" +
+        buildTranslatedHtml(translatedTitle, translatedParagraphs)
+
+    /** Reads back [buildPartialHtml]; older partials have no run id or source paragraph count. */
+    fun parsePartialHtml(html: String): PartialTranslation {
+        val marker = PARTIAL_MARKER.find(html)
+        val doc = Jsoup.parse(html)
+        val titleElement = doc.selectFirst("h1")
+        val title = titleElement?.text()?.takeIf { it.isNotBlank() }
+        titleElement?.remove()
+        return PartialTranslation(
+            title = title,
+            // Partials always come from buildTranslatedHtml: one <p> per paragraph, <br/> inside.
+            paragraphs = doc.body().select("p").map { p ->
+                p.select("br").forEach { it.replaceWith(org.jsoup.nodes.TextNode("\n")) }
+                p.wholeText().trim()
+            }.filter { it.isNotBlank() },
+            sourceParagraphs = marker?.groupValues?.get(2)?.toIntOrNull(),
+            runId = marker?.groupValues?.get(1)?.toLongOrNull(),
+        )
     }
 
     // ── Chunking ────────────────────────────────────────────────────
