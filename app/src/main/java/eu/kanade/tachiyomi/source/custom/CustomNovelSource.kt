@@ -230,6 +230,20 @@ private fun replaceSourceClient(target: HttpSource, client: OkHttpClient): Boole
     return target.client === client
 }
 
+// Extensions build request URLs as baseUrl + stored path, so a stored absolute URL ends up glued on
+// ("https://site.com/https://cdn.example/..."). The embedded URL is the one meant.
+internal fun embeddedAbsoluteUrl(url: okhttp3.HttpUrl): okhttp3.HttpUrl? {
+    val value = url.toString()
+    val idx = listOf("https://", "http://", "https%3A//", "http%3A//")
+        .map { value.indexOf(it, 8, ignoreCase = true) }
+        .filter { it > 0 }
+        .minOrNull() ?: return null
+    // Only a scheme in the path, not one in a query parameter (redirect or proxy URLs).
+    val queryStart = value.indexOf('?')
+    if (queryStart in 0 until idx) return null
+    return value.substring(idx).replace("%3A//", "://", ignoreCase = true).toHttpUrlOrNull()
+}
+
 internal fun rewriteToCustomBase(url: okhttp3.HttpUrl, sourceBaseUrl: String, customBaseUrl: String): okhttp3.HttpUrl? {
     val sourceBase = sourceBaseUrl.trimEnd('/').toHttpUrlOrNull() ?: return null
     val customBase = customBaseUrl.trimEnd('/').toHttpUrlOrNull() ?: return null
@@ -251,7 +265,9 @@ private fun createBaseUrlRewriteClient(
     val rewrite = okhttp3.Interceptor { chain ->
         val request = chain.request()
         val builder = request.newBuilder()
-        rewriteToCustomBase(request.url, sourceBase, customBase)?.let { builder.url(it) }
+        val url = embeddedAbsoluteUrl(request.url) ?: request.url
+        (rewriteToCustomBase(url, sourceBase, customBase) ?: url.takeIf { it != request.url })
+            ?.let { builder.url(it) }
         // The extension builds Referer/Origin from its own baseUrl.
         for (name in listOf("Referer", "Origin")) {
             val value = request.header(name) ?: continue
@@ -576,6 +592,8 @@ class CustomNovelSource(
         baseSource?.let { source ->
             return rebaseMangasPage(source.getSearchManga(page, query, filters))
         }
+        // A source saved without a captured search URL has no search.
+        if (config.searchUrl.isBlank()) return MangasPage(emptyList(), false)
         return super.getSearchManga(page, query, filters)
     }
 
@@ -983,9 +1001,9 @@ class CustomNovelSource(
     }
 
     override suspend fun fetchPageText(page: Page): String {
-        val bs = baseSource
-        // A custom content selector overrides delegation.
-        if (bs != null && bs.isNovelSource() && config.selectors.content.primary.isBlank()) {
+        // A custom content selector overrides delegation, so the base source isn't needed then.
+        val bs = if (config.selectors.content.primary.isBlank()) baseSource else null
+        if (bs != null && bs.isNovelSource()) {
             // Extensions build the content URL as baseUrl + page.url (the path their own getPageList
             // returned), so hand them the same path getPageList delegation uses. An absolute URL
             // here was glued onto their baseUrl ("https://site.comhttps://site.com/...").
