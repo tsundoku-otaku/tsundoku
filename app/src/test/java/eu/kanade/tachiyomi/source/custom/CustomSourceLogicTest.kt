@@ -185,4 +185,14 @@ class CustomSourceLogicTest {
             ),
         )
     }
+
+    @Test
+    fun `embedded absolute url is taken from a glued request url`() {
+        assertEquals(
+            "https://cdn.example.org/c/1",
+            embeddedAbsoluteUrl("https://example.com/https://cdn.example.org/c/1".toHttpUrl())?.toString(),
+        )
+        assertEquals(null, embeddedAbsoluteUrl("https://example.com/c/1".toHttpUrl()))
+        assertEquals(null, embeddedAbsoluteUrl("https://example.com/out?to=https://cdn.example.org/x".toHttpUrl()))
+    }
 }
