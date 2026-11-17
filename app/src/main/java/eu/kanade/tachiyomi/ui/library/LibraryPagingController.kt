@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import tachiyomi.domain.library.model.LibraryManga
@@ -33,6 +34,7 @@ class LibraryPagedPlan(
     val spec: LibraryPageSpec,
     val filter: ((LibraryManga) -> Boolean)?,
     val reloadOnDownloads: Boolean,
+    val reloadOnTracks: Boolean,
     val loadInMemory: (suspend () -> List<LibraryManga>)?,
 ) {
     val inMemory: Boolean get() = loadInMemory != null
@@ -55,15 +57,26 @@ class LibraryPagingController(
     private val scope: CoroutineScope,
     private val getLibraryMangaPaged: GetLibraryMangaPaged,
     downloadChanges: Flow<Unit>,
+    trackChanges: Flow<Unit>,
+    libraryUpdating: Flow<Boolean>,
 ) {
     private val active = MutableStateFlow(false)
 
+    // A library update writes entry after entry; reloading the visible page for each would keep it
+    // reloading for the whole update.
+    private val updating = libraryUpdating.stateIn(scope, SharingStarted.Eagerly, false)
+    private val window = { if (updating.value) UPDATE_INVALIDATION_WINDOW else INVALIDATION_WINDOW }
+
     val invalidations: SharedFlow<Unit> = getLibraryMangaPaged.changes()
-        .coalesceInvalidations(active, INVALIDATION_WINDOW)
+        .coalesceInvalidations(active, window)
         .shareIn(scope, SharingStarted.Eagerly)
 
     private val downloadInvalidations: SharedFlow<Unit> = downloadChanges
-        .coalesceInvalidations(active, INVALIDATION_WINDOW)
+        .coalesceInvalidations(active, window)
+        .shareIn(scope, SharingStarted.Eagerly)
+
+    private val trackInvalidations: SharedFlow<Unit> = trackChanges
+        .coalesceInvalidations(active, window)
         .shareIn(scope, SharingStarted.Eagerly)
 
     private class Entry(val plan: LibraryPagedPlan, val scope: CoroutineScope, val flow: Flow<PagingData<LibraryManga>>)
@@ -75,7 +88,7 @@ class LibraryPagingController(
     }
 
     fun categoryInvalidations(): Flow<Unit> =
-        getLibraryMangaPaged.categoryMembershipChanges().coalesceInvalidations(active, INVALIDATION_WINDOW)
+        getLibraryMangaPaged.categoryMembershipChanges().coalesceInvalidations(active, window)
 
     fun slowInvalidations(window: Duration, source: Flow<Unit> = invalidations): Flow<Unit> =
         source.coalesceInvalidations(active, window)
@@ -108,7 +121,13 @@ class LibraryPagingController(
     }
 
     private fun build(plan: LibraryPagedPlan): Flow<PagingData<LibraryManga>> {
-        val changes = if (plan.reloadOnDownloads) merge(invalidations, downloadInvalidations) else invalidations
+        val changes = merge(
+            *listOfNotNull(
+                invalidations,
+                downloadInvalidations.takeIf { plan.reloadOnDownloads },
+                trackInvalidations.takeIf { plan.reloadOnTracks },
+            ).toTypedArray(),
+        )
         val loadInMemory = plan.loadInMemory
         if (loadInMemory != null) {
             return getLibraryMangaPaged.subscribeLoaded(
@@ -129,6 +148,7 @@ class LibraryPagingController(
         // Current page, its two neighbours, and one spare for a page still visible mid-swipe.
         private const val MAX_PAGERS = 4
         private val INVALIDATION_WINDOW = 750.milliseconds
+        private val UPDATE_INVALIDATION_WINDOW = 5.seconds
         private val IN_MEMORY_INVALIDATION_WINDOW = 5.seconds
     }
 }

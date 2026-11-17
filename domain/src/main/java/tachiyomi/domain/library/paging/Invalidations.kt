@@ -10,14 +10,18 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration
 
 /** At most one trailing emission per [window], held back while [active] is false. */
-fun Flow<Unit>.coalesceInvalidations(active: StateFlow<Boolean>, window: Duration): Flow<Unit> = channelFlow {
+fun Flow<Unit>.coalesceInvalidations(active: StateFlow<Boolean>, window: Duration): Flow<Unit> =
+    coalesceInvalidations(active) { window }
+
+/** Like the fixed-window overload, with the window read again for every emission. */
+fun Flow<Unit>.coalesceInvalidations(active: StateFlow<Boolean>, window: () -> Duration): Flow<Unit> = channelFlow {
     val pending = Channel<Unit>(Channel.CONFLATED)
     launch {
         collect { pending.send(Unit) }
         pending.close()
     }
     for (signal in pending) {
-        delay(window)
+        delay(window())
         active.first { it }
         pending.tryReceive()
         send(Unit)

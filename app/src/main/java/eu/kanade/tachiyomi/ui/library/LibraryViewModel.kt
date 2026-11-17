@@ -2,6 +2,7 @@
 
 package eu.kanade.tachiyomi.ui.library
 
+import android.app.Application
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Immutable
@@ -43,6 +44,7 @@ import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -50,6 +52,7 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -166,9 +169,19 @@ class LibraryViewModel(
     /** Experimental: whether per-category DB pagination is active for this library. */
     val paginationEnabled: Boolean = getLibraryManga.isPaginationEnabled()
 
+    // Read by plans when they load, so a tracker sync reloads the page in place instead of
+    // rebuilding its pager (which resets the scroll position).
+    private val pagedTracks = MutableStateFlow<Map<Long, List<Track>>?>(null)
+
     private val paging: LibraryPagingController? = if (paginationEnabled) {
-        // The download cache replays its latest change to every collector.
-        LibraryPagingController(viewModelScope, getLibraryMangaPaged, downloadCache.changes.drop(1))
+        LibraryPagingController(
+            viewModelScope,
+            getLibraryMangaPaged,
+            // The download cache replays its latest change to every collector.
+            downloadCache.changes.drop(1),
+            pagedTracks.filterNotNull().distinctUntilChanged().drop(1).map { },
+            LibraryUpdateJob.isRunningFlow(Injekt.get<Application>()),
+        )
     } else {
         null
     }
@@ -456,6 +469,7 @@ class LibraryViewModel(
             ) { categories, prefs, searchAndSources, tracksAndFilters, meta ->
                 val (search, searchSourceIds) = searchAndSources
                 val (tracks, trackingFilters) = tracksAndFilters
+                pagedTracks.value = tracks
                 val inputs = PagedInputs(
                     prefs = prefs,
                     search = search,
@@ -581,17 +595,22 @@ class LibraryViewModel(
             inMemory = inMemory,
             prefs = prefs.takeIf { inMemory || needsItemFilter },
             trackingFilters = inputs.trackingFilters.takeIf { inMemory || needsItemFilter },
-            tracks = inputs.tracks.takeIf { inMemory || needsItemFilter },
             search = inputs.search.takeIf { searchInMemory },
             randomSeed = libraryPreferences.randomSortSeed.get()
                 .takeIf { category.sort.type == LibrarySort.Type.Random },
         )
 
         val filter = if (needsItemFilter && !inMemory) {
-            val passes = itemFilter(inputs.tracks, inputs.trackingFilters, prefs) {
-                downloadManager.getDownloadCount(it.libraryManga.manga)
+            // Built per load from the latest tracks; the filtered path reads the whole category each time.
+            var built: Pair<Map<Long, List<Track>>, (LibraryItem) -> Boolean>? = null
+            val predicate: (LibraryManga) -> Boolean = { manga ->
+                val tracks = pagedTracks.value ?: inputs.tracks
+                val passes = built?.takeIf { it.first === tracks }?.second
+                    ?: itemFilter(tracks, inputs.trackingFilters, prefs) {
+                        downloadManager.getDownloadCount(it.libraryManga.manga)
+                    }.also { built = tracks to it }
+                passes(LibraryItem(manga))
             }
-            val predicate: (LibraryManga) -> Boolean = { passes(LibraryItem(it)) }
             predicate
         } else {
             null
@@ -600,7 +619,8 @@ class LibraryViewModel(
         val loadInMemory: (suspend () -> List<LibraryManga>)? = if (inMemory) {
             val search = inputs.search.takeIf { searchInMemory }
             val load: suspend () -> List<LibraryManga> = {
-                loadCategoryInMemory(category, isNovel, spec, prefs, inputs.tracks, inputs.trackingFilters, search)
+                val tracks = pagedTracks.value ?: inputs.tracks
+                loadCategoryInMemory(category, isNovel, spec, prefs, tracks, inputs.trackingFilters, search)
             }
             load
         } else {
@@ -614,6 +634,7 @@ class LibraryViewModel(
             spec = spec,
             filter = filter,
             reloadOnDownloads = dependsOnDownloads,
+            reloadOnTracks = inMemory || needsItemFilter,
             loadInMemory = loadInMemory,
         )
     }
@@ -794,7 +815,6 @@ class LibraryViewModel(
         val inMemory: Boolean,
         val prefs: ItemPreferences?,
         val trackingFilters: Map<Long, TriState>?,
-        val tracks: Map<Long, List<Track>>?,
         val search: SearchConfig?,
         val randomSeed: Int?,
     )
