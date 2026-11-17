@@ -672,7 +672,7 @@ class LibraryViewModel(
         }
         val byId = items.associateBy { it.id }
         val order = mapOf(category to items.map { it.id })
-            .applySort(byId, tracks, trackingFilters.keys)[category]
+            .applySort(byId, tracks, trackingFilters.keys, pagedTieBreak = true)[category]
             .orEmpty()
         return order.mapNotNull { byId[it]?.libraryManga }
     }
@@ -1037,6 +1037,7 @@ class LibraryViewModel(
         favoritesById: Map<Long, LibraryItem>,
         trackMap: Map<Long, List<Track>>,
         loggedInTrackerIds: Set<Long>,
+        pagedTieBreak: Boolean = false,
     ): Map<Category, List</* LibraryItem */ Long>> {
         val sortAlphabetically: (LibraryItem, LibraryItem) -> Int = { manga1, manga2 ->
             manga1.libraryManga.manga.title.compareToWithCollator(manga2.libraryManga.manga.title)
@@ -1121,10 +1122,15 @@ class LibraryViewModel(
 
             val manga = value.mapNotNull { favoritesById[it] }
 
-            val comparator = key.sort.comparator()
+            val sorted = key.sort.comparator()
                 .let { if (key.sort.isAscending) it else it.reversed() }
-                .thenComparator(sortAlphabetically)
-                .thenBy { it.id }
+            // Paged SQL loads break ties on id in the sort direction; match them so ties keep their order
+            // when a filter moves the category between SQL and in-memory loads.
+            val comparator = when {
+                !pagedTieBreak -> sorted.thenComparator(sortAlphabetically).thenBy { it.id }
+                key.sort.isAscending -> sorted.thenBy { it.id }
+                else -> sorted.thenByDescending { it.id }
+            }
 
             manga.sortedWith(comparator).map { it.id }
         }
