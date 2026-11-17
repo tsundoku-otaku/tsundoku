@@ -14,4 +14,13 @@
         <item quantity="one">%d chapter could not be read</item>
         <item quantity="other">%d chapters could not be read</item>
     </plurals>
+
+    <plurals name="translate_chapters_confirm">
+        <item quantity="one">Translate %d chapter?</item>
+        <item quantity="other">Translate %d chapters?</item>
+    </plurals>
+    <plurals name="translation_queued">
+        <item quantity="one">Queued %d chapter for translation</item>
+        <item quantity="other">Queued %d chapters for translation</item>
+    </plurals>
 </resources>
