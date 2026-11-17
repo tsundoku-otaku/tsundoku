@@ -678,10 +678,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun reloadContent() {
         activity.runOnUiThread {
             currentChapters?.let {
-                // Only the current chapter is rendered again, so a start waiting on another one
-                // would never fire.
+                // Only the current chapter is rendered again, so a start waiting on another rendered or
+                // appending chapter would never fire. Without infinite scroll the chapter it waits on is
+                // the one the activity is loading, which still arrives through setChapters.
                 val pendingChapterId = pendingTtsStart?.chapterId
-                if (pendingChapterId != null && pendingChapterId != it.currChapter.chapter.id) stopTts()
+                if (pendingChapterId != null &&
+                    pendingChapterId != it.currChapter.chapter.id &&
+                    (preferences.novelInfiniteScroll.get() || loadedChapters.any { c -> c.chapter.chapter.id == pendingChapterId })
+                ) {
+                    stopTts()
+                }
                 contentContainer.removeAllViews()
                 chapterQueue.clear()
                 setChapters(it)
