@@ -241,6 +241,20 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private var handoffState: TtsHandoffState<Pair<ReaderChapter, ReaderPage>> = TtsHandoffState.Idle
 
+    // The chapter the cached next chapter follows.
+    private var cachedAnchorChapterId: Long? = null
+
+    private fun ttsAnchorChapterId(): Long? = (loadedChapters.lastOrNull() ?: currentChapters?.currChapter)?.chapter?.id
+
+    // A chapter cached after an anchor that is no longer the last loaded one (a new document, or a cold
+    // append got there first) would never be appended, and would keep every later prefetch out.
+    private fun isTtsHandoffIdle(): Boolean {
+        if (handoffState.cachedOrNull != null && cachedAnchorChapterId != ttsAnchorChapterId()) {
+            handoffState = TtsHandoffState.Idle
+        }
+        return handoffState.isIdle
+    }
+
     private val prefetchCompletedSignal = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     // ttsChunks spans every loaded chapter, so the prefetch midpoint is resolved for the playback chapter.
@@ -401,7 +415,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     // A failed prefetch retries on a later chunk once the cooldown has passed.
                     if (preferences.novelInfiniteScroll.get() &&
                         !isPagedModeActive() &&
-                        handoffState.isIdle &&
+                        isTtsHandoffIdle() &&
                         chunkIndex >= midpoint &&
                         SystemClock.elapsedRealtime() >= ttsPrefetchRetryAtMs &&
                         loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) == null
@@ -2758,7 +2772,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 } else if (ttsController.isTtsAutoPlay) {
                     // Don't append while TTS is active, pre-fetch so the next chapter is ready when
                     // TTS calls appendNextChapterIfAvailable.
-                    if (handoffState.isIdle) {
+                    if (isTtsHandoffIdle()) {
                         scope.launch { preFetchNextChapterForTts() }
                     }
                 } else if (nextLoadRequiresManualRetry) {
@@ -3048,7 +3062,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * immediately available when TTS finishes the current one.
      */
     private suspend fun preFetchNextChapterForTts() {
-        if (!handoffState.isIdle) return
+        if (!isTtsHandoffIdle()) return
         val anchor = loadedChapters.lastOrNull() ?: currentChapters?.currChapter ?: return
         // Claimed before the first suspension so concurrent triggers stop at the isIdle guard, and
         // compared by identity so a prefetch outliving stopTts or a coalesce timeout changes nothing.
@@ -3071,6 +3085,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             if (loaded) {
                 withContext(Dispatchers.Main) {
                     if (handoffState === claim && !loadedChapterIds.contains(nextId)) {
+                        cachedAnchorChapterId = anchor.chapter.id
                         handoffState = TtsHandoffState.Cached(Pair(preparedChapter, page))
                         prefetchCompletedSignal.tryEmit(Unit)
                         logcat(LogPriority.DEBUG) {
@@ -3101,6 +3116,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * scroll to the threshold themselves.
      */
     private suspend fun appendNextChapterIfAvailable(silent: Boolean = false): Boolean {
+        isTtsHandoffIdle()
         val cached = handoffState.cachedOrNull
         if (cached != null) {
             handoffState = TtsHandoffState.Idle
@@ -3581,7 +3597,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // instead of stalling on a cold fetch. Idempotent via the handoffState guard.
                 if (preferences.novelInfiniteScroll.get() &&
                     !isPagedModeActive() &&
-                    handoffState.isIdle &&
+                    isTtsHandoffIdle() &&
                     loadedChapters.getOrNull(chapterIdx + 1) == null
                 ) {
                     scope.launch { preFetchNextChapterForTts() }
