@@ -69,6 +69,11 @@ object HomeScreen : Screen() {
     private val openTabEvent = Channel<Tab>()
     private val showBottomNavEvent = Channel<Boolean>()
 
+    // Counts tab changes the user made, so deferred navigation can tell the user moved on.
+    @Volatile
+    var userTabChanges = 0
+        private set
+
     @Suppress("ConstPropertyName")
     private const val TabFadeDuration = 200
 
@@ -205,6 +210,7 @@ object HomeScreen : Screen() {
             selected = selected,
             onClick = {
                 if (!selected) {
+                    userTabChanges++
                     tabNavigator.current = tab
                 } else {
                     scope.launch { tab.onReselect(navigator) }
@@ -233,6 +239,7 @@ object HomeScreen : Screen() {
             selected = selected,
             onClick = {
                 if (!selected) {
+                    userTabChanges++
                     tabNavigator.current = tab
                 } else {
                     scope.launch { tab.onReselect(navigator) }

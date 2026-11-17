@@ -85,6 +85,9 @@ class ExtensionManager(
         ExtensionInstallReceiver(InstallationListener()).register(context)
     }
 
+    /** Reads the installed map directly; the list flow lags it. */
+    fun getInstalledExtension(pkgName: String): Extension.Installed? = installedExtensionMapFlow.value[pkgName]
+
     /** Waits for the first load, then reads the installed map directly (the list flow lags it). */
     suspend fun awaitInstalledExtension(pkgName: String): Extension.Installed? {
         isInitialized.first { it }
