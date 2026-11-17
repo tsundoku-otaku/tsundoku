@@ -2026,8 +2026,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     val saved = cacheFile.bufferedReader().useLines { lines ->
                         MassImportStore.saveUrlsStreaming(appContext, batchId, lines)
                     }
+                    // Progress is only remapped together with the list it indexes.
                     if (saved != tokenCount) {
-                        logcat(LogPriority.WARN) { "MassImport: could not rewrite persisted urls for $batchId" }
+                        runCatching { cacheFile.delete() }
+                        return@launch abortResume("could not rewrite persisted urls")
                     }
                 }
                 if (progress != batch.progress || tokenCount != batch.total) {

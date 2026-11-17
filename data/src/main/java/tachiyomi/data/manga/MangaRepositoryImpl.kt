@@ -619,8 +619,9 @@ class MangaRepositoryImpl(
         return result
     }
 
-    override suspend fun getFavoriteIdAndUrl(): List<Pair<Long, String>> {
-        return database.mangasQueries.getFavoriteIdAndUrl { id, url -> id to url }.awaitAsList()
+    override suspend fun getFavoriteIdUrlAndSource(): List<Triple<Long, String, Long>> {
+        return database.mangasQueries.getFavoriteIdUrlAndSource { id, url, source -> Triple(id, url, source) }
+            .awaitAsList()
     }
 
     override suspend fun getFavoriteIdAndGenre(): List<Pair<Long, List<String>?>> {
