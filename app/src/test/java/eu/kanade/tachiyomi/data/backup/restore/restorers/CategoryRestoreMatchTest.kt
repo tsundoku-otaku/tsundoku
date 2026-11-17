@@ -69,4 +69,15 @@ class CategoryRestoreMatchTest {
 
         assertEquals(1L, categories.restoreTarget(Category.CONTENT_TYPE_NOVEL, isNovel = false)?.id)
     }
+
+    @Test
+    fun `incompatible same name category restores under a typed name`() {
+        assertEquals("Reading (Novel)", typedRestoreName("Reading", Category.CONTENT_TYPE_NOVEL))
+        val categories = listOf(
+            category(1, Category.CONTENT_TYPE_MANGA),
+            category(2, Category.CONTENT_TYPE_NOVEL).copy(name = "Reading (Novel)"),
+        )
+        assertNull(categories.take(1).restoreMatch(Category.CONTENT_TYPE_NOVEL))
+        assertEquals(2L, categories.restoreTarget(Category.CONTENT_TYPE_NOVEL, isNovel = true)?.id)
+    }
 }

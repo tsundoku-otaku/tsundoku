@@ -12,9 +12,9 @@ class SetCategoryContentType(
     suspend fun getMismatchedMangaIds(categoryId: Long, contentType: Int): List<Long> =
         categoryRepository.getMangaIdsNotMatchingType(categoryId, contentType)
 
-    suspend fun await(categoryId: Long, contentType: Int): Result = withNonCancellableContext {
+    suspend fun await(categoryId: Long, contentType: Int, name: String? = null): Result = withNonCancellableContext {
         try {
-            Result.Success(categoryRepository.updateContentType(categoryId, contentType))
+            Result.Success(categoryRepository.updateContentType(categoryId, contentType, name))
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e)
             Result.InternalError(e)

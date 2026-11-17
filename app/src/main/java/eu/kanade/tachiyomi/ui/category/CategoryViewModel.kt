@@ -112,17 +112,17 @@ class CategoryViewModel(
     }
 
     private suspend fun saveEdit(category: Category, name: String, contentType: Int) {
-        if (name != category.name &&
-            renameCategory.await(category, name) is RenameCategory.Result.InternalError
-        ) {
+        val newName = name.takeIf { it != category.name }
+        if (contentType != category.contentType) {
+            // One write, so a failure can't leave the name changed without the type.
+            changeContentType(category, contentType, newName)
+        } else if (newName != null && renameCategory.await(category, newName) is RenameCategory.Result.InternalError) {
             _events.send(CategoryEvent.InternalError)
-            return
         }
-        if (contentType != category.contentType) changeContentType(category, contentType)
     }
 
-    private suspend fun changeContentType(category: Category, contentType: Int) {
-        when (val result = setCategoryContentType.await(category.id, contentType)) {
+    private suspend fun changeContentType(category: Category, contentType: Int, name: String?) {
+        when (val result = setCategoryContentType.await(category.id, contentType, name)) {
             is SetCategoryContentType.Result.InternalError -> _events.send(CategoryEvent.InternalError)
             is SetCategoryContentType.Result.Success -> getLibraryManga.applyCategoryUpdates(
                 mangaIds = result.removedMangaIds,
