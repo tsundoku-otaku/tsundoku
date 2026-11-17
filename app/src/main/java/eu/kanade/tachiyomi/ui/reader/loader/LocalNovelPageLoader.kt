@@ -9,6 +9,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.util.lang.withIOContext
@@ -60,7 +61,11 @@ class LocalNovelPageLoader(
                 Page.State.Ready -> return@withIOContext
                 Page.State.LoadPage -> {
                     // Another caller's fetch ended; only its cancellation (back to Queue) needs a new attempt.
-                    if (page.statusFlow.first { it != Page.State.LoadPage } != Page.State.Queue) return@withIOContext
+                    // One that never ends is taken over instead of waited on forever.
+                    val next = withTimeoutOrNull(LOAD_WAIT_TIMEOUT_MS) {
+                        page.statusFlow.first { it != Page.State.LoadPage }
+                    } ?: break
+                    if (next != Page.State.Queue) return@withIOContext
                 }
                 else -> if (page.tryClaim(status, Page.State.LoadPage)) break
             }
@@ -82,3 +87,5 @@ class LocalNovelPageLoader(
         }
     }
 }
+
+private const val LOAD_WAIT_TIMEOUT_MS = 30_000L

@@ -7,6 +7,7 @@ import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -70,8 +71,12 @@ object NovelPageLoader {
         return try {
             val finalState = withTimeout(timeoutMs) {
                 var state = page.statusFlow.first(::settled)
-                while (state is Page.State.Queue) {
+                // Bounded: a loader that returns without leaving Queue would otherwise be relaunched
+                // in a tight loop until the timeout.
+                var restarts = 0
+                while (state is Page.State.Queue && restarts++ < MAX_QUEUE_RESTARTS) {
                     scope.ensureActive()
+                    delay(QUEUE_RESTART_DELAY_MS)
                     loadJob = launchLoad()
                     state = page.statusFlow.first(::settled)
                 }
@@ -91,12 +96,18 @@ object NovelPageLoader {
             }
         } catch (e: TimeoutCancellationException) {
             // A fetch that ignores cancellation would hold the page in LoadPage, where every later
-            // load waits on it and retry has no Error to reset, so fail it here.
-            loadJob?.cancel()
-            page.tryClaim(Page.State.LoadPage, Page.State.Error(e))
+            // load waits on it and retry has no Error to reset, so fail it here. Only a load this
+            // call started: another caller's load is still that caller's to finish or time out.
+            loadJob?.let { job ->
+                job.cancel()
+                page.tryClaim(Page.State.LoadPage, Page.State.Error(e))
+            }
             throw e
         } finally {
             loadJob?.cancel()
         }
     }
+
+    private const val MAX_QUEUE_RESTARTS = 3
+    private const val QUEUE_RESTART_DELAY_MS = 250L
 }
