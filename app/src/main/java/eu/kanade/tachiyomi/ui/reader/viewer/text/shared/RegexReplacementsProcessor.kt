@@ -20,26 +20,36 @@ object RegexReplacementsProcessor {
     @Volatile
     internal var ruleTimeoutMs: Long = DEFAULT_REGEX_TIMEOUT_MS
 
-    // Rules skipped after a timeout. One whose timed-out match later completes was only slow and runs
-    // again; one still running, or stopped by its deadline, stays skipped until its pattern changes.
-    private val timedOutRules = HashSet<String>()
+    // A rule is skipped while any of its timed-out matches still runs. One whose matches all complete
+    // was only slow and runs again, until it times out MAX_TIMEOUTS times; one stopped by its deadline
+    // or failing late stays off. Both last until its pattern changes.
+    private class TimeoutState {
+        // Timed-out matches not yet finished. A late finish can be counted before its timeout is.
+        var running = 0
+        var timeouts = 0
+        var disabled = false
+    }
 
-    // A slow match can complete before its timeout is recorded.
-    private val completedLate = HashSet<String>()
+    private val timeoutStates = HashMap<String, TimeoutState>()
     private val timeoutLock = Any()
 
-    private fun isTimedOut(key: String) = synchronized(timeoutLock) { key in timedOutRules }
-
-    private fun recordTimeout(key: String) = synchronized(timeoutLock) {
-        if (!completedLate.remove(key)) timedOutRules.add(key)
+    internal fun isTimedOut(key: String) = synchronized(timeoutLock) {
+        timeoutStates[key]?.let { it.disabled || it.running > 0 } == true
     }
 
-    private fun recordLateFinish(key: String, completed: Boolean) {
-        if (!completed) return
-        synchronized(timeoutLock) {
-            if (!timedOutRules.remove(key)) completedLate.add(key)
-        }
+    internal fun recordTimeout(key: String) = synchronized(timeoutLock) {
+        val state = timeoutStates.getOrPut(key) { TimeoutState() }
+        state.running++
+        if (++state.timeouts >= MAX_TIMEOUTS) state.disabled = true
     }
+
+    internal fun recordLateFinish(key: String, completed: Boolean) = synchronized(timeoutLock) {
+        val state = timeoutStates.getOrPut(key) { TimeoutState() }
+        state.running--
+        if (!completed) state.disabled = true
+    }
+
+    private const val MAX_TIMEOUTS = 2
 
     private val cache: MutableMap<String, List<CompiledRule>> =
         Collections.synchronizedMap(
@@ -103,7 +113,7 @@ object RegexReplacementsProcessor {
             recordTimeout(key)
             throw e
         } catch (e: StackOverflowError) {
-            synchronized(timeoutLock) { timedOutRules.add(key) }
+            synchronized(timeoutLock) { timeoutStates.getOrPut(key) { TimeoutState() }.disabled = true }
             throw e
         }
     }

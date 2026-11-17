@@ -94,12 +94,14 @@ internal fun <T> runWithRegexTimeout(
     try {
         return future.get(timeoutMs.coerceAtLeast(0), TimeUnit.MILLISECONDS)
     } catch (e: TimeoutException) {
-        if (abandon(state)) {
-            try {
+        when (abandon(state)) {
+            ABANDON_DONE -> try {
                 return future.get()
             } catch (failed: ExecutionException) {
                 throw failed.cause ?: failed
             }
+            // Never ran, so nothing is left running.
+            ABANDON_NOT_STARTED -> onLateFinish(true)
         }
         future.cancel(true)
         throw RegexTimeoutException()
@@ -112,18 +114,22 @@ internal fun <T> runWithRegexTimeout(
     }
 }
 
-// A task cancelled before it starts never runs its finally, so only a started one may count as stuck.
-// True when the task already finished, so its result can still be used.
-private fun abandon(state: AtomicInteger): Boolean {
+private const val ABANDON_DONE = 0
+private const val ABANDON_RUNNING = 1
+private const val ABANDON_NOT_STARTED = 2
+
+// A task cancelled before it starts never runs its finally, so only a started one may count as stuck
+// and report a late finish. ABANDON_DONE means it already finished, so its result can still be used.
+private fun abandon(state: AtomicInteger): Int {
     while (true) {
         when (state.get()) {
-            TASK_PENDING -> if (state.compareAndSet(TASK_PENDING, TASK_ABANDONED)) return false
+            TASK_PENDING -> if (state.compareAndSet(TASK_PENDING, TASK_ABANDONED)) return ABANDON_NOT_STARTED
             TASK_RUNNING -> if (state.compareAndSet(TASK_RUNNING, TASK_ABANDONED)) {
                 stuckRegexWorkers.incrementAndGet()
-                return false
+                return ABANDON_RUNNING
             }
-            TASK_DONE -> return true
-            else -> return false
+            TASK_DONE -> return ABANDON_DONE
+            else -> return ABANDON_RUNNING
         }
     }
 }
