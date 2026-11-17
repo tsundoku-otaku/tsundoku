@@ -350,4 +350,24 @@ class RegexReplacementsProcessorTest {
         const val CATASTROPHIC_PATTERN = "(a+)+\\1b"
         val CATASTROPHIC_INPUT = "a".repeat(40)
     }
+
+    @Test
+    fun `rule stays skipped while any timed out match still runs`() {
+        val key = "overlap-${System.nanoTime()}"
+        RegexReplacementsProcessor.recordTimeout(key)
+        RegexReplacementsProcessor.recordLateFinish(key, completed = true)
+        assertEquals(false, RegexReplacementsProcessor.isTimedOut(key))
+        val other = "overlap2-${System.nanoTime()}"
+        RegexReplacementsProcessor.recordLateFinish(other, completed = true)
+        RegexReplacementsProcessor.recordTimeout(other)
+        assertEquals(false, RegexReplacementsProcessor.isTimedOut(other))
+        val twice = "overlap3-${System.nanoTime()}"
+        RegexReplacementsProcessor.recordTimeout(twice)
+        assertEquals(true, RegexReplacementsProcessor.isTimedOut(twice))
+        RegexReplacementsProcessor.recordTimeout(twice)
+        RegexReplacementsProcessor.recordLateFinish(twice, completed = true)
+        // A second timeout keeps the rule off even once every match has finished.
+        RegexReplacementsProcessor.recordLateFinish(twice, completed = true)
+        assertEquals(true, RegexReplacementsProcessor.isTimedOut(twice))
+    }
 }
