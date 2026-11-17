@@ -167,14 +167,29 @@ class ReaderViewModel @JvmOverloads constructor(
     // A chapter opened at a search match is only marked read once its end is reached.
     private var jumpedChapterId: Long? = null
 
-    // Progress saved before the jump; reading around an earlier match must not overwrite it.
+    // The match position and the progress saved before the jump. Looking at the match, or reading
+    // around it below the saved progress, must not overwrite the saved progress.
+    private var jumpTargetProgress: Int? = null
     private var jumpBaselineProgress: Int? = null
 
     // Leaving the jumped chapter ends the jump; coming back later reads it normally.
     private fun endSearchJumpUnless(chapter: ReaderChapter) {
         if (chapter.chapter.id == jumpedChapterId) return
         jumpedChapterId = null
+        jumpTargetProgress = null
         jumpBaselineProgress = null
+    }
+
+    // True while a save would only record where the search jump landed.
+    private fun holdsJumpProgress(chapterId: Long?, progress: Int): Boolean {
+        if (chapterId == null || chapterId != jumpedChapterId) return false
+        val target = jumpTargetProgress ?: return false
+        if (kotlin.math.abs(progress - target) <= JUMP_HOLD_SLACK_PERCENT) return true
+        val baseline = jumpBaselineProgress
+        if (baseline != null && progress <= baseline) return true
+        jumpTargetProgress = null
+        jumpBaselineProgress = null
+        return false
     }
 
     /** Returned once so later restores, including after process death, use the saved progress. */
@@ -185,7 +200,8 @@ class ReaderViewModel @JvmOverloads constructor(
         pendingJumpProgress = null
         savedState.remove<Int>("search_progress")
         jumpedChapterId = chapterId
-        jumpBaselineProgress = chapter.chapter.last_page_read.takeIf { !chapter.chapter.read && it > progress }
+        jumpTargetProgress = progress
+        jumpBaselineProgress = chapter.chapter.last_page_read.takeIf { !chapter.chapter.read }
         // The backward-jump guard then measures from the match instead of the old position.
         chapter.chapter.last_page_read = progress
         return progress
@@ -846,13 +862,9 @@ class ReaderViewModel @JvmOverloads constructor(
                     return@withLock
                 }
 
-                selectedChapter.chapter.last_page_read = clampedProgress
+                if (holdsJumpProgress(selectedChapter.chapter.id, clampedProgress)) return@withLock
 
-                if (selectedChapter.chapter.id == jumpedChapterId) {
-                    val baseline = jumpBaselineProgress
-                    if (baseline != null && clampedProgress <= baseline) return@withLock
-                    jumpBaselineProgress = null
-                }
+                selectedChapter.chapter.last_page_read = clampedProgress
 
                 // Mark as read if at the configured threshold or more
                 val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.get()
@@ -1900,3 +1912,6 @@ class ReaderViewModel @JvmOverloads constructor(
         data class CopyImage(val uri: Uri) : Event
     }
 }
+
+// How far from a search match the reader can scroll before it counts as reading on.
+private const val JUMP_HOLD_SLACK_PERCENT = 2

@@ -77,10 +77,22 @@ object HtmlTextScanner {
         val closing = content[start + 1] == '/'
         val name = tagName(content, start)
         if (closing || name !in SKIPPED_ELEMENTS || content[end - 1] == '/') return end + 1
-        val close = content.indexOf("</$name", end + 1, ignoreCase = true)
+        val close = closingTagIndex(content, name, end + 1)
         if (close < 0) return end + 1
         val closeEnd = content.indexOf('>', close)
         return if (closeEnd < 0) length else closeEnd + 1
+    }
+
+    // "</head" must not match "</header".
+    private fun closingTagIndex(content: String, name: String, from: Int): Int {
+        var at = from
+        while (true) {
+            val close = content.indexOf("</$name", at, ignoreCase = true)
+            if (close < 0) return -1
+            val after = content.getOrNull(close + 2 + name.length)
+            if (after == null || !(after.isLetterOrDigit() || after == '-')) return close
+            at = close + 2
+        }
     }
 
     @PublishedApi

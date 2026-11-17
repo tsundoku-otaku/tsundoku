@@ -63,4 +63,10 @@ class HtmlTextScannerTest {
         assertEquals("|a long text|", scan("<p title=don't>a long text</p>"))
         assertEquals("|x >y|", scan("<p title='x > y'>x >y</p>"))
     }
+
+    @Test
+    fun `head end tag is not matched by header`() {
+        assertEquals("TitleText", scan("<head><meta charset=utf-8><header>Title</header><p>Text</p>").replace("|", ""))
+        assertEquals("Body", scan("<head><title>x</title></head><p>Body</p>").replace("|", ""))
+    }
 }
