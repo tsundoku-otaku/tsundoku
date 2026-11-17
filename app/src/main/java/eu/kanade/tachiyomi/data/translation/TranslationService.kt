@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -233,85 +234,97 @@ class TranslationService(
         if (translationJob?.isActive == true) return
 
         _isPaused.value = false
+        // A cancel request only applies to the run it was made in.
+        _progressState.update { it.copy(isCancelling = false) }
 
         translationJob = scope.launch {
-            while (isActive && queueMap.isNotEmpty()) {
-                if (_isPaused.value) {
-                    delay(PAUSE_POLL_DELAY_MS)
-                    continue
-                }
-
-                // Pick highest-priority task (fix 4.3)
-                val polled = pollHighestPriority() ?: break
-                // Languages follow current prefs, matching engine selection which resolves at translate time
-                val task = polled.copy(
-                    sourceLanguage = translationPreferences.sourceLanguage().get(),
-                    targetLanguage = translationPreferences.targetLanguage().get(),
-                )
-
-                currentTask = task
-                _currentTranslatingChapterId.value = task.chapterId
-
-                try {
-                    // Resolve chapter name for progress display
-                    val chapterNameForProgress = try {
-                        getChapter.await(task.chapterId)?.name ?: "Chapter ${task.chapterId}"
-                    } catch (_: Exception) {
-                        "Chapter ${task.chapterId}"
-                    }
-
+            try {
+                processQueue()
+            } finally {
+                // A stop() and restart may already have handed the state to a newer run.
+                if (translationJob == null || translationJob === coroutineContext[Job]) {
                     _progressState.update { current ->
                         current.copy(
-                            isRunning = true,
-                            currentChapterName = chapterNameForProgress,
+                            isRunning = false,
+                            isCancelling = false,
+                        currentChapterName = null,
                             currentChapterProgress = 0f,
                         )
                     }
-
-                    translateChapter(task)
-
-                    _progressState.update { current ->
-                        current.copy(
-                            completedChapters = current.completedChapters + 1,
-                            currentChapterProgress = 1f,
-                        )
-                    }
-
-                    // Rate limiting delay
-                    val delayMs = translationPreferences.rateLimitDelayMs().get()
-                    if (delayMs > 0) {
-                        delay(delayMs.toLong())
-                    }
-                } catch (e: CancellationException) {
-                    // Translation was cancelled (e.g., user navigated away), don't log as error
-                    logcat(LogPriority.DEBUG) { "Translation cancelled for chapter ${task.chapterId}" }
-                    throw e // Re-throw to stop processing
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e) { "Translation failed for chapter ${task.chapterId}" }
-                    // Re-queue failed task with lower priority if retry count is low
-                    val retryCount = task.retryCount + 1
-                    if (retryCount < MAX_TASK_RETRIES) {
-                        queueMap[task.chapterId] = task.copy(
-                            status = TranslationStatus.FAILED,
-                            errorMessage = e.message,
-                            retryCount = retryCount,
-                        )
-                    } else {
-                        logcat(LogPriority.ERROR) { "Max retries reached for chapter ${task.chapterId}, skipping" }
-                    }
-                } finally {
-                    currentTask = null
-                    _currentTranslatingChapterId.value = null
-                    publishQueueState()
                 }
             }
+        }
+    }
 
-            _progressState.update { current ->
-                current.copy(
-                    isRunning = false,
-                    currentChapterName = null,
-                    currentChapterProgress = 0f,
-                )
+    private suspend fun processQueue() = coroutineScope {
+        while (isActive && queueMap.isNotEmpty()) {
+            if (_isPaused.value) {
+                delay(PAUSE_POLL_DELAY_MS)
+                continue
+            }
+
+            // Pick highest-priority task (fix 4.3)
+            val polled = pollHighestPriority() ?: break
+            // Languages follow current prefs, matching engine selection which resolves at translate time
+            val task = polled.copy(
+                sourceLanguage = translationPreferences.sourceLanguage().get(),
+                targetLanguage = translationPreferences.targetLanguage().get(),
+            )
+
+            currentTask = task
+            _currentTranslatingChapterId.value = task.chapterId
+
+            try {
+                // Resolve chapter name for progress display
+                val chapterNameForProgress = try {
+                    getChapter.await(task.chapterId)?.name ?: "Chapter ${task.chapterId}"
+                } catch (_: Exception) {
+                    "Chapter ${task.chapterId}"
+                }
+
+                _progressState.update { current ->
+                    current.copy(
+                        isRunning = true,
+                        currentChapterName = chapterNameForProgress,
+                        currentChapterProgress = 0f,
+                    )
+                }
+
+                translateChapter(task)
+
+                _progressState.update { current ->
+                    current.copy(
+                        completedChapters = current.completedChapters + 1,
+                        currentChapterProgress = 1f,
+                    )
+                }
+
+                // Rate limiting delay
+                val delayMs = translationPreferences.rateLimitDelayMs().get()
+                if (delayMs > 0) {
+                    delay(delayMs.toLong())
+                }
+            } catch (e: CancellationException) {
+                // Translation was cancelled (e.g., user navigated away), don't log as error
+                logcat(LogPriority.DEBUG) { "Translation cancelled for chapter ${task.chapterId}" }
+                throw e // Re-throw to stop processing
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Translation failed for chapter ${task.chapterId}" }
+                // Re-queue failed task with lower priority if retry count is low
+                val retryCount = task.retryCount + 1
+                if (retryCount < MAX_TASK_RETRIES) {
+                    queueMap[task.chapterId] = task.copy(
+                        status = TranslationStatus.FAILED,
+                        errorMessage = e.message,
+                        retryCount = retryCount,
+                    )
+                } else {
+                    logcat(LogPriority.ERROR) { "Max retries reached for chapter ${task.chapterId}, skipping" }
+                }
+            } finally {
+                currentTask = null
+                _currentTranslatingChapterId.value = null
+                publishQueueState()
             }
         }
     }
@@ -500,6 +513,7 @@ class TranslationService(
         val partial = translatedChapterRepository.getTmpTranslation(locator, task.targetLanguage)
             ?.let { TranslationHtmlUtils.parsePartialHtml(it.translatedContent) }
             ?.takeIf { TranslationCachePolicy.canReuse(it, task.forceRetranslate, task.createdAt) }
+            ?.takeIf { it.sourceParagraphs != null || !TranslationHtmlUtils.hasNestedMedia(content) }
 
         // Build per-chunk paragraph lists for context tracking
         val chunkParagraphsList = chunks.map { c -> TranslationHtmlUtils.splitParagraphsPreserving(c) }
