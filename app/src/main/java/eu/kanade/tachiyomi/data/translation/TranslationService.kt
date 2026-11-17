@@ -247,7 +247,7 @@ class TranslationService(
                         current.copy(
                             isRunning = false,
                             isCancelling = false,
-                        currentChapterName = null,
+                            currentChapterName = null,
                             currentChapterProgress = 0f,
                         )
                     }
