@@ -148,7 +148,18 @@ internal object LibraryPageSql {
         val membership = if (smallCategory) Membership.LOOKUP else Membership.WALK
         val direction = if (spec.sortAscending) "ASC" else "DESC"
         if (isNovel == null && limit != null) {
-            return mergedSelect(columns, categoryId, spec, limit, offset, membership, bySource, direction, after, withKey)
+            return mergedSelect(
+                columns,
+                categoryId,
+                spec,
+                limit,
+                offset,
+                membership,
+                bySource,
+                direction,
+                after,
+                withKey,
+            )
         }
         val where = where(categoryId, isNovel, spec, args, membership)
         val sql = buildString {
