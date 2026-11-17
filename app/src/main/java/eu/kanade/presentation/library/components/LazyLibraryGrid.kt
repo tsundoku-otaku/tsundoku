@@ -2,15 +2,21 @@ package eu.kanade.presentation.library.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import eu.kanade.presentation.browse.components.BrowseSourceLoadingItem
+import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.components.FastScrollLazyVerticalGrid
+import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.plus
 
 @Composable
@@ -30,26 +36,36 @@ internal fun LazyLibraryGrid(
     )
 }
 
-/**
- * Invisible trailing item that fires [onLoadMore] when it enters composition (scrolled to end).
- * Keyed on [loadKey] (the per-category pagination generation) so it re-fires on every fetched page
- * even when in-memory filters hid the whole page, so a filtered-out page can't dead-end the
- * category. The key stops changing once the category is exhausted. No-op when [onLoadMore] null.
- */
-internal fun LazyGridScope.loadMoreSentinel(loadKey: Long, onLoadMore: (() -> Unit)?) {
-    if (onLoadMore == null) return
+internal fun LazyGridScope.loadMoreFooter(isLoading: Boolean, onRetry: (() -> Unit)?) {
+    if (!isLoading && onRetry == null) return
     item(
         span = { GridItemSpan(maxLineSpan) },
-        contentType = { "library_load_more" },
+        contentType = "library_load_more_footer",
     ) {
-        LaunchedEffect(loadKey) { onLoadMore() }
+        LoadMoreFooterItem(isLoading, onRetry)
     }
 }
 
-internal fun LazyListScope.loadMoreSentinel(loadKey: Long, onLoadMore: (() -> Unit)?) {
-    if (onLoadMore == null) return
-    item(contentType = "library_load_more") {
-        LaunchedEffect(loadKey) { onLoadMore() }
+internal fun LazyListScope.loadMoreFooter(isLoading: Boolean, onRetry: (() -> Unit)?) {
+    if (!isLoading && onRetry == null) return
+    item(contentType = "library_load_more_footer") {
+        LoadMoreFooterItem(isLoading, onRetry)
+    }
+}
+
+@Composable
+private fun LoadMoreFooterItem(isLoading: Boolean, onRetry: (() -> Unit)?) {
+    if (isLoading || onRetry == null) {
+        BrowseSourceLoadingItem()
+        return
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        TextButton(onClick = onRetry) {
+            Text(stringResource(MR.strings.action_retry))
+        }
     }
 }
 
@@ -60,7 +76,7 @@ internal fun LazyGridScope.globalSearchItem(
     if (!searchQuery.isNullOrEmpty()) {
         item(
             span = { GridItemSpan(maxLineSpan) },
-            contentType = { "library_global_search_item" },
+            contentType = "library_global_search_item",
         ) {
             GlobalSearchItem(
                 searchQuery = searchQuery,
