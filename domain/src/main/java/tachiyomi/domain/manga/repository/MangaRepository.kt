@@ -74,7 +74,7 @@ interface MangaRepository {
     /**
      * returns only (id, url) pairs for favorites.
      */
-    suspend fun getFavoriteIdAndUrl(): List<Pair<Long, String>>
+    suspend fun getFavoriteIdUrlAndSource(): List<Triple<Long, String, Long>>
 
     /**
      * returns only (id, genre) pairs for favorites that have genres.

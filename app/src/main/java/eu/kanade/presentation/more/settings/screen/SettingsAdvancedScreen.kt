@@ -994,7 +994,9 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     val setMangaCategories = Injekt.get<SetMangaCategories>()
 
                                     val chunkSize = 50
-                                    val favorites = mangaRepo.getFavoriteIdAndUrl()
+                                    val massImport = Injekt.get<MassImport>()
+                                    val favorites = mangaRepo.getFavoriteIdUrlAndSource()
+                                        .groupBy({ it.third }, { it.first to it.second })
                                     val allMatchedIds = mutableSetOf<Long>()
 
                                     fun processChunk(urlChunk: List<String>) {
@@ -1003,33 +1005,7 @@ object SettingsAdvancedScreen : SearchableSettings {
 
                                             for (url in urlChunk) {
                                                 try {
-                                                    // Extract path from URL
-                                                    val uri = java.net.URI(url)
-                                                    val path =
-                                                        uri.path?.removePrefix("/")?.removeSuffix("/") ?: continue
-                                                    // A bare domain would match every favorite.
-                                                    if (path.isEmpty()) continue
-
-                                                    val matchingIds = favorites.filter { (_, mangaUrl) ->
-                                                        val mangaPath = try {
-                                                            val mangaUri = java.net.URI(mangaUrl)
-                                                            mangaUri.path?.removePrefix("/")?.removeSuffix("/")
-                                                        } catch (e: Exception) {
-                                                            mangaUrl.removePrefix("/").removeSuffix("/")
-                                                        }
-
-                                                        // Whole path segments only, so a short path can't match
-                                                        // unrelated entries.
-                                                        !mangaPath.isNullOrEmpty() &&
-                                                            (
-                                                                mangaPath == path ||
-                                                                    path.startsWith("$mangaPath/") ||
-                                                                    path.endsWith("/$mangaPath") ||
-                                                                    mangaPath.endsWith("/$path")
-                                                                )
-                                                    }.map { it.first }
-
-                                                    toUnfavorite.addAll(matchingIds)
+                                                    toUnfavorite.addAll(massImport.matchFavorites(url, favorites))
                                                 } catch (e: Exception) {
                                                     logcat(LogPriority.ERROR, e) { "Error processing URL: $url" }
                                                     errorCount++

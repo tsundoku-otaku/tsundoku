@@ -49,11 +49,39 @@ class MassImport(
         private const val OPENERS = "([{"
         private const val CLOSERS = ")]}"
 
-        // A scheme right after one of these belongs to the URL (archive and redirect links).
-        private const val EMBEDDED_SCHEME_PREFIX = "/=?&#"
+        // A scheme right after one of these belongs to the URL (redirect links).
+        private const val EMBEDDED_SCHEME_PREFIX = "=?&#"
+
+        // Path segments archive services put before the archived URL (web.archive.org/web/2020/...).
+        private val ARCHIVE_SEGMENT =
+            Regex("\\d{1,14}(?:[a-z]{2}_)?|\\*|newest|oldest|timegate|timemap", RegexOption.IGNORE_CASE)
 
         // URLs plus the leftover non-URL fields, in line order.
         fun tokenizeLine(line: String): List<String> = scan(line, keepFields = true)
+
+        /**
+         * Whether a favorite stored as [storedUrl] is the entry at [path] (both in the source's stored
+         * form). Equal path + query, or one ends with the other on a segment boundary for sources
+         * that store a shorter or longer form.
+         */
+        fun storedUrlMatches(path: String, storedUrl: String): Boolean {
+            val request = matchKey(path)
+            val stored = matchKey(storedUrl)
+            if (request.isEmpty() || stored.isEmpty()) return false
+            return request == stored || request.endsWith("/$stored") || stored.endsWith("/$request")
+        }
+
+        private fun matchKey(url: String): String {
+            val pathAndQuery = runCatching {
+                val uri = URI(url.trim())
+                if (uri.host == null) {
+                    null
+                } else {
+                    (uri.rawPath ?: "") + (uri.rawQuery?.takeIf { it.isNotEmpty() }?.let { "?$it" } ?: "")
+                }
+            }.getOrNull() ?: url.trim().substringBefore('#')
+            return pathAndQuery.trim('/')
+        }
 
         fun urlTokens(line: String): List<String> = scan(line, keepFields = false)
 
@@ -127,18 +155,27 @@ class MassImport(
 
         private fun urlEnd(line: String, start: Int): Int {
             val bodyStart = start + schemeLength(line, start)
-            var inQuery = false
             for (i in bodyStart until line.length) {
                 val c = line[i]
                 if (isBreak(c) || c in URL_TERMINATORS) return i
-                if (c in LIST_SEPARATORS && separatorEndsUrl(line, c, i + 1, inQuery, start)) return i
-                if (c == '?' || c == '#') inQuery = true
-                if (i > bodyStart && line[i - 1] !in EMBEDDED_SCHEME_PREFIX && schemeLength(line, i) > 0) return i
+                if (c in LIST_SEPARATORS && separatorEndsUrl(line, c, i + 1, start)) return i
+                if (i > bodyStart && schemeLength(line, i) > 0 && !isEmbeddedScheme(line, bodyStart, i)) return i
             }
             return line.length
         }
 
-        // Query values use separators as lists, so there only a clear field boundary ends the URL:
+        // A scheme after a slash only belongs to the URL right after the host (archive.ph/https://...)
+        // or after an archive segment; otherwise it starts a second URL pasted onto a path ending in '/'.
+        private fun isEmbeddedScheme(line: String, bodyStart: Int, at: Int): Boolean {
+            val prev = line[at - 1]
+            if (prev in EMBEDDED_SCHEME_PREFIX) return true
+            if (prev != '/') return false
+            val segmentStart = line.lastIndexOf('/', at - 2) + 1
+            if (segmentStart <= bodyStart) return true
+            return ARCHIVE_SEGMENT.matches(line.subSequence(segmentStart, at - 1))
+        }
+
+        // Paths and query values can hold separators, so only a clear field boundary ends the URL:
         // the same separator right before the URL (a delimited row), or a comma or semicolon before
         // a field with no further parameter that is capitalized (comma) or any word (semicolon).
         // A separator is always kept before '_' or '%' (wiki-style titles).
@@ -146,13 +183,11 @@ class MassImport(
             line: String,
             separator: Char,
             next: Int,
-            inQuery: Boolean,
             urlStart: Int,
         ): Boolean {
             val n = line.getOrNull(next) ?: return true
             if (isBreak(n) || n in URL_TERMINATORS || n == '\'' || schemeLength(line, next) > 0) return true
             if (n == '_' || n == '%') return false
-            if (!inQuery) return true
             if (precedingSeparator(line, urlStart) == separator) return true
             if (separator == '|' || n.isDigit()) return false
             for (j in next until line.length) {
@@ -244,6 +279,18 @@ class MassImport(
         return networkToLocalManga(sManga.toDomainManga(source.id, source.isNovelSource()))
     }
 
+    /**
+     * Ids of [favorites] (id, stored url, source id) that [url] points at: only favorites of a source
+     * on the URL's host, compared by whole path + query in the source's stored form.
+     */
+    fun matchFavorites(url: String, favorites: Map<Long, List<Pair<Long, String>>>): List<Long> {
+        return findMatchingSources(url).flatMap { source ->
+            val candidates = favorites[source.id] ?: return@flatMap emptyList()
+            val path = extractPathFromUrl(url, getSourceBaseUrl(source), source)
+            candidates.filter { (_, stored) -> storedUrlMatches(path, stored) }.map { it.first }
+        }
+    }
+
     private fun getAllSources(): List<CatalogueSource> {
         return sourceManager.getAll().filterIsInstance<CatalogueSource>().filter { it is HttpSource || it is JsSource }
     }
@@ -257,12 +304,42 @@ class MassImport(
         sources: List<CatalogueSource> = getAllSources(),
         preferredSourceId: Long? = null,
     ): CatalogueSource? {
-        val urlHost = try {
-            URI(url).host?.lowercase()?.removePrefix("www.")
-        } catch (_: Exception) {
-            null
+        val matchingSources = findMatchingSources(url, sources)
+
+        if (matchingSources.isEmpty()) {
+            val urlHost = hostOf(url)
+            if (urlHost == null || missingSourceHostLogCache.putIfAbsent(urlHost, true) == null) {
+                logcat(LogPriority.WARN) { "MassImport: No source match for $url host=$urlHost" }
+            }
+            return null
         }
-        val matchingSources = sources.filter { source ->
+        if (matchingSources.size == 1) return matchingSources.first()
+
+        // Prefer the caller's source (e.g. the currently browsed source) when it matches.
+        if (preferredSourceId != null) {
+            matchingSources.firstOrNull { it.id == preferredSourceId }?.let { return it }
+        }
+
+        val enabledLanguages = sourcePreferences.enabledLanguages.get()
+        val disabledSources = sourcePreferences.disabledSources.get()
+        val enabledSources = matchingSources.filter {
+            it.lang in enabledLanguages && it.id.toString() !in disabledSources
+        }
+        val bestLangSources = if (enabledSources.isNotEmpty()) enabledSources else matchingSources
+        val kotlinSources = bestLangSources.filter { it !is JsSource }
+
+        return kotlinSources.firstOrNull() ?: bestLangSources.first()
+    }
+
+    private fun hostOf(url: String): String? = try {
+        URI(url).host?.lowercase()?.removePrefix("www.")
+    } catch (_: Exception) {
+        null
+    }
+
+    fun findMatchingSources(url: String, sources: List<CatalogueSource> = getAllSources()): List<CatalogueSource> {
+        val urlHost = hostOf(url)
+        return sources.filter { source ->
             try {
                 val rawBase = getSourceBaseUrl(source)
                 val baseForUri = if (rawBase.startsWith("http")) rawBase else "https://$rawBase"
@@ -286,29 +363,6 @@ class MassImport(
                 false
             }
         }
-
-        if (matchingSources.isEmpty()) {
-            if (urlHost == null || missingSourceHostLogCache.putIfAbsent(urlHost, true) == null) {
-                logcat(LogPriority.WARN) { "MassImport: No source match for $url host=$urlHost" }
-            }
-            return null
-        }
-        if (matchingSources.size == 1) return matchingSources.first()
-
-        // Prefer the caller's source (e.g. the currently browsed source) when it matches.
-        if (preferredSourceId != null) {
-            matchingSources.firstOrNull { it.id == preferredSourceId }?.let { return it }
-        }
-
-        val enabledLanguages = sourcePreferences.enabledLanguages.get()
-        val disabledSources = sourcePreferences.disabledSources.get()
-        val enabledSources = matchingSources.filter {
-            it.lang in enabledLanguages && it.id.toString() !in disabledSources
-        }
-        val bestLangSources = if (enabledSources.isNotEmpty()) enabledSources else matchingSources
-        val kotlinSources = bestLangSources.filter { it !is JsSource }
-
-        return kotlinSources.firstOrNull() ?: bestLangSources.first()
     }
 
     fun getSourceBaseUrl(source: CatalogueSource): String {

@@ -390,4 +390,42 @@ class MassImportTokenizeLineTest {
             MassImport.urlTokens("title,https://example.com/b?tag=a,author"),
         )
     }
+
+    @Test
+    fun `commas in a path are kept unless a column follows`() {
+        assertEquals(
+            listOf("https://example.com/novel/a,b"),
+            MassImport.urlTokens("https://example.com/novel/a,b"),
+        )
+        assertEquals(
+            listOf("https://example.com/novel/a"),
+            MassImport.urlTokens("https://example.com/novel/a,Some Title"),
+        )
+        assertEquals(
+            listOf("https://example.com/novel/a"),
+            MassImport.urlTokens("title,https://example.com/novel/a,author"),
+        )
+    }
+
+    @Test
+    fun `url pasted onto a path ending in a slash is split`() {
+        assertEquals(
+            listOf("https://a.example.com/x/", "https://b.example.com/y"),
+            MassImport.urlTokens("https://a.example.com/x/https://b.example.com/y"),
+        )
+        val wayback = "https://web.archive.org/web/20200101000000id_/https://a.example.com/x"
+        assertEquals(listOf(wayback), MassImport.urlTokens(wayback))
+        val archive = "https://archive.ph/https://a.example.com/x"
+        assertEquals(listOf(archive), MassImport.urlTokens(archive))
+    }
+
+    @Test
+    fun `stored url matching needs the whole path and query`() {
+        assertEquals(false, MassImport.storedUrlMatches("/book?id=5", "/book?id=7"))
+        assertEquals(true, MassImport.storedUrlMatches("/book?id=5", "/book?id=5"))
+        assertEquals(true, MassImport.storedUrlMatches("/novel/abc/", "https://example.com/novel/abc"))
+        assertEquals(true, MassImport.storedUrlMatches("/novel/abc", "abc"))
+        assertEquals(false, MassImport.storedUrlMatches("/novel/abc", "/novel/abcd"))
+        assertEquals(false, MassImport.storedUrlMatches("/", "/novel/abc"))
+    }
 }
