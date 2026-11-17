@@ -1,6 +1,6 @@
 package eu.kanade.domain.manga.model
 
-import org.jsoup.Jsoup
+import eu.kanade.tachiyomi.util.chapter.HtmlTextScanner
 
 /**
  * Word statistics for the downloaded chapters of a novel.
@@ -28,48 +28,43 @@ data class WordDensity(
         get() = densityTier(averageWords)
 
     companion object {
-        /** Averages up to this many words per chapter are tier 1. */
-        const val FIRST_TIER_MAX_WORDS = 400L
-
-        /** Each following tier spans this many words. */
-        const val TIER_STEP_WORDS = 100L
-
-        const val MAX_TIER = 10
+        /** Each tier spans this many average words per chapter. */
+        const val TIER_STEP_WORDS = 500L
 
         /**
-         * Maps an average chapter length onto a small 1..[MAX_TIER] indicator:
-         * 1-400 words is 1, 401-500 is 2, 501-600 is 3, and so on, capped at [MAX_TIER].
+         * Maps an average chapter length onto a tier: 1-500 words is 1, 501-1000 is 2,
+         * 1001-1500 is 3, and so on without an upper bound.
          */
         fun densityTier(averageWords: Long): Int {
-            if (averageWords <= FIRST_TIER_MAX_WORDS) return 1
-            val tier = 2 + (averageWords - FIRST_TIER_MAX_WORDS - 1) / TIER_STEP_WORDS
-            return tier.coerceAtMost(MAX_TIER.toLong()).toInt()
+            if (averageWords <= 0) return 1
+            return ((averageWords - 1) / TIER_STEP_WORDS + 1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         }
 
         /** Lowest average word count that lands in [tier]. */
-        fun tierMinWords(tier: Int): Long =
-            if (tier <= 1) 1 else FIRST_TIER_MAX_WORDS + 1 + (tier - 2) * TIER_STEP_WORDS
+        fun tierMinWords(tier: Int): Long = if (tier <= 1) 1 else (tier - 1) * TIER_STEP_WORDS + 1
 
-        /** Highest average word count that lands in [tier], or null for the open-ended top tier. */
-        fun tierMaxWords(tier: Int): Long? =
-            if (tier >= MAX_TIER) null else FIRST_TIER_MAX_WORDS + (tier - 1) * TIER_STEP_WORDS
+        /** Highest average word count that lands in [tier]. */
+        fun tierMaxWords(tier: Int): Long = tier.coerceAtLeast(1) * TIER_STEP_WORDS
 
-        /**
-         * Counts whitespace-separated words in chapter HTML or plain text. Only the body is
-         * counted: markup, scripts and styles are dropped and entities such as `&nbsp;` are decoded.
-         */
+        /** Counts whitespace-separated words in chapter HTML or plain text. Markup, scripts and styles are skipped. */
         fun countWords(content: String): Int {
-            if (content.isBlank()) return 0
-            val text = Jsoup.parse(content).body().text()
             var words = 0
             var inWord = false
-            for (char in text) {
-                // isSpaceChar also covers no-break spaces, which Jsoup keeps when decoding &nbsp;
-                val isSeparator = char.isWhitespace() || Character.isSpaceChar(char)
-                if (!isSeparator && !inWord) words++
-                inWord = !isSeparator
-            }
+            HtmlTextScanner.scan(
+                content,
+                onChar = { char ->
+                    if (char.isWhitespace() || Character.isSpaceChar(char) || char == ZERO_WIDTH_SPACE) {
+                        inWord = false
+                    } else {
+                        if (!inWord) words++
+                        inWord = true
+                    }
+                },
+                onBreak = { inWord = false },
+            )
             return words
         }
+
+        private const val ZERO_WIDTH_SPACE = '\u200B'
     }
 }
