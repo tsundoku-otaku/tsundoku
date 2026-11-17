@@ -294,6 +294,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (isEditingMode) return false
                 if (e.eventTime - e.downTime >= android.view.ViewConfiguration.getLongPressTimeout()) return true
+                // An in-chapter link jump is the tap's action; any other link tap still uses the tap zones.
+                if (fragmentLinkTappedAt >= e.downTime) return true
 
                 val pos = android.graphics.PointF(
                     e.x / container.width.toFloat(),
@@ -673,6 +675,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             }
 
             webViewClient = object : WebViewClient() {
+                // Tapped links never navigate the reader away from the chapter.
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: android.webkit.WebResourceRequest?,
+                ): Boolean {
+                    return request != null && request.isForMainFrame && request.hasGesture()
+                }
+
                 override fun shouldInterceptRequest(
                     view: WebView?,
                     request: android.webkit.WebResourceRequest?,
@@ -710,6 +720,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     if (loadedDocumentIsPaged) styler.injectPagedReader()
                     // Fresh DOM lost the --tsundoku-safe-* vars and menuVisible flag; re-apply them.
                     pushReaderChrome()
+                    styler.injectFragmentLinks()
                     restoreScrollPosition()
                     syncShortChapterProgressIfNeeded()
                     // Paged mode's own edge-swipe chevron replaces this button; it would also
@@ -2078,9 +2089,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     override fun handleGenericMotionEvent(event: MotionEvent): Boolean = false
 
+    // Uptime of the last tap that fragment-links.js turned into an in-chapter jump.
+    @Volatile
+    private var fragmentLinkTappedAt = 0L
+
     @Keep
     @Suppress("unused")
     inner class WebViewInterface {
+        @JavascriptInterface
+        fun onFragmentLinkTapped() {
+            fragmentLinkTappedAt = android.os.SystemClock.uptimeMillis()
+        }
+
         @JavascriptInterface
         fun onContentEdited() {
             activity.runOnUiThread {

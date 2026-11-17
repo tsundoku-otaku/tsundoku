@@ -276,6 +276,18 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
+    fun injectFragmentLinks() {
+        val js = NovelWebViewJsAssets.loadWith(
+            activity,
+            "fragment-links.js",
+            mapOf(
+                "TSUNDOKU_OBJECT_NAME" to TSUNDOKU_OBJECT_NAME,
+                "CHAPTER_TAG_NAME" to CHAPTER_TAG_NAME,
+            ),
+        )
+        evaluateJs(js)
+    }
+
     fun injectPagedReader() {
         val js = NovelWebViewJsAssets.loadWith(
             activity,
