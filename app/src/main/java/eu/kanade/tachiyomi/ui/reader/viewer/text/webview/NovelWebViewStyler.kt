@@ -211,6 +211,9 @@ internal class NovelWebViewStyler(
                 "STYLE_ID" to STYLE_ID_CUSTOM,
                 "CSS" to quoteForJson(payload.css),
                 "KEEP_POSITION" to keepPosition.toString(),
+                "CONTAINER_ID" to TSUNDOKU_CHAPTERS_CONTAINER_ID,
+                "CHAPTER_TAG" to CHAPTER_TAG_NAME.lowercase(),
+                "DIVIDER_CLASS" to CHAPTER_DIVIDER_CLASS,
             ),
         )
         evaluateJs(js)

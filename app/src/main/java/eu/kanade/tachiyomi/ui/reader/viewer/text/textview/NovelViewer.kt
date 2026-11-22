@@ -322,7 +322,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             // While TTS is reading the visible chapter it owns progress for that chapter (chunk-based,
             // persisted by saveTtsProgressForChunk and mirrored to the slider). Letting the scroll path
             // also write would race the same page's last_page_read with a different percent.
-            if (!inGracePeriod && !isTtsDrivingVisibleChapter()) {
+            // The separator toggle scrolls back to where it was, so the shifts in between aren't reading.
+            if (!inGracePeriod && separatorToggleGuard == null && !isTtsDrivingVisibleChapter()) {
                 scheduleProgressSave(chapterProgress)
                 activity.onNovelProgressChanged(chapterProgress)
             }
@@ -599,7 +600,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 }
                 val page = preparedChapter.pages?.firstOrNull() ?: run {
                     val prepareError = (preparedChapter.state as? ReaderChapter.State.Error)?.error
-                    logcat(LogPriority.ERROR) { "NovelViewer: No page in prepared next chapter, prepareError=$prepareError" }
+                    logcat(LogPriority.ERROR) {
+                        "NovelViewer: No page in prepared next chapter, prepareError=$prepareError"
+                    }
                     loadFailed = true
                     if (prepareError != null) {
                         inlineFeedback.showInlineError(prepareError, isPrepend = false, onRetry = retry)
@@ -1644,7 +1647,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     inlineFeedback.showInlineError(
                         activity.stringResource(TDMR.strings.novel_error_empty_chapter),
                         isPrepend = false,
-                        onRetry = { nextLoadRequiresManualRetry = false; loadNextChapterIfAvailable() },
+                        onRetry = {
+                            nextLoadRequiresManualRetry = false
+                            loadNextChapterIfAvailable()
+                        },
                     )
                 } else {
                     abortPendingTtsOnLoadFailure()
