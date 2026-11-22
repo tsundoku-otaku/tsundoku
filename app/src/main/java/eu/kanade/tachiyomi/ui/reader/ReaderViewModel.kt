@@ -61,6 +61,7 @@ import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -485,16 +486,17 @@ class ReaderViewModel @JvmOverloads constructor(
     private suspend fun loadAdjacent(chapter: ReaderChapter): Boolean {
         val loader = loader ?: return false
         if (state.value.isLoadingAdjacentChapter) return false
-        reloadJob?.cancelAndJoin()
+        // Set before waiting on the reload, so a second request meanwhile is turned away.
+        mutableState.update { it.copy(isLoadingAdjacentChapter = true) }
 
         logcat { "Loading adjacent ${chapter.chapter.url}" }
 
-        mutableState.update { it.copy(isLoadingAdjacentChapter = true) }
         // loadChapter already surfaces a failure to the viewer (chapter.state = Error triggers
         // displayError() via setChapters), so this catch only needs to stop the caller from
         // treating the switch as successful - see the false return below.
         var success = true
         try {
+            reloadJob?.cancelAndJoin()
             withIOContext {
                 loadChapter(loader, chapter)
             }
@@ -661,14 +663,16 @@ class ReaderViewModel @JvmOverloads constructor(
         val loader = loader ?: return false
 
         val previousJob = reloadJob
-        reloadJob = viewModelScope.launchIO {
+        // Started atomically so even a reload cancelled before it runs still cancels and waits for the earlier
+        // ones.
+        reloadJob = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.ATOMIC) {
             // Serialized so each reload sees the loader the previous one left behind. The wait can't be
             // cut short: a reload cancelled while waiting would let the next one start before the
             // earlier ones finished unwinding.
             previousJob?.cancel()
             withContext(NonCancellable) { previousJob?.join() }
             ensureActive()
-            if (currChapter !== state.value.viewerChapters?.currChapter) return@launchIO
+            if (currChapter !== state.value.viewerChapters?.currChapter) return@launch
             val previousLoader = currChapter.pageLoader
             currChapter.state = ReaderChapter.State.Wait
             try {
