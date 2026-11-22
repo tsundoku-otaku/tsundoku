@@ -68,6 +68,14 @@ class ManageFilterPresetsTest {
     }
 
     @Test
+    fun `a default preset is saved without search text`() {
+        manage.savePreset(1L, "p", filters(true), setAsDefault = true, searchQuery = "query")
+
+        assertNull(manage.getPresets(1L).presets.single().searchQuery)
+        assertTrue(storedQueries.isEmpty())
+    }
+
+    @Test
     fun `getPreset returns null for an unknown id`() {
         assertNull(manage.getPreset(1L, 42L))
     }
@@ -101,6 +109,8 @@ class ManageFilterPresetsTest {
     private class Order(values: Array<String>, state: Selection? = null) : Filter.Sort("Order", values, state)
 
     private class Tags(items: List<Flag>) : Filter.Group<Flag>("Tags", items)
+
+    private class Query(name: String) : Filter.Text(name)
 
     private fun restore(saved: FilterList, target: FilterList) {
         ManageFilterPresets.applyPresetState(target, ManageFilterPresets.serializeFilters(saved))
@@ -207,6 +217,16 @@ class ManageFilterPresetsTest {
         restore(FilterList(Filter.Header("Tags"), Tags(listOf(Flag("x", true)))), target)
 
         assertTrue((target[1] as Tags).state.single().state)
+    }
+
+    @Test
+    fun `a same-named filter of another kind leaves the slot to the matching one`() {
+        val target = FilterList(Query("Status"), Choice("Status", arrayOf("a", "b")))
+
+        restore(FilterList(Choice("Status", arrayOf("a", "b"), state = 1)), target)
+
+        assertEquals("", (target[0] as Query).state)
+        assertEquals(1, (target[1] as Choice).state)
     }
 
     @Test

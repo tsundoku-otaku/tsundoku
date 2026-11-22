@@ -306,7 +306,7 @@ class BrowseSourceViewModel(
         // search text goes with the rest of it, and so does search text an applied preset set
         mutableState.update {
             val previous = it.pendingPreset
-            val previousToolbarQuery = previous?.previousToolbarQuery ?: it.toolbarQuery
+            val previousToolbarQuery = if (previous != null) previous.previousToolbarQuery else it.toolbarQuery
             if (it.searchesAppliedPresetQuery) {
                 it.copy(
                     pendingFilters = freshFilters,
@@ -332,7 +332,9 @@ class BrowseSourceViewModel(
         // Reset initial page to 1 when listing changes (e.g., switching between Popular, Latest, Search)
         _initialPage.value = 1L
         _targetEndPage.value = null
-        mutableState.update { it.copy(listing = listing, toolbarQuery = null, pendingPreset = null) }
+        mutableState.update {
+            it.copy(listing = listing, toolbarQuery = null, pendingPreset = null, appliedPresetQuery = null)
+        }
     }
 
     fun setFilters(filters: FilterList) {
@@ -388,6 +390,8 @@ class BrowseSourceViewModel(
                 filters = newFilters, // Ensure state.filters is also updated
                 toolbarQuery = newQuery,
                 pendingPreset = null,
+                // Text searched by hand is no longer the text a preset set
+                appliedPresetQuery = it.appliedPresetQuery.takeIf { _ -> newQuery == input.query },
             )
         }
     }
@@ -640,7 +644,8 @@ class BrowseSourceViewModel(
             mutableState.update {
                 // Loading another preset on top keeps what was there before the first one
                 val previous = it.pendingPreset
-                val previousToolbarQuery = previous?.previousToolbarQuery ?: it.toolbarQuery
+                // An empty toolbar before the first preset is a saved state too, not a missing one
+                val previousToolbarQuery = if (previous != null) previous.previousToolbarQuery else it.toolbarQuery
                 // A preset without search text drops the text an earlier applied preset searched with
                 val dropsQuery = preset.searchQuery == null && it.searchesAppliedPresetQuery
                 it.copy(

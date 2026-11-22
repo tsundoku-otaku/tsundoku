@@ -71,9 +71,11 @@ class ManageFilterPresets(
 
             // Query first: a query whose preset failed to save is never read, a preset without its
             // query would load as a plain filter preset.
-            if (searchQuery != null) {
+            // Auto-apply only restores filters, so the default can't carry search text
+            val query = searchQuery.takeIf { !setAsDefault }
+            if (query != null) {
                 val queries = preferences.filterPresetQueries(sourceId)
-                queries.set(queries.get() + (newPreset.id to searchQuery))
+                queries.set(queries.get() + (newPreset.id to query))
             }
             preferences.filterPresets(sourceId).set(
                 FilterPresetList(updatedPresets),
@@ -246,10 +248,7 @@ class ManageFilterPresets(
                         val item = element as? JsonObject ?: return@forEach
                         val name = item["name"]?.asPrimitive()?.contentOrNull ?: return@forEach
                         val itemState = item["state"]?.asPrimitive()
-                        val slot = slots.next(name) {
-                            val stateful = items[it] is Filter.CheckBox || items[it] is Filter.TriState
-                            stateful == (itemState != null)
-                        }
+                        val slot = slots.next(name) { (items[it] as? Filter<*>).holdsGroupState(itemState) }
                         when (val groupFilter = slot?.let { items[it] }) {
                             is Filter.CheckBox -> itemState?.booleanOrNull?.let { groupFilter.state = it }
                             is Filter.TriState ->
@@ -281,13 +280,26 @@ class ManageFilterPresets(
             }
         }
 
+        // Only a state the filter can take claims it, so a same-named filter of another kind leaves
+        // the slot for the positional fallback.
         private fun Filter<*>.holds(state: JsonElement): Boolean = when (this) {
-            is Filter.CheckBox, is Filter.TriState, is Filter.Text, is Filter.Select<*> ->
-                state is JsonPrimitive && state !is JsonNull
+            is Filter.CheckBox -> state.asPrimitive().isBoolean()
+            is Filter.TriState, is Filter.Select<*> -> state.asPrimitive().isInt()
+            is Filter.Text -> state.asPrimitive()?.isString == true
             is Filter.Sort -> state is JsonObject
             is Filter.Group<*> -> state is JsonArray
             else -> state is JsonNull
         }
+
+        private fun Filter<*>?.holdsGroupState(state: JsonPrimitive?): Boolean = when (this) {
+            is Filter.CheckBox -> state.isBoolean()
+            is Filter.TriState -> state.isInt()
+            else -> state == null
+        }
+
+        private fun JsonPrimitive?.isBoolean() = this != null && !isString && booleanOrNull != null
+
+        private fun JsonPrimitive?.isInt() = this != null && !isString && intOrNull != null
 
         private val IDENTITY_NAME = Regex("""[\w.$]+@[0-9a-f]+""")
 
