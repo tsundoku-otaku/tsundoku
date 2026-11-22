@@ -95,6 +95,9 @@ class TranslationService(
     @Volatile
     private var currentTask: TranslationTask? = null
 
+    // A finishing run's ownership check and clear must not interleave with the next run taking over.
+    private val currentTaskLock = Any()
+
     /**
      * The chapter ID currently being translated.
      * Exposed so the queue UI can highlight it (fix 6.2).
@@ -280,8 +283,10 @@ class TranslationService(
                 targetLanguage = translationPreferences.targetLanguage().get(),
             )
 
-            currentTask = task
-            _currentTranslatingChapterId.value = task.chapterId
+            synchronized(currentTaskLock) {
+                currentTask = task
+                _currentTranslatingChapterId.value = task.chapterId
+            }
 
             try {
                 // Resolve chapter name for progress display
@@ -332,9 +337,11 @@ class TranslationService(
                 }
             } finally {
                 // A cancelled run finishing after start() launched a new one must not clear the new run's task.
-                if (currentTask === task) {
-                    currentTask = null
-                    _currentTranslatingChapterId.value = null
+                synchronized(currentTaskLock) {
+                    if (currentTask === task) {
+                        currentTask = null
+                        _currentTranslatingChapterId.value = null
+                    }
                 }
                 publishQueueState()
             }
