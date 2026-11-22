@@ -1762,6 +1762,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             if (loader == null) {
                 logcat(LogPriority.ERROR) { "NovelViewer: No page loader available" }
                 hideLoadingIndicator()
+                abortPendingTtsOnLoadFailure()
                 return@launch
             }
 
