@@ -899,7 +899,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 }
                 // A plain WebView reload never reaches the real-chapter path that installs the reader
                 // scripts, fragment links and saved position.
+                val resumeTts = ttsController.isTtsAutoPlay
                 reloadChapter()
+                // The reload stops TTS; it picks up again from the restored position once the chapter renders.
+                if (resumeTts) ttsController.pendingStartRequest = TtsController.StartRequest.VIEWPORT
             },
             onTtsSettingsChanged = {
                 if (ttsController.ttsInitialized) ttsController.applySettings()
