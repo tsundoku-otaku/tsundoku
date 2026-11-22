@@ -1452,8 +1452,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     fun startTts() {
         ttsStartGeneration++
-        // A newer start replaces a deferred one; deferTtsStart installs it again if still needed.
+        // A newer start replaces a deferred one or a handoff waiting on a prefetch; deferTtsStart
+        // installs it again if still needed.
         pendingTtsStart = null
+        pendingTtsHandoffAfterPrefetch = false
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet, waiting..." }
@@ -1496,6 +1498,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             "TTS: stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
         pendingTtsStart = null
+        pendingTtsHandoffAfterPrefetch = false
         ttsStartGeneration++
         handoffState = TtsHandoffState.Idle
         ttsController.stop()
@@ -1554,6 +1557,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     fun startTtsFromViewport() {
         ttsStartGeneration++
         pendingTtsStart = null
+        pendingTtsHandoffAfterPrefetch = false
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet" }
@@ -1719,6 +1723,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             newChapterId != currentChapters?.currChapter?.chapter?.id &&
             (clearsQueue || loadedChapters.none { it.chapter.chapter.id == pendingChapterId })
         ) {
+            stopTts()
+        } else if (pendingChapterId == null && clearsQueue && ttsController.isTtsAutoPlay &&
+            ttsController.ttsPlaybackChapterId != newChapterId
+        ) {
+            // A handoff a newer start replaced still navigates here; the chapter being read is about
+            // to be cleared, so its playback can't continue against the new content.
             stopTts()
         }
 
