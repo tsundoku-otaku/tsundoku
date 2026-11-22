@@ -70,11 +70,10 @@
         return false;
     }
     // Every run starts from the site's own colors: an inserted chapter can change the background of
-    // text that was checked before, so an inline color the site set is put back and everything rechecked.
+    // text that was checked before, so everything is rechecked.
     Array.prototype.forEach.call(document.querySelectorAll('[data-tsundoku-contrast]'), function (el) {
-        var saved = el.getAttribute('data-tsundoku-contrast').split(';');
-        if (saved[0]) el.style.setProperty('color', saved[0], saved[1] || ''); else el.style.removeProperty('color');
         el.removeAttribute('data-tsundoku-contrast');
+        el.style.removeProperty('--td-contrast-color');
     });
     var root = document.querySelector('tsundoku-chapter') ? 'tsundoku-chapter' : 'body';
     var fixed = 0;
@@ -84,17 +83,16 @@
         if (el.closest('[class*="spoiler" i]')) return;
         var bg = effectiveBackground(el);
         if (contrast(blend(parse(getComputedStyle(el).color), bg), bg) >= 3) return;
-        el.setAttribute(
-            'data-tsundoku-contrast',
-            el.style.getPropertyValue('color') + ';' + el.style.getPropertyPriority('color')
-        );
-        el.style.setProperty('color', readableColor(bg), 'important');
+        el.setAttribute('data-tsundoku-contrast', '');
+        el.style.setProperty('--td-contrast-color', readableColor(bg));
         fixed++;
     });
     if (!fixed) return;
 
-    // Marks the guard as applied; the colors themselves are set per element above.
+    // A stylesheet rule rather than an inline color, so the TTS highlight can still set its own.
     var style = document.createElement('style');
     style.id = '__GUARD_ID__';
+    style.textContent =
+        '[data-tsundoku-contrast]:not(.td-tts-highlight-bg, .td-tts-highlight-bg *){color:var(--td-contrast-color)!important}';
     document.head.appendChild(style);
 })();
