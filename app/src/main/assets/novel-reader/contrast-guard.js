@@ -49,24 +49,42 @@
         return out;
     }
 
-    // Paragraphs spread through the chapter; one unreadable block early on shouldn't decide alone,
-    // and readable text up top shouldn't hide unreadable text further down.
-    var paragraphs = Array.prototype.filter.call(
-        document.querySelectorAll('tsundoku-chapter p'),
-        function (p) { return p.textContent.trim(); }
-    );
-    var samples = [];
-    var step = Math.max(1, Math.floor(paragraphs.length / 10));
-    for (var i = 0; i < paragraphs.length && samples.length < 10; i += step) samples.push(paragraphs[i]);
-    if (!samples.length) samples.push(document.body);
-    var unreadable = samples.filter(function (el) {
-        return contrast(parse(getComputedStyle(el).color), effectiveBackground(el)) < 3;
-    }).length;
-    if (unreadable * 2 <= samples.length) return;
+    // Only text that is unreadable where it is drawn gets the fallback, each on its own, so a readable
+    // block (light text on a site's dark box) keeps its colors next to an unreadable one.
+    function readableColor(bg) {
+        var text = hex('__TEXT__');
+        if (contrast(text, bg) >= 3) return '__TEXT__';
+        return contrast([0, 0, 0, 1], bg) >= contrast([255, 255, 255, 1], bg) ? '#000000' : '#ffffff';
+    }
+    function hasOwnText(el) {
+        for (var c = el.firstChild; c; c = c.nextSibling) {
+            if (c.nodeType === 3 && c.nodeValue.trim()) return true;
+        }
+        return false;
+    }
+    // A rerun (theme change) starts from the site's own colors, so an inline color the site set is put back.
+    Array.prototype.forEach.call(document.querySelectorAll('[data-tsundoku-contrast]'), function (el) {
+        var saved = el.getAttribute('data-tsundoku-contrast').split(';');
+        if (saved[0]) el.style.setProperty('color', saved[0], saved[1] || ''); else el.style.removeProperty('color');
+        el.removeAttribute('data-tsundoku-contrast');
+    });
+    var root = document.querySelector('tsundoku-chapter') ? 'tsundoku-chapter' : 'body';
+    var fixed = 0;
+    Array.prototype.forEach.call(document.querySelectorAll(root + ', ' + root + ' *'), function (el) {
+        if (!hasOwnText(el)) return;
+        var bg = effectiveBackground(el);
+        if (contrast(parse(getComputedStyle(el).color), bg) >= 3) return;
+        el.setAttribute(
+            'data-tsundoku-contrast',
+            el.style.getPropertyValue('color') + ';' + el.style.getPropertyPriority('color')
+        );
+        el.style.setProperty('color', readableColor(bg), 'important');
+        fixed++;
+    });
+    if (!fixed) return;
 
+    // Marks the guard as applied; the colors themselves are set per element above.
     var style = document.createElement('style');
     style.id = '__GUARD_ID__';
-    style.textContent = 'html, body { color: __TEXT__ !important; background-color: __BG__ !important; } ' +
-        'tsundoku-chapter * { color: inherit !important; }';
     document.head.appendChild(style);
 })();

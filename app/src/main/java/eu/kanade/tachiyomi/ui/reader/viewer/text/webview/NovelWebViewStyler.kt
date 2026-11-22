@@ -237,7 +237,14 @@ internal class NovelWebViewStyler(
 
     fun injectContrastGuard() {
         if (!preferences.novelSourceCssPriority.get()) {
-            evaluateJs("(function(){var g=document.getElementById('$STYLE_ID_CONTRAST_GUARD');if(g)g.remove();})();")
+            // The guard colors unreadable elements inline, so those marks go too.
+            evaluateJs(
+                "(function(){var g=document.getElementById('$STYLE_ID_CONTRAST_GUARD');if(g)g.remove();" +
+                    "document.querySelectorAll('[data-tsundoku-contrast]').forEach(function(e){" +
+                    "var v=e.getAttribute('data-tsundoku-contrast').split(';');" +
+                    "if(v[0])e.style.setProperty('color',v[0],v[1]||'');else e.style.removeProperty('color');" +
+                    "e.removeAttribute('data-tsundoku-contrast');});})();",
+            )
             return
         }
         val (bg, text) = ThemeUtils.getThemeColors(activity, preferences, preferences.novelTheme.get())
