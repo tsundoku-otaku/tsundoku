@@ -300,9 +300,15 @@ class ElementSelectorViewModel(
 internal fun typedLanguageCode(raw: String): String? {
     val parts = raw.trim().replace('_', '-').split('-').filter { it.isNotEmpty() }
     if (parts.isEmpty()) return null
-    val primary = parts.first().lowercase()
-    val region = parts.getOrNull(1)?.let { if (it.length == 2) it.uppercase() else it }
-    return if (region == null) primary else "$primary-$region"
+    return parts.mapIndexed { i, part ->
+        when {
+            i == 0 -> part.lowercase()
+            part.length == 4 && part.all { it.isLetter() } -> part.lowercase().replaceFirstChar { it.uppercase() }
+            (part.length == 2 && part.all { it.isLetter() }) || (part.length == 3 && part.all { it.isDigit() }) ->
+                part.uppercase()
+            else -> part
+        }
+    }.joinToString("-")
 }
 
 internal fun normalizeLanguageCode(raw: String): String {

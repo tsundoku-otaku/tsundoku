@@ -1064,7 +1064,12 @@ class CustomSourceEditorScreen(
 
         var reverseChapters by remember { mutableStateOf(initialConfig?.reverseChapters ?: false) }
         var postSearch by remember { mutableStateOf(initialConfig?.postSearch ?: false) }
-        var isNovel by remember { mutableStateOf(basedOnIsNovel ?: initialConfig?.isNovel ?: true) }
+        var isNovel by remember {
+            // An edited source based on an extension takes that extension's type while it is installed
+            val baseIsNovel = basedOnIsNovel ?: initialConfig?.basedOnSourceId
+                ?.let { Injekt.get<SourceManager>().get(it)?.isNovelSource() }
+            mutableStateOf(baseIsNovel ?: initialConfig?.isNovel ?: true)
+        }
 
         // Which sections this source has — drives which selector inputs are shown. Inferred from an
         // existing config, defaults to popular+latest+search for a new one.
@@ -1088,13 +1093,13 @@ class CustomSourceEditorScreen(
 
         // Selectors
         var popularListSelector by remember {
-            mutableStateOf(initialConfig?.selectors?.popular?.list ?: "")
+            mutableStateOf(formCard(initialConfig)?.list ?: "")
         }
         var popularTitleSelector by remember {
-            mutableStateOf(initialConfig?.selectors?.popular?.title ?: "")
+            mutableStateOf(formCard(initialConfig)?.title ?: "")
         }
         var popularCoverSelector by remember {
-            mutableStateOf(initialConfig?.selectors?.popular?.cover ?: "")
+            mutableStateOf(formCard(initialConfig)?.cover ?: "")
         }
         var popularNextPageSelector by remember {
             mutableStateOf(initialConfig?.selectors?.popular?.nextPage ?: "")
@@ -2222,6 +2227,18 @@ class CustomSourceEditorScreen(
         text.split(",").map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { null }
 
     @Suppress("LongParameterList")
+    // The card the shared list/title/cover inputs edit: popular's, or the first enabled listing's when
+    // popular is off, so editing a latest-only source changes latest.
+    private fun formCard(config: CustomSourceConfig?): eu.kanade.tachiyomi.source.custom.MangaListSelectors? {
+        val c = config ?: return null
+        return when {
+            c.popularUrl.isNotBlank() -> c.selectors.popular
+            c.latestUrl != null -> c.selectors.latest ?: c.selectors.popular
+            c.searchUrl.isNotBlank() -> c.selectors.search ?: c.selectors.popular
+            else -> c.selectors.popular
+        }
+    }
+
     private fun buildConfig(
         existing: CustomSourceConfig?,
         name: String,
@@ -2281,11 +2298,11 @@ class CustomSourceEditorScreen(
         val generate = features.chapterGenerateFromPattern
         // No dedicated link input: keep the one the config already has (wizard-picked or imported),
         // and fall back to the title selector the way the wizard does for a fresh source.
-        val cardLink = existing?.selectors?.popular?.link ?: cardTitle
+        val cardLink = formCard(existing)?.link ?: cardTitle
         // The form only edits the popular card. A latest/search card captured separately (wizard
         // latest step, or imported JSON) differs from the stored popular one and is kept as is;
         // one that mirrored popular follows the edited popular values.
-        val oldPopular = existing?.selectors?.popular
+        val oldPopular = formCard(existing)
         fun keepOwn(own: String?, oldShared: String?, edited: String?): String? =
             if (own != null && own != oldShared) own else edited
         fun sectionSelectors(

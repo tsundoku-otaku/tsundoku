@@ -341,7 +341,11 @@ class CustomSourceManager(
         }
 
         // Search
-        if ((all && config.searchUrl.isNotBlank()) || section == SourceTestSection.SEARCH) {
+        // A source based on an extension searches through it even without a captured search URL.
+        val hasSearch = config.searchUrl.isNotBlank() || config.basedOnSourceId != null
+        if (section == SourceTestSection.SEARCH && !hasSearch) {
+            results["search"] = TestStepResult(success = false, message = "No search URL configured")
+        } else if ((all && hasSearch) || section == SourceTestSection.SEARCH) {
             try {
                 val searchQuery = config.testSearchQuery?.ifBlank { null } ?: DEFAULT_TEST_QUERY
                 val search = source.getSearchManga(1, searchQuery, eu.kanade.tachiyomi.source.model.FilterList())

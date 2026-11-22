@@ -2596,8 +2596,11 @@ internal fun deriveSearchUrl(url: String, baseUrl: String, userQuery: String): S
         .distinct()
         .filter { it.isNotBlank() }
 
+    // Only the path and query can carry the search text; the host can contain the same word.
+    val schemeEnd = url.indexOf("://").let { if (it < 0) 0 else it + 3 }
+    val pathStart = url.indexOfAny(charArrayOf('/', '?', '#'), schemeEnd).let { if (it < 0) url.length else it }
     for (candidate in candidates) {
-        val idx = url.indexOf(candidate, ignoreCase = true)
+        val idx = url.indexOf(candidate, pathStart, ignoreCase = true)
         if (idx >= 0) {
             return url.substring(0, idx) + "{query}" + url.substring(idx + candidate.length)
         }

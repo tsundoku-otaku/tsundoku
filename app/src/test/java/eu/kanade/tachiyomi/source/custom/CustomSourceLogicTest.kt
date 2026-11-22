@@ -194,5 +194,25 @@ class CustomSourceLogicTest {
         )
         assertEquals(null, embeddedAbsoluteUrl("https://example.com/c/1".toHttpUrl()))
         assertEquals(null, embeddedAbsoluteUrl("https://example.com/out?to=https://cdn.example.org/x".toHttpUrl()))
+        assertEquals(null, embeddedAbsoluteUrl("https://example.com/c/1#https://cdn.example.org/x".toHttpUrl()))
+    }
+
+    @Test
+    fun `rewrite ignores the same host on another explicit port`() {
+        assertNull(
+            rewriteToCustomBase(
+                "https://source.example:8443/a".toHttpUrl(),
+                "https://source.example",
+                "https://mirror.example",
+            ),
+        )
+        assertEquals(
+            "mirror.example",
+            rewriteToCustomBase(
+                "http://source.example/a".toHttpUrl(),
+                "https://source.example",
+                "https://mirror.example",
+            )?.host,
+        )
     }
 }

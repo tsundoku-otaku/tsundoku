@@ -68,6 +68,14 @@ class SelectorUrlAlgorithmsTest {
     }
 
     @Test
+    fun `deriveSearchUrl ignores the query inside the host`() {
+        assertEquals(
+            "https://novelsite.com/search?q={query}",
+            deriveSearchUrl("https://novelsite.com/search?q=novel", "https://novelsite.com", "novel"),
+        )
+    }
+
+    @Test
     fun `deriveSearchUrl matches percent-encoded multi-word query`() {
         assertEquals(
             "https://site.com/search/{query}",
@@ -104,6 +112,8 @@ class SelectorUrlAlgorithmsTest {
         assertEquals("pt-BR", typedLanguageCode(" pt_br "))
         assertEquals("zh-Hans", typedLanguageCode("ZH-Hans"))
         assertEquals("ja", typedLanguageCode("JA"))
+        assertEquals("zh-Hant-TW", typedLanguageCode("zh_hant_tw"))
+        assertEquals("es-419", typedLanguageCode("es-419"))
         assertEquals(null, typedLanguageCode("  "))
     }
 
