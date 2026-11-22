@@ -661,6 +661,8 @@ class ReaderViewModel @JvmOverloads constructor(
     fun reloadChapter(fromSource: Boolean = false): Boolean {
         val currChapter = state.value.viewerChapters?.currChapter ?: return false
         val loader = loader ?: return false
+        // A reload landing after a Next/Previous switch would put back the chapter being left.
+        if (state.value.isLoadingAdjacentChapter) return false
 
         val previousJob = reloadJob
         // Started atomically so even a reload cancelled before it runs still cancels and waits for the earlier
@@ -672,7 +674,9 @@ class ReaderViewModel @JvmOverloads constructor(
             previousJob?.cancel()
             withContext(NonCancellable) { previousJob?.join() }
             ensureActive()
-            if (currChapter !== state.value.viewerChapters?.currChapter) return@launch
+            if (currChapter !== state.value.viewerChapters?.currChapter || state.value.isLoadingAdjacentChapter) {
+                return@launch
+            }
             val previousLoader = currChapter.pageLoader
             currChapter.state = ReaderChapter.State.Wait
             try {
