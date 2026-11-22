@@ -6,7 +6,7 @@ import android.graphics.Canvas
 import android.graphics.text.LineBreaker
 import android.os.Build
 import android.text.Spannable
-import android.text.SpannableStringBuilder
+import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
@@ -831,19 +831,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         },
     )
 
+    private val ttsSpans = mutableListOf<Pair<Spannable, Any>>()
+
     /** Must be called on the UI thread. */
     private fun clearTtsSpansInLoadedChapters() {
-        loadedChapters.forEach { loaded ->
-            if (!loaded.isLoaded) return@forEach
-            loaded.block.chunkViews.forEach { chunkView ->
-                val spanned = chunkView.text as? android.text.Spannable ?: return@forEach
-                val len = spanned.length
-                spanned.getSpans(0, len, BackgroundColorSpan::class.java).forEach { spanned.removeSpan(it) }
-                spanned.getSpans(0, len, ForegroundColorSpan::class.java).forEach { spanned.removeSpan(it) }
-                spanned.getSpans(0, len, UnderlineSpan::class.java).forEach { spanned.removeSpan(it) }
-                spanned.getSpans(0, len, RoundedOutlineSpan::class.java).forEach { spanned.removeSpan(it) }
-            }
-        }
+        ttsSpans.forEach { (spannable, span) -> spannable.removeSpan(span) }
+        ttsSpans.clear()
     }
 
     private fun clearAllTtsHighlights() {
@@ -895,39 +888,26 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     firstChunkLocalStart = localStart
                 }
                 when (highlightStyle) {
-                    "underline" -> spanned.setSpan(
-                        UnderlineSpan(),
-                        localStart,
-                        localEnd,
-                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                    )
+                    "underline" -> {
+                        val span = UnderlineSpan()
+                        spanned.setSpan(span, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        ttsSpans.add(spanned to span)
+                    }
                     "outline" -> {
-                        spanned.setSpan(
-                            RoundedOutlineSpan(highlightColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
-                        spanned.setSpan(
-                            ForegroundColorSpan(highlightTextColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
+                        val outline = RoundedOutlineSpan(highlightColor)
+                        val foreground = ForegroundColorSpan(highlightTextColor)
+                        spanned.setSpan(outline, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        spanned.setSpan(foreground, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        ttsSpans.add(spanned to outline)
+                        ttsSpans.add(spanned to foreground)
                     }
                     else -> {
-                        spanned.setSpan(
-                            BackgroundColorSpan(highlightColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
-                        spanned.setSpan(
-                            ForegroundColorSpan(highlightTextColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
+                        val background = BackgroundColorSpan(highlightColor)
+                        val foreground = ForegroundColorSpan(highlightTextColor)
+                        spanned.setSpan(background, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        spanned.setSpan(foreground, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        ttsSpans.add(spanned to background)
+                        ttsSpans.add(spanned to foreground)
                     }
                 }
             }
@@ -1080,10 +1060,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private fun spannableOf(view: TextView): Spannable? {
         val current = view.text ?: return null
-        if (current is SpannableStringBuilder) return current
-        // Chunk text can be a plain String or an immutable PrecomputedText; rebuild it as a
-        // mutable builder so find spans can be added and removed without crashing.
-        view.text = SpannableStringBuilder(current)
+        if (current is Spannable) return current
+        view.setText(SpannableString(current), TextView.BufferType.SPANNABLE)
         return view.text as? Spannable
     }
 
