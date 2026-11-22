@@ -234,6 +234,7 @@
 
     function landOnPage(idx, pc, animate) {
         idx = Math.max(0, Math.min(idx, pc - 1));
+        var samePage = idx === p.pageIndex && pc === p.pageCount;
         p.pageCount = pc;
         p.pageIndex = idx;
         hideChapterTransition();
@@ -244,7 +245,7 @@
         reportPageInfo(idx, pc);
         reportProgress(p.lastRatio);
         publishProgress(p.lastRatio, idx, pc);
-        captureAnchorAfterTurn(animate);
+        captureAnchorAfterTurn(animate, samePage);
     }
 
     // An animated turn captures once its transition ends (see the transitionend listener). A turn
@@ -253,20 +254,27 @@
     var anchorTimer = null;
     // True while a turn animates: the screen still shows the old page, so nothing may be read from it.
     var turning = false;
-    function captureAnchorAfterTurn(animate) {
+    // A swipe let go on the same page keeps the text taken before the drag; a content change during the
+    // drag may already have moved it, and re-taking it at the old offset would lose that.
+    var keepAnchorOnSettle = false;
+    function captureAnchorAfterTurn(animate, samePage) {
         clearTimeout(anchorTimer);
+        keepAnchorOnSettle = !!samePage && !!pageAnchor && container().contains(pageAnchor.startContainer);
         if (!animate) {
             turning = false;
-            pageAnchor = textAtPageStart();
+            if (!keepAnchorOnSettle) pageAnchor = textAtPageStart();
             return;
         }
         turning = true;
-        pageAnchor = null;
+        if (!keepAnchorOnSettle) pageAnchor = null;
         var duration = (parseFloat(window.getComputedStyle(container()).transitionDuration) || 0) * 1000;
-        anchorTimer = setTimeout(function () {
-            turning = false;
-            pageAnchor = textAtPageStart();
-        }, duration + 50);
+        anchorTimer = setTimeout(settleAnchor, duration + 50);
+    }
+
+    function settleAnchor() {
+        turning = false;
+        if (!keepAnchorOnSettle) pageAnchor = textAtPageStart();
+        keepAnchorOnSettle = false;
     }
 
     // The text at the top of the current page, taken once the page settles and before any later
@@ -661,6 +669,8 @@
             // Text can move without the page count changing, so a keep-text reflow always checks
             if (keep) reflowKeepingText();
             else if (computePageCount() !== p.pageCount) repaginate();
+            // Same count, but the new font moved the text, so the old anchor would point elsewhere.
+            else pageAnchor = textAtPageStart();
         }, 100);
     }
     function onContentReflow() { scheduleReflowCheck(true); }
@@ -671,8 +681,7 @@
     container().addEventListener('transitionend', function (e) {
         if (e.target !== container() || e.propertyName !== 'transform') return;
         clearTimeout(anchorTimer);
-        turning = false;
-        pageAnchor = textAtPageStart();
+        settleAnchor();
     });
     container().addEventListener('load', onContentReflow, true);
     container().addEventListener('error', onContentReflow, true);
