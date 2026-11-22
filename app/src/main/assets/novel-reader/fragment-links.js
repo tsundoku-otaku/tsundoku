@@ -18,9 +18,10 @@
         if (!anchor || anchor.isContentEditable) return;
         var id = decode(anchor.getAttribute('href').substring(1));
         if (!id) return;
-        var selector = '[id="' + cssEscape(id) + '"], a[name="' + cssEscape(id) + '"]';
-        var chapter = anchor.closest('__CHAPTER_TAG_NAME__');
-        var target = (chapter || document).querySelector(selector);
+        var scope = anchor.closest('__CHAPTER_TAG_NAME__') || document;
+        // An id wins over a same-named <a name>, wherever each sits, as browsers resolve fragments.
+        var target = scope.querySelector('[id="' + cssEscape(id) + '"]') ||
+            scope.querySelector('a[name="' + cssEscape(id) + '"]');
         if (!target) return;
         e.preventDefault();
         e.stopPropagation();

@@ -64,8 +64,8 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.unescapeJsResult
+import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
-import kotlin.math.ceil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +86,7 @@ import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
+import kotlin.math.ceil
 
 class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
@@ -178,6 +179,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
     private var isDestroyed = false
     private var isEditingMode = false
+
     // Debounces paged mode's next/prev bridge calls, which skip the isLoadingNext guard below.
     // Cleared once the new chapter's document commits (DocState.READY/ERROR).
     private var pagedChapterSwitchPending = false
@@ -294,8 +296,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (isEditingMode) return false
                 if (e.eventTime - e.downTime >= android.view.ViewConfiguration.getLongPressTimeout()) return true
-                // An in-chapter link jump is the tap's action; any other link tap still uses the tap zones.
-                if (fragmentLinkTappedAt >= e.downTime) return true
+                // A tapped link is the tap's action: an in-chapter jump, or a web link opening in the browser.
+                // The hit test is set when the touch lands, so it doesn't depend on when the page's click
+                // handler reports back.
+                if (fragmentLinkTappedAt >= e.downTime || isLinkHit()) return true
 
                 val pos = android.graphics.PointF(
                     e.x / container.width.toFloat(),
@@ -680,7 +684,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     view: WebView?,
                     request: android.webkit.WebResourceRequest?,
                 ): Boolean {
-                    return request != null && request.isForMainFrame && request.hasGesture()
+                    if (request == null || !request.isForMainFrame || !request.hasGesture()) return false
+                    // Tapped links never navigate the reader away from the chapter.
+                    val url = request.url
+                    if (url.scheme == "http" || url.scheme == "https") activity.openInBrowser(url)
+                    return true
                 }
 
                 override fun shouldInterceptRequest(
@@ -1852,11 +1860,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
               <div class="category">$escapedCategory</div>
               <div class="summary">$escapedSummary</div>
               <div>
-                <button class="retry-btn" onclick="retryErr()">${HtmlUtils.escapeHtml(activity.stringResource(TDMR.strings.novel_error_retry))}</button>
-                <button class="copy-btn" onclick="copyErr()">${HtmlUtils.escapeHtml(activity.stringResource(TDMR.strings.novel_error_copy_details))}</button>
+                <button class="retry-btn" onclick="retryErr()">${HtmlUtils.escapeHtml(
+            activity.stringResource(TDMR.strings.novel_error_retry),
+        )}</button>
+                <button class="copy-btn" onclick="copyErr()">${HtmlUtils.escapeHtml(
+            activity.stringResource(TDMR.strings.novel_error_copy_details),
+        )}</button>
               </div>
               <details>
-                <summary>${HtmlUtils.escapeHtml(activity.stringResource(TDMR.strings.novel_error_technical_details))}</summary>
+                <summary>${HtmlUtils.escapeHtml(
+            activity.stringResource(TDMR.strings.novel_error_technical_details),
+        )}</summary>
                 <pre>$escapedTrace</pre>
               </details>
             </div>
@@ -2088,6 +2102,11 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     }
 
     override fun handleGenericMotionEvent(event: MotionEvent): Boolean = false
+
+    private fun isLinkHit(): Boolean = when (webView.hitTestResult.type) {
+        WebView.HitTestResult.SRC_ANCHOR_TYPE, WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> true
+        else -> false
+    }
 
     // Uptime of the last tap that fragment-links.js turned into an in-chapter jump.
     @Volatile
@@ -2674,7 +2693,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         val page = preparedChapter.pages?.firstOrNull() ?: run {
             val prepareError = (preparedChapter.state as? ReaderChapter.State.Error)?.error
-            logcat(LogPriority.ERROR) { "NovelWebViewViewer: No page in prepared next chapter, prepareError=$prepareError" }
+            logcat(LogPriority.ERROR) {
+                "NovelWebViewViewer: No page in prepared next chapter, prepareError=$prepareError"
+            }
             if (prepareError != null) {
                 inlineFeedback.showInlineError(prepareError, isPrepend = false, onRetry = ::retryAppendNextChapter)
             } else {
