@@ -146,7 +146,17 @@ internal class HttpPageLoader(
             }
         }
         novelFetches[page] = job
-        job.invokeOnCompletion { novelFetches.remove(page, job) }
+        job.invokeOnCompletion { cause ->
+            novelFetches.remove(page, job)
+            // A fetch cancelled before its body ran never reached its own catch.
+            if (cause != null) {
+                synchronized(page) {
+                    if (page.loadAttempt == attempt && page.status == Page.State.LoadPage) {
+                        page.status = Page.State.Error(cause)
+                    }
+                }
+            }
+        }
         job.start()
     }
 
