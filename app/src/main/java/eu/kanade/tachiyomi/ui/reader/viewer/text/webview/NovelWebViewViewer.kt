@@ -30,6 +30,7 @@ import android.widget.FrameLayout
 import androidx.annotation.Keep
 import androidx.lifecycle.Lifecycle
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchTarget
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
@@ -83,6 +84,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.Json
 import logcat.LogPriority
 import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
@@ -95,6 +97,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
         const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
         const val ID_EDIT_MODE_STYLE = "edit-mode-style"
+        const val SEARCH_HIT_CLASS = "td-search-hit"
         const val SEEK_ECHO_SUPPRESS_MS = 350L
         const val AUTO_SCROLL_START_VERIFY_MS = 400L
         const val AUTO_SCROLL_MAX_START_ATTEMPTS = 3
@@ -149,6 +152,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var isRestoringScroll = false
     private var scrollRestoreToken = 0
 
+    // A chapter search match to show once the scroll restore with this token lands.
+    private var pendingSearchTarget: ChapterSearchTarget? = null
+    private var pendingSearchChapterId: Long? = null
+    private var searchMatchJob: Job? = null
+    private var pendingSearchToken = -1
+
     // Blocks flushing the backward-entry 1f baseline until a real scroll sample replaces it.
     private var awaitingFirstScrollSample = false
 
@@ -171,6 +180,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var currentChapterIndex: Int
         get() = chapterQueue.currentIndex
         set(value) {
+            if (value != chapterQueue.currentIndex) searchMatchJob?.cancel()
             chapterQueue.currentIndex = value
         }
     private var isLoadingNext: Boolean
@@ -910,18 +920,28 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
         val savedProgress = page.chapter.chapter.last_page_read
         val isRead = page.chapter.chapter.read
+        // Opened at a chapter search match: restore to its relative position first, then
+        // showSearchMatch moves onto the match itself once that restore lands.
+        val searchTarget = activity.viewModel.takeSearchTarget(page.chapter.chapter.id)
 
-        val shouldRestore = if (!isRead) {
+        val shouldRestore = if (searchTarget != null) {
+            true
+        } else if (!isRead) {
             savedProgress > 0 && savedProgress <= 100
         } else {
             libraryPreferences.novelReadProgress100.get() && savedProgress > 0 && savedProgress <= 100
         }
         if (shouldRestore) {
-            val progress = savedProgress / 100f
+            val progress = searchTarget?.position ?: (savedProgress / 100f)
             lastSavedProgress = progress
             activity.onNovelProgressChanged(progress)
             isRestoringScroll = true
             val token = ++scrollRestoreToken
+            if (searchTarget != null) {
+                pendingSearchTarget = searchTarget
+                pendingSearchChapterId = page.chapter.chapter.id
+                pendingSearchToken = token
+            }
 
             if (isPagedModeActive()) {
                 evaluateJavascriptSafe(
@@ -1220,6 +1240,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         loadJob?.cancel()
 
+        if (currentPage?.chapter?.chapter?.id != chapterId) searchMatchJob?.cancel()
         currentPage = page
         currentChapters = chapters
         lastPreloadRequestedNextChapterId = null
@@ -1335,6 +1356,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             // Gate infinite-scroll appends until this base chapter's DOM is committed (onPageFinished
             // sets READY). Otherwise an early append (JS scroll threshold) is wiped by the
             // clear()+loadHtmlContent this job runs, which re-appends and duplicates the chapter.
+            searchMatchJob?.cancel()
             docState = DocState.LOADING
         }
         val job = scope.launch {
@@ -1591,6 +1613,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             tsundokuScript = buildTsundokuScript(),
             infiniteScrollEnabled = preferences.novelInfiniteScroll.get(),
             blockMedia = preferences.novelBlockMedia.get(),
+            deferSearchPaint = activity.viewModel.hasSearchTarget(chapterModel?.id),
         )
         val pageLoader = currentPage?.chapter?.pageLoader
         val html = withContext(Dispatchers.Default) {
@@ -1600,6 +1623,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         // Signal to onPageFinished that the next callback is for real chapter content, not
         // the loading-indicator page (which also fires onPageFinished with url="about:blank").
+        searchMatchJob?.cancel()
         docState = DocState.LOADING_REAL
         dispatchLoadingChapter(true)
         // New document: hold scroll callbacks and clear the baseline so a stale flush can't write
@@ -1791,6 +1815,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             </html>
         """.trimIndent()
 
+        searchMatchJob?.cancel()
         docState = DocState.LOADING
         webView.loadDataWithBaseURL(null, loadingHtml, "text/html", "UTF-8", null)
     }
@@ -1805,6 +1830,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         // No real chapter DOM is coming for this load, so onPageFinished won't reach the READY
         // transition. ERROR keeps webChapterContentReady true (so a failed load can't block
         // infinite-scroll appends forever) while marking the body un-appendable.
+        searchMatchJob?.cancel()
         docState = DocState.ERROR
         releasePagedChapterSwitchIfPending()
 
@@ -1949,6 +1975,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         updateChapterMetaJs()
 
         if (isEditing) {
+            // Edit mode supersedes a pending jump to a chapter search match: the restore token bumps
+            // below, so the jump would never run. Drop it; the page script un-hides the chapter.
+            searchMatchJob?.cancel()
+            pendingSearchTarget = null
+            pendingSearchChapterId = null
+            pendingSearchToken = -1
             // Focusing a contenteditable for the keyboard scrolls Chromium to the top; snapshot the
             // ratio, restore it after focus settles, and gate onScrollProgress meanwhile.
             val restoreRatio = lastSavedProgress
@@ -1996,6 +2028,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             imm?.hideSoftInputFromWindow(webView.windowToken, 0)
         }
 
+        val searchRestoreStyleId = NovelWebViewDocumentBuilder.SEARCH_RESTORE_STYLE_ID
         val script = """
             (function() {
                 if (window.__tdPagedSetSuspended) {
@@ -2005,6 +2038,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     document.designMode = 'off';
                     var styleId = '${ID_EDIT_MODE_STYLE}';
                     if ('$isEditing' === 'true') {
+                        // Neither a chapter hidden for a search jump nor the match highlight may
+                        // survive into editing, where the chapter's markup is saved as it stands.
+                        var restoreStyle = document.getElementById('$searchRestoreStyleId');
+                        if (restoreStyle) restoreStyle.parentNode.removeChild(restoreStyle);
+                        var hits = document.querySelectorAll('.$SEARCH_HIT_CLASS');
+                        for (var h = 0; h < hits.length; h++) {
+                            var hit = hits[h];
+                            var hitParent = hit.parentNode;
+                            if (!hitParent) continue;
+                            while (hit.firstChild) hitParent.insertBefore(hit.firstChild, hit);
+                            hitParent.removeChild(hit);
+                            hitParent.normalize();
+                        }
+                        window.__tdSearchNodes = null;
+
                         if (!document.getElementById(styleId)) {
                             var style = document.createElement('style');
                             style.id = styleId;
@@ -2446,8 +2494,130 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         if (token != scrollRestoreToken) return
         isRestoringScroll = false
         evaluateJavascriptSafe(
-            "(function(){ if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime && window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking) window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking(); })();",
+            """
+            (function() {
+                var style = document.getElementById('${NovelWebViewDocumentBuilder.SEARCH_RESTORE_STYLE_ID}');
+                if (style) style.parentNode.removeChild(style);
+                var runtime = window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime;
+                if (runtime && runtime.resetChapterTracking) runtime.resetChapterTracking();
+            })();
+            """.trimIndent(),
             null,
+        )
+        val searchTarget = pendingSearchTarget
+        if (searchTarget != null && token == pendingSearchToken) {
+            pendingSearchTarget = null
+            pendingSearchToken = -1
+            val chapterId = pendingSearchChapterId
+            pendingSearchChapterId = null
+            if (chapterId != null) showSearchMatch(searchTarget, chapterId, token)
+        }
+    }
+
+    /**
+     * Highlights the chapter search match the reader was opened at and brings it into view, or
+     * leaves the reader at the match's relative position when the page no longer holds it.
+     */
+    private fun showSearchMatch(target: ChapterSearchTarget, chapterId: Long, token: Int) {
+        fun isCurrent() = !isDestroyed && docState == DocState.READY &&
+            token == scrollRestoreToken && getCurrentTsundokuChapter()?.chapter?.id == chapterId
+
+        if (!isCurrent()) return
+        searchMatchJob?.cancel()
+        val collectText = """
+            (function() {
+                var root = document.querySelector('$CHAPTER_TAG_NAME[$CHAPTER_ID_ATTR="$chapterId"]');
+                if (!root) return null;
+                var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+                var nodes = [];
+                var text = '';
+                var node;
+                var previousPlainParagraph = null;
+                while ((node = walker.nextNode())) {
+                    var parent = node.parentElement;
+                    var tag = parent ? parent.tagName : '';
+                    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') continue;
+                    var plainParagraph = tag === 'P' && parent.parentElement &&
+                        parent.parentElement.getAttribute('${NovelWebViewDocumentBuilder.ATTR_DATA_PLAIN_TEXT}') === '1'
+                        ? parent : null;
+                    if (plainParagraph && previousPlainParagraph && plainParagraph !== previousPlainParagraph) {
+                        text += ' ';
+                    }
+                    previousPlainParagraph = plainParagraph;
+                    nodes.push({ node: node, start: text.length });
+                    text += node.nodeValue;
+                }
+                window.__tdSearchNodes = { token: $token, root: root, nodes: nodes };
+                return text;
+            })();
+        """.trimIndent()
+        evaluateJavascriptSafe(collectText) { result ->
+            if (!isCurrent()) return@evaluateJavascriptSafe
+            searchMatchJob = scope.launch {
+                try {
+                    val match = target.locateRenderedMatch {
+                        runCatching { Json.decodeFromString<String>(result) }.getOrNull()
+                    } ?: return@launch
+                    if (isCurrent()) highlightSearchMatch(match, token)
+                } finally {
+                    evaluateJavascriptSafe(
+                        "if (window.__tdSearchNodes && window.__tdSearchNodes.token === $token) window.__tdSearchNodes = null;",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun highlightSearchMatch(match: IntRange, token: Int) {
+        val highlightColor = ThemeUtils.colorToHex(preferences.novelTtsHighlightColor.get())
+        val highlightTextColor = ThemeUtils.colorToHex(preferences.novelTtsHighlightTextColor.get())
+        evaluateJavascriptSafe(
+            """
+            (function(start, end) {
+                var snapshot = window.__tdSearchNodes;
+                if (!snapshot || snapshot.token !== $token || !document.documentElement.contains(snapshot.root)) return;
+                var nodes = snapshot.nodes;
+                if (!document.getElementById('td-search-hit-style')) {
+                    var style = document.createElement('style');
+                    style.id = 'td-search-hit-style';
+                    style.textContent = '.$SEARCH_HIT_CLASS{background:$highlightColor!important;color:$highlightTextColor!important;border-radius:3px;}';
+                    document.head.appendChild(style);
+                }
+                var first = null;
+                for (var i = 0; i < nodes.length; i++) {
+                    var node = nodes[i].node;
+                    var nodeStart = nodes[i].start;
+                    if (nodeStart >= end) break;
+                    if (nodeStart + node.nodeValue.length <= start) continue;
+                    var from = Math.max(start - nodeStart, 0);
+                    var to = Math.min(end - nodeStart, node.nodeValue.length);
+                    if (to <= from) continue;
+                    var range = document.createRange();
+                    range.setStart(node, from);
+                    range.setEnd(node, to);
+                    var hit = document.createElement('span');
+                    hit.className = '$SEARCH_HIT_CLASS';
+                    range.surroundContents(hit);
+                    if (!first) first = hit;
+                }
+                if (!first) return;
+                var runtime = window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime;
+                if (runtime && runtime.pagingEnabled && window.__tdPagedRepaginate) {
+                    // Paged mode lays the chapter out in columns one page wide and shifts them
+                    // sideways, so the match's page follows from its on-screen offset.
+                    var width = document.body.clientWidth || window.innerWidth || 1;
+                    var left = first.getBoundingClientRect().left - document.body.getBoundingClientRect().left;
+                    var count = runtime.pageCount || 1;
+                    var page = (runtime.pageIndex || 0) + Math.floor(left / width);
+                    page = Math.max(0, Math.min(page, count - 1));
+                    window.__tdPagedRepaginate((page + 1) / count);
+                } else {
+                    var top = first.getBoundingClientRect().top + (window.scrollY || 0);
+                    window.scrollTo(0, Math.max(0, top - window.innerHeight / 3));
+                    window.dispatchEvent(new Event('scroll'));
+                }
+            })(${match.first}, ${match.last + 1});
+            """.trimIndent(),
         )
     }
 

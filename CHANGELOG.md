@@ -19,6 +19,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Increase chapter title marquee scroll speed [@mrissaoussama](https://github.com/mrissaoussama) [#472](https://github.com/tsundoku-otaku/tsundoku/pull/472)
 - Mangascreen scroll to top/current/bottom buttons have option to move into/out of overflow menu [@mrissaoussama](https://github.com/mrissaoussama) [#457](https://github.com/tsundoku-otaku/tsundoku/pull/457)
 
+### Improved
+- Faster chapter search, with a chapter range filter, expandable results per chapter and tap-to-jump to the match in the reader [@mrissaoussama](https://github.com/mrissaoussama) [#439](https://github.com/tsundoku-otaku/tsundoku/issues/439)
+
 ### Fixed
 - Reader status bar respects system clock 24h setting [@Rojikku](https://github.com/Rojikku) [#483](https://github.com/tsundoku-otaku/tsundoku/pull/483)
 - Route headset media to TTS session [@mrissaoussama](https://github.com/mrissaoussama) [#466](https://github.com/tsundoku-otaku/tsundoku/pull/466)

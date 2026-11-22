@@ -27,6 +27,7 @@ internal object NovelWebViewDocumentBuilder {
         val tsundokuScript: String,
         val infiniteScrollEnabled: Boolean,
         val blockMedia: Boolean,
+        val deferSearchPaint: Boolean = false,
     )
 
     fun assemble(input: DocumentInput): String {
@@ -112,6 +113,12 @@ internal object NovelWebViewDocumentBuilder {
             .replace("</Script>", "<\\/Script>")
             .replace("</SCRIPT>", "<\\/SCRIPT>")
         val themeExposureScript = "window.TsundokuTheme = $escapedThemeJson;"
+
+        val searchRestoreStyle = if (input.deferSearchPaint) {
+            """<style id="$SEARCH_RESTORE_STYLE_ID">html { opacity: 0 !important; }</style>"""
+        } else {
+            ""
+        }
 
         return """
             <!DOCTYPE html>
@@ -212,6 +219,7 @@ internal object NovelWebViewDocumentBuilder {
                     $hideHeadingCss
                     $mediaBlockCss
                 </style>
+                $searchRestoreStyle
                 <style id="tsundoku-custom-style">$escapedInitialStyle</style>
                 <script>${input.tsundokuScript}</script>
                 <script>$themeExposureScript</script>
@@ -283,6 +291,7 @@ internal object NovelWebViewDocumentBuilder {
     internal fun String.escapeForStyleTag(): String =
         replace(Regex("</style>", RegexOption.IGNORE_CASE)) { "<\\/" + it.value.substring(2) }
 
+    const val SEARCH_RESTORE_STYLE_ID = "td-search-restore-style"
     const val PLAIN_TEXT_CLASS = "tsundoku-plain-text"
     const val ATTR_DATA_PLAIN_TEXT = "data-tsundoku-plain-text"
 }

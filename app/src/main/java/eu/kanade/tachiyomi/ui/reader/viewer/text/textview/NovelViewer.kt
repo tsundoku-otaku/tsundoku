@@ -26,6 +26,7 @@ import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchTarget
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -123,6 +124,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var currentChapterIndex: Int
         get() = chapterQueue.currentIndex
         set(value) {
+            if (value != chapterQueue.currentIndex) searchMatchJob?.cancel()
             chapterQueue.currentIndex = value
         }
     private var disableScrollbarForSession = false
@@ -132,6 +134,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     // Set by restoreProgress, consumed by onChapterTextSet once the matching chapter's text is laid out.
     private var pendingRestoreChapterId: Long? = null
     private var pendingRestoreProgress = 0f
+
+    // Set by restoreProgress when the reader was opened at a chapter search match, consumed by
+    // onChapterTextSet like a progress restore.
+    private var pendingSearchChapterId: Long? = null
+    private var pendingSearchTarget: ChapterSearchTarget? = null
+    private var searchMatchJob: Job? = null
 
     // Cache the last resolved custom-font so content:// URIs are not re-copied on every style refresh.
     private var cachedFontUri: String? = null
@@ -1373,6 +1381,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun reloadWithTranslation() {
+        searchMatchJob?.cancel()
         val generation = ++renderGeneration
         loadedChapters.forEach { loadedChapter ->
             val page = loadedChapter.chapter.pages?.firstOrNull() ?: return@forEach
@@ -1432,6 +1441,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
 
         if (!preferences.novelInfiniteScroll.get() || !isAlreadyLoaded) {
+            searchMatchJob?.cancel()
             contentContainer.removeAllViews()
             chapterQueue.clear()
         }
@@ -1711,6 +1721,14 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     private fun restoreProgress(page: ReaderPage) {
+        val searchTarget = activity.viewModel.takeSearchTarget(page.chapter.chapter.id)
+        if (searchTarget != null) {
+            lastSavedProgress = searchTarget.position
+            pendingRestoreChapterId = null
+            pendingSearchChapterId = page.chapter.chapter.id
+            pendingSearchTarget = searchTarget
+            return
+        }
         val savedProgress = page.chapter.chapter.last_page_read
         val isRead = page.chapter.chapter.read
         logcat(LogPriority.DEBUG) {
@@ -1738,6 +1756,67 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 isRestoringScroll = false
             }
         }
+    }
+
+    /**
+     * Scrolls to and highlights the chapter search match the reader was opened at. Falls back to
+     * the match's relative position when the rendered text no longer holds it.
+     */
+    private fun showSearchMatch(loaded: LoadedChapter, target: ChapterSearchTarget) {
+        if (loadedChapters.getOrNull(currentChapterIndex) !== loaded) return
+        val block = loaded.block
+
+        isRestoringScroll = true
+        setScrollProgress(target.position)
+        isRestoringScroll = false
+        reportSearchMatchProgress()
+
+        val text = block.fullText ?: return
+        val renderToken = block.renderToken
+        val chunkStarts = block.chunkStarts
+        searchMatchJob?.cancel()
+        searchMatchJob = scope.launch {
+            val match = target.locateRenderedMatch { text } ?: return@launch
+            if (loadedChapters.getOrNull(currentChapterIndex) !== loaded ||
+                !block.container.isAttachedToWindow || block.renderToken != renderToken ||
+                block.chunkStarts !== chunkStarts
+            ) {
+                return@launch
+            }
+
+            val chunkIndex = chunkStarts.indexOfLast { it <= match.first }
+            val chunkView = block.chunkViews.getOrNull(chunkIndex) ?: return@launch
+            val layout = chunkView.layout ?: return@launch
+            val chunkStart = chunkStarts[chunkIndex]
+            val start = (match.first - chunkStart).coerceIn(0, chunkView.text.length)
+            val end = (match.last + 1 - chunkStart).coerceIn(start, chunkView.text.length)
+            (chunkView.text as? android.text.Spannable)?.let { spannable ->
+                spannable.setSpan(
+                    BackgroundColorSpan(preferences.novelTtsHighlightColor.get()),
+                    start,
+                    end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+                spannable.setSpan(
+                    ForegroundColorSpan(preferences.novelTtsHighlightTextColor.get()),
+                    start,
+                    end,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+            val lineTop = layout.getLineTop(layout.getLineForOffset(start))
+            val scrollY = block.container.top + chunkView.top + lineTop - scrollView.height / 3
+            isRestoringScroll = true
+            scrollView.scrollTo(0, scrollY.coerceAtLeast(0))
+            isRestoringScroll = false
+            reportSearchMatchProgress()
+        }
+    }
+
+    private fun reportSearchMatchProgress() {
+        val progress = calculateCurrentChapterProgress(scrollView.scrollY)
+        lastSavedProgress = progress
+        activity.onNovelProgressChanged(progress)
     }
 
     private fun applyTextViewStyles(textView: TextView) {
@@ -1846,6 +1925,16 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private fun onChapterTextSet(loaded: LoadedChapter) {
         loaded.isTextSet = true
+
+        val searchTarget = pendingSearchTarget
+        if (searchTarget != null && loaded.chapter.chapter.id == pendingSearchChapterId) {
+            pendingSearchChapterId = null
+            pendingSearchTarget = null
+            val renderToken = loaded.block.renderToken
+            scrollView.doOnPreDraw {
+                if (loaded.block.renderToken == renderToken) showSearchMatch(loaded, searchTarget)
+            }
+        }
 
         if (loaded.chapter.chapter.id == pendingRestoreChapterId) {
             pendingRestoreChapterId = null
