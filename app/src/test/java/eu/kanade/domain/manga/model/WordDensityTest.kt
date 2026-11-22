@@ -18,6 +18,13 @@ class WordDensityTest {
     }
 
     @Test
+    fun `countWords splits on numeric spaces and keeps words after a bare ampersand`() {
+        assertEquals(2, WordDensity.countWords("one&#32;two"))
+        assertEquals(2, WordDensity.countWords("one&#x20;two"))
+        assertEquals(3, WordDensity.countWords("R&D and; more"))
+    }
+
+    @Test
     fun `countWords handles plain text and blank content`() {
         assertEquals(4, WordDensity.countWords("one two\nthree\t four"))
         assertEquals(0, WordDensity.countWords("   \n "))

@@ -35,7 +35,9 @@ data class WordDensity(
             "ins", "kbd", "label", "mark", "nobr", "q", "rb", "rp", "rt", "rtc", "ruby", "s", "samp", "small", "span",
             "strike", "strong", "sub", "sup", "time", "tt", "u", "var", "wbr",
         )
-        private val SPACE_ENTITIES = setOf("nbsp", "#160", "#xa0", "ensp", "emsp", "thinsp", "#8203", "#x200b")
+        private val SPACE_ENTITIES = setOf("nbsp", "ensp", "emsp", "thinsp")
+        private const val MAX_ENTITY_LENGTH = 32
+        private const val ZERO_WIDTH_SPACE = 0x200B
 
         /**
          * Maps an average chapter length onto a tier: 1-500 words is 1, 501-1000 is 2,
@@ -94,9 +96,9 @@ data class WordDensity(
                         if (name !in INLINE_ELEMENTS) inWord = false
                     }
                     char == '&' -> {
-                        val semi = content.indexOf(';', i + 1)
-                        val entity = if (semi in (i + 2)..(i + 9)) content.substring(i + 1, semi).lowercase() else null
-                        if (entity != null && entity in SPACE_ENTITIES) {
+                        val semi = entityEnd(content, i)
+                        val entity = if (semi > 0) content.substring(i + 1, semi).lowercase() else null
+                        if (entity != null && isSpaceEntity(entity)) {
                             inWord = false
                             i = semi + 1
                         } else {
@@ -118,6 +120,33 @@ data class WordDensity(
                 }
             }
             return words
+        }
+
+        // Index of the ';' closing an entity at [start], or -1 when the '&' is plain text. Looked for only
+        // within the longest entity, so text full of '&' stays linear, and only over entity characters,
+        // so "R&D and;" doesn't swallow the words in between.
+        private fun entityEnd(content: String, start: Int): Int {
+            val limit = minOf(content.length - 1, start + MAX_ENTITY_LENGTH)
+            for (j in start + 1..limit) {
+                val c = content[j]
+                when {
+                    c == ';' -> return if (j > start + 1) j else -1
+                    c.isLetterOrDigit() || (c == '#' && j == start + 1) -> continue
+                    else -> return -1
+                }
+            }
+            return -1
+        }
+
+        // Numeric references are decoded, so any spelling of a space character splits words.
+        private fun isSpaceEntity(entity: String): Boolean {
+            if (!entity.startsWith('#')) return entity in SPACE_ENTITIES
+            val code = if (entity.startsWith("#x")) {
+                entity.substring(2).toIntOrNull(16)
+            } else {
+                entity.substring(1).toIntOrNull()
+            } ?: return false
+            return Character.isWhitespace(code) || Character.isSpaceChar(code) || code == ZERO_WIDTH_SPACE
         }
 
         private fun isTagStart(char: Char) = char.isLetter() || char == '/' || char == '!' || char == '?'

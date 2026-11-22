@@ -1387,6 +1387,8 @@ class MangaViewModel(
             val checkedChapters: Int,
             val chaptersToCount: Int,
             val result: WordDensity? = null,
+            // A cancelled count's late workers must not move a newer dialog's progress.
+            val runId: Long = 0,
         ) : Dialog
         data object SettingsSheet : Dialog
         data object TrackSheet : Dialog
@@ -1557,6 +1559,7 @@ class MangaViewModel(
     }
 
     private var wordCountJob: Job? = null
+    private var wordCountRun = 0L
 
     /**
      * Count the words of every downloaded chapter (every chapter for local entries) off the main
@@ -1572,8 +1575,9 @@ class MangaViewModel(
         val totalChapters = state.chapters.size
 
         wordCountJob?.cancel()
+        val runId = ++wordCountRun
         updateSuccessState {
-            it.copy(dialog = Dialog.WordCount(checkedChapters = 0, chaptersToCount = chapters.size))
+            it.copy(dialog = Dialog.WordCount(checkedChapters = 0, chaptersToCount = chapters.size, runId = runId))
         }
         if (chapters.isEmpty()) return
 
@@ -1607,7 +1611,9 @@ class MangaViewModel(
                             }
                             val checked = checkedCounter.incrementAndGet()
                             if (checked % WORD_COUNT_PROGRESS_STEP == 0 || checked == chapters.size) {
-                                updateWordCountDialog { it.copy(checkedChapters = maxOf(it.checkedChapters, checked)) }
+                                updateWordCountDialog(runId) {
+                                    it.copy(checkedChapters = maxOf(it.checkedChapters, checked))
+                                }
                             }
                         }
                     }
@@ -1622,13 +1628,14 @@ class MangaViewModel(
                 totalChapters = totalChapters,
                 unreadableChapters = unreadableChapters,
             )
-            updateWordCountDialog { it.copy(result = result) }
+            updateWordCountDialog(runId) { it.copy(result = result) }
         }
     }
 
-    private inline fun updateWordCountDialog(func: (Dialog.WordCount) -> Dialog.WordCount) {
+    private inline fun updateWordCountDialog(runId: Long, func: (Dialog.WordCount) -> Dialog.WordCount) {
         updateSuccessState { state ->
             val dialog = state.dialog as? Dialog.WordCount ?: return@updateSuccessState state
+            if (dialog.runId != runId) return@updateSuccessState state
             state.copy(dialog = func(dialog))
         }
     }
