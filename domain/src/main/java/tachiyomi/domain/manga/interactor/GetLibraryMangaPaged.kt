@@ -115,8 +115,12 @@ class GetLibraryMangaPaged(
                 }
                 // A page crossing the end of a capped snapshot takes the rest from the database, or the
                 // rows between the snapshot end and the next loaded page would never be shown.
-                val tail = keyedPage(limit - slice.size, end, mode)
-                return@withContext LibraryPagingSource.Chunk.of(rows + tail, limit, offset)
+                // The next offset counts consumed ids, not shown rows, so a snapshot row that is gone
+                // doesn't end paging early.
+                val tailLimit = limit - slice.size
+                val tail = keyedPage(tailLimit, end, mode)
+                val next = (end + tail.size).takeIf { tail.size == tailLimit }
+                return@withContext LibraryPagingSource.Chunk(rows + tail, next)
             }
             if (snapshot?.complete == true) return@withContext LibraryPagingSource.Chunk(emptyList(), null)
             LibraryPagingSource.Chunk.of(keyedPage(limit, offset, mode), limit, offset)

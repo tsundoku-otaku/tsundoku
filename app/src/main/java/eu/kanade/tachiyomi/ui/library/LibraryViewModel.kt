@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.update
@@ -118,6 +119,8 @@ import tachiyomi.source.local.isLocal
 import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.seconds
 
@@ -364,7 +367,7 @@ class LibraryViewModel(
             if (query.isNullOrEmpty() || !prefs.searchChapters) return emptySet()
             // For "chapter:" prefix, extract the actual query
             val actualQuery = if (query.startsWith("chapter:", true)) {
-                query.substringAfter("chapter:").trim()
+                query.substring("chapter:".length).trim()
             } else {
                 query
             }
@@ -428,6 +431,8 @@ class LibraryViewModel(
                 SearchConfig(spec, chapterIds.await(), metadataIds.await(), prefs.searchContent)
             }
         }
+            // A failed lookup would end the flow and stop search from following later queries.
+            .retryPagedQuery("search config")
     }
 
     // A failed metadata query would end the flow and leave the paged library loading for good; it is
@@ -439,15 +444,19 @@ class LibraryViewModel(
         true
     }
 
-    // SQLite NOCASE: only ASCII letters fold, everything else compares by code unit.
+    // SQLite NOCASE: only ASCII letters fold, everything else compares by UTF-8 bytes, which order like
+    // code points (not UTF-16 units, which put surrogates before U+E000..U+FFFF).
     private fun compareNoCase(a: String, b: String): Int {
-        val n = minOf(a.length, b.length)
-        for (i in 0 until n) {
-            val ca = a[i].let { if (it in 'A'..'Z') it + 32 else it }
-            val cb = b[i].let { if (it in 'A'..'Z') it + 32 else it }
+        var i = 0
+        var j = 0
+        while (i < a.length && j < b.length) {
+            val ca = a.codePointAt(i).let { if (it in 'A'.code..'Z'.code) it + 32 else it }
+            val cb = b.codePointAt(j).let { if (it in 'A'.code..'Z'.code) it + 32 else it }
             if (ca != cb) return ca.compareTo(cb)
+            i += Character.charCount(ca)
+            j += Character.charCount(cb)
         }
-        return a.length.compareTo(b.length)
+        return (a.length - i).compareTo(b.length - j)
     }
 
     private data class SearchPrefs(
@@ -460,8 +469,9 @@ class LibraryViewModel(
 
     private fun initPaged(controller: LibraryPagingController) {
         val isNovel = pagedTypeIsNovel()
+        // Subscribed before the first count, so a change landing during it still counts again.
         val totalFlow = controller.invalidations
-            .onStart { emit(Unit) }
+            .onSubscription { emit(Unit) }
             .map { getLibraryMangaPaged.awaitFavoriteCount(isNovel) }
             .retryPagedQuery("favorite count")
             .distinctUntilChanged()
@@ -479,10 +489,10 @@ class LibraryViewModel(
                     controller.slowInvalidations(COUNT_INVALIDATION_WINDOW),
                 ).collect { changes.trySend(Unit) }
             }
+            // Only a "yes" from the quick scan is final; a "no" waits for the full one, so the category
+            // isn't hidden while that runs.
             val quick = getLibraryMangaPaged.awaitHasUncategorized(isNovel, UNCATEGORIZED_QUICK_SCAN)
-            send(quick)
-            // Only a "no" from the quick scan needs the full one to be sure.
-            if (!quick) send(getLibraryMangaPaged.awaitHasUncategorized(isNovel))
+            send(quick || getLibraryMangaPaged.awaitHasUncategorized(isNovel))
             for (change in changes) send(getLibraryMangaPaged.awaitHasUncategorized(isNovel))
         }
             .retryPagedQuery("uncategorized probe")
@@ -549,7 +559,15 @@ class LibraryViewModel(
                 state.map { it.showMangaCount || !it.searchQuery.isNullOrEmpty() }.distinctUntilChanged(),
             ) { plans, wanted -> plans.takeIf { wanted } }
                 .collectLatest { plans ->
-                    mutableState.update { it.copy(pagedCounts = emptyMap(), pagedWholeCount = null) }
+                    // Counts the loaded in-memory list gave stay while their plan is unchanged; the pager may
+                    // keep serving that list without loading it again.
+                    mutableState.update { state ->
+                        val kept = state.pagedCounts.filterKeys { id ->
+                            val plan = state.pagedPlans[id]
+                            plan != null && !plan.hasExactCount && fallbackCountKeys[id] == plan.key
+                        }
+                        state.copy(pagedCounts = kept, pagedWholeCount = null)
+                    }
                     val exact = plans?.values
                         ?.filter { it.hasExactCount }
                         ?.sortedBy { it.categoryId == 0L }
@@ -597,6 +615,9 @@ class LibraryViewModel(
         LibraryType.Novel -> true
         LibraryType.All -> null
     }
+
+    // The plan each in-memory count was published for.
+    private val fallbackCountKeys = ConcurrentHashMap<Long, Any>()
 
     private fun pagedPlan(category: Category, inputs: PagedInputs): LibraryPagedPlan {
         val prefs = inputs.prefs
@@ -652,16 +673,24 @@ class LibraryViewModel(
             null
         }
 
-        val loadInMemory: (suspend () -> List<LibraryManga>)? = if (inMemory) {
+        val loadInMemory: (suspend (Boolean) -> List<LibraryManga>)? = if (inMemory) {
             val search = inputs.search.takeIf { searchInMemory }
-            val load: suspend () -> List<LibraryManga> = {
+            // Only the newest pager load publishes, so an older one finishing late can't restore its count.
+            val pagerLoads = AtomicInteger()
+            val load: suspend (Boolean) -> List<LibraryManga> = { publishCount ->
+                val loadNumber = if (publishCount) pagerLoads.incrementAndGet() else 0
                 val tracks = pagedTracks.value ?: inputs.tracks
                 loadCategoryInMemory(category, isNovel, spec, prefs, tracks, inputs.trackingFilters, search)
                     .also { result ->
                         // SQL can't count what only the in-memory pass filters, so the loaded list is the count.
-                        mutableState.update { state ->
-                            if (state.pagedPlans[category.id]?.key != key) return@update state
-                            state.copy(pagedCounts = state.pagedCounts + (category.id to result.size.toLong()))
+                        if (publishCount) {
+                            mutableState.update { state ->
+                                if (state.pagedPlans[category.id]?.key != key || loadNumber != pagerLoads.get()) {
+                                    return@update state
+                                }
+                                fallbackCountKeys[category.id] = key
+                                state.copy(pagedCounts = state.pagedCounts + (category.id to result.size.toLong()))
+                            }
                         }
                     }
             }
@@ -683,7 +712,7 @@ class LibraryViewModel(
     }
 
     private suspend fun loadPlanFully(plan: LibraryPagedPlan): List<LibraryManga> {
-        plan.loadInMemory?.let { return it() }
+        plan.loadInMemory?.let { return it(false) }
         val filter = plan.filter
             ?: return getLibraryMangaPaged.awaitAll(plan.categoryId, plan.isNovel, plan.spec)
         return getLibraryMangaPaged.awaitFiltered(plan.categoryId, plan.isNovel, plan.spec, filter)
@@ -1830,7 +1859,8 @@ class LibraryViewModel(
                 lastSelectionCategory = category.id
                 state.copy(
                     selection = newSelection,
-                    pagedSelection = state.pagedSelection.withPaged(newSelection, all),
+                    // The tapped row may have left the plan before the read; it is selected with its record.
+                    pagedSelection = state.pagedSelection.withPaged(newSelection, if (to < 0) all + manga else all),
                 )
             }
         }
