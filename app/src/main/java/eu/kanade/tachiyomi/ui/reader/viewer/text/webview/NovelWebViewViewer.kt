@@ -965,7 +965,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * TTS finishes the last chunk and the next chapter is already appended to the DOM - avoids the
      * unreliable scroll-based viewport handoff entirely.
      */
-    private fun unloadReadChaptersAndStartNextTts() {
+    private fun ttsNextChapterLoaded(): Boolean =
+        loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) != null
+
+    private fun unloadReadChaptersAndStartNextTts(generation: Int = ttsStopGeneration) {
         val currentIdx = ttsController.ttsPlaybackChapterIndex
         val nextIdx = currentIdx + 1
         val nextChapter = loadedChapters.getOrNull(nextIdx) ?: return
@@ -1008,7 +1011,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             }
 
             clearWebViewTtsHighlight()
-            startTts()
+            // The DOM already dropped the read chapters, so the state above follows it either way; only
+            // playback waits on whether TTS was stopped meanwhile.
+            if (generation == ttsStopGeneration) startTts()
         }
     }
 
@@ -3116,6 +3121,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * scroll to the threshold themselves.
      */
     private suspend fun appendNextChapterIfAvailable(silent: Boolean = false): Boolean {
+        // TTS only needs the chapter after the one it read; a scroll append may have brought it in already.
+        if (silent && ttsNextChapterLoaded()) return true
         isTtsHandoffIdle()
         val cached = handoffState.cachedOrNull
         if (cached != null) {
@@ -3154,6 +3161,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             logcat(LogPriority.DEBUG) { "NovelWebViewViewer: TTS append waiting on in-flight pre-fetch" }
             withTimeoutOrNull(5_000L) { prefetchCompletedSignal.first() }
             if (!ttsController.isTtsAutoPlay) return false
+            if (ttsNextChapterLoaded()) return true
             if (handoffState.cachedOrNull != null) {
                 // Cache populated while we waited - recurse to take the cache path.
                 return appendNextChapterIfAvailable(silent = true)
