@@ -727,7 +727,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 val pendingChapterId = pendingTtsStart?.chapterId
                 if (pendingChapterId != null &&
                     pendingChapterId != it.currChapter.chapter.id &&
-                    (preferences.novelInfiniteScroll.get() || loadedChapters.any { c -> c.chapter.chapter.id == pendingChapterId })
+                    (
+                        preferences.novelInfiniteScroll.get() ||
+                            loadedChapters.any { c -> c.chapter.chapter.id == pendingChapterId }
+                        )
                 ) {
                     stopTts()
                 }
@@ -879,6 +882,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var pendingTtsStart: PendingTtsStart? = null
 
     private val pendingTtsAutoStart: Boolean get() = pendingTtsStart != null
+
+    // Bumped by stopTts and every start, so a deferred start only runs for the request that made it.
+    private var ttsStartGeneration = 0
 
     private fun deferTtsStart(target: LoadedChapter?, fromViewport: Boolean) {
         if (target?.isTextSet == true) {
@@ -1445,6 +1451,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun startTts() {
+        ttsStartGeneration++
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet, waiting..." }
@@ -1487,6 +1494,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             "TTS: stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
         pendingTtsStart = null
+        ttsStartGeneration++
         handoffState = TtsHandoffState.Idle
         ttsController.stop()
     }
@@ -1542,6 +1550,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     fun seekTtsToParagraph(paragraphIndex: Int) = ttsController.seekToParagraph(paragraphIndex)
 
     fun startTtsFromViewport() {
+        ttsStartGeneration++
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet" }
@@ -2131,7 +2140,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun onChapterTextSet(loaded: LoadedChapter) {
         loaded.isTextSet = true
 
-        if (loaded.chapter.chapter.id == pendingRestoreChapterId) {
+        val restoresScroll = loaded.chapter.chapter.id == pendingRestoreChapterId
+        if (restoresScroll) {
             pendingRestoreChapterId = null
             val progress = pendingRestoreProgress
             val generation = contentGeneration
@@ -2169,9 +2179,19 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 }
             }
             if (pending.fromViewport) {
-                // The visible paragraph is only known once the new text is laid out.
-                loaded.block.container.doOnLayout {
-                    if (ttsController.isTtsAutoPlay && pendingTtsStart == null) startTtsFromViewport()
+                // The visible paragraph is only known once the new text is laid out, and after the saved
+                // position is restored when that is pending too: pre-draw listeners run in the order
+                // added, so this one runs after the restore above.
+                val generation = ttsStartGeneration
+                val start = {
+                    if (generation == ttsStartGeneration && ttsController.isTtsAutoPlay && pendingTtsStart == null) {
+                        startTtsFromViewport()
+                    }
+                }
+                if (restoresScroll) {
+                    scrollView.doOnPreDraw { start() }
+                } else {
+                    loaded.block.container.doOnLayout { start() }
                 }
             } else {
                 startTts()
