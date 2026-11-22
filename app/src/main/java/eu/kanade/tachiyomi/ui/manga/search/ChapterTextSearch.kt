@@ -42,6 +42,7 @@ object ChapterTextSearch {
     const val MAX_SNIPPETS_PER_CHAPTER = 10
     private const val MAX_SNIPPET_MATCH_LENGTH = 200
     private const val CANCEL_CHECK_MATCHES = 256
+    private const val LITERAL_SPAN = 64 * 1024
     private const val WORD_CHAR = "[\\p{L}\\p{N}_]"
 
     /**
@@ -89,14 +90,33 @@ object ChapterTextSearch {
         if (text.isEmpty() || query.isEmpty()) return ChapterTextMatches(0, emptyList())
         var count = 0
         val snippets = mutableListOf<ChapterSearchSnippet>()
-        var from = text.indexOf(query, 0, ignoreCase)
+        var from = indexOfCancellable(text, query, 0, ignoreCase, isActive)
         while (from >= 0) {
             count++
             if (count % CANCEL_CHECK_MATCHES == 0 && !isActive()) throw CancellationException("Search cancelled")
             if (snippets.size < maxSnippets) snippets += snippetFor(text, from, from + query.length)
-            from = text.indexOf(query, from + query.length, ignoreCase)
+            from = indexOfCancellable(text, query, from + query.length, ignoreCase, isActive)
         }
         return ChapterTextMatches(count, snippets)
+    }
+
+    // Searched in spans with a cancellation check between them, so a long scan without matches still
+    // stops; spans overlap by the query length so a match across a boundary is found.
+    private fun indexOfCancellable(
+        text: String,
+        query: String,
+        from: Int,
+        ignoreCase: Boolean,
+        isActive: () -> Boolean,
+    ): Int {
+        var start = from
+        while (true) {
+            if (text.length - start <= LITERAL_SPAN) return text.indexOf(query, start, ignoreCase)
+            val hit = text.substring(start, start + LITERAL_SPAN + query.length - 1).indexOf(query, 0, ignoreCase)
+            if (hit >= 0) return start + hit
+            if (!isActive()) throw CancellationException("Search cancelled")
+            start += LITERAL_SPAN
+        }
     }
 
     /**

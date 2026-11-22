@@ -89,39 +89,52 @@ object HtmlTextScanner {
 
     // "</head" must not match "</header".
     private fun closingTagIndex(content: String, name: String, from: Int): Int {
+        if (name == "head") return headCloseIndex(content, from)
         var at = from
         while (true) {
             val close = content.indexOf("</$name", at, ignoreCase = true)
             if (close < 0) return -1
-            // "</head>" written inside a comment, script or style in the head doesn't end it.
-            if (name == "head") {
-                val skipTo = rawTextEndBefore(content, at, close)
-                if (skipTo > 0) {
-                    at = skipTo
-                    continue
-                }
-            }
-            val after = content.getOrNull(close + 2 + name.length)
-            if (after == null || !(after.isLetterOrDigit() || after == '-')) return close
+            if (isNameEnd(content, close + 2 + name.length)) return close
             at = close + 2
         }
     }
 
-    // End of the first comment, script or style opening in [from, before), or -1 when none does.
-    private fun rawTextEndBefore(content: String, from: Int, before: Int): Int {
-        val comment = content.indexOf("<!--", from).takeIf { it in 0 until before }
-        val raw = HEAD_RAW_TEXT.mapNotNull { tag ->
-            content.indexOf("<$tag", from, ignoreCase = true).takeIf { it in 0 until before }?.let { it to tag }
-        }.minByOrNull { it.first }
-        return when {
-            comment != null && (raw == null || comment < raw.first) ->
-                content.indexOf("-->", comment + 4).let { if (it < 0) content.length else it + 3 }
-            raw != null -> {
-                val close = closingTagIndex(content, raw.second, raw.first + 1)
-                if (close < 0) -1 else content.indexOf('>', close).let { if (it < 0) content.length else it + 1 }
+    // One forward walk, so each comment, script or style in the head is passed once and a "</head>"
+    // written inside one of them doesn't end the head.
+    private fun headCloseIndex(content: String, from: Int): Int {
+        var at = from
+        while (true) {
+            val lt = content.indexOf('<', at)
+            if (lt < 0) return -1
+            when {
+                content.startsWith("<!--", lt) -> {
+                    val end = content.indexOf("-->", lt + 4)
+                    if (end < 0) return -1
+                    at = end + 3
+                }
+                content.startsWith("</head", lt, ignoreCase = true) && isNameEnd(content, lt + 6) -> return lt
+                else -> {
+                    val raw = HEAD_RAW_TEXT.firstOrNull {
+                        content.startsWith("<$it", lt, ignoreCase = true) && isNameEnd(content, lt + 1 + it.length)
+                    }
+                    if (raw == null) {
+                        at = lt + 1
+                    } else {
+                        // The close is looked for after the whole opening tag, whose attributes may quote "</script>".
+                        val open = tagEnd(content, lt)
+                        if (open < 0) return -1
+                        val close = closingTagIndex(content, raw, open + 1)
+                        if (close < 0) return -1
+                        at = close + 2
+                    }
+                }
             }
-            else -> -1
         }
+    }
+
+    private fun isNameEnd(content: String, at: Int): Boolean {
+        val after = content.getOrNull(at) ?: return true
+        return !(after.isLetterOrDigit() || after == '-')
     }
 
     private val HEAD_RAW_TEXT = listOf("script", "style")

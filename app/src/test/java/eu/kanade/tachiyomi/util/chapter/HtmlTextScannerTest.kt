@@ -71,6 +71,12 @@ class HtmlTextScannerTest {
     }
 
     @Test
+    fun `script close quoted in its own attribute does not end it`() {
+        val html = "<head><script data-x=\"</script>\">ignored </head> hidden words</script></head><p>text</p>"
+        assertEquals("text", scan(html).trim('|'))
+    }
+
+    @Test
     fun `head end tag is not matched by header`() {
         assertEquals("TitleText", scan("<head><meta charset=utf-8><header>Title</header><p>Text</p>").replace("|", ""))
         assertEquals("Body", scan("<head><title>x</title></head><p>Body</p>").replace("|", ""))

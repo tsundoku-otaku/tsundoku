@@ -186,8 +186,15 @@ class ReaderViewModel @JvmOverloads constructor(
     // Set once the landing at the match was reported; the end of the chapter after that is reading.
     private var jumpLanded = false
 
+    // Saves run on IO while the jump starts and ends on the main thread.
+    private val jumpLock = Any()
+
+    // Bumped when a jump starts or ends, so a save reported during a jump that ended before the save
+    // ran keeps the decision made when it was reported.
+    private var jumpGeneration = 0
+
     // Leaving the jumped chapter ends the jump; coming back later reads it normally.
-    private fun endSearchJumpUnless(chapter: ReaderChapter) {
+    private fun endSearchJumpUnless(chapter: ReaderChapter): Unit = synchronized(jumpLock) {
         if (chapter.chapter.id == jumpedChapterId) return
         // Nothing was saved since the jump, so the reused chapter gets its saved progress back.
         if (jumpTargetProgress != null) jumpedChapter?.chapter?.last_page_read = progressBeforeJump
@@ -196,22 +203,26 @@ class ReaderViewModel @JvmOverloads constructor(
         jumpBaselineProgress = null
         jumpedChapter = null
         jumpLanded = false
+        jumpGeneration++
     }
 
-    // True while a save would only record where the search jump landed.
-    private fun holdsJumpProgress(chapterId: Long?, progress: Int): Boolean {
-        if (chapterId == null || chapterId != jumpedChapterId) return false
-        val target = jumpTargetProgress ?: return false
-        if (kotlin.math.abs(progress - target) <= JUMP_HOLD_SLACK_PERCENT && !(progress >= 100 && jumpLanded)) {
-            jumpLanded = true
-            return true
+    // True while a save would only record where the search jump landed. [commit] false only asks.
+    private fun holdsJumpProgress(chapterId: Long?, progress: Int, commit: Boolean = true): Boolean =
+        synchronized(jumpLock) {
+            if (chapterId == null || chapterId != jumpedChapterId) return false
+            val target = jumpTargetProgress ?: return false
+            if (kotlin.math.abs(progress - target) <= JUMP_HOLD_SLACK_PERCENT && !(progress >= 100 && jumpLanded)) {
+                if (commit) jumpLanded = true
+                return true
+            }
+            val baseline = jumpBaselineProgress
+            if (baseline != null && progress <= baseline) return true
+            if (commit) {
+                jumpTargetProgress = null
+                jumpBaselineProgress = null
+            }
+            return false
         }
-        val baseline = jumpBaselineProgress
-        if (baseline != null && progress <= baseline) return true
-        jumpTargetProgress = null
-        jumpBaselineProgress = null
-        return false
-    }
 
     /** Returned once so later restores, including after process death, use the saved progress. */
     fun takeJumpProgress(chapter: ReaderChapter): Int? {
@@ -220,12 +231,15 @@ class ReaderViewModel @JvmOverloads constructor(
         val progress = pendingJumpProgress ?: return null
         pendingJumpProgress = null
         savedState.remove<Int>("search_progress")
-        jumpedChapterId = chapterId
-        jumpTargetProgress = progress
-        jumpBaselineProgress = chapter.chapter.last_page_read.takeIf { !chapter.chapter.read }
-        jumpedChapter = chapter
-        progressBeforeJump = chapter.chapter.last_page_read
-        jumpLanded = false
+        synchronized(jumpLock) {
+            jumpedChapterId = chapterId
+            jumpTargetProgress = progress
+            jumpBaselineProgress = chapter.chapter.last_page_read.takeIf { !chapter.chapter.read }
+            jumpedChapter = chapter
+            progressBeforeJump = chapter.chapter.last_page_read
+            jumpLanded = false
+            jumpGeneration++
+        }
         // The backward-jump guard then measures from the match instead of the old position.
         chapter.chapter.last_page_read = progress
         return progress
@@ -863,6 +877,9 @@ class ReaderViewModel @JvmOverloads constructor(
 
         if (incognitoMode) return
 
+        val reportedGeneration = synchronized(jumpLock) { jumpGeneration }
+        val heldWhenReported =
+            holdsJumpProgress(selectedChapter.chapter.id, progressPercentage.coerceIn(0, 100), commit = false)
         viewModelScope.launchNonCancellable {
             // Serialize saves so concurrent calls don't race each other and save
             // old progress values over newer ones (e.g. multiple chapters in flight).
@@ -886,7 +903,13 @@ class ReaderViewModel @JvmOverloads constructor(
                     return@withLock
                 }
 
-                if (holdsJumpProgress(selectedChapter.chapter.id, clampedProgress)) return@withLock
+                val jumpEnded = synchronized(jumpLock) { jumpGeneration != reportedGeneration }
+                val held = if (jumpEnded) {
+                    heldWhenReported
+                } else {
+                    holdsJumpProgress(selectedChapter.chapter.id, clampedProgress)
+                }
+                if (held) return@withLock
 
                 selectedChapter.chapter.last_page_read = clampedProgress
 
@@ -1040,14 +1063,15 @@ class ReaderViewModel @JvmOverloads constructor(
         readerChapter.requestedPage = pageIndex
         chapterPageIndex = pageIndex
 
+        // For novel chapters each chapter has exactly 1 page (the full text), and last_page_read holds
+        // the reading percentage that only saveNovelProgress writes, with its search-jump protection.
+        val isNovelChapter = manga?.isNovel == true && (readerChapter.pages?.size ?: 0) <= 1
+        if (isNovelChapter) return
+
         if (!incognitoMode && page.status !is Page.State.Error) {
             readerChapter.chapter.last_page_read = pageIndex
 
-            // For novel chapters each chapter has exactly 1 page (the full text).
-            // Marking complete via page-index would always fire on selection.
-            // Novel completion is handled by saveNovelProgress (marks at >=95%).
-            val isNovelChapter = manga?.isNovel == true && (readerChapter.pages?.size ?: 0) <= 1
-            val isComplete = !isNovelChapter && readerChapter.pages?.lastIndex == pageIndex
+            val isComplete = readerChapter.pages?.lastIndex == pageIndex
             if (isComplete) {
                 readerChapter.chapter.read = true
             }
