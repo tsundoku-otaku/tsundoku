@@ -1212,8 +1212,17 @@ class CustomSourceEditorScreen(
                 eu.kanade.tachiyomi.ui.customsource.PickerScope.Document,
             )
         }
-        // The listing whose selectors the shared inputs edit, like formCard.
-        val listingUrl = when {
+        // The listing whose selectors the shared inputs edit: for a saved source the card formCard loaded
+        // them from, which buildConfig also keeps as the baseline; for a new one the first enabled listing.
+        val loadedListingUrl = initialConfig?.let { c ->
+            when {
+                c.popularUrl.isNotBlank() -> popularUrl
+                c.latestUrl != null -> latestUrl
+                c.searchUrl.isNotBlank() -> searchUrl
+                else -> null
+            }
+        }?.ifBlank { null }
+        val listingUrl = loadedListingUrl ?: when {
             features.hasPopular && popularUrl.isNotBlank() -> popularUrl
             features.hasLatest && latestUrl.isNotBlank() -> latestUrl
             else -> popularUrl

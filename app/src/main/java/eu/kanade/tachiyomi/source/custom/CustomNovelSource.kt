@@ -293,25 +293,22 @@ private fun createBaseUrlRewriteClient(
         .build()
 }
 
-private fun patchHttpSourceForCustomBaseUrl(source: HttpSource, customBaseUrl: String): HttpSource {
+// Null when the extension's requests can't be redirected to the custom base URL.
+private fun patchHttpSourceForCustomBaseUrl(source: HttpSource, customBaseUrl: String): HttpSource? {
     val sourceBaseUrl = source.baseUrl.trimEnd('/')
     val targetBaseUrl = customBaseUrl.trimEnd('/')
     if (targetBaseUrl.isBlank() || sourceBaseUrl.equals(targetBaseUrl, ignoreCase = true)) return source
 
     // Never patch the shared SourceManager instance: the rewrite would leak onto the extension's
     // own requests and onto every other custom source based on it.
-    // When the requests can't be redirected, the extension keeps fetching from its own domain, as
-    // before mirrors were supported, instead of the custom source failing outright.
     val target = source.freshCopyOrNull() ?: run {
-        source.logcat(LogPriority.WARN) { "${source.name}: no standalone instance, requests stay on $sourceBaseUrl" }
-        return source
+        source.logcat(LogPriority.WARN) { "${source.name}: no standalone instance to redirect to $targetBaseUrl" }
+        return null
     }
     val rewrittenClient = createBaseUrlRewriteClient(target.client, sourceBaseUrl, targetBaseUrl)
     if (!replaceSourceClient(target, rewrittenClient)) {
-        source.logcat(LogPriority.WARN) {
-            "${source.name}: network client can't be replaced, requests stay on $sourceBaseUrl"
-        }
-        return source
+        source.logcat(LogPriority.WARN) { "${source.name}: network client can't be redirected to $targetBaseUrl" }
+        return null
     }
     // Keep baseUrl original so the interceptor still matches outgoing requests.
     return target
@@ -554,8 +551,10 @@ class CustomNovelSource(
             }
             val patched = when {
                 catalogue is JsSource && baseUrl.isNotBlank() -> catalogue.withSiteOverride(baseUrl)
+                // Fetching from the extension's own site instead of the configured one would be silent and wrong.
                 catalogue is HttpSource && baseUrl.isNotBlank() ->
                     patchHttpSourceForCustomBaseUrl(catalogue, baseUrl)
+                        ?: throw IllegalStateException("${catalogue.name} can't be pointed at $baseUrl")
                 else -> catalogue
             }
             ResolvedBase(original, patched, originalBaseUrl).also { resolvedBase = it }
