@@ -21,7 +21,9 @@ import eu.kanade.tachiyomi.data.download.DownloadProvider
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -32,6 +34,9 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
 import tachiyomi.core.common.util.lang.launchIO
@@ -101,6 +106,7 @@ class ChapterSearchScreen(
     ) : StateViewModel<State>(State()) {
 
         private var searchJob: Job? = null
+        private var expansions = SupervisorJob(viewModelScope.coroutineContext.job)
         private val searchGeneration = AtomicLong()
         private var source: Source? = null
 
@@ -125,7 +131,9 @@ class ChapterSearchScreen(
                         )
                     }
                 mutableState.update { it.copy(manga = manga, chapters = chapters) }
-                if (state.value.pendingSearch) search()
+                withContext(Dispatchers.Main) {
+                    if (state.value.pendingSearch) search()
+                }
             }
         }
 
@@ -176,10 +184,10 @@ class ChapterSearchScreen(
             val regex = searchedRegex ?: return
             if (result.snippets.size >= wanted) return
             val generation = searchGeneration.get()
-            viewModelScope.launchIO {
+            viewModelScope.launch(Dispatchers.IO + expansions) {
                 val matches = openTextReader(manga, source).use { reader ->
                     scanChapter(reader, result.chapter, regex, ChapterTextSearch.MAX_EXPANDED_SNIPPETS)
-                } ?: return@launchIO
+                } ?: return@launch
                 mutableState.update { state ->
                     if (searchGeneration.get() != generation) return@update state
                     state.copy(
@@ -194,6 +202,8 @@ class ChapterSearchScreen(
         fun search() {
             searchJob?.cancel()
             val generation = searchGeneration.incrementAndGet()
+            expansions.cancel()
+            expansions = SupervisorJob(viewModelScope.coroutineContext.job)
             val current = state.value
             val query = current.query
             if (query.isEmpty()) {
