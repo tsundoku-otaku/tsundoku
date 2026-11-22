@@ -5,6 +5,7 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.HtmlUtils.titlePatterns
 import logcat.LogPriority
 import logcat.logcat
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.html.HtmlGenerator
 import org.intellij.markdown.parser.MarkdownParser
@@ -48,7 +49,8 @@ object HtmlUtils {
     )
 
     // Attributes whose value is a URL that a browser may load or navigate to.
-    private val urlAttributes = setOf("href", "src", "action", "formaction", "xlink:href", "data", "poster", "background", "cite")
+    private val urlAttributes =
+        setOf("href", "src", "action", "formaction", "xlink:href", "data", "poster", "background", "cite")
 
     // Elements that only render a data: URL as media, never as a document that runs script.
     private val dataUrlMediaTags = setOf("img", "image", "source", "video", "audio", "track")
@@ -245,7 +247,12 @@ object HtmlUtils {
 
     // The first chapter of a page goes through a whole-document parse (its body) before the WebView
     // parses it, so that serialization must be clean too.
-    private fun settlesAsDocumentBody(html: String, target: RenderTarget, stripCss: Boolean, blockMedia: Boolean): Boolean {
+    private fun settlesAsDocumentBody(
+        html: String,
+        target: RenderTarget,
+        stripCss: Boolean,
+        blockMedia: Boolean,
+    ): Boolean {
         val doc = Jsoup.parse(html)
         doc.outputSettings().prettyPrint(false)
         val body = doc.body().html()
@@ -278,11 +285,11 @@ object HtmlUtils {
             .addAttributes("track", "src", "kind", "srclang", "label", "default")
             .addAttributes("img", "srcset", "sizes", "loading")
             .addProtocols("img", "src", "http", "https", "data")
-            .addProtocols("video", "src", "http", "https")
+            .addProtocols("video", "src", "http", "https", "data")
             .addProtocols("video", "poster", "http", "https", "data")
-            .addProtocols("audio", "src", "http", "https")
-            .addProtocols("source", "src", "http", "https")
-            .addProtocols("track", "src", "http", "https")
+            .addProtocols("audio", "src", "http", "https", "data")
+            .addProtocols("source", "src", "http", "https", "data")
+            .addProtocols("track", "src", "http", "https", "data")
             .apply {
                 if (keepCss) {
                     addTags("style")
@@ -355,7 +362,9 @@ object HtmlUtils {
             }
 
             if (stripJs) {
-                val unsafe = element.attributes().asList().filter { isUnsafeAttribute(element.normalName(), it.key, it.value) }
+                val unsafe = element.attributes().asList().filter {
+                    isUnsafeAttribute(element.normalName(), it.key, it.value)
+                }
                 unsafe.forEach { element.removeAttr(it.key) }
                 if (unsafe.isNotEmpty()) changed = true
             }
@@ -377,23 +386,45 @@ object HtmlUtils {
     // links and media were written against it, so they are made absolute first.
     private fun resolveAgainstBase(root: Element): Boolean {
         val href = root.selectFirst("base[href]")?.attr("href")?.trim().orEmpty()
-        val base = runCatching { java.net.URI(href) }.getOrNull()
-            ?.takeIf { it.scheme.equals("http", true) || it.scheme.equals("https", true) }
-            ?: return false
+        // HttpUrl resolves RFC 3986 style, so "?page=2" keeps the base document; java.net drops it.
+        val base = href.toHttpUrlOrNull() ?: return false
+        fun resolve(value: String): String? {
+            if (value.isEmpty() || value.startsWith("#") || SCHEME_PREFIX.containsMatchIn(value)) return null
+            return base.resolve(value)?.toString()
+        }
         var resolved = false
-        for (element in root.select("[src], [href], [poster]")) {
+        for (element in root.select(BASE_RESOLVED_SELECTOR)) {
             for (key in BASE_RESOLVED_ATTRIBUTES) {
-                val value = element.attr(key).trim()
-                if (value.isEmpty() || value.startsWith("#") || SCHEME_PREFIX.containsMatchIn(value)) continue
-                val absolute = runCatching { base.resolve(value).toString() }.getOrNull() ?: continue
+                val absolute = resolve(element.attr(key).trim()) ?: continue
                 element.attr(key, absolute)
                 resolved = true
+            }
+            for (key in SRCSET_ATTRIBUTES) {
+                val value = element.attr(key).trim()
+                if (value.isEmpty()) continue
+                // Each candidate is "url [descriptor]"; only the url is resolved. Candidates are split on a
+                // comma before whitespace, since a url can hold commas itself.
+                var changed = false
+                val rewritten = value.split(SRCSET_SEPARATOR).joinToString(", ") { candidate ->
+                    val parts = candidate.trim().split(WHITESPACE, limit = 2)
+                    val url = resolve(parts[0])?.also { changed = true } ?: parts[0]
+                    if (parts.size > 1) "$url ${parts[1]}" else url
+                }
+                if (changed) {
+                    element.attr(key, rewritten)
+                    resolved = true
+                }
             }
         }
         return resolved
     }
 
-    private val BASE_RESOLVED_ATTRIBUTES = listOf("src", "href", "poster")
+    // Lazy loaders copy data-src/data-srcset into place later, after <base> is gone.
+    private val BASE_RESOLVED_ATTRIBUTES = listOf("src", "href", "poster", "data-src")
+    private val SRCSET_ATTRIBUTES = listOf("srcset", "data-srcset")
+    private val SRCSET_SEPARATOR = Regex(""",\s+""")
+    private val WHITESPACE = Regex("""\s+""")
+    private const val BASE_RESOLVED_SELECTOR = "[src], [href], [poster], [data-src], [srcset], [data-srcset]"
     private val SCHEME_PREFIX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
     private fun isUnsafeAttribute(tag: String, key: String, value: String): Boolean {

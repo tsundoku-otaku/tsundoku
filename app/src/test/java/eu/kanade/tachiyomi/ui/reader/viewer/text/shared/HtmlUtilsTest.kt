@@ -591,6 +591,16 @@ class HtmlUtilsTest {
     }
 
     @Test
+    fun `base resolves srcset candidates and query-only links`() {
+        val html = "<base href=\"https://example.com/book/read.html\">" +
+            "<img srcset=\"a.jpg 1x, b.jpg 2x\" data-src=\"c.jpg\"><a href=\"?chapter=2\">next</a>"
+        val out = webView(html, keepJs = false)
+        assertTrue(out.contains("srcset=\"https://example.com/book/a.jpg 1x, https://example.com/book/b.jpg 2x\""), out)
+        assertTrue(out.contains("data-src=\"https://example.com/book/c.jpg\""), out)
+        assertTrue(out.contains("href=\"https://example.com/book/read.html?chapter=2\""), out)
+    }
+
+    @Test
     fun `sanitizeForRender output stays clean when reparsed after foreign content mutation`() {
         val payloads = listOf(
             "<img src=\"/a.jpg\" loading=\"lazy\"><math><mtext><table><mglyph><style><img src=x onerror=alert(1)>",
