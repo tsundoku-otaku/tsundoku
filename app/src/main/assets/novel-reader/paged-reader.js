@@ -662,8 +662,12 @@
         var idx = offset !== null ? Math.floor((offset + 1) / pageWidth()) : (p.pageIndex || 0);
         idx = Math.max(0, Math.min(idx, pc - 1));
         // Same page and count: the text is still on screen. The anchor is kept, not re-taken,
-        // so repeated small edits can't walk the position.
-        if (idx === p.pageIndex && pc === p.pageCount) return;
+        // so repeated small edits can't walk the position. The column width may have changed, so the
+        // page offset is written again; without ResizeObserver nothing else would.
+        if (idx === p.pageIndex && pc === p.pageCount) {
+            setTransform(idx, false);
+            return;
+        }
         p.lastRatio = pc > 0 ? (idx + 1) / pc : 0;
         landOnPage(idx, pc, false);
     }
