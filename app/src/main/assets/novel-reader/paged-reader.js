@@ -295,7 +295,12 @@
 
     function repaginate(ratio) {
         // Edit mode runs in normal flow; pinning the column layout there would clip the editor.
-        if (!enabled || isSuspended()) return;
+        if (!enabled) return;
+        if (isSuspended()) {
+            // Kept for the resume, which lands from lastRatio.
+            if (typeof ratio === 'number') p.lastRatio = ratio;
+            return;
+        }
         if (drag) {
             hasPendingRepaginate = true;
             pendingRepaginateRatio = ratio;
@@ -424,7 +429,16 @@
         if (!atEnd && rawFraction < -cfg.dragCommitFraction) { goToPage(baseIndex + 1); runPendingRepaginate(); return; }
         if (!atStart && rawFraction > cfg.dragCommitFraction) { goToPage(baseIndex - 1); runPendingRepaginate(); return; }
         landOnPage(baseIndex, pc, true);
-        runPendingRepaginate();
+        // Back on the same page the anchor from before the drag is kept, so a layout change that came
+        // in during the drag follows that text instead of re-taking the page top; a seek still lands
+        // on its ratio.
+        if (hasPendingRepaginate && typeof pendingRepaginateRatio !== 'number') {
+            hasPendingRepaginate = false;
+            pendingRepaginateRatio = undefined;
+            reflowKeepingText();
+        } else {
+            runPendingRepaginate();
+        }
     };
 
     // target < 0 or >= pageCount always does a full chapter switch, after a brief
