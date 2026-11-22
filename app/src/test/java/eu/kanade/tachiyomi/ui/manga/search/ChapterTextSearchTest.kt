@@ -138,4 +138,13 @@ class ChapterTextSearchTest {
             assertEquals(viaRegex.snippets.map { it.matchStart }, literal.snippets.map { it.matchStart })
         }
     }
+
+    @Test
+    fun `literal scan finds a match across spans and stops without matches when cancelled`() {
+        val text = "a".repeat(64 * 1024 - 2) + "needle" + "a".repeat(200_000)
+        assertEquals(1, ChapterTextSearch.findLiteralMatches(text, "needle", ignoreCase = false).count)
+        assertThrows<CancellationException> {
+            ChapterTextSearch.findLiteralMatches(text, "missing", ignoreCase = false, isActive = { false })
+        }
+    }
 }
