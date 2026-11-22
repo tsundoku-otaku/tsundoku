@@ -15,6 +15,7 @@ import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.Page
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -242,7 +243,8 @@ class TranslationService(
         // A cancel request only applies to the run it was made in.
         _progressState.update { it.copy(isCancelling = false) }
 
-        translationJob = scope.launch {
+        // Started only once assigned, so even a run that finishes at once is the one its cleanup checks for.
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 processQueue()
             } finally {
@@ -259,6 +261,8 @@ class TranslationService(
                 }
             }
         }
+        translationJob = job
+        job.start()
     }
 
     private suspend fun processQueue() = coroutineScope {
@@ -327,8 +331,11 @@ class TranslationService(
                     logcat(LogPriority.ERROR) { "Max retries reached for chapter ${task.chapterId}, skipping" }
                 }
             } finally {
-                currentTask = null
-                _currentTranslatingChapterId.value = null
+                // A cancelled run finishing after start() launched a new one must not clear the new run's task.
+                if (currentTask === task) {
+                    currentTask = null
+                    _currentTranslatingChapterId.value = null
+                }
                 publishQueueState()
             }
         }
@@ -521,7 +528,7 @@ class TranslationService(
             ?.takeIf { it.sourceParagraphs != null || !TranslationHtmlUtils.hasNestedMedia(content) }
 
         // Build per-chunk paragraph lists for context tracking
-        val chunkParagraphsList = chunks.map { c -> TranslationHtmlUtils.splitParagraphsPreserving(c) }
+        val chunkParagraphsList = TranslationHtmlUtils.chunkGroups(paragraphs, chunkSize)
 
         val resumeFromChunk = partial?.let {
             TranslationCachePolicy.resumeChunkCount(chunkParagraphsList.map { c -> c.size }, it)

@@ -179,12 +179,12 @@ object TranslationHtmlUtils {
      *
      * Each chunk is a single string with paragraphs separated by `\n\n`.
      */
-    fun buildChunks(paragraphs: List<String>, chunkSize: Int): List<String> {
-        if (paragraphs.isEmpty()) return emptyList()
-        return paragraphs.chunked(chunkSize.coerceAtLeast(1)).map { group ->
-            group.joinToString("\n\n")
-        }
-    }
+    fun buildChunks(paragraphs: List<String>, chunkSize: Int): List<String> =
+        chunkGroups(paragraphs, chunkSize).map { group -> group.joinToString("\n\n") }
+
+    /** The source paragraphs of each [buildChunks] chunk. Re-splitting a chunk's text can count them differently. */
+    fun chunkGroups(paragraphs: List<String>, chunkSize: Int): List<List<String>> =
+        paragraphs.chunked(chunkSize.coerceAtLeast(1))
 
     // ── LLM helpers ─────────────────────────────────────────────────
 
