@@ -96,12 +96,11 @@ object NovelPageLoader {
             }
         } catch (e: TimeoutCancellationException) {
             // A fetch that ignores cancellation would hold the page in LoadPage, where every later
-            // load waits on it and retry has no Error to reset, so fail it here. Only a load this
-            // call started: another caller's load is still that caller's to finish or time out.
-            loadJob?.let { job ->
-                job.cancel()
-                page.tryClaim(Page.State.LoadPage, Page.State.Error(e))
-            }
+            // load waits on it and retry has no Error to reset, so fail it here. That includes a load
+            // another caller started, which can't be told apart from one whose caller is gone; if it
+            // still finishes, its Ready replaces the Error.
+            loadJob?.cancel()
+            page.tryClaim(Page.State.LoadPage, Page.State.Error(e))
             throw e
         } finally {
             loadJob?.cancel()

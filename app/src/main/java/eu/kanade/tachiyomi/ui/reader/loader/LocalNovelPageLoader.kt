@@ -73,7 +73,7 @@ class LocalNovelPageLoader(
         try {
             if (source.isNovelSource) {
                 page.text = source.fetchPageText(Page(page.index, page.url, page.imageUrl))
-                page.status = Page.State.Ready
+                page.setStatusLocked(Page.State.Ready)
             } else {
                 throw IllegalStateException("Source is not a NovelSource")
             }

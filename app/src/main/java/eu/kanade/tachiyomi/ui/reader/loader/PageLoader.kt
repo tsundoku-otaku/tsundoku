@@ -56,7 +56,7 @@ abstract class PageLoader {
             page.tryClaim(Page.State.LoadPage, Page.State.Queue)
             context.ensureActive()
         }
-        page.status = Page.State.Error(error)
+        page.setStatusLocked(Page.State.Error(error))
     }
 
     /**
@@ -75,4 +75,9 @@ internal fun Page.tryClaim(from: Page.State, to: Page.State): Boolean = synchron
     if (status != from) return false
     status = to
     true
+}
+
+// Under the claim lock, so a claim can't read one state and then overwrite a newer one.
+internal fun Page.setStatusLocked(state: Page.State) {
+    synchronized(this) { status = state }
 }
