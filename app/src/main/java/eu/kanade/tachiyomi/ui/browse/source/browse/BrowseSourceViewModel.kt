@@ -390,8 +390,8 @@ class BrowseSourceViewModel(
                 filters = newFilters, // Ensure state.filters is also updated
                 toolbarQuery = newQuery,
                 pendingPreset = null,
-                // Text searched by hand is no longer the text a preset set
-                appliedPresetQuery = it.appliedPresetQuery.takeIf { _ -> newQuery == input.query },
+                // Submitted text, even the same text, is the user's; only a filter-only apply keeps the preset's
+                appliedPresetQuery = it.appliedPresetQuery.takeIf { _ -> query == null },
             )
         }
     }
