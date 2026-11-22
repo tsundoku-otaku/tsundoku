@@ -98,4 +98,12 @@ class WordDensityTest {
         assertEquals(1, WordDensity.countWords("foo<wbr>bar"))
         assertEquals(1, WordDensity.countWords("a<code>b</code><del>c</del><abbr>d</abbr>"))
     }
+
+    @Test
+    fun `named whitespace references split words like their numeric forms`() {
+        for (name in listOf("NonBreakingSpace", "ThinSpace", "Tab", "NewLine")) {
+            assertEquals(2, WordDensity.countWords("one&$name;two"), name)
+        }
+        assertEquals(2, WordDensity.countWords("one&#xA0;two"))
+    }
 }

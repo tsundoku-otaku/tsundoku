@@ -35,7 +35,12 @@ data class WordDensity(
             "ins", "kbd", "label", "mark", "nobr", "q", "rb", "rp", "rt", "rtc", "ruby", "s", "samp", "small", "span",
             "strike", "strong", "sub", "sup", "time", "tt", "u", "var", "wbr",
         )
-        private val SPACE_ENTITIES = setOf("nbsp", "ensp", "emsp", "thinsp")
+        // Named references to whitespace, lowercased like the lookup.
+        private val SPACE_ENTITIES = setOf(
+            "nbsp", "nonbreakingspace", "ensp", "emsp", "emsp13", "emsp14", "numsp", "puncsp", "thinsp",
+            "thinspace", "hairsp", "verythinspace", "mediumspace", "thickspace", "tab", "newline", "zerowidthspace",
+            "negativethinspace", "negativemediumspace", "negativethickspace", "negativeverythinspace",
+        )
         private const val MAX_ENTITY_LENGTH = 32
         private const val ZERO_WIDTH_SPACE = 0x200B
 
@@ -64,6 +69,8 @@ data class WordDensity(
             var words = 0
             var inWord = false
             var i = 0
+            // Skipped elements already found unclosed, so later openings don't search the rest again.
+            val unclosed = HashSet<String>()
             while (i < length) {
                 val char = content[i]
                 when {
@@ -89,9 +96,13 @@ data class WordDensity(
                         val name = content.substring(nameStart, nameEnd).lowercase()
                         i = end + 1
                         // An unclosed skipped element (HTML5 lets </head> be omitted) only skips its tag.
-                        if (!closing && name in SKIPPED_ELEMENTS && content[end - 1] != '/') {
+                        if (!closing && name in SKIPPED_ELEMENTS && content[end - 1] != '/' && name !in unclosed) {
                             val close = content.indexOf("</$name", i, ignoreCase = true)
-                            if (close >= 0) i = content.indexOf('>', close).let { if (it < 0) length else it + 1 }
+                            if (close >= 0) {
+                                i = content.indexOf('>', close).let { if (it < 0) length else it + 1 }
+                            } else {
+                                unclosed += name
+                            }
                         }
                         if (name !in INLINE_ELEMENTS) inWord = false
                     }
