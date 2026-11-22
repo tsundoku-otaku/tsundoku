@@ -411,17 +411,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 }
 
                 override fun onChunkStart(chunkIndex: Int) {
-                    val midpoint = ttsMidpointChunkIndex ?: return
-                    // A failed prefetch retries on a later chunk once the cooldown has passed.
-                    if (preferences.novelInfiniteScroll.get() &&
-                        !isPagedModeActive() &&
-                        isTtsHandoffIdle() &&
-                        chunkIndex >= midpoint &&
-                        SystemClock.elapsedRealtime() >= ttsPrefetchRetryAtMs &&
-                        loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) == null
-                    ) {
-                        scope.launch { preFetchNextChapterForTts() }
-                    }
+                    prefetchIfPastMidpoint(chunkIndex)
                 }
 
                 override fun onClearHighlights() {
@@ -3616,6 +3606,20 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
+    // A failed prefetch retries on a later chunk once the cooldown has passed.
+    private fun prefetchIfPastMidpoint(chunkIndex: Int) {
+        val midpoint = ttsMidpointChunkIndex ?: return
+        if (preferences.novelInfiniteScroll.get() &&
+            !isPagedModeActive() &&
+            isTtsHandoffIdle() &&
+            chunkIndex >= midpoint &&
+            SystemClock.elapsedRealtime() >= ttsPrefetchRetryAtMs &&
+            loadedChapters.getOrNull(ttsController.ttsPlaybackChapterIndex + 1) == null
+        ) {
+            scope.launch { preFetchNextChapterForTts() }
+        }
+    }
+
     private fun resolveTtsMidpointChunk(chapterId: Long?) {
         ttsMidpointChunkIndex = null
         ttsPrefetchRetryAtMs = 0L
@@ -3629,6 +3633,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             val bounds = unescapeJsResult(result).split(',').mapNotNull { it.trim().toIntOrNull() }
             val range = if (bounds.size == 2 && bounds[0] >= 0) bounds[0]..bounds[1] else null
             ttsMidpointChunkIndex = TtsTextUtils.midpointChunkIndex(chunkParagraphIndexes, range)
+            // Playback may already be past the midpoint, e.g. a viewport start, before it was known.
+            prefetchIfPastMidpoint(ttsController.ttsCurrentChunkIndex)
         }
     }
 
