@@ -81,13 +81,12 @@ internal class NovelWebViewImageCache(
 
         val loader = chapterId?.let { chapterLoaderMap[it] } ?: fallbackLoader
         val cacheKey = buildCacheKey(chapterId, imagePath)
-        cache[cacheKey]?.takeIf { it.exists() }?.let { cachedFile ->
-            return WebResourceResponse(
-                guessMimeType(imagePath),
-                "UTF-8",
-                cachedFile.inputStream(),
-            )
+        // Opened under the lock publish and clear retire files under, so the hit can't be deleted in between;
+        // once open, the stream outlives a later delete.
+        val hit = synchronized(lock) {
+            cache[cacheKey]?.takeIf { it.exists() }?.let { runCatching { it.inputStream() }.getOrNull() }
         }
+        if (hit != null) return WebResourceResponse(guessMimeType(imagePath), "UTF-8", hit)
 
         if (loader == null) return null
         prefetchJobs.remove(cacheKey)?.cancel()
