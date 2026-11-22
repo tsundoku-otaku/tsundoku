@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
+import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,9 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 /**
  * Rough upper-bound guess for the bar's rendered height (sized to the larger "medium"
@@ -113,22 +112,23 @@ fun NovelStatusBar(
     val contentColor = textColor
     val dimColor = textColor.copy(alpha = 0.45f)
 
-    // Clock — aligned to the minute boundary so it never lags
-    var timeText by remember { mutableStateOf(currentTimeHHmm()) }
+    val context = LocalContext.current
+
+    // Clock — aligned to the minute boundary so it never lags; follows the system 12/24h setting
+    var timeText by remember { mutableStateOf(currentTime(context)) }
     LaunchedEffect(Unit) {
         val msUntilNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L)
         delay(msUntilNextMinute)
-        timeText = currentTimeHHmm()
+        timeText = currentTime(context)
         while (true) {
             delay(60_000L)
-            timeText = currentTimeHHmm()
+            timeText = currentTime(context)
         }
     }
 
     // Battery — ACTION_BATTERY_CHANGED is sticky so the current level is available immediately
     var batteryPercent by remember { mutableIntStateOf(-1) }
     var isCharging by remember { mutableStateOf(false) }
-    val context = LocalContext.current
     DisposableEffect(context) {
         fun apply(intent: Intent) {
             val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
@@ -241,5 +241,5 @@ private fun batteryIcon(percent: Int, charging: Boolean): ImageVector = when {
     else -> Icons.Outlined.Battery6Bar
 }
 
-private fun currentTimeHHmm(): String =
-    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+private fun currentTime(context: Context): String =
+    DateFormat.getTimeFormat(context).format(Date())
