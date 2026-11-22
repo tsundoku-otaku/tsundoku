@@ -444,6 +444,7 @@ class DownloadCache(
             return false
         }
 
+        val launchGeneration = generation
         renewalJob = scope.launchIO {
             // The disk index is older than this scan and would replace it if read afterwards
             initJob.join()
@@ -476,7 +477,10 @@ class DownloadCache(
             it.invokeOnCompletion(onCancelling = true) { exception ->
                 if (exception != null && exception !is CancellationException) {
                     logcat(LogPriority.ERROR, exception) { "DownloadCache: failed to create cache" }
-                    lastRenew = System.currentTimeMillis()
+                    // A failure throttles retries only while no invalidation asked for a new scan.
+                    synchronized(this@DownloadCache) {
+                        if (generation == launchGeneration) lastRenew = System.currentTimeMillis()
+                    }
                 }
                 notifyChanges()
             }
