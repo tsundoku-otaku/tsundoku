@@ -2487,10 +2487,19 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 var nodes = [];
                 var text = '';
                 var node;
+                var previousPlainParagraph = null;
                 while ((node = walker.nextNode())) {
-                    var parent = node.parentNode ? node.parentNode.nodeName : '';
-                    if (parent === 'SCRIPT' || parent === 'STYLE' || parent === 'NOSCRIPT') continue;
-                    nodes.push(node);
+                    var parent = node.parentElement;
+                    var tag = parent ? parent.tagName : '';
+                    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') continue;
+                    var plainParagraph = tag === 'P' && parent.parentElement &&
+                        parent.parentElement.getAttribute('${NovelWebViewDocumentBuilder.ATTR_DATA_PLAIN_TEXT}') === '1'
+                        ? parent : null;
+                    if (plainParagraph && previousPlainParagraph && plainParagraph !== previousPlainParagraph) {
+                        text += ' ';
+                    }
+                    previousPlainParagraph = plainParagraph;
+                    nodes.push({ node: node, start: text.length });
                     text += node.nodeValue;
                 }
                 window.__tdSearchNodes = nodes;
@@ -2522,13 +2531,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         style.textContent = '.td-search-hit{background:$highlightColor!important;color:$highlightTextColor!important;border-radius:3px;}';
                         document.head.appendChild(style);
                     }
-                    var offset = 0;
                     var first = null;
-                    for (var i = 0; i < nodes.length && offset < end; i++) {
-                        var node = nodes[i];
-                        var nodeStart = offset;
-                        offset += node.nodeValue.length;
-                        if (offset <= start) continue;
+                    for (var i = 0; i < nodes.length; i++) {
+                        var node = nodes[i].node;
+                        var nodeStart = nodes[i].start;
+                        if (nodeStart >= end) break;
+                        if (nodeStart + node.nodeValue.length <= start) continue;
                         var from = Math.max(start - nodeStart, 0);
                         var to = Math.min(end - nodeStart, node.nodeValue.length);
                         if (to <= from) continue;
