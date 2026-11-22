@@ -799,18 +799,18 @@ class CustomNovelSource(
                 } else {
                     repeatedPages = 0
                 }
-                // The page after the last allowed one is only fetched to see whether the list ends there.
-                if (guard > MAX_CHAPTER_PAGES) {
-                    if (fresh.isNotEmpty()) throw chapterPageLimitException()
-                    break
-                }
-
                 val next = if (selectors.nextPage.isNullOrBlank()) {
                     null
                 } else {
                     resolveNextPageUrl(doc, selectors.nextPage, url, visited)
+                }?.takeIf { it != url }
+                // The page after the last allowed one is only fetched to see whether the list ends there:
+                // new chapters on it, or a next page still to follow, mean the list was cut short.
+                if (guard > MAX_CHAPTER_PAGES) {
+                    if (fresh.isNotEmpty() || (next != null && next !in visited)) throw chapterPageLimitException()
+                    break
                 }
-                url = if (next == null || next == url) null else next
+                url = next
             }
         }
         return if (config.reverseChapters) all.reversed() else all
