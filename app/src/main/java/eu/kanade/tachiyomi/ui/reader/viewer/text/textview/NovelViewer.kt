@@ -1724,7 +1724,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             (clearsQueue || loadedChapters.none { it.chapter.chapter.id == pendingChapterId })
         ) {
             stopTts()
-        } else if (pendingChapterId == null && clearsQueue && ttsController.isTtsAutoPlay &&
+        } else if (pendingTtsStart == null && clearsQueue && ttsController.isTtsAutoPlay &&
             ttsController.ttsPlaybackChapterId != newChapterId
         ) {
             // A handoff a newer start replaced still navigates here; the chapter being read is about
