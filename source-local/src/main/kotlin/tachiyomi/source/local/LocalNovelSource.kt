@@ -529,7 +529,7 @@ class LocalNovelSource : CatalogueSource, UnmeteredSource {
             }
 
             textFiles.joinToString("\n\n") { file ->
-                val text = file.openInputStream().bufferedReader().readText()
+                val text = file.openInputStream().bufferedReader().use { it.readText() }
                 NovelAssetRewriter.rewrite(text, file.extension.orEmpty(), NovelAssetRewriter::relativeScheme)
             }
         }
@@ -546,7 +546,7 @@ class LocalNovelSource : CatalogueSource, UnmeteredSource {
                 }
 
                 textEntries.joinToString("\n\n") { entry ->
-                    val text = reader.getInputStream(entry.name)?.bufferedReader()?.readText() ?: ""
+                    val text = reader.getInputStream(entry.name)?.bufferedReader()?.use { it.readText() } ?: ""
                     val baseDir = entry.name.substringBeforeLast('/', "")
                     val ext = entry.name.substringAfterLast('.', "")
                     NovelAssetRewriter.rewrite(text, ext) { NovelAssetRewriter.archiveScheme(baseDir, it) }
@@ -555,7 +555,7 @@ class LocalNovelSource : CatalogueSource, UnmeteredSource {
         }
         isTextFile(chapterFile) -> {
             // Direct text file
-            val raw = chapterFile.openInputStream().bufferedReader().readText()
+            val raw = chapterFile.openInputStream().bufferedReader().use { it.readText() }
             NovelAssetRewriter.rewrite(raw, chapterFile.extension.orEmpty(), NovelAssetRewriter::relativeScheme)
         }
         else -> {
