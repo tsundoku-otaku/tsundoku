@@ -878,6 +878,7 @@ class ReaderViewModel @JvmOverloads constructor(
         if (incognitoMode) return
 
         val reportedGeneration = synchronized(jumpLock) { jumpGeneration }
+        val jumpedWhenReported = isSearchJumpChapter(selectedChapter.chapter.id)
         val heldWhenReported =
             holdsJumpProgress(selectedChapter.chapter.id, progressPercentage.coerceIn(0, 100), commit = false)
         viewModelScope.launchNonCancellable {
@@ -916,7 +917,9 @@ class ReaderViewModel @JvmOverloads constructor(
                 // Mark as read if at the configured threshold or more
                 val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.get()
                 val wasRead = selectedChapter.chapter.read
-                val threshold = if (selectedChapter.chapter.id == jumpedChapterId) 100 else markAsReadThreshold
+                // A report made during the jump keeps its 100% rule even if the jump ended before it ran.
+                val inJump = if (jumpEnded) jumpedWhenReported else selectedChapter.chapter.id == jumpedChapterId
+                val threshold = if (inJump) 100 else markAsReadThreshold
                 if (clampedProgress >= threshold && !wasRead) {
                     selectedChapter.chapter.read = true
                     updateTrackChapterRead(selectedChapter)
