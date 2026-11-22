@@ -428,10 +428,10 @@ object HtmlUtils {
         val candidates = mutableListOf<Pair<String, String?>>()
         var i = 0
         while (i < value.length) {
-            while (i < value.length && (value[i].isWhitespace() || value[i] == ',')) i++
+            while (i < value.length && (value[i].isHtmlSpace() || value[i] == ',')) i++
             if (i >= value.length) break
             val urlStart = i
-            while (i < value.length && !value[i].isWhitespace()) i++
+            while (i < value.length && !value[i].isHtmlSpace()) i++
             var url = value.substring(urlStart, i)
             if (url.endsWith(',')) {
                 url = url.trimEnd(',')
@@ -445,11 +445,15 @@ object HtmlUtils {
                 if (c == '(') depth++ else if (c == ')' && depth > 0) depth-- else if (c == ',' && depth == 0) break
                 i++
             }
-            val descriptor = value.substring(descriptorStart, i).trim().ifEmpty { null }
+            val descriptor = value.substring(descriptorStart, i).trim { it.isHtmlSpace() }.ifEmpty { null }
             candidates += url to descriptor
         }
         return candidates
     }
+
+    // HTML splits srcset on ASCII whitespace only; a no-break space stays part of the url.
+    private fun Char.isHtmlSpace() = this == ' ' || this == '\t' || this == '\n' || this == '\u000C' || this == '\r'
+
     private const val BASE_RESOLVED_SELECTOR = "[src], [href], [poster], [data-src], [srcset], [data-srcset]"
     private val SCHEME_PREFIX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 

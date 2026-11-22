@@ -607,6 +607,10 @@ class HtmlUtilsTest {
         val out = webView(html, keepJs = false)
         assertTrue(out.contains("srcset=\"https://example.com/book/a.jpg 1x, https://example.com/book/b.jpg 2x\""), out)
         assertTrue(out.contains("srcset=\"https://example.com/book/img,v2.jpg 1x\""), out)
+        assertEquals(
+            listOf("cover\u00A0page.jpg" to "1x"),
+            HtmlUtils.srcsetCandidates("cover\u00A0page.jpg 1x"),
+        )
     }
 
     @Test
