@@ -143,12 +143,22 @@ class ChapterSearchScreen(
 
         fun updateOptions(options: ChapterSearchOptions) {
             mutableState.update { it.copy(options = options, regexError = null) }
-            if (state.value.submittedQuery != null) search()
+            searchAgain()
         }
 
         fun updateRange(range: ChapterSearchRange?) {
             mutableState.update { it.copy(range = range) }
-            if (state.value.submittedQuery != null) search()
+            searchAgain()
+        }
+
+        /**
+         * Re-runs the search after the options or range changed, so the results never show matches
+         * from outside them. A cleared search field re-runs the last submitted query.
+         */
+        private fun searchAgain() {
+            val current = state.value
+            val submittedQuery = current.submittedQuery ?: return
+            search(current.query.ifEmpty { submittedQuery })
         }
 
         /** Where the reader should open for [snippet] of [result], or its first match when null. */
@@ -199,13 +209,12 @@ class ChapterSearchScreen(
             }
         }
 
-        fun search() {
+        fun search(query: String = state.value.query) {
             searchJob?.cancel()
             val generation = searchGeneration.incrementAndGet()
             expansions.cancel()
             expansions = SupervisorJob(viewModelScope.coroutineContext.job)
             val current = state.value
-            val query = current.query
             if (query.isEmpty()) {
                 mutableState.update { it.copy(isSearching = false, pendingSearch = false) }
                 return
