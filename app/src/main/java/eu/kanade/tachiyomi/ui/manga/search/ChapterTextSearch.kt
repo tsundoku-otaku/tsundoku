@@ -180,33 +180,32 @@ object ChapterTextSearch {
         if (text.isEmpty() || query.isEmpty()) return ChapterTextMatches(0, emptyList())
         var count = 0
         val snippets = mutableListOf<ChapterSearchSnippet>()
-        var from = indexOfCancellable(text, query, 0, ignoreCase, isActive)
-        while (from >= 0) {
-            count++
-            if (count % CANCEL_CHECK_MATCHES == 0 && !isActive()) throw CancellationException("Search cancelled")
-            if (snippets.size < maxSnippets) snippets += snippetFor(text, from, from + query.length)
-            from = indexOfCancellable(text, query, from + query.length, ignoreCase, isActive)
+        // Scanned in spans with a cancellation check between them, so a long scan without matches still
+        // stops. Each span is copied once and every match starting in it is taken from that copy; the copy
+        // reaches query.length - 1 past the span so a match across the boundary is found.
+        var spanStart = 0
+        var nextFree = 0
+        while (true) {
+            val spanEnd = minOf(text.length, spanStart + LITERAL_SPAN + query.length - 1)
+            val last = spanEnd == text.length
+            val span = if (spanStart == 0 && last) text else text.substring(spanStart, spanEnd)
+            var from = (nextFree - spanStart).coerceAtLeast(0)
+            while (true) {
+                val hit = span.indexOf(query, from, ignoreCase)
+                // A match starting past the span belongs to the next one.
+                if (hit < 0 || (!last && hit >= LITERAL_SPAN)) break
+                val at = spanStart + hit
+                count++
+                if (count % CANCEL_CHECK_MATCHES == 0 && !isActive()) throw CancellationException("Search cancelled")
+                if (snippets.size < maxSnippets) snippets += snippetFor(text, at, at + query.length)
+                nextFree = at + query.length
+                from = hit + query.length
+            }
+            if (last) break
+            if (!isActive()) throw CancellationException("Search cancelled")
+            spanStart += LITERAL_SPAN
         }
         return ChapterTextMatches(count, snippets)
-    }
-
-    // Searched in spans with a cancellation check between them, so a long scan without matches still
-    // stops; spans overlap by the query length so a match across a boundary is found.
-    private fun indexOfCancellable(
-        text: String,
-        query: String,
-        from: Int,
-        ignoreCase: Boolean,
-        isActive: () -> Boolean,
-    ): Int {
-        var start = from
-        while (true) {
-            if (text.length - start <= LITERAL_SPAN) return text.indexOf(query, start, ignoreCase)
-            val hit = text.substring(start, start + LITERAL_SPAN + query.length - 1).indexOf(query, 0, ignoreCase)
-            if (hit >= 0) return start + hit
-            if (!isActive()) throw CancellationException("Search cancelled")
-            start += LITERAL_SPAN
-        }
     }
 
     /**

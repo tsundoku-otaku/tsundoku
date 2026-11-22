@@ -147,4 +147,12 @@ class ChapterTextSearchTest {
             ChapterTextSearch.findLiteralMatches(text, "missing", ignoreCase = false, isActive = { false })
         }
     }
+
+    @Test
+    fun `dense literal matches are all counted across spans without overlap`() {
+        val text = "a ".repeat(200_000)
+        assertEquals(200_000, ChapterTextSearch.findLiteralMatches(text, "a", ignoreCase = false).count)
+        val pairs = ChapterTextSearch.findLiteralMatches("aaaa".repeat(50_000), "aa", ignoreCase = false)
+        assertEquals(100_000, pairs.count)
+    }
 }
