@@ -22,9 +22,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -49,6 +52,7 @@ import eu.kanade.tachiyomi.ui.updates.UpdatesTab
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import soup.compose.material.motion.animation.materialFadeThroughIn
@@ -69,9 +73,9 @@ object HomeScreen : Screen() {
     private val openTabEvent = Channel<Tab>()
     private val showBottomNavEvent = Channel<Boolean>()
 
-    // Counts tab changes the user made, so deferred navigation can tell the user moved on.
-    @Volatile
-    var userTabChanges = 0
+    // Counts tab changes, so deferred navigation can tell the user moved on. Snapshot state so a
+    // waiting caller can observe it.
+    var userTabChanges by mutableIntStateOf(0)
         private set
 
     @Suppress("ConstPropertyName")
@@ -167,6 +171,10 @@ object HomeScreen : Screen() {
             BackHandler(enabled = tabNavigator.current != NovelsTab, onBack = goToNovelsTab)
 
             LaunchedEffect(Unit) {
+                // Every way of switching tabs counts: bar, rail, back to Novels and opened tabs.
+                launch {
+                    snapshotFlow { tabNavigator.current }.drop(1).collect { userTabChanges++ }
+                }
                 launch {
                     librarySearchEvent.receiveAsFlow().collectLatest {
                         goToNovelsTab()
@@ -210,7 +218,6 @@ object HomeScreen : Screen() {
             selected = selected,
             onClick = {
                 if (!selected) {
-                    userTabChanges++
                     tabNavigator.current = tab
                 } else {
                     scope.launch { tab.onReselect(navigator) }
@@ -239,7 +246,6 @@ object HomeScreen : Screen() {
             selected = selected,
             onClick = {
                 if (!selected) {
-                    userTabChanges++
                     tabNavigator.current = tab
                 } else {
                     scope.launch { tab.onReselect(navigator) }

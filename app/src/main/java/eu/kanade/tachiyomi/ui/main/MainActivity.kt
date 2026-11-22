@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -84,11 +85,13 @@ import eu.kanade.tachiyomi.util.system.isNavigationBarNeedsScrim
 import eu.kanade.tachiyomi.util.system.updaterEnabled
 import eu.kanade.tachiyomi.util.view.setComposeContent
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -573,13 +576,16 @@ class MainActivity : BaseActivity() {
                         pushGlobalSearch(navigator, query, null, novelAction)
                     } else {
                         // On a cold start the extensions are still loading when the intent arrives
-                        val root = navigator.lastItem
-                        val tabChanges = HomeScreen.userTabChanges
                         pendingSearchJob?.cancel()
                         pendingSearchJob = lifecycleScope.launch {
+                            // Watched rather than compared at the end, so leaving and coming back while the
+                            // extensions load still counts as moving on.
+                            val movedOn = async {
+                                snapshotFlow { navigator.lastItem to HomeScreen.userTabChanges }.drop(1).first()
+                            }
                             val sources = extensionManager.awaitInstalledExtension(filter)?.sources.orEmpty()
-                            // The user moved on while the extensions loaded
-                            if (navigator.lastItem !== root || HomeScreen.userTabChanges != tabChanges) return@launch
+                            if (movedOn.isCompleted) return@launch
+                            movedOn.cancel()
                             // A single-type extension decides; a mixed one leaves it to the action
                             val isNovel = sources.map { it.isNovelSource() }.distinct().singleOrNull() ?: novelAction
                             // A package that isn't an installed extension (e.g. a JS plugin id) matches no
