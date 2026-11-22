@@ -72,7 +72,7 @@ interface MangaRepository {
     suspend fun getFavoriteSourceAndUrl(): List<Pair<Long, String>>
 
     /**
-     * returns only (id, url) pairs for favorites.
+     * returns only (mangaId, url, sourceId) for favorites.
      */
     suspend fun getFavoriteIdUrlAndSource(): List<Triple<Long, String, Long>>
 

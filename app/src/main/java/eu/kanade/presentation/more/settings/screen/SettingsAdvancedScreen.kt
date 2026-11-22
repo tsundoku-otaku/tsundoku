@@ -304,7 +304,10 @@ object SettingsAdvancedScreen : SearchableSettings {
 
     private fun allowedNormalizeSourceIds(): Set<Long> =
         Injekt.get<tachiyomi.domain.source.service.SourceManager>().getAll()
-            .filter { it is eu.kanade.tachiyomi.jsplugin.source.JsSource || it is eu.kanade.tachiyomi.source.custom.CustomNovelSource }
+            .filter {
+                it is eu.kanade.tachiyomi.jsplugin.source.JsSource ||
+                    it is eu.kanade.tachiyomi.source.custom.CustomNovelSource
+            }
             .map { it.id }
             .toSet()
 
@@ -636,7 +639,10 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     scope.launch {
                                         isRemoving = true
                                         val result = Injekt.get<MangaRepository>()
-                                            .normalizeAllUrlsAdvanced(removeDupDoubleSlashes, allowedNormalizeSourceIds())
+                                            .normalizeAllUrlsAdvanced(
+                                                removeDupDoubleSlashes,
+                                                allowedNormalizeSourceIds(),
+                                            )
                                         isRemoving = false
 
                                         duplicateUrls = result.second
@@ -657,7 +663,10 @@ object SettingsAdvancedScreen : SearchableSettings {
                                     scope.launch {
                                         isRemoving = true
                                         val result = Injekt.get<MangaRepository>()
-                                            .removePotentialDuplicates(removeDupDoubleSlashes, allowedNormalizeSourceIds())
+                                            .removePotentialDuplicates(
+                                                removeDupDoubleSlashes,
+                                                allowedNormalizeSourceIds(),
+                                            )
                                         isRemoving = false
                                         if (result.first > 0) {
                                             removedDuplicates = result.second
@@ -700,7 +709,7 @@ object SettingsAdvancedScreen : SearchableSettings {
             var categoryDropdownExpanded by remember { mutableStateOf(false) }
 
             val pendingUrlCount = remember(pendingUrls) {
-                if (pendingUrls.isBlank()) 0 else pendingUrls.lines().filter { it.isNotBlank() }.size
+                if (pendingUrls.isBlank()) 0 else pendingUrls.lineSequence().sumOf { MassImport.urlTokens(it).size }
             }
 
             // File picker for URL list

@@ -65,22 +65,27 @@ class MassImport(
          * that store a shorter or longer form.
          */
         fun storedUrlMatches(path: String, storedUrl: String): Boolean {
-            val request = matchKey(path)
-            val stored = matchKey(storedUrl)
-            if (request.isEmpty() || stored.isEmpty()) return false
-            return request == stored || request.endsWith("/$stored") || stored.endsWith("/$request")
+            val (requestPath, requestQuery) = matchKey(path)
+            val (storedPath, storedQuery) = matchKey(storedUrl)
+            if (requestPath.isEmpty() && requestQuery.isEmpty()) return false
+            if (storedPath.isEmpty() && storedQuery.isEmpty()) return false
+            // A slash inside a query value must not make a path-boundary match.
+            if (requestQuery != storedQuery) return false
+            if (requestPath == storedPath) return true
+            if (requestPath.isEmpty() || storedPath.isEmpty()) return false
+            return requestPath.endsWith("/$storedPath") || storedPath.endsWith("/$requestPath")
         }
 
-        private fun matchKey(url: String): String {
-            val pathAndQuery = runCatching {
-                val uri = URI(url.trim())
-                if (uri.host == null) {
-                    null
-                } else {
-                    (uri.rawPath ?: "") + (uri.rawQuery?.takeIf { it.isNotEmpty() }?.let { "?$it" } ?: "")
-                }
-            }.getOrNull() ?: url.trim().substringBefore('#')
-            return pathAndQuery.trim('/')
+        private fun matchKey(url: String): Pair<String, String> {
+            val trimmed = url.trim()
+            val parsed = runCatching {
+                val uri = URI(trimmed)
+                if (uri.host == null) null else (uri.rawPath ?: "") to (uri.rawQuery ?: "")
+            }.getOrNull()
+            val (path, query) = parsed ?: trimmed.substringBefore('#').let {
+                it.substringBefore('?') to it.substringAfter('?', "")
+            }
+            return path.trim('/') to query
         }
 
         fun urlTokens(line: String): List<String> = scan(line, keepFields = false)
@@ -121,13 +126,21 @@ class MassImport(
             val starts = mutableListOf<Int>()
             val ends = mutableListOf<Int>()
             var from = 0
+            var previousEnd = -1
             while (from < line.length) {
                 val start = SCHEME_START.find(line, from)?.range?.first ?: break
+                // A scheme glued to a word ("hhttps://") is a typo, not a URL; one right where the
+                // previous URL ended is two URLs pasted back to back.
+                if (start > 0 && start != previousEnd && line[start - 1].isLetterOrDigit()) {
+                    from = start + schemeLength(line, start)
+                    continue
+                }
                 val end = urlEnd(line, start)
                 if (end > start + schemeLength(line, start)) {
                     starts += start
                     ends += end
                 }
+                previousEnd = end
                 from = end
             }
 
@@ -155,10 +168,12 @@ class MassImport(
 
         private fun urlEnd(line: String, start: Int): Int {
             val bodyStart = start + schemeLength(line, start)
+            val quote = line.getOrNull(start - 1)?.takeIf { it == '"' || it == '\'' }
             for (i in bodyStart until line.length) {
                 val c = line[i]
-                if (isBreak(c) || c in URL_TERMINATORS) return i
-                if (c in LIST_SEPARATORS && separatorEndsUrl(line, c, i + 1, start)) return i
+                if (isBreak(c) || c in URL_TERMINATORS || c == quote) return i
+                // Inside quotes only the closing quote ends the URL.
+                if (quote == null && c in LIST_SEPARATORS && separatorEndsUrl(line, c, i + 1, start)) return i
                 if (i > bodyStart && schemeLength(line, i) > 0 && !isEmbeddedScheme(line, bodyStart, i)) return i
             }
             return line.length
@@ -280,16 +295,27 @@ class MassImport(
     }
 
     /**
-     * Ids of [favorites] (id, stored url, source id) that [url] points at: only favorites of a source
-     * on the URL's host, compared by whole path + query in the source's stored form.
+     * Ids of [favorites] (id, stored url, source id) that [url] points at: only favorites of the one
+     * source import would pick for the URL, compared by whole path + query in the source's stored form.
      */
     fun matchFavorites(url: String, favorites: Map<Long, List<Pair<Long, String>>>): List<Long> {
-        return findMatchingSources(url).flatMap { source ->
+        // Bulk remove and move write to the library, so a source on a parent or child host only
+        // counts when import would pick it; sources on the exact host always do.
+        val all = getAllSources()
+        val urlHost = hostOf(url)
+        val sources = findMatchingSources(url, all).filter { baseHostOf(it) == urlHost } +
+            listOfNotNull(findMatchingSource(url, all))
+        return sources.distinctBy { it.id }.flatMap { source ->
             val candidates = favorites[source.id] ?: return@flatMap emptyList()
             val path = extractPathFromUrl(url, getSourceBaseUrl(source), source)
             candidates.filter { (_, stored) -> storedUrlMatches(path, stored) }.map { it.first }
         }
     }
+
+    private fun baseHostOf(source: CatalogueSource): String? = runCatching {
+        val rawBase = getSourceBaseUrl(source)
+        URI(if (rawBase.startsWith("http")) rawBase else "https://$rawBase").host?.lowercase()?.removePrefix("www.")
+    }.getOrNull()
 
     private fun getAllSources(): List<CatalogueSource> {
         return sourceManager.getAll().filterIsInstance<CatalogueSource>().filter { it is HttpSource || it is JsSource }

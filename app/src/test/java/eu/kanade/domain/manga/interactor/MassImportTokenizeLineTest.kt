@@ -427,5 +427,23 @@ class MassImportTokenizeLineTest {
         assertEquals(true, MassImport.storedUrlMatches("/novel/abc", "abc"))
         assertEquals(false, MassImport.storedUrlMatches("/novel/abc", "/novel/abcd"))
         assertEquals(false, MassImport.storedUrlMatches("/", "/novel/abc"))
+        assertEquals(false, MassImport.storedUrlMatches("/read?path=x/abc", "abc"))
+        assertEquals(false, MassImport.storedUrlMatches("/novel/abc?page=2", "/novel/abc"))
+        assertEquals(true, MassImport.storedUrlMatches("/series/novel/abc?id=1", "/novel/abc?id=1"))
+    }
+
+    @Test
+    fun `scheme glued to a word is not a url`() {
+        assertEquals(listOf<String>(), MassImport.urlTokens("hhttps://example.com/book"))
+        val token = MassImport.tokenizeLine("hhttps://example.com/book").single()
+        assertEquals("Not a valid URL", MassImport.invalidTokenReason(token))
+    }
+
+    @Test
+    fun `quoted url keeps a comma before a capital`() {
+        assertEquals(
+            listOf("https://example.com/wiki/A,B"),
+            MassImport.urlTokens("\"https://example.com/wiki/A,B\",next"),
+        )
     }
 }
