@@ -122,21 +122,24 @@ class DownloadCache(
             rootDownloadsDirMutex.withLock {
                 try {
                     if (diskCacheFile.exists() && generation == startGeneration) {
-                        val diskCache = diskCacheFile.inputStream().use {
+                        val stored = diskCacheFile.inputStream().use {
                             ProtoBuf.decodeFromByteArray<RootDirectory>(it.readBytes())
                         }
-                        when (diskCache.scanComplete) {
-                            // Caches written before checked ids were stored only list scanned sources.
-                            null -> diskCache.checkedSourceIds = diskCache.sourceDirs.keys
-                            // Saved before any full scan finished, e.g. right after a download: the
-                            // entries are kept but the next access still scans.
-                            false -> {
-                                synchronized(this@DownloadCache) {
-                                    if (generation == startGeneration) rootDownloadsDir = diskCache
-                                }
-                                return@withLock
+                        // Caches written before checked ids were stored only list scanned sources. The
+                        // converted cache is marked complete, so a partial entry added later and saved
+                        // again isn't taken for a scanned one on the next start.
+                        val diskCache = if (stored.scanComplete == null) {
+                            RootDirectory(stored.dir, stored.sourceDirs, stored.sourceDirs.keys, scanComplete = true)
+                        } else {
+                            stored
+                        }
+                        // Saved before any full scan finished, e.g. right after a download: the entries
+                        // are kept but the next access still scans.
+                        if (diskCache.scanComplete != true) {
+                            synchronized(this@DownloadCache) {
+                                if (generation == startGeneration) rootDownloadsDir = diskCache
                             }
-                            true -> Unit
+                            return@withLock
                         }
                         publishIfCurrent(startGeneration) { rootDownloadsDir = diskCache }
                     }
