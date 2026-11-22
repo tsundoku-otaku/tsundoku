@@ -63,6 +63,14 @@ internal fun List<Category>.restoreTarget(contentType: Int, isNovel: Boolean): C
     return firstOrNull { it.accepts(isNovel) }
 }
 
+// The category CategoriesRestorer mapped the backup category to (same name, else typed name) wins over
+// a same-name category that only fits the entry's type.
+internal fun List<Category>.restoreTarget(typedName: List<Category>, contentType: Int, isNovel: Boolean): Category? {
+    val mapped = restoreMatch(contentType) ?: typedName.restoreMatch(contentType)
+    mapped?.takeIf { !isNovel || it.accepts(true) }?.let { return it }
+    return firstOrNull { it.accepts(isNovel) } ?: typedName.firstOrNull { it.accepts(isNovel) }
+}
+
 private fun Category.accepts(isNovel: Boolean): Boolean = when (contentType) {
     Category.CONTENT_TYPE_NOVEL -> isNovel
     Category.CONTENT_TYPE_MANGA -> !isNovel

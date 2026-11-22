@@ -339,9 +339,11 @@ class MangaRestorer(
             backupCategoriesByOrder[backupCategoryOrder]?.let { backupCategory ->
                 // Same order as CategoriesRestorer: the typed name only exists for a same-name clash
                 val typedName = typedRestoreName(backupCategory.name, backupCategory.contentType)
-                val dbCategory = dbCategoriesByName[backupCategory.name].orEmpty()
-                    .restoreTarget(backupCategory.contentType, manga.isNovel)
-                    ?: dbCategoriesByName[typedName].orEmpty().restoreTarget(backupCategory.contentType, manga.isNovel)
+                val dbCategory = dbCategoriesByName[backupCategory.name].orEmpty().restoreTarget(
+                    dbCategoriesByName[typedName].orEmpty(),
+                    backupCategory.contentType,
+                    manga.isNovel,
+                )
                 dbCategory?.let { Pair(manga.id, it.id) }
             }
         }

@@ -80,4 +80,12 @@ class CategoryRestoreMatchTest {
         assertNull(categories.take(1).restoreMatch(Category.CONTENT_TYPE_NOVEL))
         assertEquals(2L, categories.restoreTarget(Category.CONTENT_TYPE_NOVEL, isNovel = true)?.id)
     }
+
+    @Test
+    fun `legacy entry follows the typed category the category restorer picked`() {
+        val sameName = listOf(category(1, Category.CONTENT_TYPE_MANGA))
+        val typed = listOf(category(2, Category.CONTENT_TYPE_NOVEL).copy(name = "Reading (Novel)"))
+        assertEquals(2L, sameName.restoreTarget(typed, Category.CONTENT_TYPE_NOVEL, isNovel = false)?.id)
+        assertEquals(1L, sameName.restoreTarget(emptyList(), Category.CONTENT_TYPE_NOVEL, isNovel = false)?.id)
+    }
 }
