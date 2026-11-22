@@ -22,11 +22,12 @@ object HtmlTextScanner {
     /** Calls [onChar] for each text character and [onBreak] where a block-level tag or comment splits the text. */
     inline fun scan(content: String, onChar: (Char) -> Unit, onBreak: () -> Unit) {
         val length = content.length
+        val unclosed = HashSet<String>(2)
         var i = 0
         while (i < length) {
             val char = content[i]
             if (char == '<' && i + 1 < length && isTagStart(content[i + 1])) {
-                val next = indexAfterTag(content, i)
+                val next = indexAfterTag(content, i, unclosed)
                 if (next < 0) {
                     onChar(char)
                     i++
@@ -66,7 +67,7 @@ object HtmlTextScanner {
      * lets </head> be omitted) only skips its own tag.
      */
     @PublishedApi
-    internal fun indexAfterTag(content: String, start: Int): Int {
+    internal fun indexAfterTag(content: String, start: Int, unclosed: MutableSet<String> = HashSet()): Int {
         val length = content.length
         if (content.startsWith("<!--", start)) {
             val end = content.indexOf("-->", start + 4)
@@ -77,7 +78,10 @@ object HtmlTextScanner {
         val closing = content[start + 1] == '/'
         val name = tagName(content, start)
         if (closing || name !in SKIPPED_ELEMENTS || content[end - 1] == '/') return end + 1
-        val close = closingTagIndex(content, name, end + 1)
+        // Once a closing tag is missing from one point on, it is missing from every later point too, so
+        // repeated unclosed tags don't each rescan the rest of the chapter.
+        val close = if (name in unclosed) -1 else closingTagIndex(content, name, end + 1)
+        if (close < 0) unclosed += name
         if (close < 0) return end + 1
         val closeEnd = content.indexOf('>', close)
         return if (closeEnd < 0) length else closeEnd + 1
@@ -89,11 +93,38 @@ object HtmlTextScanner {
         while (true) {
             val close = content.indexOf("</$name", at, ignoreCase = true)
             if (close < 0) return -1
+            // "</head>" written inside a comment, script or style in the head doesn't end it.
+            if (name == "head") {
+                val skipTo = rawTextEndBefore(content, at, close)
+                if (skipTo > 0) {
+                    at = skipTo
+                    continue
+                }
+            }
             val after = content.getOrNull(close + 2 + name.length)
             if (after == null || !(after.isLetterOrDigit() || after == '-')) return close
             at = close + 2
         }
     }
+
+    // End of the first comment, script or style opening in [from, before), or -1 when none does.
+    private fun rawTextEndBefore(content: String, from: Int, before: Int): Int {
+        val comment = content.indexOf("<!--", from).takeIf { it in 0 until before }
+        val raw = HEAD_RAW_TEXT.mapNotNull { tag ->
+            content.indexOf("<$tag", from, ignoreCase = true).takeIf { it in 0 until before }?.let { it to tag }
+        }.minByOrNull { it.first }
+        return when {
+            comment != null && (raw == null || comment < raw.first) ->
+                content.indexOf("-->", comment + 4).let { if (it < 0) content.length else it + 3 }
+            raw != null -> {
+                val close = closingTagIndex(content, raw.second, raw.first + 1)
+                if (close < 0) -1 else content.indexOf('>', close).let { if (it < 0) content.length else it + 1 }
+            }
+            else -> -1
+        }
+    }
+
+    private val HEAD_RAW_TEXT = listOf("script", "style")
 
     @PublishedApi
     internal fun entityEnd(content: String, start: Int): Int {

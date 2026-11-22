@@ -164,27 +164,48 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private var pendingJumpProgress = savedState.get<Int>("search_progress")?.takeIf { it in 1..100 }
 
-    // A chapter opened at a search match is only marked read once its end is reached.
-    private var jumpedChapterId: Long? = null
+    // A chapter opened at a search match is only marked read once its end is reached. Kept apart from the
+    // one-shot jump position so it survives process death after the jump was taken.
+    private var jumpedChapterId: Long? = savedState.get<Long>("jumped_chapter_id")
+        set(value) {
+            field = value
+            savedState["jumped_chapter_id"] = value
+        }
+
+    fun isSearchJumpChapter(chapterId: Long?): Boolean = chapterId != null && chapterId == jumpedChapterId
 
     // The match position and the progress saved before the jump. Looking at the match, or reading
     // around it below the saved progress, must not overwrite the saved progress.
     private var jumpTargetProgress: Int? = null
     private var jumpBaselineProgress: Int? = null
 
+    // The jumped chapter and its progress from before the jump, put back if the jump ends unsaved.
+    private var jumpedChapter: ReaderChapter? = null
+    private var progressBeforeJump = 0
+
+    // Set once the landing at the match was reported; the end of the chapter after that is reading.
+    private var jumpLanded = false
+
     // Leaving the jumped chapter ends the jump; coming back later reads it normally.
     private fun endSearchJumpUnless(chapter: ReaderChapter) {
         if (chapter.chapter.id == jumpedChapterId) return
+        // Nothing was saved since the jump, so the reused chapter gets its saved progress back.
+        if (jumpTargetProgress != null) jumpedChapter?.chapter?.last_page_read = progressBeforeJump
         jumpedChapterId = null
         jumpTargetProgress = null
         jumpBaselineProgress = null
+        jumpedChapter = null
+        jumpLanded = false
     }
 
     // True while a save would only record where the search jump landed.
     private fun holdsJumpProgress(chapterId: Long?, progress: Int): Boolean {
         if (chapterId == null || chapterId != jumpedChapterId) return false
         val target = jumpTargetProgress ?: return false
-        if (kotlin.math.abs(progress - target) <= JUMP_HOLD_SLACK_PERCENT) return true
+        if (kotlin.math.abs(progress - target) <= JUMP_HOLD_SLACK_PERCENT && !(progress >= 100 && jumpLanded)) {
+            jumpLanded = true
+            return true
+        }
         val baseline = jumpBaselineProgress
         if (baseline != null && progress <= baseline) return true
         jumpTargetProgress = null
@@ -202,6 +223,9 @@ class ReaderViewModel @JvmOverloads constructor(
         jumpedChapterId = chapterId
         jumpTargetProgress = progress
         jumpBaselineProgress = chapter.chapter.last_page_read.takeIf { !chapter.chapter.read }
+        jumpedChapter = chapter
+        progressBeforeJump = chapter.chapter.last_page_read
+        jumpLanded = false
         // The backward-jump guard then measures from the match instead of the old position.
         chapter.chapter.last_page_read = progress
         return progress

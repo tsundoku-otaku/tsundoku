@@ -41,6 +41,7 @@ object ChapterTextSearch {
     const val COLLAPSED_SNIPPETS = 3
     const val MAX_SNIPPETS_PER_CHAPTER = 10
     private const val MAX_SNIPPET_MATCH_LENGTH = 200
+    private const val CANCEL_CHECK_MATCHES = 256
     private const val WORD_CHAR = "[\\p{L}\\p{N}_]"
 
     /**
@@ -83,6 +84,7 @@ object ChapterTextSearch {
         query: String,
         ignoreCase: Boolean,
         maxSnippets: Int = MAX_SNIPPETS_PER_CHAPTER,
+        isActive: () -> Boolean = { true },
     ): ChapterTextMatches {
         if (text.isEmpty() || query.isEmpty()) return ChapterTextMatches(0, emptyList())
         var count = 0
@@ -90,6 +92,7 @@ object ChapterTextSearch {
         var from = text.indexOf(query, 0, ignoreCase)
         while (from >= 0) {
             count++
+            if (count % CANCEL_CHECK_MATCHES == 0 && !isActive()) throw CancellationException("Search cancelled")
             if (snippets.size < maxSnippets) snippets += snippetFor(text, from, from + query.length)
             from = text.indexOf(query, from + query.length, ignoreCase)
         }
