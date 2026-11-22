@@ -5,11 +5,18 @@
 //   __GUARD_ID__ - DOM id of the <style> element holding the fallback
 //   __BG__       - reader background hex
 //   __TEXT__     - reader text hex
+//   __FULL__     - true to recheck everything (theme change), false to check only text added since
 
 (function () {
-    var old = document.getElementById('__GUARD_ID__');
-    if (old) old.remove();
     if (!document.body) return;
+    var full = __FULL__;
+    // Elements already checked; an appended chapter only checks its own text.
+    if (full || !window.__tdContrastSeen) window.__tdContrastSeen = new WeakSet();
+    var seen = window.__tdContrastSeen;
+    if (full) {
+        var old = document.getElementById('__GUARD_ID__');
+        if (old) old.remove();
+    }
 
     function parse(c) {
         var m = c.match(/[\d.]+/g);
@@ -28,6 +35,13 @@
     }
     function hex(h) {
         return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16), 1];
+    }
+
+    // A partly transparent text color shows mixed with what is behind it.
+    function blend(fg, bg) {
+        var a = fg.length < 4 ? 1 : fg[3];
+        if (a >= 1) return fg;
+        return [0, 1, 2].map(function (k) { return fg[k] * a + bg[k] * (1 - a); }).concat([1]);
     }
 
     // The background text is actually drawn on: a site's own box counts, not just the page. A partly
@@ -62,8 +76,8 @@
         }
         return false;
     }
-    // A rerun (theme change) starts from the site's own colors, so an inline color the site set is put back.
-    Array.prototype.forEach.call(document.querySelectorAll('[data-tsundoku-contrast]'), function (el) {
+    // A full rerun (theme change) starts from the site's own colors, so an inline color the site set is put back.
+    if (full) Array.prototype.forEach.call(document.querySelectorAll('[data-tsundoku-contrast]'), function (el) {
         var saved = el.getAttribute('data-tsundoku-contrast').split(';');
         if (saved[0]) el.style.setProperty('color', saved[0], saved[1] || ''); else el.style.removeProperty('color');
         el.removeAttribute('data-tsundoku-contrast');
@@ -71,9 +85,13 @@
     var root = document.querySelector('tsundoku-chapter') ? 'tsundoku-chapter' : 'body';
     var fixed = 0;
     Array.prototype.forEach.call(document.querySelectorAll(root + ', ' + root + ' *'), function (el) {
+        if (seen.has(el)) return;
+        seen.add(el);
         if (!hasOwnText(el)) return;
+        // Spoilers hide text by matching its color to the background on purpose.
+        if (el.closest('[class*="spoiler" i]')) return;
         var bg = effectiveBackground(el);
-        if (contrast(parse(getComputedStyle(el).color), bg) >= 3) return;
+        if (contrast(blend(parse(getComputedStyle(el).color), bg), bg) >= 3) return;
         el.setAttribute(
             'data-tsundoku-contrast',
             el.style.getPropertyValue('color') + ';' + el.style.getPropertyPriority('color')
@@ -81,7 +99,7 @@
         el.style.setProperty('color', readableColor(bg), 'important');
         fixed++;
     });
-    if (!fixed) return;
+    if (!fixed || document.getElementById('__GUARD_ID__')) return;
 
     // Marks the guard as applied; the colors themselves are set per element above.
     var style = document.createElement('style');
