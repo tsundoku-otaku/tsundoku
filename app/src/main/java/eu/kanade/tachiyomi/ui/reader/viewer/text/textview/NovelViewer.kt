@@ -160,6 +160,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     // Blocks flushing the backward-entry 1f baseline until a real scroll sample replaces it.
     private var awaitingFirstScrollSample = false
+
+    // The page and progress of the debounced save not yet written.
+    private var pendingSave: Pair<ReaderPage, Float>? = null
     private companion object {
         const val CHAPTER_ENTRY_GRACE_MS = 800L
         const val SEPARATOR_GUARD_TIMEOUT_MS = 1000L
@@ -398,16 +401,21 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
         lastSavedProgress = snapped
         progressSaveJob?.cancel()
+        // An earlier chapter's save kept through a separator toggle isn't replaced by this one.
+        flushRetainedSave()
         // Persist the finished state immediately, debounce intermediate saves so a fast scroll
         // doesn't fire a DB write on every 1% tick (parity with the WebView save path).
         if (intPercent >= 100) {
+            pendingSave = null
             saveProgress(snapped)
             return
         }
         // The page is taken now, so a chapter switch before the save lands can't receive this progress.
         val page = currentPage
+        pendingSave = page?.let { it to snapped }
         progressSaveJob = scope.launch {
             delay(PROGRESS_SAVE_DEBOUNCE_MS)
+            pendingSave = null
             saveProgress(snapped, page)
         }
     }
@@ -418,8 +426,17 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
      */
     fun flushProgress() {
         progressSaveJob?.cancel()
+        flushRetainedSave()
         if (awaitingFirstScrollSample) return
         if (lastSavedProgress > 0f) saveProgress(lastSavedProgress)
+    }
+
+    // A debounced save still waiting for an earlier chapter (kept through a separator toggle) lands
+    // before it is cancelled; the current chapter's own progress goes through the normal path.
+    private fun flushRetainedSave() {
+        val (page, progress) = pendingSave ?: return
+        pendingSave = null
+        if (page !== currentPage) saveProgress(progress, page)
     }
 
     private fun saveProgress(progress: Float, target: ReaderPage? = currentPage) {
@@ -521,7 +538,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
         // Drop any debounced save still pending for the outgoing chapter, currentPage is about to
         // advance and the old progress must not be written against the new chapter's page.
-        if (persist) progressSaveJob?.cancel()
+        if (persist) {
+            progressSaveJob?.cancel()
+            pendingSave = null
+        }
 
         val initialProgress = if (newIndex > oldIndex) 0f else 1f
         lastSavedProgress = initialProgress
@@ -1424,6 +1444,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         // lock recreates the activity) must not persist 0 and wipe the saved progress.
         // Flush synchronously, cancel the debounce first so scope.cancel() can't drop a pending save.
         progressSaveJob?.cancel()
+        flushRetainedSave()
         if (lastSavedProgress > 0f && !awaitingFirstScrollSample) saveProgress(lastSavedProgress)
 
         ttsController.destroy()
