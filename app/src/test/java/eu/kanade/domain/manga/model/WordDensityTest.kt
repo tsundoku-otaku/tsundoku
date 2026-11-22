@@ -1,7 +1,6 @@
 package eu.kanade.domain.manga.model
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 class WordDensityTest {
@@ -42,29 +41,36 @@ class WordDensityTest {
     }
 
     @Test
-    fun `densityTier follows 400 word first tier then 100 word steps`() {
+    fun `densityTier steps every 500 words of average chapter length`() {
         assertEquals(1, WordDensity.densityTier(0))
-        assertEquals(1, WordDensity.densityTier(400))
-        assertEquals(2, WordDensity.densityTier(401))
-        assertEquals(2, WordDensity.densityTier(500))
-        assertEquals(3, WordDensity.densityTier(501))
-        assertEquals(9, WordDensity.densityTier(1200))
-        assertEquals(WordDensity.MAX_TIER, WordDensity.densityTier(1201))
-        assertEquals(WordDensity.MAX_TIER, WordDensity.densityTier(50_000))
+        assertEquals(1, WordDensity.densityTier(1))
+        assertEquals(1, WordDensity.densityTier(500))
+        assertEquals(2, WordDensity.densityTier(501))
+        assertEquals(2, WordDensity.densityTier(1000))
+        assertEquals(3, WordDensity.densityTier(1001))
+        assertEquals(3, WordDensity.densityTier(1500))
+        assertEquals(5, WordDensity.densityTier(2162))
+        assertEquals(10, WordDensity.densityTier(5000))
+    }
+
+    @Test
+    fun `densityTier keeps counting past ten for very long chapters`() {
+        assertEquals(11, WordDensity.densityTier(5001))
+        assertEquals(24, WordDensity.densityTier(12_000))
     }
 
     @Test
     fun `tier bounds match densityTier`() {
         assertEquals(1, WordDensity.tierMinWords(1))
-        assertEquals(400, WordDensity.tierMaxWords(1))
-        assertEquals(401, WordDensity.tierMinWords(2))
-        assertEquals(500, WordDensity.tierMaxWords(2))
-        assertEquals(1201, WordDensity.tierMinWords(WordDensity.MAX_TIER))
-        assertNull(WordDensity.tierMaxWords(WordDensity.MAX_TIER))
+        assertEquals(500, WordDensity.tierMaxWords(1))
+        assertEquals(501, WordDensity.tierMinWords(2))
+        assertEquals(1000, WordDensity.tierMaxWords(2))
+        assertEquals(1001, WordDensity.tierMinWords(3))
+        assertEquals(1500, WordDensity.tierMaxWords(3))
 
-        for (tier in 1..WordDensity.MAX_TIER) {
+        for (tier in 1..30) {
             assertEquals(tier, WordDensity.densityTier(WordDensity.tierMinWords(tier)))
-            WordDensity.tierMaxWords(tier)?.let { assertEquals(tier, WordDensity.densityTier(it)) }
+            assertEquals(tier, WordDensity.densityTier(WordDensity.tierMaxWords(tier)))
         }
     }
 }

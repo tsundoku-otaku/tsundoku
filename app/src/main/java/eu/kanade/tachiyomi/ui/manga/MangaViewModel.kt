@@ -53,7 +53,6 @@ import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -103,6 +102,7 @@ import tachiyomi.domain.translation.model.ChapterRef
 import tachiyomi.domain.translation.repository.TranslatedChapterRepository
 import tachiyomi.i18n.MR
 import tachiyomi.i18n.novel.TDMR
+import tachiyomi.source.local.LocalNovelSource
 import tachiyomi.source.local.isLocal
 import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
@@ -153,6 +153,9 @@ class MangaViewModel(
         val MANGA_ID_KEY = CreationExtras.Key<Long>()
 
         val IS_FROM_SOURCE_KEY = CreationExtras.Key<Boolean>()
+
+        /** Word counts read at most this many chapter runs at the same time. */
+        private const val WORD_COUNT_MAX_PARALLELISM = 4
 
         val Factory = viewModelFactory {
             initializer {
@@ -1551,7 +1554,8 @@ class MangaViewModel(
 
     /**
      * Count the words of every downloaded chapter (every chapter for local entries) off the main
-     * thread, reporting progress and the resulting [WordDensity] through [Dialog.WordCount].
+     * thread, reporting progress and the resulting [WordDensity] through [Dialog.WordCount]. The scan
+     * reads a few runs of chapters at once; see [WordCountScanner].
      */
     fun showWordCountDialog() {
         val state = successState ?: return
@@ -1571,38 +1575,43 @@ class MangaViewModel(
         wordCountJob = viewModelScope.launchIO {
             val source = sourceManager.getOrStub(manga.source)
             val contentReader = ChapterContentReader(context, Injekt.get<DownloadProvider>())
-            var totalWords = 0L
-            var countedChapters = 0
-            var unreadableChapters = 0
-            chapters.forEachIndexed { index, chapter ->
-                ensureActive()
-                val content = try {
-                    if (isLocalEntry) {
-                        source.fetchPageText(Page(0, chapter.url))
-                    } else {
-                        contentReader.readDownloadedContent(manga, chapter, source)
-                    }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logcat(LogPriority.WARN, e) { "Word count: failed to read chapter ${chapter.name}" }
-                    null
-                }
-                if (content != null) {
-                    totalWords += WordDensity.countWords(content)
-                    countedChapters++
-                } else {
-                    unreadableChapters++
-                }
-                updateWordCountDialog { it.copy(checkedChapters = index + 1) }
-            }
-            val result = WordDensity(
-                totalWords = totalWords,
-                countedChapters = countedChapters,
+            val result = WordCountScanner.scan(
+                chapters = chapters,
                 totalChapters = totalChapters,
-                unreadableChapters = unreadableChapters,
+                parallelism = Runtime.getRuntime().availableProcessors().coerceIn(1, WORD_COUNT_MAX_PARALLELISM),
+                openReader = { openWordCountReader(manga, source, isLocalEntry, contentReader) },
+                onProgress = { checked ->
+                    // Runs finish chapters out of order, so never let the shown count go backwards.
+                    updateWordCountDialog { it.copy(checkedChapters = maxOf(it.checkedChapters, checked)) }
+                },
             )
             updateWordCountDialog { it.copy(result = result) }
+        }
+    }
+
+    /**
+     * Opens a reader for one run of a word count scan. Local novels and downloaded chapters use readers
+     * that look the novel's storage up once for the whole run rather than once per chapter.
+     */
+    private fun openWordCountReader(
+        manga: Manga,
+        source: Source,
+        isLocalEntry: Boolean,
+        contentReader: ChapterContentReader,
+    ): WordCountChapterReader<Chapter> {
+        val localNovelReader = (source as? LocalNovelSource)?.takeIf { isLocalEntry }?.openChapterTextReader()
+        val downloadedReader = if (isLocalEntry) null else contentReader.openDownloadedContentReader(manga, source)
+        return object : WordCountChapterReader<Chapter> {
+            override suspend fun read(chapter: Chapter): String? = when {
+                localNovelReader != null -> localNovelReader.read(chapter.url)
+                downloadedReader != null -> downloadedReader.read(chapter)
+                else -> source.fetchPageText(Page(0, chapter.url))
+            }
+
+            override fun close() {
+                localNovelReader?.close()
+                downloadedReader?.close()
+            }
         }
     }
 

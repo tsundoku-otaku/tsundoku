@@ -41,6 +41,7 @@ import tachiyomi.source.local.io.LocalNovelSourceFileSystem
 import tachiyomi.source.local.metadata.fillMetadata
 import uy.kohesive.injekt.injectLazy
 import java.io.ByteArrayInputStream
+import java.io.Closeable
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -411,73 +412,143 @@ class LocalNovelSource : CatalogueSource, UnmeteredSource {
     // Novel source - fetch page text
     override suspend fun fetchPageText(page: Page): String = withIOContext {
         try {
-            // Check if URL contains a chapter fragment (for multi-chapter EPUBs)
-            // Format: novelDir/file.ext#chapterHref or file.ext#chapterHref
-            val urlParts = page.url.split("#", limit = 2)
-            val filePath = urlParts[0]
-            val chapterFragment = urlParts.getOrNull(1)
-
+            val (filePath, chapterFragment) = splitChapterUrl(page.url)
             val chapterFile = resolveChapterFile(filePath)
                 ?: throw Exception(context.stringResource(MR.strings.chapter_not_found))
-
-            when {
-                chapterFile.isDirectory -> {
-                    // Read all text/html files in the directory
-                    val textFiles = chapterFile.listFiles()
-                        ?.filter { isTextFile(it) }
-                        ?.sortedBy { it.name }
-                        ?: emptyList()
-
-                    if (textFiles.isEmpty()) {
-                        throw Exception("No text files found in chapter directory")
-                    }
-
-                    textFiles.joinToString("\n\n") { file ->
-                        val text = file.openInputStream().bufferedReader().readText()
-                        NovelAssetRewriter.rewrite(text, file.extension.orEmpty(), NovelAssetRewriter::relativeScheme)
-                    }
-                }
-                chapterFile.extension.equals("epub", true) -> {
-                    // Read epub content
-                    chapterFile.epubReader(context).use { epub ->
-                        if (chapterFragment != null) {
-                            // Multi-chapter EPUB: read specific chapter
-                            epub.getChapterContent(chapterFragment)
-                        } else {
-                            // Single chapter EPUB: read all content
-                            epub.getTextContent()
-                        }
-                    }
-                }
-                isArchiveSupported(chapterFile) -> {
-                    // Read text files from archive
-                    chapterFile.archiveReader(context).use { reader ->
-                        val textEntries = reader.useEntries { entries ->
-                            entries.filter { it.isFile && isTextFileName(it.name) }
-                                .sortedBy { it.name }
-                                .toList()
-                        }
-
-                        textEntries.joinToString("\n\n") { entry ->
-                            val text = reader.getInputStream(entry.name)?.bufferedReader()?.readText() ?: ""
-                            val baseDir = entry.name.substringBeforeLast('/', "")
-                            val ext = entry.name.substringAfterLast('.', "")
-                            NovelAssetRewriter.rewrite(text, ext) { NovelAssetRewriter.archiveScheme(baseDir, it) }
-                        }
-                    }
-                }
-                isTextFile(chapterFile) -> {
-                    // Direct text file
-                    val raw = chapterFile.openInputStream().bufferedReader().readText()
-                    NovelAssetRewriter.rewrite(raw, chapterFile.extension.orEmpty(), NovelAssetRewriter::relativeScheme)
-                }
-                else -> {
-                    throw Exception("Unsupported chapter format: ${chapterFile.extension}")
-                }
+            readChapterText(chapterFile, chapterFragment) { epubFile, read ->
+                epubFile.epubReader(context).use(read)
             }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Error fetching page text for ${page.url}" }
             throw e
+        }
+    }
+
+    /**
+     * Opens a reader that returns the same text as [fetchPageText] for many chapters in a row. It lists
+     * each novel directory once and keeps the current EPUB open between chapters, where [fetchPageText]
+     * repeats those storage lookups for every chapter. Reading chapters in order keeps one EPUB open at
+     * a time. Use it for whole-novel scans and close it afterwards to release the open EPUB.
+     *
+     * The reader is not thread-safe: use it from one coroutine at a time, off the main thread.
+     */
+    fun openChapterTextReader(): ChapterTextReader = ChapterTextReader()
+
+    inner class ChapterTextReader internal constructor() : Closeable {
+        private val novelDirFiles = HashMap<String, Map<String, UniFile>>()
+        private val novelEntries = HashMap<String, UniFile?>()
+        private var openEpubPath: String? = null
+        private var openEpub: EpubReader? = null
+
+        /** The text of the chapter at [chapterUrl]; throws like [fetchPageText] when it cannot be read. */
+        fun read(chapterUrl: String): String {
+            val (filePath, chapterFragment) = splitChapterUrl(chapterUrl)
+            // Further chapters of the EPUB that is already open skip the file lookups and checks.
+            openEpub?.let { epub -> if (filePath == openEpubPath) return readEpubChapter(epub, chapterFragment) }
+            val chapterFile = resolve(filePath)
+                ?: throw Exception(context.stringResource(MR.strings.chapter_not_found))
+            return readChapterText(chapterFile, chapterFragment) { epubFile, read -> read(epub(filePath, epubFile)) }
+        }
+
+        private fun resolve(filePath: String): UniFile? {
+            if (!filePath.contains('/')) {
+                return novelEntries.getOrPut(filePath) { resolveNovelEntry(filePath) }
+            }
+            val (novelDirName, chapterName) = filePath.split('/', limit = 2)
+            val files = novelDirFiles.getOrPut(novelDirName) {
+                fileSystem.getBaseDirectory()?.findFile(novelDirName)?.listFiles().orEmpty()
+                    .mapNotNull { file -> file.name?.let { name -> name to file } }
+                    .toMap()
+            }
+            // Anything the listing does not name exactly goes through the regular lookup.
+            return files[chapterName] ?: resolveChapterFile(filePath)
+        }
+
+        private fun epub(filePath: String, file: UniFile): EpubReader {
+            openEpub?.let { if (filePath == openEpubPath) return it }
+            close()
+            // Index the archive once so each chapter opens directly instead of scanning the book.
+            return EpubReader(file.archiveReader(context).apply { indexEntries() }).also {
+                openEpub = it
+                openEpubPath = filePath
+            }
+        }
+
+        override fun close() {
+            openEpub?.close()
+            openEpub = null
+            openEpubPath = null
+        }
+    }
+
+    private fun readEpubChapter(epub: EpubReader, chapterFragment: String?): String =
+        if (chapterFragment != null) {
+            // Multi-chapter EPUB: read specific chapter
+            epub.getChapterContent(chapterFragment)
+        } else {
+            // Single chapter EPUB: read all content
+            epub.getTextContent()
+        }
+
+    /** Splits a chapter URL into its file path and, for multi-chapter EPUBs, the chapter href. */
+    private fun splitChapterUrl(url: String): Pair<String, String?> {
+        // Format: novelDir/file.ext#chapterHref or file.ext#chapterHref
+        val urlParts = url.split("#", limit = 2)
+        return urlParts[0] to urlParts.getOrNull(1)
+    }
+
+    /**
+     * Reads the text of [chapterFile]. EPUBs are read through [withEpub], which hands an open reader
+     * to the given block, so callers decide whether the EPUB is opened per chapter or kept open.
+     */
+    private fun readChapterText(
+        chapterFile: UniFile,
+        chapterFragment: String?,
+        withEpub: (UniFile, (EpubReader) -> String) -> String,
+    ): String = when {
+        chapterFile.isDirectory -> {
+            // Read all text/html files in the directory
+            val textFiles = chapterFile.listFiles()
+                ?.filter { isTextFile(it) }
+                ?.sortedBy { it.name }
+                ?: emptyList()
+
+            if (textFiles.isEmpty()) {
+                throw Exception("No text files found in chapter directory")
+            }
+
+            textFiles.joinToString("\n\n") { file ->
+                val text = file.openInputStream().bufferedReader().readText()
+                NovelAssetRewriter.rewrite(text, file.extension.orEmpty(), NovelAssetRewriter::relativeScheme)
+            }
+        }
+        chapterFile.extension.equals("epub", true) -> {
+            withEpub(chapterFile) { epub -> readEpubChapter(epub, chapterFragment) }
+        }
+        isArchiveSupported(chapterFile) -> {
+            // Read text files from archive
+            chapterFile.archiveReader(context).use { reader ->
+                val textEntries = reader.useEntries { entries ->
+                    entries.filter { it.isFile && isTextFileName(it.name) }
+                        .sortedBy { it.name }
+                        .toList()
+                }
+
+                textEntries.joinToString("\n\n") { entry ->
+                    val text = reader.getInputStream(entry.name)?.bufferedReader()?.readText() ?: ""
+                    val baseDir = entry.name.substringBeforeLast('/', "")
+                    val ext = entry.name.substringAfterLast('.', "")
+                    NovelAssetRewriter.rewrite(text, ext) { NovelAssetRewriter.archiveScheme(baseDir, it) }
+                }
+            }
+        }
+        isTextFile(chapterFile) -> {
+            // Direct text file
+            val raw = chapterFile.openInputStream().bufferedReader().readText()
+            NovelAssetRewriter.rewrite(raw, chapterFile.extension.orEmpty(), NovelAssetRewriter::relativeScheme)
+        }
+        else -> {
+            throw Exception("Unsupported chapter format: ${chapterFile.extension}")
         }
     }
 

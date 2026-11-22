@@ -28,31 +28,24 @@ data class WordDensity(
         get() = densityTier(averageWords)
 
     companion object {
-        /** Averages up to this many words per chapter are tier 1. */
-        const val FIRST_TIER_MAX_WORDS = 400L
-
-        /** Each following tier spans this many words. */
-        const val TIER_STEP_WORDS = 100L
-
-        const val MAX_TIER = 10
+        /** Each tier spans this many words of average chapter length. */
+        const val TIER_STEP_WORDS = 500L
 
         /**
-         * Maps an average chapter length onto a small 1..[MAX_TIER] indicator:
-         * 1-400 words is 1, 401-500 is 2, 501-600 is 3, and so on, capped at [MAX_TIER].
+         * Maps an average chapter length onto the word density score in steps of
+         * [TIER_STEP_WORDS] words: 1-500 words is 1, 501-1000 is 2, 1001-1500 is 3, and so on.
+         * The score is open-ended so long chapters still tell apart; an empty average is 1.
          */
         fun densityTier(averageWords: Long): Int {
-            if (averageWords <= FIRST_TIER_MAX_WORDS) return 1
-            val tier = 2 + (averageWords - FIRST_TIER_MAX_WORDS - 1) / TIER_STEP_WORDS
-            return tier.coerceAtMost(MAX_TIER.toLong()).toInt()
+            if (averageWords <= 0) return 1
+            return ((averageWords - 1) / TIER_STEP_WORDS + 1).toInt()
         }
 
         /** Lowest average word count that lands in [tier]. */
-        fun tierMinWords(tier: Int): Long =
-            if (tier <= 1) 1 else FIRST_TIER_MAX_WORDS + 1 + (tier - 2) * TIER_STEP_WORDS
+        fun tierMinWords(tier: Int): Long = (tier.coerceAtLeast(1) - 1) * TIER_STEP_WORDS + 1
 
-        /** Highest average word count that lands in [tier], or null for the open-ended top tier. */
-        fun tierMaxWords(tier: Int): Long? =
-            if (tier >= MAX_TIER) null else FIRST_TIER_MAX_WORDS + (tier - 1) * TIER_STEP_WORDS
+        /** Highest average word count that lands in [tier]. */
+        fun tierMaxWords(tier: Int): Long = tier.coerceAtLeast(1) * TIER_STEP_WORDS
 
         /**
          * Counts whitespace-separated words in chapter HTML or plain text. Only the body is

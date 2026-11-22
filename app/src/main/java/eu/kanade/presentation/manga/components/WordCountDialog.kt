@@ -5,8 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.LinearProgressIndicator
@@ -144,14 +145,18 @@ private fun StatRow(label: String, value: String) {
     }
 }
 
-/** The square 1..[WordDensity.MAX_TIER] indicator suggested in the feature request. */
+/**
+ * The square word density score suggested in the feature request. The score is open-ended, so the
+ * badge widens rather than clipping when a novel's chapters push it past two digits.
+ */
 @Composable
 private fun WordDensityBadge(tier: Int) {
     val description = stringResource(TDMR.strings.word_density_indicator, tier)
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .defaultMinSize(minWidth = 40.dp, minHeight = 40.dp)
             .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
@@ -166,21 +171,10 @@ private fun WordDensityBadge(tier: Int) {
 
 @Composable
 private fun wordDensityTierDescription(tier: Int, numberFormat: NumberFormat): String {
-    val maxWords = WordDensity.tierMaxWords(tier)
-    return if (maxWords == null) {
-        stringResource(
-            TDMR.strings.word_density_indicator_range_top,
-            tier,
-            WordDensity.MAX_TIER,
-            numberFormat.format(WordDensity.tierMinWords(tier) - 1),
-        )
-    } else {
-        stringResource(
-            TDMR.strings.word_density_indicator_range,
-            tier,
-            WordDensity.MAX_TIER,
-            numberFormat.format(WordDensity.tierMinWords(tier)),
-            numberFormat.format(maxWords),
-        )
-    }
+    return stringResource(
+        TDMR.strings.word_density_indicator_range,
+        tier,
+        numberFormat.format(WordDensity.tierMinWords(tier)),
+        numberFormat.format(WordDensity.tierMaxWords(tier)),
+    )
 }
