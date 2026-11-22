@@ -1452,6 +1452,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     fun startTts() {
         ttsStartGeneration++
+        // A newer start replaces a deferred one; deferTtsStart installs it again if still needed.
+        pendingTtsStart = null
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet, waiting..." }
@@ -1551,6 +1553,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     fun startTtsFromViewport() {
         ttsStartGeneration++
+        pendingTtsStart = null
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet" }
