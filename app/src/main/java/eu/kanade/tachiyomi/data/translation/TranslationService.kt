@@ -641,6 +641,18 @@ class TranslationService(
                             } else {
                                 translated
                             }
+                            // An empty reply counts as a failed attempt; recorded as done, a resume would skip
+                            // the chunk and the finished translation would miss its text.
+                            if (cleanedTranslation.isBlank()) {
+                                logcat(LogPriority.ERROR) {
+                                    "Empty translation for chunk ${chunkIndex + 1}/${chunks.size} (attempt $attempt)"
+                                }
+                                if (attempt < MAX_CHUNK_RETRIES) {
+                                    delay(RETRY_DELAY_MS)
+                                    continue
+                                }
+                                break
+                            }
                             val translatedParagraphs = TranslationHtmlUtils.splitParagraphsPreserving(
                                 cleanedTranslation,
                             )
