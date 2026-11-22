@@ -91,7 +91,8 @@ interface MangaRepository {
 
     suspend fun getReadMangaNotInLibrary(): List<Manga>
 
-    suspend fun getLibraryManga(): List<LibraryManga>
+    /** [useCache] false always queries and leaves the shared cache alone. */
+    suspend fun getLibraryManga(useCache: Boolean = true): List<LibraryManga>
 
     /**
      * Experimental paged library: one page of a category. [categoryId] 0 is the uncategorized bucket,

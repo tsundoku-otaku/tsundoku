@@ -28,7 +28,7 @@ import kotlin.time.Duration.Companion.seconds
 
 // Equality is by key only, so a plan rebuilt from unchanged inputs keeps its pager.
 class LibraryPagedPlan(
-    private val key: Any,
+    val key: Any,
     val categoryId: Long,
     val isNovel: Boolean?,
     val spec: LibraryPageSpec,

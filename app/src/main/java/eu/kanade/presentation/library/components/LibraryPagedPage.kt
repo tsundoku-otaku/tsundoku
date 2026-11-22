@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
@@ -128,6 +130,14 @@ internal fun LibraryPagedPage(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
             )
+        }
+        // Rows above the loaded window come back on prepend; without this a failed one just stops there.
+        when (loadState.prepend) {
+            is LoadState.Loading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            is LoadState.Error -> TextButton(onClick = lazyItems::retry, modifier = Modifier.fillMaxWidth()) {
+                Text(text = stringResource(MR.strings.action_retry))
+            }
+            else -> {}
         }
         content(
             items,

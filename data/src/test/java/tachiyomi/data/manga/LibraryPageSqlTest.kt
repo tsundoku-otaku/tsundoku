@@ -3,6 +3,7 @@ package tachiyomi.data.manga
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import org.junit.jupiter.api.AfterEach
@@ -356,6 +357,8 @@ class LibraryPageSqlTest {
             do {
                 val (page, last) = keyedPage(LibraryPageSql.keyedPage(0L, isNovel, spec, 50, 0, after))
                 walked.addAll(page)
+                // A seek that doesn't move on would loop on the same rows.
+                if (page.size == 50) last shouldNotBe after
                 after = last
             } while (page.size == 50)
 
@@ -381,6 +384,11 @@ class LibraryPageSqlTest {
     fun `outdated paging index definitions are detectable`() {
         val expected = LibraryPageSql.createIndexStatements().first()
 
+        // Different definitions must stay different, or a stale index would pass as current.
+        LibraryPageSql.normalizeDdl(expected) shouldNotBe
+            LibraryPageSql.normalizeDdl(expected.replace("WHERE favorite = 1", "WHERE favorite = 0"))
+        LibraryPageSql.createIndexStatements().map(LibraryPageSql::normalizeDdl).distinct().size shouldBe
+            LibraryPageSql.createIndexStatements().size
         LibraryPageSql.normalizeDdl(expected) shouldBe
             LibraryPageSql.normalizeDdl(expected.replace("IF NOT EXISTS ", "").replace(" ON ", "  ON "))
         LibraryPageSql.normalizeDdl(expected) shouldBe LibraryPageSql.normalizeDdl(
@@ -498,14 +506,20 @@ class LibraryPageSqlTest {
                     lastRead = it % 11,
                     total = it % 6,
                     read = it % 3,
-                    categories = if (it % 2 == 0L) listOf(6L) else emptyList(),
+                    categories = if (it % 3 == 0L) listOf(6L) else emptyList(),
                 )
             },
         )
         val spec = spec(sortType, ascending).copy(search = LibraryPageSpec.Search(sourceIds = listOf(1L, 3L)))
+        // Checked apart from the queries under test, which could agree on a wrong answer.
+        val expected = mapOf(
+            0L to (1L..400L).filter { it % 3 != 0L && it % 4 in setOf(1L, 3L) },
+            6L to (1L..400L).filter { it % 3 == 0L && it % 4 in setOf(1L, 3L) },
+        )
 
         for (category in listOf(0L, 6L)) {
             val pages = ids(LibraryPageSql.page(category, false, spec, limit = null, offset = 0))
+            pages shouldContainExactlyInAnyOrder expected.getValue(category)
             val bySource = LibraryPageSql.ids(category, false, spec, limit = -1, bySource = true)
 
             ids(LibraryPageSql.ids(category, false, spec, limit = -1)) shouldContainExactly pages
@@ -544,8 +558,41 @@ class LibraryPageSqlTest {
 
         single(LibraryPageSql.hasUncategorized(isNovel = false)) shouldBe 1L
         single(LibraryPageSql.hasUncategorized(isNovel = false, scanLimit = 100)) shouldBe 1L
-        single(LibraryPageSql.hasUncategorized(isNovel = false, scanLimit = 5)) shouldBe 0L
+        // A zero-row scan finds nothing whatever order rows are read in.
+        single(LibraryPageSql.hasUncategorized(isNovel = false, scanLimit = 0)) shouldBe 0L
         single(LibraryPageSql.hasUncategorized(isNovel = true, scanLimit = 100)) shouldBe 0L
+    }
+
+    @Test
+    fun `each sort orders by its own key`() {
+        insert(
+            listOf(
+                Row(1, "b", lastRead = 20, lastUpdate = 200, total = 5, dateAdded = 3),
+                Row(2, "c", lastRead = 30, lastUpdate = 300, total = 9, dateAdded = 1),
+                Row(3, "a", lastRead = 10, lastUpdate = 100, total = 1, dateAdded = 2),
+            ),
+        )
+        fun order(sort: Int) = ids(LibraryPageSql.page(0L, false, spec(sort, true), null, 0))
+
+        listOf(
+            LibraryPageSpec.SORT_ALPHABETICAL,
+            LibraryPageSpec.SORT_LAST_READ,
+            LibraryPageSpec.SORT_LAST_UPDATE,
+            LibraryPageSpec.SORT_UNREAD_COUNT,
+            LibraryPageSpec.SORT_TOTAL_CHAPTERS,
+        ).forEach { sort -> order(sort) shouldContainExactly listOf(3L, 1L, 2L) }
+        order(LibraryPageSpec.SORT_DATE_ADDED) shouldContainExactly listOf(2L, 3L, 1L)
+    }
+
+    @Test
+    fun `title and tag search fold the non-ASCII letters the in-memory matcher folds`() {
+        insert(listOf(Row(1, "\u0130stanbul Nights", genre = "Ma\u017Fic"), Row(2, "Other")))
+        val base = spec(LibraryPageSpec.SORT_DATE_ADDED, true)
+        fun search(search: LibraryPageSpec.Search) =
+            ids(LibraryPageSql.page(0L, false, base.copy(search = search), null, 0))
+
+        search(LibraryPageSpec.Search(likeTerm = "istanbul", matchTitle = true)) shouldContainExactly listOf(1L)
+        search(LibraryPageSpec.Search(likeTerm = "masic", matchGenre = true)) shouldContainExactly listOf(1L)
     }
 
     @Test

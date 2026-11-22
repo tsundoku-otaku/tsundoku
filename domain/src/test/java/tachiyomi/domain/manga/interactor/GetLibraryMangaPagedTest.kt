@@ -38,6 +38,7 @@ class GetLibraryMangaPagedTest {
         deleted: Set<Long> = emptySet(),
     ): MangaRepository {
         val repository = mockk<MangaRepository>()
+        coEvery { repository.ensureLibraryPagingIndexes(any()) } returns false
         coEvery { repository.countCategoryMembers(any(), any(), any()) } returns 1_000_000
         coEvery { repository.isLibraryPageSourceDriven(any(), any()) } returns sourceDriven
         coEvery { repository.getLibraryMangaPage(any(), any(), any(), any(), any(), any()) } answers {
@@ -129,12 +130,35 @@ class GetLibraryMangaPagedTest {
         val boundary = generation.fetch(20, size - 10)
         val past = generation.fetch(20, size + 10)
 
-        boundary.ids shouldContainExactly ((size - 9L)..size.toLong()).toList()
-        boundary.nextOffset shouldBe size
+        // The page crossing the snapshot end is filled from the database instead of ending short.
+        boundary.ids shouldContainExactly ((size - 9L)..(size + 10L)).toList()
+        boundary.nextOffset shouldBe size + 10
         past.ids shouldContainExactly ((size + 11L)..(size + 30L)).toList()
+        // The snapshot's last row is looked up once so the database part seeks from it.
         coVerify(exactly = 1) {
-            repository.getLibraryMangaKeyedPage(3L, true, 20L, size + 10L, null, narrowed, false)
+            repository.getLibraryMangaKeyedPage(3L, true, 1L, size - 1L, null, narrowed, false)
         }
+    }
+
+    @Test
+    fun `a prepend crossing the snapshot end keeps every row`() = runTest {
+        val size = GetLibraryMangaPaged.SNAPSHOT_SIZE
+        val repository = repository((1L..size + 30L).toList())
+        val generation = generation(repository, narrowed)
+
+        generation.fetch(20, size + 10)
+        val prepend = generation.fetch(15, size - 5)
+
+        prepend.ids shouldContainExactly ((size - 4L)..(size + 10L)).toList()
+    }
+
+    @Test
+    fun `a failed index build still loads pages`() = runTest {
+        val repository = repository((1L..30L).toList())
+        coEvery { repository.ensureLibraryPagingIndexes(any()) } throws IllegalStateException("database is locked")
+        val generation = generation(repository, narrowed)
+
+        generation.fetch(10, 0).ids shouldContainExactly (1L..10L).toList()
     }
 
     @Test

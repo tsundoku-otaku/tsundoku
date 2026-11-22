@@ -722,12 +722,12 @@ class MangaRepositoryImpl(
         favoriteSourceUrlCacheTimestamp = 0
     }
 
-    override suspend fun getLibraryManga(): List<LibraryManga> {
+    override suspend fun getLibraryManga(useCache: Boolean): List<LibraryManga> {
         val caller = Thread.currentThread().stackTrace.take(15).joinToString("\\n  ") {
             "${it.className}.${it.methodName}:${it.lineNumber}"
         }
         val now = System.currentTimeMillis()
-        if (cachedLibraryManga != null && now - cacheTimestamp < CACHE_VALIDITY_MS) {
+        if (useCache && cachedLibraryManga != null && now - cacheTimestamp < CACHE_VALIDITY_MS) {
             logcat(LogPriority.DEBUG) {
                 "MangaRepositoryImpl.getLibraryManga: Using CACHE (age=${now - cacheTimestamp}ms, size=${cachedLibraryManga?.size})"
             }
@@ -817,9 +817,10 @@ class MangaRepositoryImpl(
             "MangaRepositoryImpl.getLibraryManga: Query completed in ${queryDuration}ms, returned ${result.size} items"
         }
 
-        // Update cache
-        cachedLibraryManga = result
-        cacheTimestamp = now
+        if (useCache) {
+            cachedLibraryManga = result
+            cacheTimestamp = now
+        }
         return result
     }
 

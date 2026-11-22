@@ -140,13 +140,16 @@ class LibraryPagingSourceTest {
 
     @Test
     fun `a far away row is tracked again once the window moved on`() = runTest {
-        val source = sourceOver { (1L..200_000L).toList() }
+        var rows = (1L..200_000L).toList()
+        val source = sourceOver { rows }
 
         source.page(PagingSource.LoadParams.Refresh(null, 60_000, false))
+        // Row 1 was seen at the top; it now sits far down, where it only shows if the old entry was dropped.
+        rows = rows.drop(1).let { it.take(150_000) + 1L + it.drop(150_000) }
         val far = source.page(append(150_000, 10))
         val back = source.page(PagingSource.LoadParams.Refresh(0, 10, false))
 
-        far.data.map { it.id }.first() shouldBe 150_001L
-        back.data.map { it.id } shouldContainExactly (1L..10L).toList()
+        far.data.map { it.id }.first() shouldBe 1L
+        back.data.map { it.id } shouldContainExactly (2L..11L).toList()
     }
 }

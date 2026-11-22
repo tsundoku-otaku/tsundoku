@@ -216,6 +216,8 @@ internal object LibraryPageSql {
         args.add(after.key)
         args.add(after.key)
         args.add(after.id)
+        // Only the key bound can seek the index; SQLite doesn't use a (key, id) row value on these
+        // expression indexes, so ties of the cursor's key are filtered after the seek.
         return "$key $op= ? AND ($key $op ? OR M._id $op ?)"
     }
 
@@ -341,7 +343,11 @@ internal object LibraryPageSql {
         }
 
         if (spec.includedTags.isNotEmpty()) {
-            clauses.add(spec.includedTags.joinToString(" OR ", "(", ")") { "lower(coalesce(M.genre, '')) LIKE ?" })
+            clauses.add(
+                spec.includedTags.joinToString(" OR ", "(", ")") {
+                    "lower(${foldToAscii("coalesce(M.genre, '')")}) LIKE ?"
+                },
+            )
             spec.includedTags.forEach { args.add("%$it%") }
         }
 
@@ -350,12 +356,17 @@ internal object LibraryPageSql {
         return clauses.joinToString(" AND ")
     }
 
+    // LIKE only folds ASCII case, while the in-memory matcher also matches the four non-ASCII letters whose
+    // case maps onto an ASCII one; mapping them first keeps paged results the same as in-memory ones.
+    private fun foldToAscii(expr: String): String =
+        "replace(replace(replace(replace($expr, 'İ', 'i'), 'ı', 'i'), 'ſ', 's'), 'K', 'k')"
+
     private fun search(search: LibraryPageSpec.Search, args: MutableList<Any>): String {
         val parts = ArrayList<String>()
         val pattern = "%${search.likeTerm}%"
         if (search.likeTerm.isNotEmpty()) {
             if (search.matchTitle) {
-                parts.add("M.title LIKE ? ESCAPE '\\'")
+                parts.add("${foldToAscii("M.title")} LIKE ? ESCAPE '\\'")
                 args.add(pattern)
             }
             if (search.matchUrl) {
@@ -363,7 +374,7 @@ internal object LibraryPageSql {
                 args.add(pattern)
             }
             if (search.matchGenre) {
-                parts.add("coalesce(M.genre, '') LIKE ? ESCAPE '\\'")
+                parts.add("${foldToAscii("coalesce(M.genre, '')")} LIKE ? ESCAPE '\\'")
                 args.add(pattern)
             }
         }

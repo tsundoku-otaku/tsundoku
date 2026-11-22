@@ -77,7 +77,8 @@ class GetLibraryManga(
             Thread.currentThread().stackTrace.getOrNull(3)?.let { "${it.className}.${it.methodName}" } ?: "unknown"
         logcat(LogPriority.DEBUG) { "GetLibraryManga.await() called by: $caller" }
         if (paginationEnabled) {
-            return mangaRepository.getLibraryManga().also { mangaRepository.invalidateLibraryCache() }
+            // Read past the shared cache: another caller's read-then-invalidate could hand this one its list.
+            return mangaRepository.getLibraryManga(useCache = false)
         }
         // If not initialized, wait for initial load
         if (!isInitialized) {

@@ -106,12 +106,23 @@ class GetLibraryMangaPaged(
             if (snapshot != null && offset < snapshot.ids.size) {
                 val slice = snapshot.ids.subList(offset, (offset + limit).coerceAtMost(snapshot.ids.size))
                 val end = offset + slice.size
-                return@withContext LibraryPagingSource.Chunk(
-                    rowsInOrder(slice, categoryId, isNovel, spec),
-                    end.takeUnless { snapshot.complete && end == snapshot.ids.size },
-                )
+                val rows = rowsInOrder(slice, categoryId, isNovel, spec)
+                if (snapshot.complete || slice.size == limit) {
+                    return@withContext LibraryPagingSource.Chunk(
+                        rows,
+                        end.takeUnless { snapshot.complete && end == snapshot.ids.size },
+                    )
+                }
+                // A page crossing the end of a capped snapshot takes the rest from the database, or the
+                // rows between the snapshot end and the next loaded page would never be shown.
+                val tail = keyedPage(limit - slice.size, end, mode)
+                return@withContext LibraryPagingSource.Chunk.of(rows + tail, limit, offset)
             }
             if (snapshot?.complete == true) return@withContext LibraryPagingSource.Chunk(emptyList(), null)
+            LibraryPagingSource.Chunk.of(keyedPage(limit, offset, mode), limit, offset)
+        }
+
+        private suspend fun keyedPage(limit: Int, offset: Int, mode: Mode): List<LibraryManga> {
             val after = mutex.withLock { cursors[offset] }
             val page = mangaRepository.getLibraryMangaKeyedPage(
                 categoryId,
@@ -123,7 +134,7 @@ class GetLibraryMangaPaged(
                 mode == Mode.SMALL,
             )
             page.last?.let { last -> mutex.withLock { cursors[offset + page.rows.size] = last } }
-            LibraryPagingSource.Chunk.of(page.rows, limit, offset)
+            return page.rows
         }
 
         private suspend fun resolveMode(): Mode = when {
@@ -137,11 +148,24 @@ class GetLibraryMangaPaged(
             val bySource = mode == Mode.SOURCE
             val limit = if (bySource) -1L else SNAPSHOT_SIZE + 1L
             val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, limit, spec, bySource = bySource)
-            return if (bySource || ids.size <= SNAPSHOT_SIZE) {
-                Snapshot(ids, complete = true)
-            } else {
-                Snapshot(ids.subList(0, SNAPSHOT_SIZE), complete = false)
+            if (bySource || ids.size <= SNAPSHOT_SIZE) return Snapshot(ids, complete = true)
+            // The first load past the snapshot seeks from its last row instead of counting rows from the
+            // start, which is slow and lands elsewhere when rows moved since the snapshot. Only used when
+            // the row is still where the snapshot saw it.
+            val boundaryOffset = SNAPSHOT_SIZE - 1L
+            val boundary = mangaRepository.getLibraryMangaKeyedPage(
+                categoryId,
+                isNovel,
+                1,
+                boundaryOffset,
+                null,
+                spec,
+                false,
+            )
+            if (boundary.rows.singleOrNull()?.id == ids[SNAPSHOT_SIZE - 1]) {
+                boundary.last?.let { cursors[SNAPSHOT_SIZE] = it }
             }
+            return Snapshot(ids.subList(0, SNAPSHOT_SIZE), complete = false)
         }
     }
 
@@ -190,17 +214,23 @@ class GetLibraryMangaPaged(
         isNovel: Boolean?,
         spec: LibraryPageSpec,
     ): LibraryManga? = withContext(ioDispatcher) {
-        val small = isSmallCategory(categoryId, isNovel)
-        if (!small && isSourceDriven(spec)) {
-            val id = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, bySource = true)
-                .randomOrNull() ?: return@withContext null
-            return@withContext mangaRepository.getLibraryMangaPageRows(listOf(id), categoryId, isNovel, spec)
-                .firstOrNull()
+        // The picked row can be removed between choosing and reading it, so one fresh pick follows a miss.
+        repeat(RANDOM_ATTEMPTS) {
+            val small = isSmallCategory(categoryId, isNovel)
+            if (!small && isSourceDriven(spec)) {
+                val id = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, bySource = true)
+                    .randomOrNull() ?: return@withContext null
+                mangaRepository.getLibraryMangaPageRows(listOf(id), categoryId, isNovel, spec)
+                    .firstOrNull()?.let { return@withContext it }
+            } else {
+                val count = mangaRepository.countLibraryMangaPage(categoryId, isNovel, spec, small)
+                if (count <= 0L) return@withContext null
+                val offset = Random.nextLong(count)
+                mangaRepository.getLibraryMangaPage(categoryId, isNovel, 1, offset, spec, small)
+                    .firstOrNull()?.let { return@withContext it }
+            }
         }
-        val count = mangaRepository.countLibraryMangaPage(categoryId, isNovel, spec, small)
-        if (count <= 0L) return@withContext null
-        val offset = Random.nextLong(count)
-        mangaRepository.getLibraryMangaPage(categoryId, isNovel, 1, offset, spec, small).firstOrNull()
+        null
     }
 
     private suspend fun isSourceDriven(spec: LibraryPageSpec): Boolean =
@@ -278,6 +308,7 @@ class GetLibraryMangaPaged(
         private const val INDEX_RETRY_DELAY_MS = 5 * 60 * 1000L
 
         internal const val SNAPSHOT_SIZE = 10_000
+        private const val RANDOM_ATTEMPTS = 2
 
         private const val SOURCE_DRIVEN_ROWS = 50_000L
 
