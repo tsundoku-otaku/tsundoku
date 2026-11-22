@@ -255,11 +255,12 @@
     // True while a turn animates: the screen still shows the old page, so nothing may be read from it.
     var turning = false;
     // A swipe let go on the same page keeps the text taken before the drag; a content change during the
-    // drag may already have moved it, and re-taking it at the old offset would lose that.
+    // drag may already have moved it, and re-taking it at the old offset would lose that. Only swipes
+    // animate back: a resize that lands on the same page moved the text and takes it again.
     var keepAnchorOnSettle = false;
     function captureAnchorAfterTurn(animate, samePage) {
         clearTimeout(anchorTimer);
-        keepAnchorOnSettle = !!samePage && !!pageAnchor && container().contains(pageAnchor.startContainer);
+        keepAnchorOnSettle = !!animate && !!samePage && !!pageAnchor && container().contains(pageAnchor.startContainer);
         if (!animate) {
             turning = false;
             if (!keepAnchorOnSettle) pageAnchor = textAtPageStart();
