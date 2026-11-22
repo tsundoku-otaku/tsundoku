@@ -16,7 +16,9 @@ import mihon.core.archive.NOVEL_IMAGE_SCHEME
 import java.io.File
 import java.io.InputStream
 import java.net.URLDecoder
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 internal class NovelWebViewImageCache(
     private val cacheDir: File,
@@ -40,12 +42,18 @@ internal class NovelWebViewImageCache(
 
     private class SlotWaiter(val chapterId: Long, val order: Long, val gate: CompletableDeferred<Unit>)
 
+    // Every file this instance writes carries its session and its own writer number, so the startup
+    // sweep never deletes one of them and concurrent writers of one image never share a path.
+    private val session = UUID.randomUUID().toString().take(8)
+    private val writerSeq = AtomicLong()
+
     init {
         // Entries live only in this session's map, so files left by an earlier session are never served.
         scope.launch(Dispatchers.IO) {
             val cutoff = System.currentTimeMillis() - STALE_FILE_AGE_MS
+            val ownPrefix = "$FILE_PREFIX$session-"
             cacheDir.listFiles { f ->
-                f.name.startsWith(FILE_PREFIX) && f.lastModified() < cutoff
+                f.name.startsWith(FILE_PREFIX) && !f.name.startsWith(ownPrefix) && f.lastModified() < cutoff
             }?.forEach { it.delete() }
         }
     }
@@ -139,7 +147,8 @@ internal class NovelWebViewImageCache(
     // False when clear() ran since [gen] was read; the caller then owns (and deletes) the file.
     private fun publish(cacheKey: String, file: File, gen: Long): Boolean = synchronized(lock) {
         if (generation != gen) return false
-        cache[cacheKey] = file
+        // A reader still streaming the replaced file keeps its open handle.
+        cache.put(cacheKey, file)?.takeIf { it != file }?.delete()
         true
     }
 
@@ -252,7 +261,7 @@ internal class NovelWebViewImageCache(
             .take(16)
             .joinToString("") { "%02x".format(it) }
         cacheDir.mkdirs()
-        return File(cacheDir, "$FILE_PREFIX$keyHash.$fileSuffix")
+        return File(cacheDir, "$FILE_PREFIX$session-${writerSeq.incrementAndGet()}-$keyHash.$fileSuffix")
     }
 
     private fun guessMimeType(imagePath: String): String =
