@@ -904,7 +904,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 }
                 // A plain WebView reload never reaches the real-chapter path that installs the reader
                 // scripts, fragment links and saved position.
-                val resumeTts = ttsController.isTtsAutoPlay
+                // A second reload before the restore finds TTS already stopped, so the earlier intent is kept.
+                val resumeTts = resumeTtsAfterRestore || (ttsController.isTtsAutoPlay && !ttsController.isPaused())
                 reloadChapter()
                 // The reload stops TTS; it picks up again once the saved position is back on screen.
                 resumeTtsAfterRestore = resumeTts
