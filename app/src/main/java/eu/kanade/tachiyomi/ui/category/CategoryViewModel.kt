@@ -134,14 +134,19 @@ class CategoryViewModel(
 
     // The novel flag is only backfilled when the library loads, so a novel whose source loaded later can
     // still read as manga and would be removed from a category turned novel-only.
+    // True when flags were corrected; a failed write throws, so the edit stops instead of offering to
+    // remove the entries it couldn't correct.
     private suspend fun backfillNovelFlags(ids: List<Long>): Boolean {
         val updates = ids.mapNotNull { id ->
             getManga.await(id)
                 ?.takeIf { sourceManager.get(it.source)?.isNovelSource() == true }
                 ?.let { MangaUpdate(id = it.id, isNovel = true) }
         }
-        if (updates.isNotEmpty()) updateManga.awaitAll(updates)
-        return updates.isNotEmpty()
+        if (updates.isEmpty()) return false
+        check(updateManga.awaitAll(updates)) { "Could not mark ${updates.size} entries as novels" }
+        // The library keeps its own copy; the novel views read the flag from it.
+        getLibraryManga.applyBatchMangaDetailUpdates(updates.associate { it.id to { m -> m.copy(isNovel = true) } })
+        return true
     }
 
     fun confirmEdit(dialog: CategoryDialog.ConfirmContentType) {
