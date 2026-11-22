@@ -1083,7 +1083,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         if (current is SpannableStringBuilder) return current
         // Chunk text can be a plain String or an immutable PrecomputedText; rebuild it as a
         // mutable builder so find spans can be added and removed without crashing.
-        return SpannableStringBuilder(current).also { view.text = it }
+        view.text = SpannableStringBuilder(current)
+        return view.text as? Spannable
     }
 
     private fun clearFindSpans() {
@@ -1587,6 +1588,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         loadJob?.cancel()
         currentPage = page
         currentChapters = chapters
+        activity.dismissFindBar()
         resetFindState()
         activity.onNovelFindResult(0, -1)
 

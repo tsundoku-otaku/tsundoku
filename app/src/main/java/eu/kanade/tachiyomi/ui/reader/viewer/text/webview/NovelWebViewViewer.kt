@@ -218,6 +218,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private var chromeSafeTopDp = 0f
     private var chromeSafeBottomDp = 0f
 
+    private var findRequestGeneration = 0
+
     private val config = NovelConfig(scope)
     private val navigator get() = config.navigator
 
@@ -495,6 +497,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * Reports the result through [ReaderActivity.onNovelFindResult].
      */
     fun searchInChapter(query: String) {
+        val generation = ++findRequestGeneration
         val q = query.trim()
         if (q.isEmpty()) {
             clearFind()
@@ -502,16 +505,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
         val chapterId = currentPage?.chapter?.chapter?.id ?: return
         evaluateJavascriptSafe(findEngineJs(chapterId) + "window.__tdFind.prepare(${quoteForJson(q)});") { result ->
+            if (generation != findRequestGeneration) return@evaluateJavascriptSafe
             val (count, _) = parseFindResult(result)
-            if (count > 0) stepFind(1) else activity.onNovelFindResult(0, -1)
+            if (count > 0) stepFind(1, generation) else activity.onNovelFindResult(0, -1)
         }
     }
 
-    fun findNext() = stepFind(1)
+    fun findNext() = stepFind(1, ++findRequestGeneration)
 
-    fun findPrevious() = stepFind(-1)
+    fun findPrevious() = stepFind(-1, ++findRequestGeneration)
 
     fun clearFind() {
+        findRequestGeneration++
         val chapterId = currentPage?.chapter?.chapter?.id
         evaluateJavascriptSafe(
             buildString {
@@ -522,9 +527,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         activity.onNovelFindResult(0, -1)
     }
 
-    private fun stepFind(dir: Int) {
+    private fun stepFind(dir: Int, generation: Int) {
         val chapterId = currentPage?.chapter?.chapter?.id ?: return
         evaluateJavascriptSafe(findEngineJs(chapterId) + "window.__tdFind.go($dir);") { result ->
+            if (generation != findRequestGeneration) return@evaluateJavascriptSafe
             parseFindResult(result).let { (total, current) ->
                 if (total > 0) activity.onNovelFindResult(total, current)
             }
@@ -593,12 +599,50 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     var list = Array.prototype.slice.call(root.querySelectorAll(sel)).filter(function(el) {
                         return !!(el.innerText && el.innerText.trim().length);
                     });
-                    if (!list.length) {
-                        list = Array.prototype.slice.call(root.children).filter(function(el) {
-                            return !!(el.innerText && el.innerText.trim().length);
-                        });
+                    return list.filter(function(el) {
+                        for (var parent = el.parentElement; parent && parent !== root; parent = parent.parentElement) {
+                            if (parent.matches && parent.matches(sel)) { return false; }
+                        }
+                        return true;
+                    });
+                }
+
+                function searchBlocks(root) {
+                    var elements = paragraphs(root);
+                    var nodes = textNodes(root);
+                    var blocks = [];
+                    for (var ni = 0; ni < nodes.length; ni++) {
+                        var node = nodes[ni];
+                        var owner = null;
+                        for (var ei = 0; ei < elements.length; ei++) {
+                            if (elements[ei].contains(node)) {
+                                owner = elements[ei];
+                                break;
+                            }
+                        }
+                        if (!owner) {
+                            owner = node;
+                            for (var parent = node.parentElement; parent && parent !== root; parent = parent.parentElement) {
+                                owner = parent;
+                            }
+                        }
+                        var block = null;
+                        for (var bi = 0; bi < blocks.length; bi++) {
+                            if (blocks[bi].owner === owner) {
+                                block = blocks[bi];
+                                break;
+                            }
+                        }
+                        if (!block) {
+                            blocks.push({
+                                owner: owner,
+                                nodes: []
+                            });
+                            block = blocks[blocks.length - 1];
+                        }
+                        block.nodes.push(node);
                     }
-                    return list;
+                    return blocks;
                 }
 
                 function textNodes(root) {
@@ -694,9 +738,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     // A case-insensitive regex returns the real match length, so Unicode case
                     // folding (which can change string length) cannot shift later offsets.
                     var re = new RegExp(escapeRegExp(q), 'gi');
-                    var paras = paragraphs(scope());
-                    for (var pi = 0; pi < paras.length; pi++) {
-                        var nodes = textNodes(paras[pi]);
+                    var blocks = searchBlocks(scope());
+                    for (var pi = 0; pi < blocks.length; pi++) {
+                        var nodes = blocks[pi].nodes;
                         var full = '';
                         for (var ni = 0; ni < nodes.length; ni++) { full += nodes[ni].data; }
                         var match;
@@ -716,32 +760,30 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 function wrapCurrent() {
                     var m = S.matches[S.current];
                     if (!m) { return null; }
-                    var para = paragraphs(scope())[m.para];
-                    if (!para) { return null; }
+                    var block = searchBlocks(scope())[m.para];
+                    if (!block) { return null; }
                     var acc = 0;
-                    var span = null;
-                    var nodes = textNodes(para);
+                    var firstSpan = null;
+                    var nodes = block.nodes;
                     for (var ni = 0; ni < nodes.length; ni++) {
-                        var len = nodes[ni].data.length;
-                        if (acc + len <= m.offset) { acc += len; continue; }
-                        var local = m.offset - acc;
-                        if (local + m.len <= len) {
-                            try {
-                                var range = document.createRange();
-                                range.setStart(nodes[ni], local);
-                                range.setEnd(nodes[ni], local + m.len);
-                                span = document.createElement('span');
-                                span.className = 'td-find-match td-find-current';
-                                range.surroundContents(span);
-                                S.spans.push(span);
-                            } catch (e) {
-                                span = null;
-                            }
-                            break;
+                        var node = nodes[ni];
+                        var len = node.data.length;
+                        var localStart = Math.max(0, m.offset - acc);
+                        var localEnd = Math.min(len, m.offset + m.len - acc);
+                        if (localEnd > localStart) {
+                            var selected = node;
+                            if (localEnd < len) { selected.splitText(localEnd); }
+                            if (localStart > 0) { selected = selected.splitText(localStart); }
+                            var span = document.createElement('span');
+                            span.className = 'td-find-match td-find-current';
+                            selected.parentNode.replaceChild(span, selected);
+                            span.appendChild(selected);
+                            S.spans.push(span);
+                            if (!firstSpan) { firstSpan = span; }
                         }
                         acc += len;
                     }
-                    return span;
+                    return firstSpan;
                 }
 
                 function scrollToEl(el) {
@@ -1554,6 +1596,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         currentPage = page
         currentChapters = chapters
         if (previousChapterId != chapterId) {
+            findRequestGeneration++
+            activity.dismissFindBar()
             evaluateJavascriptSafe("if (window.__tdFind) { window.__tdFind.clear(); }")
             activity.onNovelFindResult(0, -1)
         }
@@ -1907,6 +1951,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         val chapterModel = chapter?.chapter
         val chapterId = chapterModel?.id ?: -1L
         val chapterPath = chapterModel?.url.orEmpty()
+
+        findRequestGeneration++
+        activity.dismissFindBar()
 
         val stylePayload = styler.buildPayload()
         webView.setBackgroundColor(stylePayload.backgroundColor)
