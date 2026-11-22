@@ -725,7 +725,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * read, update tracking services, enqueue downloaded chapter deletion, and updating the active chapter if this
      * [page]'s chapter is different from the currently active.
      */
-    fun onPageSelected(page: ReaderPage) {
+    fun onPageSelected(page: ReaderPage, persistProgress: Boolean = true) {
         // InsertPage doesn't change page progress
         if (page is InsertPage) {
             return
@@ -735,8 +735,10 @@ class ReaderViewModel @JvmOverloads constructor(
         val pages = selectedChapter.pages ?: return
 
         // Save last page read and mark as read if needed
-        viewModelScope.launchNonCancellable {
-            updateChapterProgress(selectedChapter, page)
+        if (persistProgress) {
+            viewModelScope.launchNonCancellable {
+                updateChapterProgress(selectedChapter, page)
+            }
         }
 
         if (selectedChapter != getCurrentChapter()) {

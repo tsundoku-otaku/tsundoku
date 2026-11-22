@@ -563,7 +563,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         loadedChapter.chapter.pages?.firstOrNull()?.let { page ->
             currentPage = page
             activity.viewModel.setNovelVisibleChapter(loadedChapter.chapter.chapter)
-            activity.onPageSelected(page)
+            activity.onPageSelected(page, persistProgress = persist)
             logcat(LogPriority.DEBUG) {
                 "NovelViewer: Chapter changed from index $oldIndex to $newIndex (${loadedChapter.chapter.chapter.name})"
             }
