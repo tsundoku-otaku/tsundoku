@@ -235,7 +235,7 @@ internal class NovelWebViewStyler(
         injectContrastGuard()
     }
 
-    fun injectContrastGuard(full: Boolean = true) {
+    fun injectContrastGuard() {
         if (!preferences.novelSourceCssPriority.get()) {
             // The guard colors unreadable elements inline, so those marks go too.
             evaluateJs(
@@ -256,7 +256,6 @@ internal class NovelWebViewStyler(
                     "GUARD_ID" to STYLE_ID_CONTRAST_GUARD,
                     "BG" to ThemeUtils.colorToHex(bg),
                     "TEXT" to ThemeUtils.colorToHex(text),
-                    "FULL" to full.toString(),
                 ),
             ),
         )
@@ -268,8 +267,7 @@ internal class NovelWebViewStyler(
         buildTsundokuScript: () -> String,
     ) {
         evaluateJs(buildTsundokuScript())
-        // An appended or prepended chapter brings text the guard hasn't checked yet.
-        injectContrastGuard(full = !isAppend)
+        injectContrastGuard()
 
         // Appends re-run only runOnAppend snippets; one-shot code stays on the initial load so it
         // doesn't fire again on every appended chapter.
