@@ -404,9 +404,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             saveProgress(snapped)
             return
         }
+        // The page is taken now, so a chapter switch before the save lands can't receive this progress.
+        val page = currentPage
         progressSaveJob = scope.launch {
             delay(PROGRESS_SAVE_DEBOUNCE_MS)
-            saveProgress(snapped)
+            saveProgress(snapped, page)
         }
     }
 
@@ -420,8 +422,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         if (lastSavedProgress > 0f) saveProgress(lastSavedProgress)
     }
 
-    private fun saveProgress(progress: Float) {
-        currentPage?.let { page ->
+    private fun saveProgress(progress: Float, target: ReaderPage? = currentPage) {
+        target?.let { page ->
             val progressValue = (progress * 100f).roundToInt().coerceIn(0, 100)
             activity.saveNovelProgress(page, progressValue)
             logcat(LogPriority.DEBUG) { "NovelViewer: Saving progress $progressValue% for chapter" }
@@ -492,7 +494,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
     }
 
-    private fun updateCurrentChapterFromScroll(scrollY: Int) {
+    private fun updateCurrentChapterFromScroll(scrollY: Int, persist: Boolean = true) {
         if (loadedChapters.size <= 1) return
 
         // Find the FIRST chapter whose text has not yet been completely scrolled past.
@@ -502,14 +504,15 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         for ((index, loaded) in loadedChapters.withIndex()) {
             if (loaded.block.container.bottom > scrollY) {
                 if (currentChapterIndex != index) {
-                    onChapterChanged(oldIndex = currentChapterIndex, newIndex = index)
+                    onChapterChanged(oldIndex = currentChapterIndex, newIndex = index, persist = persist)
                 }
                 break
             }
         }
     }
 
-    private fun onChapterChanged(oldIndex: Int, newIndex: Int) {
+    // [persist] false only selects the chapter: nothing is marked read and a pending save still lands.
+    private fun onChapterChanged(oldIndex: Int, newIndex: Int, persist: Boolean = true) {
         val now = System.currentTimeMillis()
         if (now - lastChapterSwitchTime < 50L) return
         lastChapterSwitchTime = now
@@ -518,18 +521,20 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
         // Drop any debounced save still pending for the outgoing chapter, currentPage is about to
         // advance and the old progress must not be written against the new chapter's page.
-        progressSaveJob?.cancel()
+        if (persist) progressSaveJob?.cancel()
 
         val initialProgress = if (newIndex > oldIndex) 0f else 1f
         lastSavedProgress = initialProgress
         awaitingFirstScrollSample = true
         chapterEntryTime = now
 
-        NovelProgress.forwardChaptersToMarkRead(oldIndex, newIndex, loadedChapters.size).forEach { idx ->
-            loadedChapters.getOrNull(idx)?.chapter?.pages?.firstOrNull()?.let { page ->
-                activity.saveNovelProgress(page, 100)
-                logcat(LogPriority.DEBUG) {
-                    "NovelViewer: Marking chapter $idx as 100% (moved forward)"
+        if (persist) {
+            NovelProgress.forwardChaptersToMarkRead(oldIndex, newIndex, loadedChapters.size).forEach { idx ->
+                loadedChapters.getOrNull(idx)?.chapter?.pages?.firstOrNull()?.let { page ->
+                    activity.saveNovelProgress(page, 100)
+                    logcat(LogPriority.DEBUG) {
+                        "NovelViewer: Marking chapter $idx as 100% (moved forward)"
+                    }
                 }
             }
         }
@@ -724,7 +729,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
             // The guard kept the scroll listener from following the restore, so the chapter now at
             // the top is picked here; progress saves stay off until the guard is released.
-            updateCurrentChapterFromScroll(scrollView.scrollY)
+            updateCurrentChapterFromScroll(scrollView.scrollY, persist = false)
             scrollView.removeCallbacks(release)
             scrollView.post(release)
         }
