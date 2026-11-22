@@ -413,14 +413,14 @@ class LNReaderBackupImporter(
             }
         }
 
-        val inputStream = context.contentResolver.openInputStream(uri)
-        if (inputStream == null) {
-            logcat(LogPriority.ERROR) { "LNReaderImport: Could not reopen the backup to restore novels" }
-            errors.add(Date() to "Could not reopen the backup file to restore novels")
-            return novelCount to skippedCount
-        }
         // A read error partway keeps what was restored so far and lets the asset restore still run.
         try {
+            val inputStream = context.contentResolver.openInputStream(uri)
+            if (inputStream == null) {
+                logcat(LogPriority.ERROR) { "LNReaderImport: Could not reopen the backup to restore novels" }
+                errors.add(Date() to "Could not reopen the backup file to restore novels")
+                return novelCount to skippedCount
+            }
             inputStream.use {
                 ZipInputStream(it).use { zip ->
                     var entry = zip.nextEntry
