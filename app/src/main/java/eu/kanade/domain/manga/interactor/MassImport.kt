@@ -111,6 +111,13 @@ class MassImport(
             else -> 0
         }
 
+        // An apostrophe inside a single-quoted URL (Author's_story) is part of it; the wrapper quote is
+        // followed by the end, a break or punctuation.
+        private fun closesQuote(line: String, next: Int): Boolean {
+            val c = line.getOrNull(next) ?: return true
+            return isBreak(c) || c in URL_TERMINATORS || c in LIST_SEPARATORS || c in ")]}"
+        }
+
         private fun isBreak(c: Char): Boolean =
             Character.isWhitespace(c) ||
                 Character.isSpaceChar(c) ||
@@ -171,7 +178,7 @@ class MassImport(
             val quote = line.getOrNull(start - 1)?.takeIf { it == '"' || it == '\'' }
             for (i in bodyStart until line.length) {
                 val c = line[i]
-                if (isBreak(c) || c in URL_TERMINATORS || c == quote) return i
+                if (isBreak(c) || c in URL_TERMINATORS || (c == quote && closesQuote(line, i + 1))) return i
                 // Inside quotes only the closing quote ends the URL.
                 if (quote == null && c in LIST_SEPARATORS && separatorEndsUrl(line, c, i + 1, start)) return i
                 if (i > bodyStart && schemeLength(line, i) > 0 && !isEmbeddedScheme(line, bodyStart, i)) return i

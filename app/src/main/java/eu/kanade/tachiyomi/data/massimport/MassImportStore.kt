@@ -52,6 +52,8 @@ object MassImportStore {
         val preferredSourceId: Long? = null,
         val excludedHosts: List<String> = emptyList(),
         val interrupted: Boolean = false,
+        // Batches staged before this flag stored raw lines that resume has to tokenize again.
+        val tokenized: Boolean = false,
     )
 
     private fun dir(): UniFile? = runCatching {
@@ -147,8 +149,10 @@ object MassImportStore {
                 }
                 // The old list is moved aside, not deleted, until the new one is in place.
                 val previous = dir.findFile(name)
-                dir.findFile(backupName)?.delete()
-                if (previous != null) check(previous.renameTo(backupName)) { "could not move $name aside" }
+                if (previous != null) {
+                    dir.findFile(backupName)?.delete()
+                    check(previous.renameTo(backupName)) { "could not move $name aside" }
+                }
                 if (!file.renameTo(name)) {
                     if (previous != null) previous.renameTo(name)
                     error("could not rename $tmpName")

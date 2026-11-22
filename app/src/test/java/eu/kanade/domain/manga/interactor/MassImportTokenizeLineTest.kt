@@ -146,6 +146,14 @@ class MassImportTokenizeLineTest {
     }
 
     @Test
+    fun `apostrophe inside a single quoted url is kept`() {
+        assertEquals(
+            listOf("https://example.com/wiki/Author's_story"),
+            MassImport.urlTokens("'https://example.com/wiki/Author's_story'"),
+        )
+    }
+
+    @Test
     fun `apostrophe inside or ending an unquoted url is kept`() {
         assertEquals(
             listOf("https://a.example.com/wiki/Rock_'n'"),
