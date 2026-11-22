@@ -1212,6 +1212,13 @@ class CustomSourceEditorScreen(
                 eu.kanade.tachiyomi.ui.customsource.PickerScope.Document,
             )
         }
+        // The listing whose selectors the shared inputs edit, like formCard.
+        val listingUrl = when {
+            features.hasPopular && popularUrl.isNotBlank() -> popularUrl
+            features.hasLatest && latestUrl.isNotBlank() -> latestUrl
+            else -> popularUrl
+        }
+
         fun firstPageUrl(u: String): String =
             u.replace("{baseUrl}", baseUrl).replace("{page}", "1").replace("{query}", "a").ifBlank { baseUrl }
         fun pickTrailing(
@@ -1571,7 +1578,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { popularListSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_list_item_selector)) },
                         trailingIcon = pickTrailing(
-                            firstPageUrl(popularUrl),
+                            firstPageUrl(listingUrl),
                             stringResource(TDMR.strings.custom_source_list_item_selector),
                             eu.kanade.tachiyomi.ui.customsource.PickerScope.ListItem,
                         ) {
@@ -1586,7 +1593,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { popularTitleSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_title_selector)) },
                         trailingIcon = pickTrailing(
-                            firstPageUrl(popularUrl),
+                            firstPageUrl(listingUrl),
                             stringResource(TDMR.strings.custom_source_title_selector),
                             eu.kanade.tachiyomi.ui.customsource.PickerScope.InsideItem(popularListSelector),
                         ) {
@@ -1600,7 +1607,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { popularCoverSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_cover_selector)) },
                         trailingIcon = pickTrailing(
-                            firstPageUrl(popularUrl),
+                            firstPageUrl(listingUrl),
                             stringResource(TDMR.strings.custom_source_cover_selector),
                             eu.kanade.tachiyomi.ui.customsource.PickerScope.InsideItem(popularListSelector),
                         ) {

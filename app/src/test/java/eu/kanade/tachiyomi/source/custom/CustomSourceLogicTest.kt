@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.jsoup.Jsoup
 
 class CustomSourceLogicTest {
 
@@ -214,5 +215,14 @@ class CustomSourceLogicTest {
                 "https://mirror.example",
             )?.host,
         )
+    }
+
+    @Test
+    fun `child-anchored item selector skips a nested match`() {
+        val item = Jsoup.parse(
+            "<div class=item><div><span class=title>Other</span></div><span class=title>Novel</span></div>",
+        ).selectFirst("div.item")!!
+        assertEquals("Other", item.selectFirst("span.title")?.text())
+        assertEquals("Novel", item.selectFirst("> span.title")?.text())
     }
 }

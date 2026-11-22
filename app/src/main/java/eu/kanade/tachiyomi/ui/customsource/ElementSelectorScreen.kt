@@ -2473,7 +2473,10 @@ internal val ELEMENT_SELECTOR_JS = """
         if (!el || !item) return sel;
         let path = [];
         for (let cur = el; cur && cur !== item; cur = cur.parentElement) path.unshift(segmentFor(cur));
-        return path.join(' > ');
+        const rel = path.join(' > ');
+        // A same-named element nested deeper but earlier would win a plain descendant match.
+        try { if (item.querySelector(rel) === el) return rel; } catch (e) { return rel; }
+        return '> ' + rel;
     };
 
     // Returns the parent selector + child elements of a selector, so the confirm dialog can walk up
@@ -2509,9 +2512,11 @@ internal val ELEMENT_SELECTOR_JS = """
             let p = el.closest('a[href]'); if (p) return p.href;
             return '';
         }
+        // jsoup reads a leading '>' as a child of the item; the DOM needs :scope for that.
+        function inItem(scope, sel) { return scope.querySelector(sel.trim().startsWith('>') ? ':scope ' + sel : sel); }
         function txtIn(scope, sel) {
             if (!sel) return '';
-            try { let e = scope.querySelector(sel); return e ? (e.innerText || '').trim() : ''; } catch (x) { return ''; }
+            try { let e = inItem(scope, sel); return e ? (e.innerText || '').trim() : ''; } catch (x) { return ''; }
         }
         function q(sel) { try { return sel ? document.querySelectorAll(sel) : []; } catch (e) { return []; } }
         // Mirror CustomNovelSource.resolveImageUrl so the preview matches what the source will parse.
@@ -2526,7 +2531,7 @@ internal val ELEMENT_SELECTOR_JS = """
             if (style) { const m = style.match(/url\(\s*['"]?([^'")]+)/); if (m) return m[1]; }
             return el.src || '';
         }
-        function imgIn(scope, sel) { try { return sel ? imgUrl(scope.querySelector(sel)) : ''; } catch (e) { return ''; } }
+        function imgIn(scope, sel) { try { return sel ? imgUrl(inItem(scope, sel)) : ''; } catch (e) { return ''; } }
 
         try {
             if (kind === 'list' || kind === 'chapters') {

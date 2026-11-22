@@ -533,33 +533,34 @@ class CustomNovelSource(
      * call, and an extension update replaces its instance.
      */
     private val baseSource: CatalogueSource?
-        get() {
-            val sourceId = config.basedOnSourceId ?: return null
-            val original = Injekt.get<SourceManager>().get(sourceId)
-                ?: throw IllegalStateException("Base source for $name is not installed or not loaded yet")
-            resolvedBase?.takeIf { it.original === original }?.let { return it.source }
-            return synchronized(resolveLock) {
-                resolvedBase?.takeIf { it.original === original }?.let { return@synchronized it.source }
-                if (original is CustomNovelSource) {
-                    throw IllegalStateException("$name can't be based on another custom source")
-                }
-                val catalogue = original as? CatalogueSource
-                    ?: throw IllegalStateException("Base source for $name can't browse")
-                val originalBaseUrl = when (catalogue) {
-                    is JsSource -> catalogue.baseUrl.trimEnd('/')
-                    is HttpSource -> catalogue.baseUrl.trimEnd('/')
-                    else -> null
-                }
-                val patched = when {
-                    catalogue is JsSource && baseUrl.isNotBlank() -> catalogue.withSiteOverride(baseUrl)
-                    catalogue is HttpSource && baseUrl.isNotBlank() ->
-                        patchHttpSourceForCustomBaseUrl(catalogue, baseUrl)
-                    else -> catalogue
-                }
-                resolvedBase = ResolvedBase(original, patched, originalBaseUrl)
-                patched
+        get() = currentBase()?.source
+
+    private fun currentBase(): ResolvedBase? {
+        val sourceId = config.basedOnSourceId ?: return null
+        val original = Injekt.get<SourceManager>().get(sourceId)
+            ?: throw IllegalStateException("Base source for $name is not installed or not loaded yet")
+        resolvedBase?.takeIf { it.original === original }?.let { return it }
+        return synchronized(resolveLock) {
+            resolvedBase?.takeIf { it.original === original }?.let { return@synchronized it }
+            if (original is CustomNovelSource) {
+                throw IllegalStateException("$name can't be based on another custom source")
             }
+            val catalogue = original as? CatalogueSource
+                ?: throw IllegalStateException("Base source for $name can't browse")
+            val originalBaseUrl = when (catalogue) {
+                is JsSource -> catalogue.baseUrl.trimEnd('/')
+                is HttpSource -> catalogue.baseUrl.trimEnd('/')
+                else -> null
+            }
+            val patched = when {
+                catalogue is JsSource && baseUrl.isNotBlank() -> catalogue.withSiteOverride(baseUrl)
+                catalogue is HttpSource && baseUrl.isNotBlank() ->
+                    patchHttpSourceForCustomBaseUrl(catalogue, baseUrl)
+                else -> catalogue
+            }
+            ResolvedBase(original, patched, originalBaseUrl).also { resolvedBase = it }
         }
+    }
 
     // For metadata/URL mapping, where a missing base must not throw.
     private fun baseSourceOrNull(): CatalogueSource? = runCatching { baseSource }.getOrNull()
@@ -567,9 +568,8 @@ class CustomNovelSource(
     // The delegate and the base URL it was resolved with, taken together once per call: an extension
     // update can swap the shared resolvedBase while the call is suspended.
     private fun delegate(): Pair<CatalogueSource, String>? {
-        val source = baseSource ?: return null
-        val rebaseUrl = resolvedBase?.takeIf { it.source === source }?.originalBaseUrl ?: baseUrl.trimEnd('/')
-        return source to rebaseUrl
+        val resolved = currentBase() ?: return null
+        return resolved.source to (resolved.originalBaseUrl ?: baseUrl.trimEnd('/'))
     }
 
     /**
