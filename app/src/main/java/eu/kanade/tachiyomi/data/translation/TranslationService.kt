@@ -629,7 +629,15 @@ class TranslationService(
             }
 
             var chunkSuccess = false
+            // Nothing to translate; the placeholders stay so reinsertImages restores the media.
+            if (chunk.replace(MEDIA_PLACEHOLDER_REGEX, "").isBlank()) {
+                previousRawParagraphs = chunkParagraphsList[chunkIndex]
+                previousTranslatedParagraphs = chunkParagraphsList[chunkIndex]
+                allTranslated.addAll(chunkParagraphsList[chunkIndex])
+                chunkSuccess = true
+            }
             for (attempt in 1..MAX_CHUNK_RETRIES) {
+                if (chunkSuccess) break
                 try {
                     val result = engine.translate(listOf(textToSend), task.sourceLanguage, task.targetLanguage)
                     when (result) {
