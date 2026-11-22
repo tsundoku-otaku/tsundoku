@@ -897,7 +897,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     blockNetworkImage = blockMedia
                     loadsImagesAutomatically = !blockMedia
                 }
-                webView.reload()
+                // A plain WebView reload never reaches the real-chapter path that installs the reader
+                // scripts, fragment links and saved position.
+                reloadChapter()
             },
             onTtsSettingsChanged = {
                 if (ttsController.ttsInitialized) ttsController.applySettings()
