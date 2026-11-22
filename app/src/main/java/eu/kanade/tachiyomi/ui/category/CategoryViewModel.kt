@@ -3,6 +3,8 @@ package eu.kanade.tachiyomi.ui.category
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.viewModelScope
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.tachiyomi.source.isNovelSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
@@ -21,6 +23,9 @@ import tachiyomi.domain.category.interactor.SetCategoryContentType
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -34,6 +39,9 @@ class CategoryViewModel(
     private val setCategoryContentType: SetCategoryContentType = Injekt.get(),
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
     private val categoryRepository: CategoryRepository = Injekt.get(),
+    private val getManga: GetManga = Injekt.get(),
+    private val updateManga: UpdateManga = Injekt.get(),
+    private val sourceManager: SourceManager = Injekt.get(),
 ) : StateViewModel<CategoryScreenState>(CategoryScreenState.Loading) {
 
     private val _events: Channel<CategoryEvent> = Channel()
@@ -100,7 +108,13 @@ class CategoryViewModel(
         viewModelScope.launch {
             if (contentType != category.contentType) {
                 val mismatched = try {
-                    setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
+                    setCategoryContentType.getMismatchedMangaIds(category.id, contentType).let { ids ->
+                        if (contentType == Category.CONTENT_TYPE_NOVEL && backfillNovelFlags(ids)) {
+                            setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
+                        } else {
+                            ids
+                        }
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -116,6 +130,18 @@ class CategoryViewModel(
             }
             saveEdit(category, name, contentType)
         }
+    }
+
+    // The novel flag is only backfilled when the library loads, so a novel whose source loaded later can
+    // still read as manga and would be removed from a category turned novel-only.
+    private suspend fun backfillNovelFlags(ids: List<Long>): Boolean {
+        val updates = ids.mapNotNull { id ->
+            getManga.await(id)
+                ?.takeIf { sourceManager.get(it.source)?.isNovelSource() == true }
+                ?.let { MangaUpdate(id = it.id, isNovel = true) }
+        }
+        if (updates.isNotEmpty()) updateManga.awaitAll(updates)
+        return updates.isNotEmpty()
     }
 
     fun confirmEdit(dialog: CategoryDialog.ConfirmContentType) {
