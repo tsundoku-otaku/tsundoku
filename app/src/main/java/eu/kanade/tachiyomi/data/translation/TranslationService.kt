@@ -539,7 +539,13 @@ class TranslationService(
 
         val resumeFromChunk = partial?.let {
             TranslationCachePolicy.resumeChunkCount(chunkParagraphsList.map { c -> c.size }, it)
-        } ?: 0
+        }
+            // A partial made from text that has changed since would splice stale translation in.
+            ?.takeIf { count ->
+                val covered = partial.sourceParagraphs
+                count == 0 || partial.sourceHash == null || covered == null ||
+                    partial.sourceHash == TranslationHtmlUtils.paragraphsHash(paragraphs.take(covered))
+            } ?: 0
         if (resumeFromChunk > 0) {
             logcat(LogPriority.INFO) { "Resuming from chunk $resumeFromChunk/${chunks.size}" }
         }
@@ -557,14 +563,18 @@ class TranslationService(
             }
         }
 
-        suspend fun saveProgress(chunksDone: Int) = savePartialTranslation(
-            locator,
-            task,
-            engine.id.toString(),
-            chunkParagraphsList.take(chunksDone).sumOf { it.size },
-            allTranslated,
-            translatedTitle,
-        )
+        suspend fun saveProgress(chunksDone: Int) {
+            val covered = chunkParagraphsList.take(chunksDone).sumOf { it.size }
+            savePartialTranslation(
+                locator,
+                task,
+                engine.id.toString(),
+                covered,
+                TranslationHtmlUtils.paragraphsHash(paragraphs.take(covered)),
+                allTranslated,
+                translatedTitle,
+            )
+        }
 
         var failedChunkIndex = -1
         // Contextual anchoring: send previous raw + translated paragraphs as context for LLM engines
@@ -786,6 +796,7 @@ class TranslationService(
         task: TranslationTask,
         engineId: String,
         sourceParagraphs: Int,
+        sourceHash: String,
         translatedParagraphs: List<String>,
         translatedTitle: String?,
     ) {
@@ -796,6 +807,7 @@ class TranslationService(
             sourceParagraphs,
             translatedTitle,
             translatedParagraphs,
+            sourceHash,
         )
 
         val partial = TranslatedChapter(

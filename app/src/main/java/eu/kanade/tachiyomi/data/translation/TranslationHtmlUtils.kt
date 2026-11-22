@@ -15,6 +15,8 @@ data class PartialTranslation(
     val paragraphs: List<String>,
     val sourceParagraphs: Int?,
     val runId: Long?,
+    // Hash of the source paragraphs the partial covers; null in partials saved before it was recorded.
+    val sourceHash: String? = null,
 )
 
 object TranslationHtmlUtils {
@@ -60,10 +62,12 @@ object TranslationHtmlUtils {
      */
     fun reinsertImages(translatedHtml: String, images: Map<String, String>): String {
         var result = translatedHtml
+        val lost = StringBuilder()
         for ((placeholder, originalTag) in images) {
-            result = result.replace(placeholder, originalTag)
+            // An engine that dropped or rewrote a placeholder would lose the image; it goes at the end instead.
+            if (placeholder in result) result = result.replace(placeholder, originalTag) else lost.append(originalTag)
         }
-        return result
+        return result + lost
     }
 
     /**
@@ -142,7 +146,7 @@ object TranslationHtmlUtils {
         }
     }
 
-    private val PARTIAL_MARKER = Regex("""<!--tsundoku-partial:run=(-?\d+);src=(\d+)-->""")
+    private val PARTIAL_MARKER = Regex("""<!--tsundoku-partial:run=(-?\d+);src=(\d+)(?:;hash=([0-9a-f]+))?-->""")
 
     /** A partial (.tmp) translation of the first [sourceParagraphs] source paragraphs, from the run started at [runId]. */
     fun buildPartialHtml(
@@ -150,8 +154,16 @@ object TranslationHtmlUtils {
         sourceParagraphs: Int,
         translatedTitle: String?,
         translatedParagraphs: List<String>,
-    ): String = "<!--tsundoku-partial:run=$runId;src=$sourceParagraphs-->" +
+        sourceHash: String? = null,
+    ): String = "<!--tsundoku-partial:run=$runId;src=$sourceParagraphs${sourceHash?.let { ";hash=$it" }.orEmpty()}-->" +
         buildTranslatedHtml(translatedTitle, translatedParagraphs)
+
+    /** Hash of [paragraphs], so a resume can tell the chapter text it was made from changed since. */
+    fun paragraphsHash(paragraphs: List<String>): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest(paragraphs.joinToString("\u0000").toByteArray())
+            .take(8)
+            .joinToString("") { "%02x".format(it) }
 
     /** Reads back [buildPartialHtml]; older partials have no run id or source paragraph count. */
     fun parsePartialHtml(html: String): PartialTranslation {
@@ -169,6 +181,7 @@ object TranslationHtmlUtils {
             }.filter { it.isNotBlank() },
             sourceParagraphs = marker?.groupValues?.get(2)?.toIntOrNull(),
             runId = marker?.groupValues?.get(1)?.toLongOrNull(),
+            sourceHash = marker?.groupValues?.get(3)?.ifEmpty { null },
         )
     }
 

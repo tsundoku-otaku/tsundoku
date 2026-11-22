@@ -29,4 +29,20 @@ class TranslationHtmlUtilsTest {
             TranslationHtmlUtils.reinsertImages(html, images).replace("\n", ""),
         )
     }
+
+    @Test
+    fun `an image whose placeholder the engine dropped goes at the end`() {
+        val images = mapOf("[IMG_PLACEHOLDER_0]" to "<img src=\"a.jpg\">")
+        assertEquals("<p>text</p><img src=\"a.jpg\">", TranslationHtmlUtils.reinsertImages("<p>text</p>", images))
+    }
+
+    @Test
+    fun `partial keeps the hash of the source it covers`() {
+        val hash = TranslationHtmlUtils.paragraphsHash(listOf("a", "b"))
+        val parsed = TranslationHtmlUtils.parsePartialHtml(
+            TranslationHtmlUtils.buildPartialHtml(1L, 2, null, listOf("x", "y"), hash),
+        )
+        assertEquals(hash, parsed.sourceHash)
+        assertEquals(false, hash == TranslationHtmlUtils.paragraphsHash(listOf("a", "c")))
+    }
 }
