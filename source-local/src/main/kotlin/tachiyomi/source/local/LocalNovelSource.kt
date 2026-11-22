@@ -467,11 +467,22 @@ class LocalNovelSource : CatalogueSource, UnmeteredSource {
         private fun epub(filePath: String, file: UniFile): EpubReader {
             openEpub?.let { if (filePath == openEpubPath) return it }
             close()
-            // Index the archive once so each chapter opens directly instead of scanning the book.
-            return EpubReader(file.archiveReader(context).apply { indexEntries() }).also {
-                openEpub = it
-                openEpubPath = filePath
+            val archive = file.archiveReader(context)
+            val epub = try {
+                // Index the archive once so each chapter can open directly.
+                archive.indexEntries()
+                EpubReader(archive)
+            } catch (failure: Throwable) {
+                try {
+                    archive.close()
+                } catch (closeFailure: Throwable) {
+                    failure.addSuppressed(closeFailure)
+                }
+                throw failure
             }
+            openEpub = epub
+            openEpubPath = filePath
+            return epub
         }
 
         override fun close() {
