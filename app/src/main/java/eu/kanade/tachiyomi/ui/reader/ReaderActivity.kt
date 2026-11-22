@@ -76,7 +76,7 @@ import eu.kanade.presentation.reader.ReadingModeSelectDialog
 import eu.kanade.presentation.reader.TranslationLanguageSelectDialog
 import eu.kanade.presentation.reader.appbars.BottomBarEditorSheet
 import eu.kanade.presentation.reader.appbars.BottomBarItem
-import eu.kanade.presentation.reader.appbars.FindInChapterDialog
+import eu.kanade.presentation.reader.appbars.FindInChapterBar
 import eu.kanade.presentation.reader.appbars.NovelReaderAppBars
 import eu.kanade.presentation.reader.appbars.QuotesSheet
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
@@ -239,7 +239,9 @@ class ReaderActivity : BaseActivity() {
 
     // Quotes functionality
     private var showQuotesSheet by mutableStateOf(false)
-    private var showFindDialog by mutableStateOf(false)
+
+    // Find in chapter
+    private var showFindBar by mutableStateOf(false)
     private var findQuery by mutableStateOf("")
     private var findTotal by mutableStateOf(0)
     private var findCurrent by mutableStateOf(-1)
@@ -431,6 +433,13 @@ class ReaderActivity : BaseActivity() {
             )
         }
 
+        // Find matches are tied to one chapter. Close the bar when the chapter changes rather than
+        // leaving stale offsets and highlights from the previous chapter on screen.
+        val findChapterId = state.currentChapter?.chapter?.id
+        LaunchedEffect(findChapterId) {
+            if (showFindBar) dismissFindBar()
+        }
+
         val isNovelViewer = state.viewer is NovelViewer || state.viewer is NovelWebViewViewer
         val statusBarAtBottomEdge = novelStatusBarPosition != "top"
 
@@ -542,12 +551,12 @@ class ReaderActivity : BaseActivity() {
             }
 
             // Find-in-chapter bar (top overlay). Last child so it draws above the toolbars.
-            androidx.activity.compose.BackHandler(enabled = showFindDialog) {
-                dismissFindDialog()
+            androidx.activity.compose.BackHandler(enabled = showFindBar) {
+                dismissFindBar()
             }
 
-            if (showFindDialog) {
-                FindInChapterDialog(
+            if (showFindBar) {
+                FindInChapterBar(
                     query = findQuery,
                     total = findTotal,
                     current = findCurrent,
@@ -555,18 +564,30 @@ class ReaderActivity : BaseActivity() {
                         findQuery = query
                         searchInChapter(query)
                     },
-                    onDismiss = ::dismissFindDialog,
+                    onDismiss = ::dismissFindBar,
                     onNext = ::findInChapterNext,
                     onPrevious = ::findInChapterPrevious,
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(
-                            top = if (state.menuVisible) {
-                                with(density) { menuTopBarPx.intValue.toDp() }
+                        .then(
+                            if (state.menuVisible) {
+                                // The reader top bar already includes the system status-bar inset.
+                                Modifier.padding(top = with(density) { menuTopBarPx.intValue.toDp() })
                             } else {
-                                0.dp
+                                Modifier
+                                    .statusBarsPadding()
+                                    .padding(
+                                        top = if (
+                                            isNovelMode && novelStatusBarEnabled && !statusBarAtBottomEdge
+                                        ) {
+                                            with(density) { statusBarHeightPx.toDp() }
+                                        } else {
+                                            0.dp
+                                        },
+                                    )
                             },
-                        ),
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
         }
@@ -1268,7 +1289,7 @@ class ReaderActivity : BaseActivity() {
                 isWebView = state.viewer is NovelWebViewViewer,
                 bottomBarItems = bottomBarItems,
                 onQuotes = ::onQuotesClicked,
-                onFind = ::onFindClicked,
+                onFind = ::onFindInChapterClicked,
                 ttsOverlayBottomPadding = ttsOverlayBottomPadding,
                 onTopBarHeight = onTopBarHeight,
                 onBottomBarHeight = onBottomBarHeight,
@@ -2042,18 +2063,21 @@ class ReaderActivity : BaseActivity() {
     /**
      * Called when the find-in-chapter button is clicked.
      */
-    fun onFindClicked() {
-        showFindDialog = true
+    fun onFindInChapterClicked() {
+        showFindBar = true
     }
 
-    /** Match state reported by the active viewer while the find dialog is open. */
+    /** Match state reported by the active viewer while the find bar is open. */
     fun onNovelFindResult(total: Int, current: Int) {
+        // A viewer can finish an async search after the bar was dismissed; don't let that
+        // stale result leak into the next time the bar is opened.
+        if (!showFindBar) return
         findTotal = total
         findCurrent = current
     }
 
-    fun dismissFindDialog() {
-        showFindDialog = false
+    fun dismissFindBar() {
+        showFindBar = false
         when (val viewer = viewModel.state.value.viewer) {
             is NovelViewer -> viewer.clearFind()
             is NovelWebViewViewer -> viewer.clearFind()

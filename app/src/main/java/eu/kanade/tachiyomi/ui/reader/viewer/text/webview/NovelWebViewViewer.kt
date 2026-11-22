@@ -484,10 +484,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     // region Find in chapter (WebView path)
     //
-    // Matches are located natively-in-JS and addressed by (paragraph index, offset within the
-    // paragraph's concatenated text) so they survive unwrapping: the current match is wrapped in
-    // a <span> for highlighting and unwrapped before the next jump, with the paragraph's text
-    // re-walked from scratch each time. The search is scoped to the current chapter element so
+    // Matches are located natively in JS and addressed by (paragraph index, offset within the
+    // paragraph's concatenated text). All matches are highlighted through the CSS Custom
+    // Highlight API when the WebView supports it; older WebViews fall back to wrapping only the
+    // current match in a <span>. The search is scoped to the current chapter element so
     // infinite-scroll chapters further down the document are not searched.
 
     /**
@@ -495,14 +495,14 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
      * Reports the result through [ReaderActivity.onNovelFindResult].
      */
     fun searchInChapter(query: String) {
-        if (query.isBlank()) {
+        val q = query.trim()
+        if (q.isEmpty()) {
             clearFind()
             return
         }
         val chapterId = currentPage?.chapter?.chapter?.id ?: return
-        val q = quoteForJson(query.trim())
-        evaluateJavascriptSafe(findEngineJs(chapterId.toString()) + "window.__tdFind.prepare($q);") { result ->
-            val count = parseFindResult(result).first
+        evaluateJavascriptSafe(findEngineJs(chapterId) + "window.__tdFind.prepare(${quoteForJson(q)});") { result ->
+            val (count, _) = parseFindResult(result)
             if (count > 0) stepFind(1) else activity.onNovelFindResult(0, -1)
         }
     }
@@ -515,7 +515,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         val chapterId = currentPage?.chapter?.chapter?.id
         evaluateJavascriptSafe(
             buildString {
-                if (chapterId != null) append(findEngineJs(chapterId.toString()))
+                if (chapterId != null) append(findEngineJs(chapterId))
                 append("if (window.__tdFind) { window.__tdFind.clear(); }")
             },
         )
@@ -524,7 +524,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     private fun stepFind(dir: Int) {
         val chapterId = currentPage?.chapter?.chapter?.id ?: return
-        evaluateJavascriptSafe(findEngineJs(chapterId.toString()) + "window.__tdFind.go($dir);") { result ->
+        evaluateJavascriptSafe(findEngineJs(chapterId) + "window.__tdFind.go($dir);") { result ->
             parseFindResult(result).let { (total, current) ->
                 if (total > 0) activity.onNovelFindResult(total, current)
             }
@@ -545,26 +545,49 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     /**
      * The find engine, idempotently installed on window. Works against the same paragraph
      * enumeration as the TTS highlight so scrolling behaves identically (paged mode uses
-     * __tdPagedGoToElement; scroll mode uses scrollIntoView).
+     * __tdPagedGoToElement; scroll mode uses window.scrollTo).
      */
-    private fun findEngineJs(chapterId: String): String {
+    private fun findEngineJs(chapterId: Long): String {
         val tagName = NovelWebViewChapterMeta.CHAPTER_TAG_NAME
         val idAttr = NovelWebViewChapterMeta.CHAPTER_ID_ATTR
         return """
             (function() {
-                if (window.__tdFind) { return; }
-                var S = window.__tdFindState || (window.__tdFindState = { spans: [], matches: [], current: -1, styleEl: null });
+                var chapterId = '$chapterId';
+                if (window.__tdFind) {
+                    window.__tdFind.setChapter(chapterId);
+                    return;
+                }
+                var S = window.__tdFindState || (window.__tdFindState = {
+                    chapterId: null,
+                    matches: [],
+                    current: -1,
+                    spans: [],
+                    styleEl: null
+                });
+                S.chapterId = chapterId;
+
                 function ensureStyle() {
                     if (S.styleEl) { return; }
                     S.styleEl = document.createElement('style');
+                    S.styleEl.id = 'td-find-style';
                     S.styleEl.textContent =
                         '.td-find-match{background:rgba(255,145,0,.35);border-radius:3px;}' +
-                        '.td-find-current{background:rgba(255,145,0,.95);color:#101010;border-radius:3px;}';
+                        '.td-find-current{background:rgba(255,145,0,.95);color:#101010;border-radius:3px;}' +
+                        '::highlight(td-find-all){background-color:rgba(255,145,0,.35);}' +
+                        '::highlight(td-find-current){background-color:rgba(255,145,0,.95);color:#101010;}';
                     document.head.appendChild(S.styleEl);
                 }
-                function scope() {
-                    return document.querySelector('$tagName[$idAttr="$chapterId"]') || document.body;
+
+                function supportsHighlights() {
+                    return typeof Highlight !== 'undefined' &&
+                        typeof CSS !== 'undefined' &&
+                        !!CSS.highlights;
                 }
+
+                function scope() {
+                    return document.querySelector('$tagName[$idAttr="' + S.chapterId + '"]') || document.body;
+                }
+
                 function paragraphs(root) {
                     var sel = 'p, li, blockquote, h1, h2, h3, h4, h5, h6, pre';
                     var list = Array.prototype.slice.call(root.querySelectorAll(sel)).filter(function(el) {
@@ -577,48 +600,119 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     }
                     return list;
                 }
+
                 function textNodes(root) {
                     var out = [];
                     var w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
                         acceptNode: function(n) {
                             var p = n.parentNode;
-                            if (!p || p.nodeName === 'SCRIPT' || p.nodeName === 'STYLE') { return NodeFilter.FILTER_REJECT; }
+                            if (!p || p.nodeName === 'SCRIPT' || p.nodeName === 'STYLE') {
+                                return NodeFilter.FILTER_REJECT;
+                            }
                             return NodeFilter.FILTER_ACCEPT;
                         }
                     });
                     while (w.nextNode()) { out.push(w.currentNode); }
                     return out;
                 }
-                function clearSpans() {
+
+                function clearFallbackSpans() {
                     S.spans.forEach(function(s) {
                         if (s.parentNode) { s.replaceWith(document.createTextNode(s.textContent)); }
                     });
                     S.spans = [];
                 }
+
+                function clearHighlights() {
+                    if (!supportsHighlights()) { return; }
+                    CSS.highlights.delete('td-find-all');
+                    CSS.highlights.delete('td-find-current');
+                }
+
+                function rangeFor(nodes, offset, len) {
+                    var startNode = null;
+                    var startOffset = 0;
+                    var endNode = null;
+                    var endOffset = 0;
+                    var acc = 0;
+                    var endPos = offset + len;
+                    for (var i = 0; i < nodes.length; i++) {
+                        var data = nodes[i].data;
+                        var nodeStart = acc;
+                        var nodeEnd = acc + data.length;
+                        if (!startNode && offset >= nodeStart && offset <= nodeEnd) {
+                            startNode = nodes[i];
+                            startOffset = offset - nodeStart;
+                        }
+                        if (!endNode && endPos >= nodeStart && endPos <= nodeEnd) {
+                            endNode = nodes[i];
+                            endOffset = endPos - nodeStart;
+                        }
+                        acc = nodeEnd;
+                        if (startNode && endNode) { break; }
+                    }
+                    if (!startNode || !endNode) { return null; }
+                    try {
+                        var range = document.createRange();
+                        range.setStart(startNode, startOffset);
+                        range.setEnd(endNode, endOffset);
+                        return range;
+                    } catch (e) {
+                        return null;
+                    }
+                }
+
+                function applyHighlights() {
+                    if (!supportsHighlights()) { return false; }
+                    clearHighlights();
+                    var all = new Highlight();
+                    for (var i = 0; i < S.matches.length; i++) {
+                        if (S.matches[i].range) { all.add(S.matches[i].range); }
+                    }
+                    CSS.highlights.set('td-find-all', all);
+                    var current = S.matches[S.current];
+                    if (current && current.range) {
+                        var cur = new Highlight();
+                        cur.add(current.range);
+                        CSS.highlights.set('td-find-current', cur);
+                    }
+                    return true;
+                }
+
+                function escapeRegExp(value) {
+                    return value.replace(/[.*+?^$()|[\]\\]/g, '\\$&');
+                }
+
                 function prepare(q) {
                     ensureStyle();
-                    clearSpans();
+                    clearFallbackSpans();
+                    clearHighlights();
                     S.current = -1;
                     S.matches = [];
                     if (!q) { return { count: 0, current: -1 }; }
-                    var lower = q.toLowerCase();
+
+                    // A case-insensitive regex returns the real match length, so Unicode case
+                    // folding (which can change string length) cannot shift later offsets.
+                    var re = new RegExp(escapeRegExp(q), 'gi');
                     var paras = paragraphs(scope());
                     for (var pi = 0; pi < paras.length; pi++) {
-                        var base = 0;
                         var nodes = textNodes(paras[pi]);
-                        for (var ni = 0; ni < nodes.length; ni++) {
-                            var data = nodes[ni].data;
-                            var dl = data.toLowerCase();
-                            var idx = dl.indexOf(lower);
-                            while (idx !== -1) {
-                                S.matches.push({ para: pi, offset: base + idx, len: q.length });
-                                idx = dl.indexOf(lower, idx + lower.length);
-                            }
-                            base += data.length;
+                        var full = '';
+                        for (var ni = 0; ni < nodes.length; ni++) { full += nodes[ni].data; }
+                        var match;
+                        while ((match = re.exec(full)) !== null) {
+                            S.matches.push({
+                                para: pi,
+                                offset: match.index,
+                                len: match[0].length,
+                                range: rangeFor(nodes, match.index, match[0].length)
+                            });
+                            if (match[0].length === 0) { re.lastIndex++; }
                         }
                     }
                     return { count: S.matches.length, current: -1 };
                 }
+
                 function wrapCurrent() {
                     var m = S.matches[S.current];
                     if (!m) { return null; }
@@ -640,13 +734,16 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                                 span.className = 'td-find-match td-find-current';
                                 range.surroundContents(span);
                                 S.spans.push(span);
-                            } catch (e) { span = null; }
+                            } catch (e) {
+                                span = null;
+                            }
                             break;
                         }
                         acc += len;
                     }
                     return span;
                 }
+
                 function scrollToEl(el) {
                     var T = window.$TSUNDOKU_OBJECT_NAME;
                     if (T && T.runtime && T.runtime.pagingEnabled && window.__tdPagedGoToElement) {
@@ -655,27 +752,59 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                         el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
                     }
                 }
+
+                function scrollToRange(range) {
+                    var T = window.$TSUNDOKU_OBJECT_NAME;
+                    var el = range.startContainer.parentElement || range.startContainer.parentNode;
+                    if (T && T.runtime && T.runtime.pagingEnabled && window.__tdPagedGoToElement && el) {
+                        window.__tdPagedGoToElement(el);
+                        return;
+                    }
+                    var rect = range.getBoundingClientRect();
+                    var top = rect.top + (window.pageYOffset || document.documentElement.scrollTop) -
+                        (window.innerHeight / 2);
+                    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+                }
+
                 function go(dir) {
                     ensureStyle();
                     var count = S.matches.length;
                     if (!count) { return { count: 0, current: -1 }; }
                     var cur = S.current;
-                    clearSpans();
                     S.current = cur === -1
                         ? (dir > 0 ? 0 : count - 1)
                         : (((cur + dir) % count) + count) % count;
-                    var span = wrapCurrent();
-                    if (span) { scrollToEl(span); }
+
+                    if (applyHighlights()) {
+                        var m = S.matches[S.current];
+                        if (m && m.range) { scrollToRange(m.range); }
+                    } else {
+                        clearFallbackSpans();
+                        var span = wrapCurrent();
+                        if (span) { scrollToEl(span); }
+                    }
                     return { count: count, current: S.current };
                 }
+
                 function clearAll() {
-                    clearSpans();
+                    clearFallbackSpans();
+                    clearHighlights();
                     S.matches = [];
                     S.current = -1;
                     if (S.styleEl && S.styleEl.parentNode) { S.styleEl.remove(); }
                     S.styleEl = null;
                 }
-                window.__tdFind = { prepare: prepare, go: go, clear: clearAll };
+
+                function setChapter(id) {
+                    if (S.chapterId === id) { return; }
+                    S.chapterId = id;
+                    clearFallbackSpans();
+                    clearHighlights();
+                    S.matches = [];
+                    S.current = -1;
+                }
+
+                window.__tdFind = { setChapter: setChapter, prepare: prepare, go: go, clear: clearAll };
             })();
         """.trimIndent()
     }
@@ -1421,8 +1550,13 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         loadJob?.cancel()
 
+        val previousChapterId = currentPage?.chapter?.chapter?.id
         currentPage = page
         currentChapters = chapters
+        if (previousChapterId != chapterId) {
+            evaluateJavascriptSafe("if (window.__tdFind) { window.__tdFind.clear(); }")
+            activity.onNovelFindResult(0, -1)
+        }
         lastPreloadRequestedNextChapterId = null
         lastPreloadRequestedPrevChapterId = null
 
@@ -1780,6 +1914,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         chapterQueue.clear()
         currentChapterIndex = 0
+
+        // A fresh document discards the old find engine state along with the old DOM.
+        evaluateJavascriptSafe("if (window.__tdFind) { window.__tdFind.clear(); }")
+        activity.onNovelFindResult(0, -1)
 
         // Inputs are gathered on Main (touch viewer state), but the heavy work - the image-URL
         // regex scan and the Jsoup parse + full-document string build - runs off the main thread.

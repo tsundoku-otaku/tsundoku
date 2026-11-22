@@ -963,8 +963,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private val findSpans = mutableListOf<Pair<Spannable, Any>>()
 
     /**
-     * Searches [query] case-insensitively across all loaded chapter blocks and jumps to the
-     * first match. Reports the result through [ReaderActivity.onNovelFindResult].
+     * Searches [query] case-insensitively in the current chapter and jumps to the first match.
+     * Reports the result through [ReaderActivity.onNovelFindResult].
      */
     fun searchInChapter(query: String) {
         activity.runOnUiThread {
@@ -1019,21 +1019,39 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         findQuery = null
     }
 
+    /**
+     * Re-runs the active query after the current chapter's text is replaced (for example when a
+     * translation finishes) without moving the reader away from the match it was already on.
+     */
+    private fun refreshFindForCurrentChapter() {
+        val q = findQuery ?: return
+        val previous = findCurrent
+        rebuildFindMatches(q)
+        if (findMatches.isEmpty()) {
+            activity.onNovelFindResult(0, -1)
+            return
+        }
+        findCurrent = if (previous in findMatches.indices) previous else 0
+        applyFindHighlight()
+        activity.onNovelFindResult(findMatches.size, findCurrent)
+    }
+
     private fun rebuildFindMatches(q: String) {
-        resetFindState()
+        clearFindSpans()
+        findMatches.clear()
+        findCurrent = -1
         findQuery = q
-        val needle = q.lowercase()
-        loadedChapters.forEach { loaded ->
-            if (!loaded.isLoaded) return@forEach
-            loaded.block.chunkViews.forEach { view ->
-                val text = view.text?.toString() ?: return@forEach
-                if (text.isEmpty()) return@forEach
-                val lower = text.lowercase()
-                var idx = lower.indexOf(needle)
-                while (idx != -1) {
-                    findMatches.add(FindMatch(loaded.block, view, idx, idx + q.length))
-                    idx = lower.indexOf(needle, idx + q.length)
-                }
+
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return
+        if (!loaded.isLoaded) return
+
+        loaded.block.chunkViews.forEach { view ->
+            val text = view.text?.toString() ?: return@forEach
+            if (text.isEmpty()) return@forEach
+            var idx = text.indexOf(q, ignoreCase = true)
+            while (idx != -1) {
+                findMatches.add(FindMatch(loaded.block, view, idx, idx + q.length))
+                idx = text.indexOf(q, startIndex = idx + q.length, ignoreCase = true)
             }
         }
     }
@@ -1062,8 +1080,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
 
     private fun spannableOf(view: TextView): Spannable? {
         val current = view.text ?: return null
-        if (current is Spannable) return current
-        // Chunk text is usually set as plain String; convert once so highlight spans stick.
+        if (current is SpannableStringBuilder) return current
+        // Chunk text can be a plain String or an immutable PrecomputedText; rebuild it as a
+        // mutable builder so find spans can be added and removed without crashing.
         return SpannableStringBuilder(current).also { view.text = it }
     }
 
@@ -1569,6 +1588,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         currentPage = page
         currentChapters = chapters
         resetFindState()
+        activity.onNovelFindResult(0, -1)
 
         val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == chapters.currChapter.chapter.id }
 
@@ -2020,6 +2040,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 }
             }
             startTts()
+        }
+
+        if (loaded === loadedChapters.getOrNull(currentChapterIndex)) {
+            refreshFindForCurrentChapter()
         }
     }
 
