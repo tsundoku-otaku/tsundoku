@@ -66,6 +66,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -458,9 +459,11 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun loadNewChapter(chapter: ReaderChapter) {
         val loader = loader ?: return
-        if (chapter !== state.value.viewerChapters?.currChapter) reloadJob?.cancel()
+        val staleReload = reloadJob.takeIf { chapter !== state.value.viewerChapters?.currChapter }
 
         viewModelScope.launchIO {
+            // Its cleanup must not land on top of this load.
+            staleReload?.cancelAndJoin()
             logcat { "Loading ${chapter.chapter.url}" }
 
             flushReadTimerAndRestart()
@@ -482,7 +485,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private suspend fun loadAdjacent(chapter: ReaderChapter): Boolean {
         val loader = loader ?: return false
         if (state.value.isLoadingAdjacentChapter) return false
-        reloadJob?.cancel()
+        reloadJob?.cancelAndJoin()
 
         logcat { "Loading adjacent ${chapter.chapter.url}" }
 
@@ -659,8 +662,13 @@ class ReaderViewModel @JvmOverloads constructor(
 
         val previousJob = reloadJob
         reloadJob = viewModelScope.launchIO {
-            // Serialized so each reload sees the loader the previous one left behind.
-            previousJob?.cancelAndJoin()
+            // Serialized so each reload sees the loader the previous one left behind. The wait can't be
+            // cut short: a reload cancelled while waiting would let the next one start before the
+            // earlier ones finished unwinding.
+            previousJob?.cancel()
+            withContext(NonCancellable) { previousJob?.join() }
+            ensureActive()
+            if (currChapter !== state.value.viewerChapters?.currChapter) return@launchIO
             val previousLoader = currChapter.pageLoader
             currChapter.state = ReaderChapter.State.Wait
             try {
