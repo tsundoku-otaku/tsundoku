@@ -1460,8 +1460,8 @@ class ReaderActivity : BaseActivity() {
             !isNovel || menuVisible -> null
             readerPreferences.fullscreen.get() ->
                 ThemeUtils.getThemeColors(this, readerPreferences, readerPreferences.novelTheme.get()).first
-            else -> (viewer?.getView()?.background as? ColorDrawable)?.color
-                ?: (binding.readerContainer.background as? ColorDrawable)?.color
+            else -> (binding.readerContainer.background as? ColorDrawable)?.color
+                ?: (viewer?.getView()?.background as? ColorDrawable)?.color
         }
         val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
         val light = backdrop?.let(ThemeUtils::isLight) ?: (nightMode != Configuration.UI_MODE_NIGHT_YES)

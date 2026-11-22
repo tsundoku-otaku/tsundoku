@@ -30,25 +30,39 @@
         return [parseInt(h.substr(1, 2), 16), parseInt(h.substr(3, 2), 16), parseInt(h.substr(5, 2), 16), 1];
     }
 
-    var sample = document.body;
-    var paragraphs = document.querySelectorAll('tsundoku-chapter p');
-    for (var i = 0; i < paragraphs.length && i < 20; i++) {
-        if (paragraphs[i].textContent.trim()) {
-            sample = paragraphs[i];
-            break;
-        }
-    }
-    // The background the sample text is actually drawn on: a site's own box counts, not just the page.
+    // The background text is actually drawn on: a site's own box counts, not just the page. A partly
+    // transparent box is blended over what is behind it, ending on the reader background.
     function effectiveBackground(el) {
+        var layers = [];
         for (var n = el; n && n.nodeType === 1; n = n.parentElement) {
             var c = parse(getComputedStyle(n).backgroundColor);
-            if (c.length < 4 || c[3] > 0) return c;
+            var a = c.length < 4 ? 1 : c[3];
+            if (a <= 0) continue;
+            layers.push([c[0], c[1], c[2], a]);
+            if (a >= 1) break;
         }
-        return hex('__BG__');
+        var out = hex('__BG__');
+        for (var i = layers.length - 1; i >= 0; i--) {
+            var l = layers[i];
+            out = [0, 1, 2].map(function (k) { return l[k] * l[3] + out[k] * (1 - l[3]); }).concat([1]);
+        }
+        return out;
     }
-    var fg = parse(getComputedStyle(sample).color);
-    var bg = effectiveBackground(sample);
-    if (contrast(fg, bg) >= 3) return;
+
+    // Paragraphs spread through the chapter; one unreadable block early on shouldn't decide alone,
+    // and readable text up top shouldn't hide unreadable text further down.
+    var paragraphs = Array.prototype.filter.call(
+        document.querySelectorAll('tsundoku-chapter p'),
+        function (p) { return p.textContent.trim(); }
+    );
+    var samples = [];
+    var step = Math.max(1, Math.floor(paragraphs.length / 10));
+    for (var i = 0; i < paragraphs.length && samples.length < 10; i += step) samples.push(paragraphs[i]);
+    if (!samples.length) samples.push(document.body);
+    var unreadable = samples.filter(function (el) {
+        return contrast(parse(getComputedStyle(el).color), effectiveBackground(el)) < 3;
+    }).length;
+    if (unreadable * 2 <= samples.length) return;
 
     var style = document.createElement('style');
     style.id = '__GUARD_ID__';
