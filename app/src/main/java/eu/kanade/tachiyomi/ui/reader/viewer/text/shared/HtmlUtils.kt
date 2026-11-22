@@ -402,13 +402,11 @@ object HtmlUtils {
             for (key in SRCSET_ATTRIBUTES) {
                 val value = element.attr(key).trim()
                 if (value.isEmpty()) continue
-                // Each candidate is "url [descriptor]"; only the url is resolved. Candidates are split on a
-                // comma before whitespace, since a url can hold commas itself.
+                // Each candidate is "url [descriptor]"; only the url is resolved.
                 var changed = false
-                val rewritten = value.split(SRCSET_SEPARATOR).joinToString(", ") { candidate ->
-                    val parts = candidate.trim().split(WHITESPACE, limit = 2)
-                    val url = resolve(parts[0])?.also { changed = true } ?: parts[0]
-                    if (parts.size > 1) "$url ${parts[1]}" else url
+                val rewritten = srcsetCandidates(value).joinToString(", ") { (rawUrl, descriptor) ->
+                    val url = resolve(rawUrl)?.also { changed = true } ?: rawUrl
+                    if (descriptor != null) "$url $descriptor" else url
                 }
                 if (changed) {
                     element.attr(key, rewritten)
@@ -422,8 +420,36 @@ object HtmlUtils {
     // Lazy loaders copy data-src/data-srcset into place later, after <base> is gone.
     private val BASE_RESOLVED_ATTRIBUTES = listOf("src", "href", "poster", "data-src")
     private val SRCSET_ATTRIBUTES = listOf("srcset", "data-srcset")
-    private val SRCSET_SEPARATOR = Regex(""",\s+""")
-    private val WHITESPACE = Regex("""\s+""")
+
+    // The HTML srcset rules: a url runs to whitespace and gives up trailing commas, and its descriptors
+    // run to the next comma outside parentheses, so "a.jpg 1x,b.jpg 2x" is two candidates while a comma
+    // inside a url stays part of it.
+    internal fun srcsetCandidates(value: String): List<Pair<String, String?>> {
+        val candidates = mutableListOf<Pair<String, String?>>()
+        var i = 0
+        while (i < value.length) {
+            while (i < value.length && (value[i].isWhitespace() || value[i] == ',')) i++
+            if (i >= value.length) break
+            val urlStart = i
+            while (i < value.length && !value[i].isWhitespace()) i++
+            var url = value.substring(urlStart, i)
+            if (url.endsWith(',')) {
+                url = url.trimEnd(',')
+                if (url.isNotEmpty()) candidates += url to null
+                continue
+            }
+            val descriptorStart = i
+            var depth = 0
+            while (i < value.length) {
+                val c = value[i]
+                if (c == '(') depth++ else if (c == ')' && depth > 0) depth-- else if (c == ',' && depth == 0) break
+                i++
+            }
+            val descriptor = value.substring(descriptorStart, i).trim().ifEmpty { null }
+            candidates += url to descriptor
+        }
+        return candidates
+    }
     private const val BASE_RESOLVED_SELECTOR = "[src], [href], [poster], [data-src], [srcset], [data-srcset]"
     private val SCHEME_PREFIX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 

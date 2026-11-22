@@ -601,6 +601,15 @@ class HtmlUtilsTest {
     }
 
     @Test
+    fun `srcset candidates split on commas without spaces and keep commas inside urls`() {
+        val html = "<base href=\"https://example.com/book/read.html\">" +
+            "<img srcset=\"a.jpg 1x,b.jpg 2x\"><img srcset=\"img,v2.jpg 1x\">"
+        val out = webView(html, keepJs = false)
+        assertTrue(out.contains("srcset=\"https://example.com/book/a.jpg 1x, https://example.com/book/b.jpg 2x\""), out)
+        assertTrue(out.contains("srcset=\"https://example.com/book/img,v2.jpg 1x\""), out)
+    }
+
+    @Test
     fun `sanitizeForRender output stays clean when reparsed after foreign content mutation`() {
         val payloads = listOf(
             "<img src=\"/a.jpg\" loading=\"lazy\"><math><mtext><table><mglyph><style><img src=x onerror=alert(1)>",
