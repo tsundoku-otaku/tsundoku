@@ -30,6 +30,7 @@ import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -1412,9 +1413,10 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         private fun fileTokens(line: String, preTokenized: Boolean): List<String> =
             if (preTokenized) listOfNotNull(line.trim().takeIf { it.isNotEmpty() }) else MassImport.urlTokens(line)
 
-        private suspend fun saveMetaInOrder(context: Context, batch: Batch) {
+        // False when the write failed.
+        private suspend fun saveMetaInOrder(context: Context, batch: Batch): Boolean {
             val meta = batch.toMeta()
-            metaPersistScope.launch { MassImportStore.saveMeta(context, meta) }.join()
+            return metaPersistScope.async { MassImportStore.saveMeta(context, meta) }.await()
         }
 
         private fun persistMeta(context: Context, batchId: String, force: Boolean = true) {
@@ -2067,8 +2069,12 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     )
                     _sharedQueue.update { list -> list.map { b -> if (b.id == batchId) migrated(b) else b } }
                     val updated = _sharedQueue.value.find { it.id == batchId } ?: migrated(batch)
-                    // Queued behind any earlier meta save, and finished before the list changes.
-                    saveMetaInOrder(appContext, updated)
+                    // Queued behind any earlier meta save, and finished before the list changes; without the
+                    // converted progress on disk a rewritten list would resume at the wrong place.
+                    if (!saveMetaInOrder(appContext, updated)) {
+                        runCatching { cacheFile.delete() }
+                        return@launch abortResume("could not save converted progress")
+                    }
                     val saved = runCatching {
                         cacheFile.bufferedReader().useLines { lines ->
                             MassImportStore.saveUrlsStreaming(appContext, batchId, lines)
@@ -2294,6 +2300,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                             // re-do the overlap rather than risk dropping an unfinished URL. URLs
                             // already imported skip instantly on the re-run.
                             val offset = (batch.progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
+                            val retryCountsTokens = !batch.tokenized && batch.progressInTokens
                             val reader = MassImportStore.openUrlsReader(appContext, batchId)
                             if (reader != null) {
                                 reader.use {
@@ -2301,8 +2308,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                     it.lineSequence().forEach { line ->
                                         val t = line.trim()
                                         if (t.isNotEmpty()) {
-                                            if (idx >= offset || t in errored) emit(t)
-                                            idx++
+                                            if (retryCountsTokens) {
+                                                // Converted progress counts tokens while the list is still raw lines.
+                                                for (token in MassImport.urlTokens(t)) {
+                                                    if (idx >= offset || token in errored) emit(token)
+                                                    idx++
+                                                }
+                                            } else {
+                                                if (idx >= offset || t in errored) emit(t)
+                                                idx++
+                                            }
                                         }
                                     }
                                 }
@@ -2338,8 +2353,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     fetchChapters = batch.fetchChapters,
                     excludedHosts = batch.excludedHosts,
                     preferredSourceId = batch.preferredSourceId,
-                    // An old batch's stored lines are still raw.
-                    preTokenized = batch.tokenized,
+                    // An old batch's stored lines are still raw, unless they were split into tokens above.
+                    preTokenized = batch.tokenized || (includeRemaining && batch.progressInTokens),
                 )
                 onQueued?.invoke(wrote)
             }
