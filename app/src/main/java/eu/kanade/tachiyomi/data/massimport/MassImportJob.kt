@@ -1291,6 +1291,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         val interrupted: Boolean = false,
         // The stored list holds one URL token per line.
         val tokenized: Boolean = true,
+        val progressInTokens: Boolean = false,
     )
 
     enum class BatchStatus {
@@ -1378,6 +1379,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             excludedHosts = excludedHosts,
             interrupted = interrupted,
             tokenized = tokenized,
+            progressInTokens = progressInTokens,
         )
 
         private fun MassImportStore.PersistedMeta.toBatch(urls: List<String>): Batch {
@@ -1403,6 +1405,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 excludedHosts = excludedHosts,
                 interrupted = interrupted,
                 tokenized = tokenized,
+                progressInTokens = progressInTokens,
             )
         }
 
@@ -2044,10 +2047,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 }
                 var progress = batch.progress.coerceIn(0, tokenCount)
                 if (!batch.tokenized) {
-                    // The meta is saved before the list is rewritten, so a token total that already
-                    // differs from the stored lines means an earlier resume got that far and the saved
-                    // progress is already counted in tokens.
-                    val metaInTokens = tokenCount != storedLines && batch.total == tokenCount
+                    // The meta is saved, marked as converted, before the list is rewritten, so a resume
+                    // stopped in between doesn't convert the progress again. The total check covers batches
+                    // an earlier build converted without the mark.
+                    val metaInTokens = batch.progressInTokens ||
+                        (tokenCount != storedLines && batch.total == tokenCount)
                     progress = when {
                         metaInTokens -> progress
                         batch.progress >= storedLines -> tokenCount
@@ -2058,6 +2062,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     fun migrated(b: Batch) = b.copy(
                         progress = progress,
                         total = tokenCount,
+                        progressInTokens = true,
                         skipped = b.skipped.coerceAtMost((progress - b.added - b.errored).coerceAtLeast(0)),
                     )
                     _sharedQueue.update { list -> list.map { b -> if (b.id == batchId) migrated(b) else b } }
@@ -2333,7 +2338,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     fetchChapters = batch.fetchChapters,
                     excludedHosts = batch.excludedHosts,
                     preferredSourceId = batch.preferredSourceId,
-                    preTokenized = true,
+                    // An old batch's stored lines are still raw.
+                    preTokenized = batch.tokenized,
                 )
                 onQueued?.invoke(wrote)
             }

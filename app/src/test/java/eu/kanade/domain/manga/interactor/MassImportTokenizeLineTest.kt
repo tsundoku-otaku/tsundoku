@@ -151,6 +151,10 @@ class MassImportTokenizeLineTest {
             listOf("https://example.com/wiki/Author's_story"),
             MassImport.urlTokens("'https://example.com/wiki/Author's_story'"),
         )
+        assertEquals(
+            listOf("https://example.com/x"),
+            MassImport.urlTokens("see 'https://example.com/x'. next"),
+        )
     }
 
     @Test

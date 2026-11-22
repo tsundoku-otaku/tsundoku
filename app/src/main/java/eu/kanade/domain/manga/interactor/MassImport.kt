@@ -115,7 +115,9 @@ class MassImport(
         // followed by the end, a break or punctuation.
         private fun closesQuote(line: String, next: Int): Boolean {
             val c = line.getOrNull(next) ?: return true
-            return isBreak(c) || c in URL_TERMINATORS || c in LIST_SEPARATORS || c in ")]}"
+            if (isBreak(c) || c in URL_TERMINATORS || c in LIST_SEPARATORS || c in ")]}") return true
+            // 'https://example.com/x'. ends a sentence
+            return c in ".!?:" && line.getOrNull(next + 1).let { it == null || isBreak(it) }
         }
 
         private fun isBreak(c: Char): Boolean =

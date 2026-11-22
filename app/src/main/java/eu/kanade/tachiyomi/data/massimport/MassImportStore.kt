@@ -54,6 +54,8 @@ object MassImportStore {
         val interrupted: Boolean = false,
         // Batches staged before this flag stored raw lines that resume has to tokenize again.
         val tokenized: Boolean = false,
+        // Set once an old batch's progress was converted to URL tokens, before its list is rewritten.
+        val progressInTokens: Boolean = false,
     )
 
     private fun dir(): UniFile? = runCatching {
