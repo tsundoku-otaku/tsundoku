@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -53,6 +54,7 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import uy.kohesive.injekt.Injekt
@@ -73,6 +75,7 @@ class DownloadCache(
     private val sourceManager: SourceManager = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val storageManager: StorageManager = Injekt.get(),
+    private val stubSourceRepository: StubSourceRepository = Injekt.get(),
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -110,7 +113,7 @@ class DownloadCache(
     private val scanDispatcher = Dispatchers.IO.limitedParallelism(8)
 
     private val rootDownloadsDirMutex = Mutex()
-    private var rootDownloadsDir = RootDirectory(storageManager.getDownloadsDirectory())
+    private var rootDownloadsDir = RootDirectory(storageManager.getDownloadsDirectory(), scanComplete = false)
 
     init {
         // Attempt to read cache file
@@ -122,8 +125,19 @@ class DownloadCache(
                         val diskCache = diskCacheFile.inputStream().use {
                             ProtoBuf.decodeFromByteArray<RootDirectory>(it.readBytes())
                         }
-                        // Caches written before checked ids were stored only list scanned sources.
-                        if (diskCache.checkedSourceIds.isEmpty()) diskCache.checkedSourceIds = diskCache.sourceDirs.keys
+                        when (diskCache.scanComplete) {
+                            // Caches written before checked ids were stored only list scanned sources.
+                            null -> diskCache.checkedSourceIds = diskCache.sourceDirs.keys
+                            // Saved before any full scan finished, e.g. right after a download: the
+                            // entries are kept but the next access still scans.
+                            false -> {
+                                synchronized(this@DownloadCache) {
+                                    if (generation == startGeneration) rootDownloadsDir = diskCache
+                                }
+                                return@withLock
+                            }
+                            true -> Unit
+                        }
                         publishIfCurrent(startGeneration) { rootDownloadsDir = diskCache }
                     }
                 } catch (e: Throwable) {
@@ -138,9 +152,15 @@ class DownloadCache(
             .launchIn(scope)
 
         // Late sources (JS, custom) only get their own folders scanned
-        sourceManager.sources
-            .map { sources -> sources.filterIsInstance<CatalogueSource>().mapTo(HashSet()) { it.id } }
-            .distinctUntilChanged()
+        // A stub that gains its name only changes the stub table, not the source list.
+        merge(
+            sourceManager.sources
+                .map { sources -> sources.filterIsInstance<CatalogueSource>().mapTo(HashSet()) { it.id } }
+                .distinctUntilChanged(),
+            stubSourceRepository.subscribeAll()
+                .map { stubs -> stubs.filterNot { it.isInvalid }.mapTo(HashSet()) { it.id } }
+                .distinctUntilChanged(),
+        )
             .debounce(1.seconds)
             .onEach { indexNewSourcesSafely() }
             .launchIn(scope)
@@ -436,7 +456,7 @@ class DownloadCache(
             val sourceMap = sources.associate { provider.getSourceDirName(it).lowercase() to it.id }
 
             rootDownloadsDirMutex.withLock {
-                val updatedRootDir = RootDirectory(storageManager.getDownloadsDirectory())
+                val updatedRootDir = RootDirectory(storageManager.getDownloadsDirectory(), scanComplete = true)
 
                 updatedRootDir.sourceDirs = findSourceDirs(updatedRootDir.dir, sourceMap)
 
@@ -621,6 +641,8 @@ private class RootDirectory(
     var sourceDirs: Map<Long, SourceDirectory> = mapOf(),
     // Sources whose folder was looked for, found or not; a source missing here still gets scanned.
     var checkedSourceIds: Set<Long> = emptySet(),
+    // Null only in caches written before this was stored.
+    val scanComplete: Boolean? = null,
 )
 
 /**
