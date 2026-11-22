@@ -97,6 +97,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         const val REMEMBER_MENU_ITEM_ID = 0xBEEF // arbitrary unique ID
         const val ATTR_DATA_EDITABLE = "data-tsundoku-editable"
         const val ID_EDIT_MODE_STYLE = "edit-mode-style"
+        const val SEARCH_HIT_CLASS = "td-search-hit"
         const val SEEK_ECHO_SUPPRESS_MS = 350L
         const val AUTO_SCROLL_START_VERIFY_MS = 400L
         const val AUTO_SCROLL_MAX_START_ATTEMPTS = 3
@@ -1974,6 +1975,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         updateChapterMetaJs()
 
         if (isEditing) {
+            // Edit mode supersedes a pending jump to a chapter search match: the restore token bumps
+            // below, so the jump would never run. Drop it; the page script un-hides the chapter.
+            searchMatchJob?.cancel()
+            pendingSearchTarget = null
+            pendingSearchChapterId = null
+            pendingSearchToken = -1
             // Focusing a contenteditable for the keyboard scrolls Chromium to the top; snapshot the
             // ratio, restore it after focus settles, and gate onScrollProgress meanwhile.
             val restoreRatio = lastSavedProgress
@@ -2021,6 +2028,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             imm?.hideSoftInputFromWindow(webView.windowToken, 0)
         }
 
+        val searchRestoreStyleId = NovelWebViewDocumentBuilder.SEARCH_RESTORE_STYLE_ID
         val script = """
             (function() {
                 if (window.__tdPagedSetSuspended) {
@@ -2030,6 +2038,21 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     document.designMode = 'off';
                     var styleId = '${ID_EDIT_MODE_STYLE}';
                     if ('$isEditing' === 'true') {
+                        // Neither a chapter hidden for a search jump nor the match highlight may
+                        // survive into editing, where the chapter's markup is saved as it stands.
+                        var restoreStyle = document.getElementById('$searchRestoreStyleId');
+                        if (restoreStyle) restoreStyle.parentNode.removeChild(restoreStyle);
+                        var hits = document.querySelectorAll('.$SEARCH_HIT_CLASS');
+                        for (var h = 0; h < hits.length; h++) {
+                            var hit = hits[h];
+                            var hitParent = hit.parentNode;
+                            if (!hitParent) continue;
+                            while (hit.firstChild) hitParent.insertBefore(hit.firstChild, hit);
+                            hitParent.removeChild(hit);
+                            hitParent.normalize();
+                        }
+                        window.__tdSearchNodes = null;
+
                         if (!document.getElementById(styleId)) {
                             var style = document.createElement('style');
                             style.id = styleId;
@@ -2557,7 +2580,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 if (!document.getElementById('td-search-hit-style')) {
                     var style = document.createElement('style');
                     style.id = 'td-search-hit-style';
-                    style.textContent = '.td-search-hit{background:$highlightColor!important;color:$highlightTextColor!important;border-radius:3px;}';
+                    style.textContent = '.$SEARCH_HIT_CLASS{background:$highlightColor!important;color:$highlightTextColor!important;border-radius:3px;}';
                     document.head.appendChild(style);
                 }
                 var first = null;
@@ -2573,7 +2596,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     range.setStart(node, from);
                     range.setEnd(node, to);
                     var hit = document.createElement('span');
-                    hit.className = 'td-search-hit';
+                    hit.className = '$SEARCH_HIT_CLASS';
                     range.surroundContents(hit);
                     if (!first) first = hit;
                 }
