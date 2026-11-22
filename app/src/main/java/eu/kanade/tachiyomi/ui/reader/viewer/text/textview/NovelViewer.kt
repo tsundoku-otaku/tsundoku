@@ -27,7 +27,6 @@ import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.manga.search.ChapterSearchTarget
-import eu.kanade.tachiyomi.ui.manga.search.ChapterTextSearch
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
@@ -125,6 +124,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private var currentChapterIndex: Int
         get() = chapterQueue.currentIndex
         set(value) {
+            if (value != chapterQueue.currentIndex) searchMatchJob?.cancel()
             chapterQueue.currentIndex = value
         }
     private var disableScrollbarForSession = false
@@ -139,6 +139,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     // onChapterTextSet like a progress restore.
     private var pendingSearchChapterId: Long? = null
     private var pendingSearchTarget: ChapterSearchTarget? = null
+    private var searchMatchJob: Job? = null
 
     // Cache the last resolved custom-font so content:// URIs are not re-copied on every style refresh.
     private var cachedFontUri: String? = null
@@ -1380,6 +1381,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun reloadWithTranslation() {
+        searchMatchJob?.cancel()
         val generation = ++renderGeneration
         loadedChapters.forEach { loadedChapter ->
             val page = loadedChapter.chapter.pages?.firstOrNull() ?: return@forEach
@@ -1439,6 +1441,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
 
         if (!preferences.novelInfiniteScroll.get() || !isAlreadyLoaded) {
+            searchMatchJob?.cancel()
             contentContainer.removeAllViews()
             chapterQueue.clear()
         }
@@ -1760,28 +1763,31 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
      * the match's relative position when the rendered text no longer holds it.
      */
     private fun showSearchMatch(loaded: LoadedChapter, target: ChapterSearchTarget) {
+        if (loadedChapters.getOrNull(currentChapterIndex) !== loaded) return
         val block = loaded.block
-        val match = block.fullText?.let { text ->
-            runCatching {
-                ChapterTextSearch.locateMatch(
-                    text,
-                    target.buildRegex(),
-                    target.matchIndex,
-                    target.matchCount,
-                    target.position,
-                )
-            }.getOrNull()
-        }
-        val chunkIndex = match?.let { range ->
-            block.chunkStarts.indices.lastOrNull { block.chunkStarts[it] <= range.first }
-        }
-        val chunkView = chunkIndex?.let { block.chunkViews.getOrNull(it) }
-        val layout = chunkView?.layout
+
         isRestoringScroll = true
-        if (match == null || chunkView == null || layout == null) {
-            setScrollProgress(target.position)
-        } else {
-            val chunkStart = block.chunkStarts[chunkIndex]
+        setScrollProgress(target.position)
+        isRestoringScroll = false
+        reportSearchMatchProgress()
+
+        val text = block.fullText ?: return
+        val renderToken = block.renderToken
+        val chunkStarts = block.chunkStarts
+        searchMatchJob?.cancel()
+        searchMatchJob = scope.launch {
+            val match = target.locateRenderedMatch { text } ?: return@launch
+            if (loadedChapters.getOrNull(currentChapterIndex) !== loaded ||
+                !block.container.isAttachedToWindow || block.renderToken != renderToken ||
+                block.chunkStarts !== chunkStarts
+            ) {
+                return@launch
+            }
+
+            val chunkIndex = chunkStarts.indexOfLast { it <= match.first }
+            val chunkView = block.chunkViews.getOrNull(chunkIndex) ?: return@launch
+            val layout = chunkView.layout ?: return@launch
+            val chunkStart = chunkStarts[chunkIndex]
             val start = (match.first - chunkStart).coerceIn(0, chunkView.text.length)
             val end = (match.last + 1 - chunkStart).coerceIn(start, chunkView.text.length)
             (chunkView.text as? android.text.Spannable)?.let { spannable ->
@@ -1800,9 +1806,14 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
             val lineTop = layout.getLineTop(layout.getLineForOffset(start))
             val scrollY = block.container.top + chunkView.top + lineTop - scrollView.height / 3
+            isRestoringScroll = true
             scrollView.scrollTo(0, scrollY.coerceAtLeast(0))
+            isRestoringScroll = false
+            reportSearchMatchProgress()
         }
-        isRestoringScroll = false
+    }
+
+    private fun reportSearchMatchProgress() {
         val progress = calculateCurrentChapterProgress(scrollView.scrollY)
         lastSavedProgress = progress
         activity.onNovelProgressChanged(progress)
@@ -1919,7 +1930,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         if (searchTarget != null && loaded.chapter.chapter.id == pendingSearchChapterId) {
             pendingSearchChapterId = null
             pendingSearchTarget = null
-            scrollView.doOnPreDraw { showSearchMatch(loaded, searchTarget) }
+            val renderToken = loaded.block.renderToken
+            scrollView.doOnPreDraw {
+                if (loaded.block.renderToken == renderToken) showSearchMatch(loaded, searchTarget)
+            }
         }
 
         if (loaded.chapter.chapter.id == pendingRestoreChapterId) {

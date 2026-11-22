@@ -167,6 +167,9 @@ class ReaderViewModel @JvmOverloads constructor(
     private var searchTarget: ChapterSearchTarget? =
         savedState.get<String>(SEARCH_TARGET_KEY)?.let(ChapterSearchTarget::decode)
 
+    internal fun hasSearchTarget(chapterId: Long?): Boolean =
+        chapterId == initialChapterId && searchTarget != null
+
     /**
      * Returns the chapter search match to open [chapterId] at, once: later calls, and calls for
      * other chapters, return null, so the reader falls back to the saved progress.

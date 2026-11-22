@@ -146,8 +146,30 @@ class ChapterTextSearchTest {
     fun `locate finds no match in blank reader text`() {
         val regex = Regex(".+")
         for (text in listOf("", " \n\t")) {
-            assertEquals(null, ChapterTextSearch.locateMatch(text, regex, matchIndex = 0, matchCount = 1, position = 0f))
+            assertEquals(
+                null,
+                ChapterTextSearch.locateMatch(text, regex, matchIndex = 0, matchCount = 1, position = 0f),
+            )
         }
+    }
+
+    @Test
+    fun `locate cancels while the regex is reading the normalized text`() {
+        var checks = 0
+        assertThrows<CancellationException> {
+            // Entry and normalization take three checks. A scan that only checks
+            // once more at completion would miss this cancellation.
+            ChapterTextSearch.locateMatch("a".repeat(9_000), Regex("z"), 0, 1, 0f) { ++checks < 5 }
+        }
+    }
+
+    @Test
+    fun `locate keeps the first nearest match on a tie when counts differ`() {
+        val text = "x...x..."
+        assertEquals(
+            0 until 1,
+            ChapterTextSearch.locateMatch(text, Regex("x"), matchIndex = 2, matchCount = 3, position = 0.25f),
+        )
     }
 
     @Test

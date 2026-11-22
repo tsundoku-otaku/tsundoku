@@ -1,6 +1,10 @@
 package eu.kanade.tachiyomi.ui.manga.search
 
 import androidx.compose.runtime.Immutable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.jsoup.Jsoup
@@ -45,9 +49,26 @@ data class ChapterSearchTarget(
 ) {
     fun buildRegex(): Regex = ChapterTextSearch.buildRegex(query, options)
 
+    /** The reader has already restored the relative position while this refinement runs. */
+    internal suspend fun locateRenderedMatch(readText: () -> CharSequence?): IntRange? =
+        withTimeoutOrNull(READER_MATCH_TIMEOUT_MS) {
+            withContext(Dispatchers.Default) {
+                val text = readText() ?: return@withContext null
+                try {
+                    ChapterTextSearch.locateMatch(text, buildRegex(), matchIndex, matchCount, position) { isActive }
+                } catch (_: PatternSyntaxException) {
+                    null
+                } catch (_: StackOverflowError) {
+                    null
+                }
+            }
+        }
+
     fun encode(): String = Json.encodeToString(this)
 
     companion object {
+        private const val READER_MATCH_TIMEOUT_MS = 500L
+
         fun decode(encoded: String): ChapterSearchTarget? =
             runCatching { Json.decodeFromString<ChapterSearchTarget>(encoded) }.getOrNull()
     }
@@ -131,19 +152,36 @@ object ChapterTextSearch {
         matchIndex: Int,
         matchCount: Int,
         position: Float,
+        isActive: () -> Boolean = { true },
     ): IntRange? {
-        val normalized = WhitespaceCollapsed(text)
-        val matches = regex.findAll(normalized.text)
-            .map { it.range }
-            .filterNot { it.isEmpty() }
-            .toList()
-        if (matches.isEmpty()) return null
-        val length = normalized.text.length.toFloat()
-        val match = if (matches.size == matchCount) {
-            matches[matchIndex.coerceIn(matches.indices)]
-        } else {
-            matches.minBy { abs(it.first / length - position) }
+        fun checkActive() {
+            if (!isActive()) throw CancellationException("Reader match lookup cancelled")
         }
+
+        checkActive()
+        val normalized = WhitespaceCollapsed(CancellableCharSequence(text, isActive))
+        val input = CancellableCharSequence(normalized.text, isActive)
+        val length = input.length.toFloat()
+        val wantedIndex = matchIndex.coerceIn(0, matchCount.coerceAtLeast(1) - 1)
+        var count = 0
+        var indexedMatch: IntRange? = null
+        var nearestMatch: IntRange? = null
+        var nearestDistance = Float.POSITIVE_INFINITY
+        for (result in regex.findAll(input)) {
+            // Android's native matcher uses a String, so also check between matcher calls.
+            checkActive()
+            val range = result.range
+            if (range.isEmpty()) continue
+            if (count == wantedIndex) indexedMatch = range
+            val distance = abs(range.first / length - position)
+            if (nearestMatch == null || distance < nearestDistance) {
+                nearestMatch = range
+                nearestDistance = distance
+            }
+            count++
+        }
+        checkActive()
+        val match = (if (count == matchCount) indexedMatch else nearestMatch) ?: return null
         return normalized.originalIndex(match.first) until normalized.originalIndex(match.last) + 1
     }
 
@@ -210,6 +248,9 @@ object ChapterTextSearch {
         override fun subSequence(startIndex: Int, endIndex: Int): CharSequence =
             CancellableCharSequence(delegate.subSequence(startIndex, endIndex), isActive)
 
-        override fun toString(): String = delegate.toString()
+        override fun toString(): String {
+            if (!isActive()) throw CancellationException("Chapter search cancelled")
+            return delegate.toString()
+        }
     }
 }
