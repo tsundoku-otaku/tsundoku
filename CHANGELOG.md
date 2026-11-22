@@ -20,7 +20,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Mangascreen scroll to top/current/bottom buttons have option to move into/out of overflow menu [@mrissaoussama](https://github.com/mrissaoussama) [#457](https://github.com/tsundoku-otaku/tsundoku/pull/457)
 
 ### Fixed
-- Reader status bar respects system clock 24h setting [@Rojikku](https://github.com/Rojikku)
+- Reader status bar respects system clock 24h setting [@Rojikku](https://github.com/Rojikku) [#483](https://github.com/tsundoku-otaku/tsundoku/pull/483)
 - Route headset media to TTS session [@mrissaoussama](https://github.com/mrissaoussama) [#466](https://github.com/tsundoku-otaku/tsundoku/pull/466)
 - Keeps ource memo on mangas returned by insertNetworkManga [@mrissaoussama](https://github.com/mrissaoussama) [#440](https://github.com/tsundoku-otaku/tsundoku/pull/440)
 - Share one paragraph split between TTS chunking, highlight and viewport lookup [@mrissaoussama](https://github.com/mrissaoussama) [#471](https://github.com/tsundoku-otaku/tsundoku/pull/471)
