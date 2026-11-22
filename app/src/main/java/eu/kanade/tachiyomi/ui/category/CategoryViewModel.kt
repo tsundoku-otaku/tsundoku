@@ -3,12 +3,15 @@ package eu.kanade.tachiyomi.ui.category
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.viewModelScope
 import dev.icerock.moko.resources.StringResource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
@@ -96,7 +99,15 @@ class CategoryViewModel(
     fun editCategory(category: Category, name: String, contentType: Int) {
         viewModelScope.launch {
             if (contentType != category.contentType) {
-                val mismatched = setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
+                val mismatched = try {
+                    setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e)
+                    _events.send(CategoryEvent.InternalError)
+                    return@launch
+                }
                 if (mismatched.isNotEmpty()) {
                     // Nothing is saved until the removal is confirmed, so Cancel discards the whole edit.
                     showDialog(CategoryDialog.ConfirmContentType(category, name, contentType, mismatched.size))
