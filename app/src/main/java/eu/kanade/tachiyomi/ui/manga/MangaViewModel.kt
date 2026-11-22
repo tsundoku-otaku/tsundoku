@@ -1718,11 +1718,12 @@ class MangaViewModel(
 
             val chaptersToTranslate = untranslatedChapters(manga, downloadedChapters, forceRetranslate)
             if (chaptersToTranslate.isEmpty()) {
-                withUIContext {
-                    snackbarHostState.showSnackbar(
-                        context.stringResource(MR.strings.translation_all_downloaded_already_translated),
-                    )
+                val message = if (allQueued(downloadedChapters, forceRetranslate)) {
+                    TDMR.strings.translation_nothing_queued
+                } else {
+                    MR.strings.translation_all_downloaded_already_translated
                 }
+                withUIContext { snackbarHostState.showSnackbar(context.stringResource(message)) }
                 return@launchIO
             }
 
@@ -1744,11 +1745,12 @@ class MangaViewModel(
 
             val chaptersToTranslate = untranslatedChapters(manga, chapters, forceRetranslate)
             if (chaptersToTranslate.isEmpty()) {
-                withUIContext {
-                    snackbarHostState.showSnackbar(
-                        context.stringResource(MR.strings.translation_selected_already_translated),
-                    )
+                val message = if (allQueued(chapters, forceRetranslate)) {
+                    TDMR.strings.translation_nothing_queued
+                } else {
+                    MR.strings.translation_selected_already_translated
                 }
+                withUIContext { snackbarHostState.showSnackbar(context.stringResource(message)) }
                 return@launchIO
             }
 
@@ -1782,7 +1784,13 @@ class MangaViewModel(
         return notQueued.filter { it.id !in translatedIds }
     }
 
+    // Chapters left out only because they are queued or translating are not "already translated".
+    private fun allQueued(chapters: List<Chapter>, forceRetranslate: Boolean): Boolean =
+        chapters.isNotEmpty() && chapters.all { translationService.isQueued(it.id, forceRetranslate) }
+
     private suspend fun queueTranslations(manga: Manga, chapters: List<Chapter>, forceRetranslate: Boolean) {
+        // The confirm dialog can stay open while translation is turned off.
+        if (!checkTranslationEnabled()) return
         val queued = translationService.enqueueAll(
             manga,
             chapters,
