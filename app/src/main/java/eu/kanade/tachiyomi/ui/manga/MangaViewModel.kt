@@ -566,7 +566,10 @@ class MangaViewModel(
             if (it.dialog != dialog.returnTo) return@updateSuccessState it
             it.copy(dialog = dialog.returnTo.copy(selectedIds = emptySet()))
         }
+        val previousWrite = duplicatesCategoryWrite
         duplicatesCategoryWrite = viewModelScope.launchNonCancellable {
+            // Changes apply in the order they were made, so a quick second change can't land first.
+            previousWrite?.join()
             val result = setMangaCategories.update(dialog.mangas.map { it.id }, addCategories, removeCategories)
             result.failureMessage()?.let { withUIContext { context.toast(it) } }
         }
