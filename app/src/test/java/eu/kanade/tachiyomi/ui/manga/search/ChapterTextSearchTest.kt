@@ -134,6 +134,23 @@ class ChapterTextSearchTest {
     }
 
     @Test
+    fun `locate ignores outer whitespace for anchored patterns`() {
+        val regex = Regex("^Rogue$")
+        assertEquals(
+            2 until 7,
+            ChapterTextSearch.locateMatch("\n\nRogue\n\n", regex, matchIndex = 0, matchCount = 1, position = 0f),
+        )
+    }
+
+    @Test
+    fun `locate finds no match in blank reader text`() {
+        val regex = Regex(".+")
+        for (text in listOf("", " \n\t")) {
+            assertEquals(null, ChapterTextSearch.locateMatch(text, regex, matchIndex = 0, matchCount = 1, position = 0f))
+        }
+    }
+
+    @Test
     fun `locate finds nothing when the reader text lacks the match`() {
         val regex = ChapterTextSearch.buildRegex("absent", ChapterSearchOptions())
         assertEquals(

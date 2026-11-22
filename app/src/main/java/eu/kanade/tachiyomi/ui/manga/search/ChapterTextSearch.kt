@@ -158,7 +158,7 @@ object ChapterTextSearch {
             for (i in source.indices) {
                 val c = source[i]
                 if (c.isWhitespace()) {
-                    if (inWhitespace) continue
+                    if (inWhitespace || sb.isEmpty()) continue
                     inWhitespace = true
                     offsets[sb.length] = i
                     sb.append(' ')
@@ -168,6 +168,7 @@ object ChapterTextSearch {
                     sb.append(c)
                 }
             }
+            if (inWhitespace) sb.setLength(sb.length - 1)
             text = sb.toString()
         }
 
