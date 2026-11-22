@@ -68,6 +68,14 @@ class ManageFilterPresetsTest {
     }
 
     @Test
+    fun `a default preset is saved without search text`() {
+        manage.savePreset(1L, "p", filters(true), setAsDefault = true, searchQuery = "query")
+
+        assertNull(manage.getPresets(1L).presets.single().searchQuery)
+        assertTrue(storedQueries.isEmpty())
+    }
+
+    @Test
     fun `getPreset returns null for an unknown id`() {
         assertNull(manage.getPreset(1L, 42L))
     }

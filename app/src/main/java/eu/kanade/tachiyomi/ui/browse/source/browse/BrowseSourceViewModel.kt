@@ -305,9 +305,10 @@ class BrowseSourceViewModel(
         // Reset pendingFilters to the potentially preset-applied filters; a loaded preset's
         // search text goes with the rest of it
         mutableState.update {
+            val preset = it.pendingPreset
             it.copy(
                 pendingFilters = freshFilters,
-                toolbarQuery = it.pendingPreset?.previousToolbarQuery ?: it.toolbarQuery,
+                toolbarQuery = if (preset != null) preset.previousToolbarQuery else it.toolbarQuery,
                 pendingPreset = null,
             )
         }
@@ -670,12 +671,14 @@ class BrowseSourceViewModel(
             mutableState.update {
                 // Loading another preset on top keeps what was there before the first one
                 val previous = it.pendingPreset
+                // An empty toolbar before the first preset is a saved state too, not a missing one
+                val previousToolbarQuery = if (previous != null) previous.previousToolbarQuery else it.toolbarQuery
                 it.copy(
                     pendingFilters = filters,
-                    toolbarQuery = preset.searchQuery ?: previous?.previousToolbarQuery ?: it.toolbarQuery,
+                    toolbarQuery = preset.searchQuery ?: previousToolbarQuery,
                     pendingPreset = PendingPreset(
                         query = preset.searchQuery,
-                        previousToolbarQuery = previous?.previousToolbarQuery ?: it.toolbarQuery,
+                        previousToolbarQuery = previousToolbarQuery,
                         previousFilters = previous?.previousFilters ?: it.pendingFilters,
                     ),
                     dialog = Dialog.Filter,

@@ -69,9 +69,11 @@ class ManageFilterPresets(
 
             // Query first: a query whose preset failed to save is never read, a preset without its
             // query would load as a plain filter preset.
-            if (searchQuery != null) {
+            // Auto-apply only restores filters, so the default can't carry search text
+            val query = searchQuery.takeIf { !setAsDefault }
+            if (query != null) {
                 val queries = preferences.filterPresetQueries(sourceId)
-                queries.set(queries.get() + (newPreset.id to searchQuery))
+                queries.set(queries.get() + (newPreset.id to query))
             }
             preferences.filterPresets(sourceId).set(
                 FilterPresetList(updatedPresets),
