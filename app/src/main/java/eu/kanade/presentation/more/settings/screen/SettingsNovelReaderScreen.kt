@@ -447,6 +447,13 @@ object SettingsNovelReaderScreen : SearchableSettings {
                 )
                 add(
                     Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelForceDictionaryAction,
+                        title = stringResource(TDMR.strings.pref_novel_force_dictionary_action),
+                        subtitle = stringResource(TDMR.strings.pref_novel_force_dictionary_action_summary),
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
                         preference = readerPreferences.novelShowRawHtml,
                         title = "Show raw HTML",
                         subtitle = "Display HTML source instead of rendered content",

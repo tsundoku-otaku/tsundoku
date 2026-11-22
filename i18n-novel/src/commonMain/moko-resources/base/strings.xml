@@ -1023,4 +1023,7 @@
     <string name="novel_status_bar_element_chapter">Chapter</string>
     <string name="novel_status_bar_element_progress">Progress</string>
     <string name="novel_status_bar_element_battery">Battery</string>
+    <string name="action_define">Define</string>
+    <string name="pref_novel_force_dictionary_action">Prioritize "Define" action</string>
+    <string name="pref_novel_force_dictionary_action_summary">Add the Define (dictionary) action to the text selection menu when applicable</string>
 </resources>
