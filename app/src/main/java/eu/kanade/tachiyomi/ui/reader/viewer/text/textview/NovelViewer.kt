@@ -722,6 +722,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             if (anchor != null && anchor.parent === contentContainer) {
                 scrollView.scrollTo(0, anchor.top + anchorOffset)
             }
+            // The guard kept the scroll listener from following the restore, so the chapter now at
+            // the top is picked here; progress saves stay off until the guard is released.
+            updateCurrentChapterFromScroll(scrollView.scrollY)
             scrollView.removeCallbacks(release)
             scrollView.post(release)
         }
