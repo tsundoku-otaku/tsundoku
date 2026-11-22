@@ -461,7 +461,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun shouldAutoMarkShortChapter(page: ReaderPage?): Boolean {
         if (!preferences.novelMarkShortChapterAsRead.get()) return false
         val chapter = page?.chapter?.chapter ?: return false
-        return !chapter.read && chapter.last_page_read <= 0
+        // A search jump sets last_page_read to the match, but a chapter that fits on screen is still read whole.
+        return !chapter.read && (chapter.last_page_read <= 0 || activity.viewModel.isSearchJumpChapter(chapter.id))
     }
 
     private fun syncShortChapterProgressIfNeeded() {
@@ -594,7 +595,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 }
                 val page = preparedChapter.pages?.firstOrNull() ?: run {
                     val prepareError = (preparedChapter.state as? ReaderChapter.State.Error)?.error
-                    logcat(LogPriority.ERROR) { "NovelViewer: No page in prepared next chapter, prepareError=$prepareError" }
+                    logcat(LogPriority.ERROR) {
+                        "NovelViewer: No page in prepared next chapter, prepareError=$prepareError"
+                    }
                     loadFailed = true
                     if (prepareError != null) {
                         inlineFeedback.showInlineError(prepareError, isPrepend = false, onRetry = retry)
@@ -1605,7 +1608,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     inlineFeedback.showInlineError(
                         activity.stringResource(TDMR.strings.novel_error_empty_chapter),
                         isPrepend = false,
-                        onRetry = { nextLoadRequiresManualRetry = false; loadNextChapterIfAvailable() },
+                        onRetry = {
+                            nextLoadRequiresManualRetry = false
+                            loadNextChapterIfAvailable()
+                        },
                     )
                 } else {
                     abortPendingTtsOnLoadFailure()

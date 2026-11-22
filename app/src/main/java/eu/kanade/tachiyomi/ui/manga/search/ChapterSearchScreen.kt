@@ -229,7 +229,12 @@ class ChapterSearchScreen(
                                     readContent(manga, source, chapter)?.let { content ->
                                         val text = ChapterTextSearch.toPlainText(content)
                                         if (isLiteral) {
-                                            ChapterTextSearch.findLiteralMatches(text, query, ignoreCase)
+                                            ChapterTextSearch.findLiteralMatches(
+                                                text,
+                                                query,
+                                                ignoreCase,
+                                                isActive = { context.isActive },
+                                            )
                                         } else {
                                             ChapterTextSearch.findMatches(
                                                 text = text,

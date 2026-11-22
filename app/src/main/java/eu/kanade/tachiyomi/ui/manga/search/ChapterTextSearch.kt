@@ -48,6 +48,7 @@ object ChapterTextSearch {
         "a", "b", "i", "u", "em", "strong", "span", "small", "sup", "sub", "font", "mark", "s", "ruby", "rt", "rp",
     )
     private const val MAX_ENTITY_LENGTH = 32
+    private const val CANCEL_CHECK_MATCHES = 256
     private const val SOFT_HYPHEN = '\u00AD'
 
     /**
@@ -114,8 +115,8 @@ object ChapterTextSearch {
                 }
                 if (name !in INLINE_ELEMENTS) pendingSpace = out.isNotEmpty()
             } else if (char == '&') {
-                val semi = content.indexOf(';', i + 1)
-                val decoded = if (semi in (i + 2)..(i + MAX_ENTITY_LENGTH)) {
+                val semi = entityEnd(content, i)
+                val decoded = if (semi > 0) {
                     val entity = content.substring(i, semi + 1)
                     Parser.unescapeEntities(entity, false).takeIf { it != entity }
                 } else {
@@ -134,6 +135,20 @@ object ChapterTextSearch {
             }
         }
         return out.toString()
+    }
+
+    // The ';' closing an entity at [start], or -1. Searched only within the longest entity and stopped by
+    // characters an entity can't hold, so text full of bare '&' stays linear.
+    private fun entityEnd(content: String, start: Int): Int {
+        val limit = minOf(content.length - 1, start + MAX_ENTITY_LENGTH)
+        for (j in start + 2..limit) {
+            when (content[j]) {
+                ';' -> return j
+                '&', '<' -> return -1
+                else -> if (content[j].isWhitespace()) return -1
+            }
+        }
+        return -1
     }
 
     private fun isTagStart(char: Char) = char.isLetter() || char == '/' || char == '!' || char == '?'
@@ -159,6 +174,7 @@ object ChapterTextSearch {
         query: String,
         ignoreCase: Boolean,
         maxSnippets: Int = MAX_SNIPPETS_PER_CHAPTER,
+        isActive: () -> Boolean = { true },
     ): ChapterTextMatches {
         if (text.isEmpty() || query.isEmpty()) return ChapterTextMatches(0, emptyList())
         var count = 0
@@ -166,6 +182,7 @@ object ChapterTextSearch {
         var from = text.indexOf(query, 0, ignoreCase)
         while (from >= 0) {
             count++
+            if (count % CANCEL_CHECK_MATCHES == 0 && !isActive()) throw CancellationException("Search cancelled")
             if (snippets.size < maxSnippets) snippets += snippetFor(text, from, from + query.length)
             from = text.indexOf(query, from + query.length, ignoreCase)
         }

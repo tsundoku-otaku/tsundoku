@@ -65,7 +65,6 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.unescapeJsResult
 import eu.kanade.tachiyomi.util.system.toast
-import kotlin.math.ceil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -86,6 +85,7 @@ import logcat.logcat
 import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.novel.TDMR
 import uy.kohesive.injekt.injectLazy
+import kotlin.math.ceil
 
 class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
@@ -178,6 +178,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
     private var isDestroyed = false
     private var isEditingMode = false
+
     // Debounces paged mode's next/prev bridge calls, which skip the isLoadingNext guard below.
     // Cleared once the new chapter's document commits (DocState.READY/ERROR).
     private var pagedChapterSwitchPending = false
@@ -1105,7 +1106,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private fun shouldAutoMarkShortChapter(page: ReaderPage?): Boolean {
         if (!preferences.novelMarkShortChapterAsRead.get()) return false
         val chapter = page?.chapter?.chapter ?: return false
-        return !chapter.read && chapter.last_page_read <= 0
+        // A search jump sets last_page_read to the match, but a chapter that fits on screen is still read whole.
+        return !chapter.read && (chapter.last_page_read <= 0 || activity.viewModel.isSearchJumpChapter(chapter.id))
     }
 
     private fun syncShortChapterProgressIfNeeded() {
@@ -1844,11 +1846,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
               <div class="category">$escapedCategory</div>
               <div class="summary">$escapedSummary</div>
               <div>
-                <button class="retry-btn" onclick="retryErr()">${HtmlUtils.escapeHtml(activity.stringResource(TDMR.strings.novel_error_retry))}</button>
-                <button class="copy-btn" onclick="copyErr()">${HtmlUtils.escapeHtml(activity.stringResource(TDMR.strings.novel_error_copy_details))}</button>
+                <button class="retry-btn" onclick="retryErr()">${HtmlUtils.escapeHtml(
+            activity.stringResource(TDMR.strings.novel_error_retry),
+        )}</button>
+                <button class="copy-btn" onclick="copyErr()">${HtmlUtils.escapeHtml(
+            activity.stringResource(TDMR.strings.novel_error_copy_details),
+        )}</button>
               </div>
               <details>
-                <summary>${HtmlUtils.escapeHtml(activity.stringResource(TDMR.strings.novel_error_technical_details))}</summary>
+                <summary>${HtmlUtils.escapeHtml(
+            activity.stringResource(TDMR.strings.novel_error_technical_details),
+        )}</summary>
                 <pre>$escapedTrace</pre>
               </details>
             </div>
@@ -2657,7 +2665,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
         val page = preparedChapter.pages?.firstOrNull() ?: run {
             val prepareError = (preparedChapter.state as? ReaderChapter.State.Error)?.error
-            logcat(LogPriority.ERROR) { "NovelWebViewViewer: No page in prepared next chapter, prepareError=$prepareError" }
+            logcat(LogPriority.ERROR) {
+                "NovelWebViewViewer: No page in prepared next chapter, prepareError=$prepareError"
+            }
             if (prepareError != null) {
                 inlineFeedback.showInlineError(prepareError, isPrepend = false, onRetry = ::retryAppendNextChapter)
             } else {

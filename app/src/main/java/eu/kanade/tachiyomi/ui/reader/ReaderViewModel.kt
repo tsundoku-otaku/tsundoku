@@ -164,8 +164,15 @@ class ReaderViewModel @JvmOverloads constructor(
 
     private var pendingJumpProgress = savedState.get<Int>("search_progress")?.takeIf { it in 1..100 }
 
-    // A chapter opened at a search match is only marked read once its end is reached.
-    private var jumpedChapterId: Long? = null
+    // A chapter opened at a search match is only marked read once its end is reached. Kept apart from the
+    // one-shot jump position so it survives process death after the jump was taken.
+    private var jumpedChapterId: Long? = savedState.get<Long>("jumped_chapter_id")
+        set(value) {
+            field = value
+            savedState["jumped_chapter_id"] = value
+        }
+
+    fun isSearchJumpChapter(chapterId: Long?): Boolean = chapterId != null && chapterId == jumpedChapterId
 
     /** Returned once so later restores, including after process death, use the saved progress. */
     fun takeJumpProgress(chapter: ReaderChapter): Int? {
