@@ -227,6 +227,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // Survives ttsController.stop() - set when TTS triggers a non-inf-scroll chapter load.
     private var pendingTtsAutoStartOnLoad = false
 
+    // Set when a reload stopped TTS, to start it again from the restored position.
+    private var resumeTtsAfterRestore = false
+
     // Single source of truth for the loaded document's lifecycle, replacing three hand-synced
     // booleans (isLoadingRealChapter/webChapterContentReady/webChapterIsError) that had to be flipped
     // together on every load/error/finish. Only these four combinations were ever legal; the enum
@@ -730,6 +733,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     pushReaderChrome()
                     styler.injectFragmentLinks()
                     restoreScrollPosition()
+                    // Nothing to restore: the position is already final.
+                    if (!isRestoringScroll) resumeTtsIfPending()
                     syncShortChapterProgressIfNeeded()
                     // Paged mode's own edge-swipe chevron replaces this button; it would also
                     // render inert here anyway since paged-reader.js already moved body's content
@@ -901,8 +906,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // scripts, fragment links and saved position.
                 val resumeTts = ttsController.isTtsAutoPlay
                 reloadChapter()
-                // The reload stops TTS; it picks up again from the restored position once the chapter renders.
-                if (resumeTts) ttsController.pendingStartRequest = TtsController.StartRequest.VIEWPORT
+                // The reload stops TTS; it picks up again once the saved position is back on screen.
+                resumeTtsAfterRestore = resumeTts
             },
             onTtsSettingsChanged = {
                 if (ttsController.ttsInitialized) ttsController.applySettings()
@@ -2481,10 +2486,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private fun liftRestoreGuard(token: Int) {
         if (token != scrollRestoreToken) return
         isRestoringScroll = false
+        resumeTtsIfPending()
         evaluateJavascriptSafe(
             "(function(){ if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime && window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking) window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking(); })();",
             null,
         )
+    }
+
+    private fun resumeTtsIfPending() {
+        if (!resumeTtsAfterRestore) return
+        resumeTtsAfterRestore = false
+        startTtsFromViewport()
     }
 
     private suspend fun awaitPageText(page: ReaderPage, loader: PageLoader, timeoutMs: Long): Boolean =
@@ -3039,7 +3051,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun reloadChapter() {
-        val chapters = currentChapters ?: return
+        // An infinite-scroll append makes a chapter active in the view model only, so its state names
+        // the chapter being read.
+        val chapters = activity.viewModel.state.value.viewerChapters ?: currentChapters ?: return
         chapterQueue.clear()
         currentChapterIndex = 0
         setChapters(chapters)
@@ -3095,6 +3109,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         logcat(LogPriority.DEBUG) {
             "TTS (WebView): stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}, ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex}, ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex}, ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
+        resumeTtsAfterRestore = false
         pendingTtsAutoStartOnLoad = false
         // Drop a pending real-load signal so a stale onPageFinished after stop can't inject; leave a
         // committed READY/ERROR document intact.
