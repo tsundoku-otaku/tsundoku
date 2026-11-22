@@ -56,7 +56,8 @@ class LocalNovelPageLoader(
 
     override suspend fun loadPage(page: ReaderPage) = withIOContext {
         // Claim the page so concurrent callers share one fetch instead of each starting their own.
-        while (true) {
+        var attempt: Int? = null
+        while (attempt == null) {
             when (val status = page.status) {
                 Page.State.Ready -> return@withIOContext
                 Page.State.LoadPage -> {
@@ -64,16 +65,21 @@ class LocalNovelPageLoader(
                     // One that never ends is taken over instead of waited on forever.
                     val next = withTimeoutOrNull(LOAD_WAIT_TIMEOUT_MS) {
                         page.statusFlow.first { it != Page.State.LoadPage }
-                    } ?: break
-                    if (next != Page.State.Queue) return@withIOContext
+                    }
+                    if (next == null) {
+                        attempt = page.takeOverLoad()
+                    } else if (next != Page.State.Queue) {
+                        return@withIOContext
+                    }
                 }
-                else -> if (page.tryClaim(status, Page.State.LoadPage)) break
+                else -> attempt = page.claimLoad(status)
             }
         }
+        val owned: Int = attempt ?: return@withIOContext
         try {
             if (source.isNovelSource) {
-                page.text = source.fetchPageText(Page(page.index, page.url, page.imageUrl))
-                page.setStatusLocked(Page.State.Ready)
+                val text = source.fetchPageText(Page(page.index, page.url, page.imageUrl))
+                page.publishIfOwner(owned, Page.State.Ready) { page.text = text }
             } else {
                 throw IllegalStateException("Source is not a NovelSource")
             }
@@ -83,7 +89,7 @@ class LocalNovelPageLoader(
                     "LocalNovelPageLoader: Failed to load page for ${chapter.chapter.name}: ${e.javaClass.name}: ${e.message}\n${e.stackTraceToString()}"
                 }
             }
-            onPageLoadFailed(page, e)
+            onPageLoadFailed(page, e, owned)
         }
     }
 }

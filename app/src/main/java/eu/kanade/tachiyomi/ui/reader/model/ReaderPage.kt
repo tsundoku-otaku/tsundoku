@@ -16,4 +16,8 @@ open class ReaderPage(
     }
 
     open lateinit var chapter: ReaderChapter
+
+    // Numbers the load attempts; see claimLoad.
+    @Volatile
+    internal var loadAttempt = 0
 }

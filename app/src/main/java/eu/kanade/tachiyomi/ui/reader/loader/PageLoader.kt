@@ -50,13 +50,15 @@ abstract class PageLoader {
      * queue and the cancellation is rethrown, whatever the source threw while being cancelled; a
      * cancellation the source threw itself, such as its own timeout, is a real error.
      */
-    protected suspend fun onPageLoadFailed(page: ReaderPage, error: Throwable) {
+    protected suspend fun onPageLoadFailed(page: ReaderPage, error: Throwable, attempt: Int) {
         val context = currentCoroutineContext()
         if (!context.isActive) {
-            page.tryClaim(Page.State.LoadPage, Page.State.Queue)
+            synchronized(page) {
+                if (page.loadAttempt == attempt && page.status == Page.State.LoadPage) page.status = Page.State.Queue
+            }
             context.ensureActive()
         }
-        page.setStatusLocked(Page.State.Error(error))
+        page.publishIfOwner(attempt, Page.State.Error(error))
     }
 
     /**
@@ -77,7 +79,25 @@ internal fun Page.tryClaim(from: Page.State, to: Page.State): Boolean = synchron
     true
 }
 
-// Under the claim lock, so a claim can't read one state and then overwrite a newer one.
-internal fun Page.setStatusLocked(state: Page.State) {
-    synchronized(this) { status = state }
+// Each load attempt takes a new number under the claim lock, and only the attempt holding the latest
+// number may publish a result or put the page back in the queue, so an attempt that was taken over
+// can't overwrite the one that replaced it.
+internal fun ReaderPage.claimLoad(from: Page.State): Int? = synchronized(this) {
+    if (status != from) return null
+    status = Page.State.LoadPage
+    ++loadAttempt
 }
+
+// Takes over a load stuck in LoadPage; null when it ended meanwhile.
+internal fun ReaderPage.takeOverLoad(): Int? = synchronized(this) {
+    if (status != Page.State.LoadPage) return null
+    ++loadAttempt
+}
+
+internal fun ReaderPage.publishIfOwner(attempt: Int, state: Page.State, onOwned: () -> Unit = {}): Boolean =
+    synchronized(this) {
+        if (loadAttempt != attempt) return false
+        onOwned()
+        status = state
+        true
+    }

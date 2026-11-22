@@ -8,20 +8,24 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.suspendCancellableCoroutine
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.withIOContext
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.PriorityBlockingQueue
 import kotlin.concurrent.atomics.AtomicInt
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -123,6 +127,29 @@ internal class HttpPageLoader(
         }
     }
 
+    private val novelFetches = ConcurrentHashMap<ReaderPage, Job>()
+
+    // Off the serial worker: a fetch that doesn't return would otherwise hold back its own retry and every
+    // other page. A retry replaces the attempt still running for its page.
+    private fun launchNovelFetch(page: ReaderPage) {
+        val attempt = page.claimLoad(Page.State.Queue) ?: return
+        novelFetches.remove(page)?.cancel()
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                val text = source.fetchPageText(page)
+                page.publishIfOwner(attempt, Page.State.Ready) { page.text = text }
+            } catch (e: Throwable) {
+                // Cancelled by recycle, nothing loads the page again; a retry's cancellation of this attempt
+                // no longer owns the page and leaves it alone.
+                page.publishIfOwner(attempt, Page.State.Error(e))
+                if (e is CancellationException) throw e
+            }
+        }
+        novelFetches[page] = job
+        job.invokeOnCompletion { novelFetches.remove(page, job) }
+        job.start()
+    }
+
     /**
      * Retries a page. This method is only called from user interaction on the viewer.
      */
@@ -199,9 +226,7 @@ internal class HttpPageLoader(
             val treatAsNovel = isNovel && !hasActualImageUrl
 
             if (treatAsNovel) {
-                page.status = Page.State.LoadPage
-                page.text = source.fetchPageText(page)
-                page.status = Page.State.Ready
+                launchNovelFetch(page)
                 return
             }
 
