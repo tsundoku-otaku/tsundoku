@@ -370,7 +370,7 @@ internal object LibraryPageSql {
                 args.add(pattern)
             }
             if (search.matchUrl) {
-                parts.add("M.url LIKE ? ESCAPE '\\'")
+                parts.add("${foldToAscii("M.url")} LIKE ? ESCAPE '\\'")
                 args.add(pattern)
             }
             if (search.matchGenre) {

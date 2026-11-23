@@ -166,7 +166,8 @@ class LibraryViewModel(
         val TYPE_KEY = CreationExtras.Key<LibraryType>()
 
         // Larger id lists are searched in memory instead of bound.
-        private const val MAX_SQL_SEARCH_IDS = 5000
+        // Below SQLite's 999 bound-variable limit before Android 11, leaving room for the other filters.
+        private const val MAX_SQL_SEARCH_IDS = 500
 
         private val COUNT_INVALIDATION_WINDOW = 10.seconds
 
@@ -576,20 +577,13 @@ class LibraryViewModel(
                     merge(flowOf(Unit), controller.slowInvalidations(COUNT_INVALIDATION_WINDOW))
                         .conflate()
                         .collect {
-                            for (plan in exact) {
-                                val count = getLibraryMangaPaged.awaitCount(plan.categoryId, plan.isNovel, plan.spec)
-                                mutableState.update {
-                                    it.copy(pagedCounts = it.pagedCounts + (plan.categoryId to count))
-                                }
-                            }
-                            val first = exact.first()
-                            if (plans.values.all { it.hasExactCount }) {
-                                val whole = getLibraryMangaPaged.awaitCount(
-                                    LibraryPageSpec.ALL_CATEGORIES,
-                                    first.isNovel,
-                                    first.spec,
-                                )
-                                mutableState.update { it.copy(pagedWholeCount = whole) }
+                            try {
+                                publishExactCounts(plans, exact)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                // The next invalidation tries again.
+                                logcat(LogPriority.ERROR, e) { "Paged library: count failed" }
                             }
                         }
                 }
@@ -607,6 +601,24 @@ class LibraryViewModel(
                     pagedDisplayPreferences = prefs
                     mutableState.update { it.copy(pagedBadgeVersion = it.pagedBadgeVersion + 1) }
                 }
+        }
+    }
+
+    private suspend fun publishExactCounts(plans: Map<Long, LibraryPagedPlan>, exact: List<LibraryPagedPlan>) {
+        for (plan in exact) {
+            val count = getLibraryMangaPaged.awaitCount(plan.categoryId, plan.isNovel, plan.spec)
+            mutableState.update {
+                it.copy(pagedCounts = it.pagedCounts + (plan.categoryId to count))
+            }
+        }
+        val first = exact.first()
+        if (plans.values.all { it.hasExactCount }) {
+            val whole = getLibraryMangaPaged.awaitCount(
+                LibraryPageSpec.ALL_CATEGORIES,
+                first.isNovel,
+                first.spec,
+            )
+            mutableState.update { it.copy(pagedWholeCount = whole) }
         }
     }
 
@@ -673,30 +685,37 @@ class LibraryViewModel(
             null
         }
 
-        val loadInMemory: (suspend (Boolean) -> List<LibraryManga>)? = if (inMemory) {
-            val search = inputs.search.takeIf { searchInMemory }
-            // Only the newest pager load publishes, so an older one finishing late can't restore its count.
+        // SQL can't count what only an in-memory pass filters, so the loaded list is the count. Only the
+        // newest pager load publishes, so an older one finishing late can't restore its count.
+        fun publishingLoad(load: suspend () -> List<LibraryManga>): suspend (Boolean) -> List<LibraryManga> {
             val pagerLoads = AtomicInteger()
-            val load: suspend (Boolean) -> List<LibraryManga> = { publishCount ->
+            return { publishCount ->
                 val loadNumber = if (publishCount) pagerLoads.incrementAndGet() else 0
-                val tracks = pagedTracks.value ?: inputs.tracks
-                loadCategoryInMemory(category, isNovel, spec, prefs, tracks, inputs.trackingFilters, search)
-                    .also { result ->
-                        // SQL can't count what only the in-memory pass filters, so the loaded list is the count.
-                        if (publishCount) {
-                            mutableState.update { state ->
-                                if (state.pagedPlans[category.id]?.key != key || loadNumber != pagerLoads.get()) {
-                                    return@update state
-                                }
-                                fallbackCountKeys[category.id] = key
-                                state.copy(pagedCounts = state.pagedCounts + (category.id to result.size.toLong()))
+                load().also { result ->
+                    if (publishCount) {
+                        mutableState.update { state ->
+                            if (state.pagedPlans[category.id]?.key != key || loadNumber != pagerLoads.get()) {
+                                return@update state
                             }
+                            fallbackCountKeys[category.id] = key
+                            state.copy(pagedCounts = state.pagedCounts + (category.id to result.size.toLong()))
                         }
                     }
+                }
             }
-            load
+        }
+
+        val loadInMemory = if (inMemory) {
+            val search = inputs.search.takeIf { searchInMemory }
+            publishingLoad {
+                val tracks = pagedTracks.value ?: inputs.tracks
+                loadCategoryInMemory(category, isNovel, spec, prefs, tracks, inputs.trackingFilters, search)
+            }
         } else {
             null
+        }
+        val loadFiltered = filter?.let {
+            publishingLoad { getLibraryMangaPaged.awaitFiltered(category.id, isNovel, spec, it) }
         }
 
         return LibraryPagedPlan(
@@ -708,14 +727,23 @@ class LibraryViewModel(
             reloadOnDownloads = dependsOnDownloads,
             reloadOnTracks = inMemory || needsItemFilter,
             loadInMemory = loadInMemory,
+            loadFiltered = loadFiltered,
         )
+    }
+
+    private suspend fun loadPlanForSelection(plan: LibraryPagedPlan): List<LibraryManga>? = try {
+        loadPlanFully(plan)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        logcat(LogPriority.ERROR, e) { "Paged library: selection load failed" }
+        null
     }
 
     private suspend fun loadPlanFully(plan: LibraryPagedPlan): List<LibraryManga> {
         plan.loadInMemory?.let { return it(false) }
-        val filter = plan.filter
-            ?: return getLibraryMangaPaged.awaitAll(plan.categoryId, plan.isNovel, plan.spec)
-        return getLibraryMangaPaged.awaitFiltered(plan.categoryId, plan.isNovel, plan.spec, filter)
+        plan.loadFiltered?.let { return it(false) }
+        return getLibraryMangaPaged.awaitAll(plan.categoryId, plan.isNovel, plan.spec)
     }
 
     private suspend fun loadCategoryInMemory(
@@ -1842,7 +1870,7 @@ class LibraryViewModel(
 
     private fun selectRangeFromPlan(category: Category, plan: LibraryPagedPlan, anchor: Long, manga: LibraryManga) {
         selectAllJob = viewModelScope.launchIO {
-            val all = loadPlanFully(plan)
+            val all = loadPlanForSelection(plan) ?: return@launchIO
             val ids = all.map { it.id }
             val from = ids.indexOf(anchor)
             val to = ids.indexOf(manga.id)
@@ -1871,7 +1899,7 @@ class LibraryViewModel(
         val plan = state.value.pagedPlans[category.id] ?: return
         selectAllJob?.cancel()
         selectAllJob = viewModelScope.launchIO {
-            val all = loadPlanFully(plan)
+            val all = loadPlanForSelection(plan) ?: return@launchIO
             // A selection change made while this loaded cancels it; the check here covers one made
             // after the load returned.
             val job = coroutineContext[Job]

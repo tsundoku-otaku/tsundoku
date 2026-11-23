@@ -37,6 +37,8 @@ class LibraryPagedPlan(
     val reloadOnTracks: Boolean,
     // publishCount is true only for the pager's own loads, which are the ones on screen.
     val loadInMemory: (suspend (publishCount: Boolean) -> List<LibraryManga>)?,
+    // Reads the whole category through [filter]; set only when [loadInMemory] is not.
+    val loadFiltered: (suspend (publishCount: Boolean) -> List<LibraryManga>)? = null,
 ) {
     val inMemory: Boolean get() = loadInMemory != null
 
@@ -135,11 +137,11 @@ class LibraryPagingController(
                 slowInvalidations(IN_MEMORY_INVALIDATION_WINDOW, changes),
             ) { loadInMemory(true) }
         }
-        val filter = plan.filter
-        if (filter != null) {
+        val loadFiltered = plan.loadFiltered
+        if (loadFiltered != null) {
             return getLibraryMangaPaged.subscribeLoaded(
                 slowInvalidations(IN_MEMORY_INVALIDATION_WINDOW, changes),
-            ) { getLibraryMangaPaged.awaitFiltered(plan.categoryId, plan.isNovel, plan.spec, filter) }
+            ) { loadFiltered(true) }
         }
         return getLibraryMangaPaged.subscribe(plan.categoryId, plan.isNovel, plan.spec, changes)
     }
