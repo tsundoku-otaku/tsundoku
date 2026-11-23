@@ -1511,7 +1511,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
      * notification/service alive with nothing playing).
      */
     private fun abortPendingTtsOnLoadFailure() {
-        if (pendingTtsAutoStart || ttsController.isTtsAutoPlay) {
+        if (pendingTtsAutoStart || ttsController.isTtsAutoPlay || ttsController.pendingStartRequest != null) {
             stopTts()
         }
     }
