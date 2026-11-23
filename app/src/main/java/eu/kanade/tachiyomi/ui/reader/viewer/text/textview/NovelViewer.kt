@@ -5,6 +5,8 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.textview
 import android.graphics.Canvas
 import android.graphics.text.LineBreaker
 import android.os.Build
+import android.text.Spannable
+import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
@@ -829,19 +831,12 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         },
     )
 
+    private val ttsSpans = mutableListOf<Pair<Spannable, Any>>()
+
     /** Must be called on the UI thread. */
     private fun clearTtsSpansInLoadedChapters() {
-        loadedChapters.forEach { loaded ->
-            if (!loaded.isLoaded) return@forEach
-            loaded.block.chunkViews.forEach { chunkView ->
-                val spanned = chunkView.text as? android.text.Spannable ?: return@forEach
-                val len = spanned.length
-                spanned.getSpans(0, len, BackgroundColorSpan::class.java).forEach { spanned.removeSpan(it) }
-                spanned.getSpans(0, len, ForegroundColorSpan::class.java).forEach { spanned.removeSpan(it) }
-                spanned.getSpans(0, len, UnderlineSpan::class.java).forEach { spanned.removeSpan(it) }
-                spanned.getSpans(0, len, RoundedOutlineSpan::class.java).forEach { spanned.removeSpan(it) }
-            }
-        }
+        ttsSpans.forEach { (spannable, span) -> spannable.removeSpan(span) }
+        ttsSpans.clear()
     }
 
     private fun clearAllTtsHighlights() {
@@ -893,39 +888,26 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     firstChunkLocalStart = localStart
                 }
                 when (highlightStyle) {
-                    "underline" -> spanned.setSpan(
-                        UnderlineSpan(),
-                        localStart,
-                        localEnd,
-                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                    )
+                    "underline" -> {
+                        val span = UnderlineSpan()
+                        spanned.setSpan(span, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        ttsSpans.add(spanned to span)
+                    }
                     "outline" -> {
-                        spanned.setSpan(
-                            RoundedOutlineSpan(highlightColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
-                        spanned.setSpan(
-                            ForegroundColorSpan(highlightTextColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
+                        val outline = RoundedOutlineSpan(highlightColor)
+                        val foreground = ForegroundColorSpan(highlightTextColor)
+                        spanned.setSpan(outline, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        spanned.setSpan(foreground, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        ttsSpans.add(spanned to outline)
+                        ttsSpans.add(spanned to foreground)
                     }
                     else -> {
-                        spanned.setSpan(
-                            BackgroundColorSpan(highlightColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
-                        spanned.setSpan(
-                            ForegroundColorSpan(highlightTextColor),
-                            localStart,
-                            localEnd,
-                            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-                        )
+                        val background = BackgroundColorSpan(highlightColor)
+                        val foreground = ForegroundColorSpan(highlightTextColor)
+                        spanned.setSpan(background, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        spanned.setSpan(foreground, localStart, localEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        ttsSpans.add(spanned to background)
+                        ttsSpans.add(spanned to foreground)
                     }
                 }
             }
@@ -945,6 +927,166 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
         }
     }
+
+    // region Find in chapter (TextView path)
+
+    private class FindMatch(
+        val block: ChapterTextBlock,
+        val view: TextView,
+        val start: Int,
+        val end: Int,
+    )
+
+    private var findQuery: String? = null
+    private val findMatches = mutableListOf<FindMatch>()
+    private var findCurrent = -1
+    private val findSpans = mutableListOf<Pair<Spannable, Any>>()
+
+    /**
+     * Searches [query] case-insensitively in the current chapter and jumps to the first match.
+     * Reports the result through [ReaderActivity.onNovelFindResult].
+     */
+    fun searchInChapter(query: String) {
+        activity.runOnUiThread {
+            val q = query.trim()
+            if (q.isEmpty()) {
+                clearFind()
+                return@runOnUiThread
+            }
+            if (q != findQuery) {
+                rebuildFindMatches(q)
+            }
+            if (findMatches.isEmpty()) {
+                activity.onNovelFindResult(0, -1)
+            } else if (findCurrent == -1) {
+                goToFindMatch(0)
+            } else {
+                applyFindHighlight()
+                activity.onNovelFindResult(findMatches.size, findCurrent)
+            }
+        }
+    }
+
+    fun findNext() {
+        activity.runOnUiThread {
+            if (findMatches.isEmpty()) return@runOnUiThread
+            goToFindMatch((findCurrent + 1) % findMatches.size)
+        }
+    }
+
+    fun findPrevious() {
+        activity.runOnUiThread {
+            if (findMatches.isEmpty()) return@runOnUiThread
+            goToFindMatch((findCurrent - 1 + findMatches.size) % findMatches.size)
+        }
+    }
+
+    fun clearFind() {
+        activity.runOnUiThread {
+            clearFindSpans()
+            findMatches.clear()
+            findCurrent = -1
+            findQuery = null
+            activity.onNovelFindResult(0, -1)
+        }
+    }
+
+    /** Drops stale find state when chapter content changes underneath (load, translation). */
+    private fun resetFindState() {
+        clearFindSpans()
+        findMatches.clear()
+        findCurrent = -1
+        findQuery = null
+    }
+
+    /**
+     * Re-runs the active query after the current chapter's text is replaced (for example when a
+     * translation finishes) without moving the reader away from the match it was already on.
+     */
+    private fun refreshFindForCurrentChapter() {
+        val q = findQuery ?: return
+        val previous = findCurrent
+        rebuildFindMatches(q)
+        if (findMatches.isEmpty()) {
+            activity.onNovelFindResult(0, -1)
+            return
+        }
+        findCurrent = if (previous in findMatches.indices) previous else 0
+        applyFindHighlight()
+        activity.onNovelFindResult(findMatches.size, findCurrent)
+    }
+
+    private fun rebuildFindMatches(q: String) {
+        clearFindSpans()
+        findMatches.clear()
+        findCurrent = -1
+        findQuery = q
+
+        val loaded = loadedChapters.getOrNull(currentChapterIndex) ?: return
+        if (!loaded.isLoaded) return
+
+        loaded.block.chunkViews.forEach { view ->
+            val text = view.text?.toString() ?: return@forEach
+            if (text.isEmpty()) return@forEach
+            var idx = text.indexOf(q, ignoreCase = true)
+            while (idx != -1) {
+                findMatches.add(FindMatch(loaded.block, view, idx, idx + q.length))
+                idx = text.indexOf(q, startIndex = idx + q.length, ignoreCase = true)
+            }
+        }
+    }
+
+    private fun goToFindMatch(index: Int) {
+        findCurrent = index
+        applyFindHighlight()
+        scrollToFindMatch(findMatches[index])
+        activity.onNovelFindResult(findMatches.size, findCurrent)
+    }
+
+    private fun applyFindHighlight() {
+        clearFindSpans()
+        val allColor = 0x59FF9800.toInt()
+        val currentColor = 0xF0FF9800.toInt()
+        findMatches.forEachIndexed { i, match ->
+            val spannable = spannableOf(match.view) ?: return@forEachIndexed
+            val start = match.start.coerceAtMost(spannable.length)
+            val end = match.end.coerceAtMost(spannable.length)
+            if (end <= start) return@forEachIndexed
+            val span = BackgroundColorSpan(if (i == findCurrent) currentColor else allColor)
+            spannable.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            findSpans.add(spannable to span)
+        }
+    }
+
+    private fun spannableOf(view: TextView): Spannable? {
+        val current = view.text ?: return null
+        if (current is Spannable) return current
+        view.setText(SpannableString(current), TextView.BufferType.SPANNABLE)
+        return view.text as? Spannable
+    }
+
+    private fun clearFindSpans() {
+        findSpans.forEach { (spannable, span) -> spannable.removeSpan(span) }
+        findSpans.clear()
+    }
+
+    private fun scrollToFindMatch(match: FindMatch) {
+        val scrollTarget = match.view
+        val localStart = match.start
+        fun doScroll() {
+            val layout = scrollTarget.layout ?: return
+            if (layout.text.isEmpty()) return
+            val line = layout.getLineForOffset(localStart.coerceAtMost(layout.text.length - 1).coerceAtLeast(0))
+            val targetInChunk = layout.getLineTop(line)
+            val targetInScroll =
+                match.block.container.top + scrollTarget.top + targetInChunk - (scrollView.height / 3)
+            scrollView.smoothScrollTo(0, targetInScroll.coerceAtLeast(0))
+        }
+        if (scrollTarget.layout != null) doScroll() else scrollTarget.post { doScroll() }
+    }
+
+    // endregion
+
 
     private fun loadNextChapterForTts(anchorChapterIndex: Int = currentChapterIndex) {
         logcat(LogPriority.DEBUG) {
@@ -1424,6 +1566,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         loadJob?.cancel()
         currentPage = page
         currentChapters = chapters
+        activity.dismissFindBar()
+        resetFindState()
+        activity.onNovelFindResult(0, -1)
 
         val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == chapters.currChapter.chapter.id }
 
@@ -1875,6 +2020,10 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 }
             }
             startTts()
+        }
+
+        if (loaded === loadedChapters.getOrNull(currentChapterIndex)) {
+            refreshFindForCurrentChapter()
         }
     }
 

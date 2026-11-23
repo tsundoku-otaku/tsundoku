@@ -12,6 +12,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased]
 ### Added
+- Add find in chapter to the novel reader [@prabinpanta0](https://github.com/prabinpanta0)
 - Add dictionary to context menu [@wasu-code](https://github.com/wasu-code) [#473](https://github.com/tsundoku-otaku/tsundoku/pull/473)
 
 
