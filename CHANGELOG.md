@@ -24,6 +24,7 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Route headset media to TTS session [@mrissaoussama](https://github.com/mrissaoussama) [#466](https://github.com/tsundoku-otaku/tsundoku/pull/466)
 - Keeps ource memo on mangas returned by insertNetworkManga [@mrissaoussama](https://github.com/mrissaoussama) [#440](https://github.com/tsundoku-otaku/tsundoku/pull/440)
 - Share one paragraph split between TTS chunking, highlight and viewport lookup [@mrissaoussama](https://github.com/mrissaoussama) [#471](https://github.com/tsundoku-otaku/tsundoku/pull/471)
+- Retry and edit on a failed WebView chapter [@mrissaoussama](https://github.com/mrissaoussama) [#455](https://github.com/tsundoku-otaku/tsundoku/pull/455)
 
 ### Other
 - Add link to Mihon [@mrissaoussama](https://github.com/mrissaoussama) [#442](https://github.com/tsundoku-otaku/tsundoku/pull/442)
