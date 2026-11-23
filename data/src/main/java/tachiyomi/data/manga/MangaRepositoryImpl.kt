@@ -1867,6 +1867,25 @@ class MangaRepositoryImpl(
         invalidateLibraryCacheInternal()
     }
 
+    override suspend fun updateMangasCategories(
+        mangaIds: List<Long>,
+        addCategoryIds: List<Long>,
+        removeCategoryIds: List<Long>,
+    ) {
+        if (mangaIds.isEmpty()) return
+        database.transaction {
+            if (removeCategoryIds.isNotEmpty()) {
+                database.mangas_categoriesQueries.deleteBulkMangaCategories(mangaIds, removeCategoryIds)
+            }
+            mangaIds.forEach { mangaId ->
+                addCategoryIds.forEach { categoryId ->
+                    database.mangas_categoriesQueries.insertBulkMangaCategory(mangaId, categoryId)
+                }
+            }
+        }
+        invalidateLibraryCacheInternal()
+    }
+
     override suspend fun update(update: MangaUpdate): Boolean {
         return try {
             partialUpdate(update)

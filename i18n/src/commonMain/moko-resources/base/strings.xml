@@ -79,6 +79,7 @@
     <string name="action_global_search">Global search</string>
     <string name="action_select_all">Select all</string>
     <string name="action_select_inverse">Select inverse</string>
+    <string name="action_select_none">Select none</string>
     <string name="action_mark_as_read">Mark as read</string>
     <string name="action_mark_as_unread">Mark as unread</string>
     <string name="action_mark_previous_as_read">Mark previous as read</string>
@@ -98,6 +99,7 @@
     <string name="action_rename_category">Rename category</string>
     <string name="action_move">Move</string>
     <string name="action_move_category">Set categories</string>
+    <string name="action_move_category_count">Set categories (%1$d)</string>
     <string name="delete_category_confirmation">Do you wish to delete the category \"%s\"?</string>
     <string name="delete_category">Delete category</string>
     <string name="action_edit_cover">Edit cover</string>

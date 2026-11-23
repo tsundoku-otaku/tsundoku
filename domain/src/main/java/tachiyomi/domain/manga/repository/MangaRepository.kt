@@ -247,6 +247,8 @@ interface MangaRepository {
 
     suspend fun removeMangasCategories(mangaIds: List<Long>, categoryIds: List<Long>)
 
+    suspend fun updateMangasCategories(mangaIds: List<Long>, addCategoryIds: List<Long>, removeCategoryIds: List<Long>)
+
     suspend fun update(update: MangaUpdate): Boolean
 
     suspend fun updateAll(mangaUpdates: List<MangaUpdate>): Boolean

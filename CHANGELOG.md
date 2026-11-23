@@ -29,6 +29,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - Add link to Mihon [@mrissaoussama](https://github.com/mrissaoussama) [#442](https://github.com/tsundoku-otaku/tsundoku/pull/442)
 
 
+### Added
+- Set categories for selected duplicates from the duplicates dialog, duplicate limit raised to 30 [@mrissaoussama](https://github.com/mrissaoussama) [#467](https://github.com/tsundoku-otaku/tsundoku/pull/467)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)

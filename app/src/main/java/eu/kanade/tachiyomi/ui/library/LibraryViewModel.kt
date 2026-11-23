@@ -35,6 +35,7 @@ import eu.kanade.tachiyomi.data.translation.TranslationService
 import eu.kanade.tachiyomi.source.isNovelSource
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.ui.category.failureMessage
 import eu.kanade.tachiyomi.util.chapter.getNextUnread
 import eu.kanade.tachiyomi.util.removeCovers
 import eu.kanade.tachiyomi.util.source.getMangaUrlOrNull
@@ -1134,19 +1135,16 @@ class LibraryViewModel(
                 "Category change: ids=$count add=${addCategories.size} remove=${removeCategories.size} type=$type"
             }
 
-            if (addCategories.isNotEmpty()) {
-                logcat(LogPriority.DEBUG) { "Category change: adding categories $addCategories to $count manga" }
-                setMangaCategories.add(mangaIds, addCategories, skipRefresh = true)
-            }
-            if (removeCategories.isNotEmpty()) {
-                logcat(LogPriority.DEBUG) { "Category change: removing categories $removeCategories from $count manga" }
-                setMangaCategories.remove(mangaIds, removeCategories, skipRefresh = true)
-            }
-
-            logcat(LogPriority.DEBUG) { "Category change: applying in-memory patch" }
-            getLibraryManga.applyCategoryUpdates(mangaIds, addCategories, removeCategories)
-
+            val result = setMangaCategories.update(mangaIds, addCategories, removeCategories)
+            // Before the snackbar: showSnackbar suspends until it is gone
             clearSelection()
+            result.failureMessage()?.let { message ->
+                logcat(LogPriority.WARN) { "Category change: $result for $count manga" }
+                snackbarHostState.showSnackbar(
+                    message = Injekt.get<android.app.Application>().stringResource(message),
+                    duration = SnackbarDuration.Short,
+                )
+            }
         }
     }
 
