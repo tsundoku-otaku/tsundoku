@@ -3066,7 +3066,8 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         try {
             val preparedChapter = activity.viewModel.prepareNextChapterForInfiniteScroll(anchor)
             if (preparedChapter == null) {
-                ttsMidpointChunkIndex = null
+                // A newer start may have set its own midpoint meanwhile
+                if (handoffState === claim) ttsMidpointChunkIndex = null
                 return
             }
             val nextId = preparedChapter.chapter.id ?: return
