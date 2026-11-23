@@ -237,12 +237,13 @@ internal class NovelWebViewStyler(
 
     fun injectContrastGuard() {
         if (!preferences.novelSourceCssPriority.get()) {
-            // The guard colors unreadable elements inline, so those marks go too.
+            // The guard marks the elements it fixed and sets aside their inline !important colors; both go back.
             evaluateJs(
                 "(function(){var g=document.getElementById('$STYLE_ID_CONTRAST_GUARD');if(g)g.remove();" +
                     "document.querySelectorAll('[data-tsundoku-contrast]').forEach(function(e){" +
-                    "var v=e.getAttribute('data-tsundoku-contrast').split(';');" +
-                    "if(v[0])e.style.setProperty('color',v[0],v[1]||'');else e.style.removeProperty('color');" +
+                    "var v=e.getAttribute('data-tsundoku-contrast');" +
+                    "if(v)e.style.setProperty('color',v,'important');" +
+                    "e.style.removeProperty('--td-contrast-color');" +
                     "e.removeAttribute('data-tsundoku-contrast');});})();",
             )
             return
