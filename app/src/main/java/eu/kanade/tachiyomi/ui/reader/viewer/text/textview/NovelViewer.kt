@@ -881,6 +881,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     // A TTS start waiting for this chapter's text to render.
     private var pendingTtsStart: PendingTtsStart? = null
 
+    // The chapter on screen when a start had to wait for TTS to initialize.
+    private var pendingInitStartChapterId: Long? = null
+
     private val pendingTtsAutoStart: Boolean get() = pendingTtsStart != null
 
     // Bumped by stopTts and every start, so a deferred start only runs for the request that made it.
@@ -1460,6 +1463,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet, waiting..." }
             ttsController.pendingStartRequest = TtsController.StartRequest.NORMAL
+            pendingInitStartChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
             return
         }
         ttsController.pendingStartRequest = null
@@ -1562,6 +1566,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet" }
             ttsController.pendingStartRequest = TtsController.StartRequest.VIEWPORT
+            pendingInitStartChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
             return
         }
         ttsController.pendingStartRequest = null
@@ -1894,7 +1899,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 contentContainer.removeView(block.container)
                 loadedChapter.separatorView?.let { contentContainer.removeView(it) }
                 chapterQueue.removeById(chapter.chapter.id)
-                if (pendingTtsStart?.chapterId == chapter.chapter.id) abortPendingTtsOnLoadFailure()
+                val waitsOnInit = ttsController.pendingStartRequest != null &&
+                    pendingInitStartChapterId == chapter.chapter.id
+                if (pendingTtsStart?.chapterId == chapter.chapter.id || waitsOnInit) abortPendingTtsOnLoadFailure()
                 if (!isAppend) {
                     currentChapterIndex = (loadedChapters.size - 1).coerceAtLeast(0)
                 }
