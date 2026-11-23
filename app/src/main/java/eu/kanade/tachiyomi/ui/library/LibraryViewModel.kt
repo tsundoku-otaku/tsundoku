@@ -457,7 +457,8 @@ class LibraryViewModel(
             i += Character.charCount(ca)
             j += Character.charCount(cb)
         }
-        return (a.length - i).compareTo(b.length - j)
+        // One side ran out: the shorter one sorts first.
+        return (i < a.length).compareTo(j < b.length)
     }
 
     private data class SearchPrefs(
@@ -605,20 +606,24 @@ class LibraryViewModel(
     }
 
     private suspend fun publishExactCounts(plans: Map<Long, LibraryPagedPlan>, exact: List<LibraryPagedPlan>) {
+        // A count that lands after its plan changed is dropped, not shown for the new plan.
         for (plan in exact) {
             val count = getLibraryMangaPaged.awaitCount(plan.categoryId, plan.isNovel, plan.spec)
             mutableState.update {
+                if (it.pagedPlans[plan.categoryId]?.key != plan.key) return@update it
                 it.copy(pagedCounts = it.pagedCounts + (plan.categoryId to count))
             }
         }
-        val first = exact.first()
         if (plans.values.all { it.hasExactCount }) {
             val whole = getLibraryMangaPaged.awaitCount(
                 LibraryPageSpec.ALL_CATEGORIES,
-                first.isNovel,
-                first.spec,
+                pagedTypeIsNovel(),
+                exact.first().spec,
             )
-            mutableState.update { it.copy(pagedWholeCount = whole) }
+            mutableState.update {
+                if (it.pagedPlans != plans) return@update it
+                it.copy(pagedWholeCount = whole)
+            }
         }
     }
 
@@ -633,7 +638,12 @@ class LibraryViewModel(
 
     private fun pagedPlan(category: Category, inputs: PagedInputs): LibraryPagedPlan {
         val prefs = inputs.prefs
-        val isNovel = pagedTypeIsNovel()
+        // The All tab still keeps a manga-only or novel-only category to its own type.
+        val isNovel = pagedTypeIsNovel() ?: when (category.contentType) {
+            Category.CONTENT_TYPE_MANGA -> false
+            Category.CONTENT_TYPE_NOVEL -> true
+            else -> null
+        }
         val sortType = mapSort(category.sort)
         val search = inputs.search.spec?.let { pagedSearch(it, inputs) }
         val searchInMemory = search == PagedSearch.Unsupported

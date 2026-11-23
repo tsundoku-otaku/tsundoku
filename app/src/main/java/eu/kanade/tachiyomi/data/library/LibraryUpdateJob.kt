@@ -303,7 +303,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             .sortedBy { it.title }
             .map { it.toLibraryManga() }
 
-        notifier.showQueueSizeWarningNotificationIfNeeded(mangaToUpdate)
+        notifier.showQueueSizeWarningNotificationIfNeeded(mangaToUpdate.map { it.manga })
 
         if (skippedUpdates.isNotEmpty()) {
             // TODO: surface skipped reasons to user?
