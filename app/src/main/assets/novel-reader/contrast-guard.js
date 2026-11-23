@@ -72,6 +72,8 @@
     // Every run starts from the site's own colors: an inserted chapter can change the background of
     // text that was checked before, so everything is rechecked.
     Array.prototype.forEach.call(document.querySelectorAll('[data-tsundoku-contrast]'), function (el) {
+        var saved = el.getAttribute('data-tsundoku-contrast');
+        if (saved) el.style.setProperty('color', saved, 'important');
         el.removeAttribute('data-tsundoku-contrast');
         el.style.removeProperty('--td-contrast-color');
     });
@@ -83,16 +85,20 @@
         if (el.closest('[class*="spoiler" i]')) return;
         var bg = effectiveBackground(el);
         if (contrast(blend(parse(getComputedStyle(el).color), bg), bg) >= 3) return;
-        el.setAttribute('data-tsundoku-contrast', '');
+        // An inline !important color would beat any stylesheet rule, so it is set aside until the next run.
+        var inline = el.style.getPropertyPriority('color') === 'important' ? el.style.getPropertyValue('color') : '';
+        if (inline) el.style.removeProperty('color');
+        el.setAttribute('data-tsundoku-contrast', inline);
         el.style.setProperty('--td-contrast-color', readableColor(bg));
         fixed++;
     });
     if (!fixed) return;
 
-    // A stylesheet rule rather than an inline color, so the TTS highlight can still set its own.
+    // A stylesheet rule rather than an inline color, so the TTS highlight can still set its own. The
+    // :not(#id) parts only raise specificity above the site's own !important rules.
     var style = document.createElement('style');
     style.id = '__GUARD_ID__';
     style.textContent =
-        '[data-tsundoku-contrast]:not(.td-tts-highlight-bg, .td-tts-highlight-bg *){color:var(--td-contrast-color)!important}';
+        '[data-tsundoku-contrast]:not(#td-c):not(#td-c):not(#td-c):not(.td-tts-highlight-bg, .td-tts-highlight-bg *){color:var(--td-contrast-color)!important}';
     document.head.appendChild(style);
 })();
