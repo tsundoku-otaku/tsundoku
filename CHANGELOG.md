@@ -36,6 +36,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Fixed
 - Local novel translate no longer waits on downloads, download actions hidden for local novels, bulk translate queueing fixed [@mrissaoussama](https://github.com/mrissaoussama) [#474](https://github.com/tsundoku-otaku/tsundoku/pull/474)
 
+### Improved
+- Word density tiers every 500 words with no upper cap, faster word count [@mrissaoussama](https://github.com/mrissaoussama) [#461](https://github.com/tsundoku-otaku/tsundoku/pull/461)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)

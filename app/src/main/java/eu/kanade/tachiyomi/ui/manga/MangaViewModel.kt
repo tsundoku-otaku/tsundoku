@@ -54,6 +54,8 @@ import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
@@ -63,6 +65,8 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
@@ -111,6 +115,8 @@ import tachiyomi.source.local.isLocal
 import tachiyomi.source.local.isLocalNovel
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.floor
 
 class MangaViewModel(
@@ -155,6 +161,9 @@ class MangaViewModel(
 ) : StateViewModel<MangaViewModel.State>(State.Loading) {
 
     companion object {
+        private const val WORD_COUNT_PARALLELISM = 4
+        private const val WORD_COUNT_PROGRESS_STEP = 8
+
         val MANGA_ID_KEY = CreationExtras.Key<Long>()
 
         val IS_FROM_SOURCE_KEY = CreationExtras.Key<Boolean>()
@@ -1458,6 +1467,8 @@ class MangaViewModel(
             val checkedChapters: Int,
             val chaptersToCount: Int,
             val result: WordDensity? = null,
+            // A cancelled count's late workers must not move a newer dialog's progress.
+            val runId: Long = 0,
         ) : Dialog
         data object SettingsSheet : Dialog
         data object TrackSheet : Dialog
@@ -1628,6 +1639,7 @@ class MangaViewModel(
     }
 
     private var wordCountJob: Job? = null
+    private var wordCountRun = 0L
 
     /**
      * Count the words of every downloaded chapter (every chapter for local entries) off the main
@@ -1643,52 +1655,67 @@ class MangaViewModel(
         val totalChapters = state.chapters.size
 
         wordCountJob?.cancel()
+        val runId = ++wordCountRun
         updateSuccessState {
-            it.copy(dialog = Dialog.WordCount(checkedChapters = 0, chaptersToCount = chapters.size))
+            it.copy(dialog = Dialog.WordCount(checkedChapters = 0, chaptersToCount = chapters.size, runId = runId))
         }
         if (chapters.isEmpty()) return
 
         wordCountJob = viewModelScope.launchIO {
             val source = sourceManager.getOrStub(manga.source)
             val contentReader = ChapterContentReader(context, Injekt.get<DownloadProvider>())
-            var totalWords = 0L
-            var countedChapters = 0
-            var unreadableChapters = 0
-            chapters.forEachIndexed { index, chapter ->
-                ensureActive()
-                val content = try {
-                    if (isLocalEntry) {
-                        source.fetchPageText(Page(0, chapter.url))
-                    } else {
-                        contentReader.readDownloadedContent(manga, chapter, source)
+            val totalWordsCounter = AtomicLong()
+            val countedCounter = AtomicInteger()
+            val checkedCounter = AtomicInteger()
+            val permits = Semaphore(WORD_COUNT_PARALLELISM)
+            coroutineScope {
+                chapters.map { chapter ->
+                    async {
+                        permits.withPermit {
+                            ensureActive()
+                            val content = try {
+                                if (isLocalEntry) {
+                                    source.fetchPageText(Page(0, chapter.url))
+                                } else {
+                                    contentReader.readDownloadedContent(manga, chapter, source)
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                logcat(LogPriority.WARN, e) { "Word count: failed to read chapter ${chapter.name}" }
+                                null
+                            }
+                            if (content != null) {
+                                totalWordsCounter.addAndGet(WordDensity.countWords(content).toLong())
+                                countedCounter.incrementAndGet()
+                            }
+                            val checked = checkedCounter.incrementAndGet()
+                            if (checked % WORD_COUNT_PROGRESS_STEP == 0 || checked == chapters.size) {
+                                updateWordCountDialog(runId) {
+                                    it.copy(checkedChapters = maxOf(it.checkedChapters, checked))
+                                }
+                            }
+                        }
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logcat(LogPriority.WARN, e) { "Word count: failed to read chapter ${chapter.name}" }
-                    null
-                }
-                if (content != null) {
-                    totalWords += WordDensity.countWords(content)
-                    countedChapters++
-                } else {
-                    unreadableChapters++
-                }
-                updateWordCountDialog { it.copy(checkedChapters = index + 1) }
+                }.awaitAll()
             }
+            val totalWords = totalWordsCounter.get()
+            val countedChapters = countedCounter.get()
+            val unreadableChapters = chapters.size - countedChapters
             val result = WordDensity(
                 totalWords = totalWords,
                 countedChapters = countedChapters,
                 totalChapters = totalChapters,
                 unreadableChapters = unreadableChapters,
             )
-            updateWordCountDialog { it.copy(result = result) }
+            updateWordCountDialog(runId) { it.copy(result = result) }
         }
     }
 
-    private inline fun updateWordCountDialog(func: (Dialog.WordCount) -> Dialog.WordCount) {
+    private inline fun updateWordCountDialog(runId: Long, func: (Dialog.WordCount) -> Dialog.WordCount) {
         updateSuccessState { state ->
             val dialog = state.dialog as? Dialog.WordCount ?: return@updateSuccessState state
+            if (dialog.runId != runId) return@updateSuccessState state
             state.copy(dialog = func(dialog))
         }
     }
