@@ -42,6 +42,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Added
 - Option to hide the chapter separator in novel infinite scroll [@mrissaoussama](https://github.com/mrissaoussama) [#460](https://github.com/tsundoku-otaku/tsundoku/pull/460)
 
+### Fixed
+- Textview reader scroll getting stuck after a chapter switch [@mrissaoussama](https://github.com/mrissaoussama) [#459](https://github.com/tsundoku-otaku/tsundoku/pull/459)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)
