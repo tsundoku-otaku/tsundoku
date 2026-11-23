@@ -565,23 +565,22 @@ class LibraryPageSqlTest {
 
     @Test
     fun `each sort orders by its own key`() {
+        // Every sort gives a different order, so one sort reading another's key fails.
         insert(
             listOf(
-                Row(1, "b", lastRead = 20, lastUpdate = 200, total = 5, dateAdded = 3),
-                Row(2, "c", lastRead = 30, lastUpdate = 300, total = 9, dateAdded = 1),
-                Row(3, "a", lastRead = 10, lastUpdate = 100, total = 1, dateAdded = 2),
+                Row(1, "a", lastRead = 10, lastUpdate = 200, total = 5, read = 0, dateAdded = 3),
+                Row(2, "b", lastRead = 30, lastUpdate = 100, total = 9, read = 6, dateAdded = 1),
+                Row(3, "c", lastRead = 20, lastUpdate = 300, total = 1, read = 0, dateAdded = 2),
             ),
         )
         fun order(sort: Int) = ids(LibraryPageSql.page(0L, false, spec(sort, true), null, 0))
 
-        listOf(
-            LibraryPageSpec.SORT_ALPHABETICAL,
-            LibraryPageSpec.SORT_LAST_READ,
-            LibraryPageSpec.SORT_LAST_UPDATE,
-            LibraryPageSpec.SORT_UNREAD_COUNT,
-            LibraryPageSpec.SORT_TOTAL_CHAPTERS,
-        ).forEach { sort -> order(sort) shouldContainExactly listOf(3L, 1L, 2L) }
+        order(LibraryPageSpec.SORT_ALPHABETICAL) shouldContainExactly listOf(1L, 2L, 3L)
+        order(LibraryPageSpec.SORT_LAST_READ) shouldContainExactly listOf(1L, 3L, 2L)
+        order(LibraryPageSpec.SORT_LAST_UPDATE) shouldContainExactly listOf(2L, 1L, 3L)
         order(LibraryPageSpec.SORT_DATE_ADDED) shouldContainExactly listOf(2L, 3L, 1L)
+        order(LibraryPageSpec.SORT_TOTAL_CHAPTERS) shouldContainExactly listOf(3L, 1L, 2L)
+        order(LibraryPageSpec.SORT_UNREAD_COUNT) shouldContainExactly listOf(3L, 2L, 1L)
     }
 
     @Test

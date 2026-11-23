@@ -316,6 +316,7 @@ class GetLibraryMangaPaged(
 
         private const val SOURCE_DRIVEN_ROWS = 50_000L
 
-        private const val ROWS_PER_QUERY = 5_000
+        // Below SQLite's 999 bound-variable limit before Android 11, with room for the spec's own arguments.
+        private const val ROWS_PER_QUERY = 500
     }
 }
