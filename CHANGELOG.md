@@ -49,6 +49,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - Faster parallel chapter text search with chapter range, expandable results and jump to match [@mrissaoussama](https://github.com/mrissaoussama) [#462](https://github.com/tsundoku-otaku/tsundoku/pull/462)
 
+### Fixed
+- Lazy images not loading in the WebView reader, inline script handlers stripped when scripts are removed [@mrissaoussama](https://github.com/mrissaoussama) [#454](https://github.com/tsundoku-otaku/tsundoku/pull/454)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)
