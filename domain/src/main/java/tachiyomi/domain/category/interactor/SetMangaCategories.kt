@@ -1,5 +1,7 @@
 package tachiyomi.domain.category.interactor
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import logcat.LogPriority
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.manga.interactor.GetLibraryManga
@@ -14,7 +16,7 @@ class SetMangaCategories(
      * Set categories for a single manga.
      * @param skipRefresh If true, skip the library refresh. Useful when caller manages refresh.
      */
-    suspend fun await(mangaId: Long, categoryIds: List<Long>, skipRefresh: Boolean = false) {
+    suspend fun await(mangaId: Long, categoryIds: List<Long>, skipRefresh: Boolean = false) = writeLock.withLock {
         try {
             mangaRepository.setMangaCategories(mangaId, categoryIds)
             if (!skipRefresh) {
@@ -32,7 +34,7 @@ class SetMangaCategories(
      * Set categories for multiple manga at once.
      * @param skipRefresh If true, skip the library refresh. Useful for batch operations.
      */
-    suspend fun await(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false) {
+    suspend fun await(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false) = writeLock.withLock {
         try {
             mangaRepository.setMangasCategories(mangaIds, categoryIds)
             if (!skipRefresh) {
@@ -51,8 +53,8 @@ class SetMangaCategories(
      * @param skipRefresh If true, skip the library refresh. Useful for batch operations
      *                    where the caller will handle refresh at the end.
      */
-    suspend fun add(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false): Boolean {
-        return try {
+    suspend fun add(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false): Boolean = writeLock.withLock {
+        try {
             mangaRepository.addMangasCategories(mangaIds, categoryIds)
             if (!skipRefresh) {
                 getLibraryManga.applyCategoryUpdates(
@@ -73,8 +75,8 @@ class SetMangaCategories(
      * @param skipRefresh If true, skip the library refresh. Useful for batch operations
      *                    where the caller will handle refresh at the end.
      */
-    suspend fun remove(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false): Boolean {
-        return try {
+    suspend fun remove(mangaIds: List<Long>, categoryIds: List<Long>, skipRefresh: Boolean = false): Boolean = writeLock.withLock {
+        try {
             mangaRepository.removeMangasCategories(mangaIds, categoryIds)
             if (!skipRefresh) {
                 getLibraryManga.applyCategoryUpdates(
@@ -92,17 +94,25 @@ class SetMangaCategories(
 
     suspend fun update(mangaIds: List<Long>, addCategories: List<Long>, removeCategories: List<Long>): UpdateResult {
         if (addCategories.isEmpty() && removeCategories.isEmpty()) return UpdateResult.Saved
-        try {
-            mangaRepository.updateMangasCategories(mangaIds, addCategories, removeCategories)
-        } catch (e: Exception) {
-            logcat(LogPriority.ERROR, e)
-            return UpdateResult.Failed
+        return writeLock.withLock {
+            try {
+                mangaRepository.updateMangasCategories(mangaIds, addCategories, removeCategories)
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e)
+                return@withLock UpdateResult.Failed
+            }
+            getLibraryManga.applyCategoryUpdates(mangaIds, addCategories, removeCategories)
+            UpdateResult.Saved
         }
-        getLibraryManga.applyCategoryUpdates(mangaIds, addCategories, removeCategories)
-        return UpdateResult.Saved
     }
 
     enum class UpdateResult { Saved, Failed }
+
+    companion object {
+        // Each write and its library patch run together, so the library applies them in the order the
+        // database committed them, whichever screen made them.
+        private val writeLock = Mutex()
+    }
 
     /**
      * Force a library refresh. Call this after batch operations with skipRefresh=true.

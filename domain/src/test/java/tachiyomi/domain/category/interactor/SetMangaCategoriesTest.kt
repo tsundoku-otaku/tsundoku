@@ -22,6 +22,7 @@ class SetMangaCategoriesTest {
             setMangaCategories.update(listOf(1L), listOf(2L), listOf(3L)),
         )
 
+        coVerify { repository.updateMangasCategories(listOf(1L), listOf(2L), listOf(3L)) }
         coVerify { getLibraryManga.applyCategoryUpdates(listOf(1L), listOf(2L), listOf(3L)) }
     }
 
