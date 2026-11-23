@@ -3126,9 +3126,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         }
         resumeTtsAfterRestore = false
         pendingTtsAutoStartOnLoad = false
-        // Drop a pending real-load signal so a stale onPageFinished after stop can't inject; leave a
-        // committed READY/ERROR document intact.
-        if (docState == DocState.LOADING_REAL) docState = DocState.LOADING
+        // A chapter load in flight still has to finish setting up the reader, so docState stays as is.
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
         dispatchTtsState()
