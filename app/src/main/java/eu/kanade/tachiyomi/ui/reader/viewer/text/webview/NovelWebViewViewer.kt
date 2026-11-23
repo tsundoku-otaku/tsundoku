@@ -230,6 +230,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // Set when a reload stopped TTS, to start it again from the restored position.
     private var resumeTtsAfterRestore = false
 
+    // Set while a media reload re-renders the chapter a paused TTS session is on, so the session survives.
+    private var keepPausedTtsOnReload = false
+
     // Single source of truth for the loaded document's lifecycle, replacing three hand-synced
     // booleans (isLoadingRealChapter/webChapterContentReady/webChapterIsError) that had to be flipped
     // together on every load/error/finish. Only these four combinations were ever legal; the enum
@@ -906,7 +909,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                 // scripts, fragment links and saved position.
                 // A second reload before the restore finds TTS already stopped, so the earlier intent is kept.
                 val resumeTts = resumeTtsAfterRestore || (ttsController.isTtsAutoPlay && !ttsController.isPaused())
-                reloadChapter()
+                val pausedChapterId = ttsController.ttsPlaybackChapterId.takeIf { ttsController.isPaused() }
+                keepPausedTtsOnReload = pausedChapterId != null &&
+                    pausedChapterId == activity.viewModel.state.value.viewerChapters?.currChapter?.chapter?.id
+                try {
+                    reloadChapter()
+                } finally {
+                    // The reload leaves only this chapter queued
+                    if (keepPausedTtsOnReload) {
+                        ttsController.shiftPlaybackChapterIndex(ttsController.ttsPlaybackChapterIndex - currentChapterIndex)
+                    }
+                    keepPausedTtsOnReload = false
+                }
                 // The reload stops TTS; it picks up again once the saved position is back on screen.
                 resumeTtsAfterRestore = resumeTts
             },
@@ -1261,7 +1275,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             return
         }
 
-        ttsController.stop()
+        if (!keepPausedTtsOnReload) ttsController.stop()
 
         // Paged mode always does a full chapter switch (never an append), same as infinite
         // scroll being off, so the queue resets here too regardless of the underlying pref.
