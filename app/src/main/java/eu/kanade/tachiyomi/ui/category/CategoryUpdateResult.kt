@@ -6,6 +6,5 @@ import tachiyomi.i18n.novel.TDMR
 
 fun SetMangaCategories.UpdateResult.failureMessage(): StringResource? = when (this) {
     SetMangaCategories.UpdateResult.Saved -> null
-    SetMangaCategories.UpdateResult.Partial -> TDMR.strings.duplicate_categories_partial
     SetMangaCategories.UpdateResult.Failed -> TDMR.strings.duplicate_categories_failed
 }

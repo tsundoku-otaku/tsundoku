@@ -528,20 +528,33 @@ class MangaViewModel(
     }
 
     private var duplicatesCategoryWrite: Job? = null
+    private var duplicatesCategoryLoad: Job? = null
 
     fun showChangeDuplicatesCategoryDialog(mangas: List<Manga>) {
         val duplicatesDialog = successState?.dialog as? Dialog.DuplicateManga ?: return
         val returnTo = duplicatesDialog.copy(selectedIds = mangas.mapTo(HashSet()) { it.id })
         val pendingWrite = duplicatesCategoryWrite
-        viewModelScope.launchIO {
+        // Only the latest selection may open the dialog
+        duplicatesCategoryLoad?.cancel()
+        duplicatesCategoryLoad = viewModelScope.launchIO {
             // Read the categories only after the previous change landed
             pendingWrite?.join()
-            val categories = getCategoriesFor(mangas.mapTo(HashSet()) { it.categoryContentType })
-            if (categories.isEmpty() && getCategories().isNotEmpty()) {
-                withUIContext { context.toast(TDMR.strings.duplicate_no_shared_category) }
+            val categories: List<Category>
+            val perManga: Map<Long, List<Category>>
+            try {
+                categories = getCategoriesFor(mangas.mapTo(HashSet()) { it.categoryContentType })
+                if (categories.isEmpty() && getCategories().isNotEmpty()) {
+                    withUIContext { context.toast(TDMR.strings.duplicate_no_shared_category) }
+                    return@launchIO
+                }
+                perManga = getCategories.awaitForMangas(mangas.map { it.id })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e)
+                withUIContext { context.toast(TDMR.strings.duplicate_categories_load_failed) }
                 return@launchIO
             }
-            val perManga = getCategories.awaitForMangas(mangas.map { it.id })
             val initialSelection = categories.toCommonCheckboxState(
                 { it.id },
                 mangas.map { manga -> perManga[manga.id].orEmpty().mapTo(HashSet()) { it.id } },
