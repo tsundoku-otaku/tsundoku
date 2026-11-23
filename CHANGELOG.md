@@ -12,6 +12,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased]
 
+### Fixed
+- Textview reader scroll getting stuck after a chapter switch [@mrissaoussama](https://github.com/mrissaoussama) [#459](https://github.com/tsundoku-otaku/tsundoku/pull/459)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)
