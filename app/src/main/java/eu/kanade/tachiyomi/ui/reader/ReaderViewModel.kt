@@ -162,6 +162,31 @@ class ReaderViewModel @JvmOverloads constructor(
 
     val hasValidArgs = mangaId != -1L && initialChapterId != -1L
 
+    private var pendingJumpProgress = savedState.get<Int>("search_progress")?.takeIf { it in 1..100 }
+
+    // A chapter opened at a search match is only marked read once its end is reached. Kept apart from the
+    // one-shot jump position so it survives process death after the jump was taken.
+    private var jumpedChapterId: Long? = savedState.get<Long>("jumped_chapter_id")
+        set(value) {
+            field = value
+            savedState["jumped_chapter_id"] = value
+        }
+
+    fun isSearchJumpChapter(chapterId: Long?): Boolean = chapterId != null && chapterId == jumpedChapterId
+
+    /** Returned once so later restores, including after process death, use the saved progress. */
+    fun takeJumpProgress(chapter: ReaderChapter): Int? {
+        val chapterId = chapter.chapter.id
+        if (chapterId == null || chapterId != initialChapterId) return null
+        val progress = pendingJumpProgress ?: return null
+        pendingJumpProgress = null
+        savedState.remove<Int>("search_progress")
+        jumpedChapterId = chapterId
+        // The backward-jump guard then measures from the match instead of the old position.
+        chapter.chapter.last_page_read = progress
+        return progress
+    }
+
     private val eventChannel = Channel<Event>()
     val eventFlow = eventChannel.receiveAsFlow()
 
@@ -821,7 +846,8 @@ class ReaderViewModel @JvmOverloads constructor(
                 // Mark as read if at the configured threshold or more
                 val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.get()
                 val wasRead = selectedChapter.chapter.read
-                if (clampedProgress >= markAsReadThreshold && !wasRead) {
+                val threshold = if (selectedChapter.chapter.id == jumpedChapterId) 100 else markAsReadThreshold
+                if (clampedProgress >= threshold && !wasRead) {
                     selectedChapter.chapter.read = true
                     updateTrackChapterRead(selectedChapter)
                     deleteChapterIfNeeded(selectedChapter)

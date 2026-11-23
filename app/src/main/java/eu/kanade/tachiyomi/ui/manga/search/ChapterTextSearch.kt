@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.ui.manga.search
 
 import androidx.compose.runtime.Immutable
-import org.jsoup.Jsoup
+import org.jsoup.parser.Parser
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 import kotlin.coroutines.cancellation.CancellationException
@@ -37,9 +37,20 @@ data class ChapterTextMatches(
 object ChapterTextSearch {
 
     const val SNIPPET_CONTEXT = 60
-    const val MAX_SNIPPETS_PER_CHAPTER = 3
+
+    const val COLLAPSED_SNIPPETS = 3
+    const val MAX_SNIPPETS_PER_CHAPTER = 10
     private const val MAX_SNIPPET_MATCH_LENGTH = 200
     private const val WORD_CHAR = "[\\p{L}\\p{N}_]"
+
+    private val SKIPPED_ELEMENTS = setOf("script", "style", "title", "head")
+    private val INLINE_ELEMENTS = setOf(
+        "a", "b", "i", "u", "em", "strong", "span", "small", "sup", "sub", "font", "mark", "s", "ruby", "rt", "rp",
+    )
+    private const val MAX_ENTITY_LENGTH = 32
+    private const val CANCEL_CHECK_MATCHES = 256
+    private const val LITERAL_SPAN = 64 * 1024
+    private const val SOFT_HYPHEN = '\u00AD'
 
     /**
      * Builds the regex for [query]. Plain queries are matched literally.
@@ -56,7 +67,146 @@ object ChapterTextSearch {
     /**
      * Reduces chapter HTML (or plain text) to whitespace-normalized visible text.
      */
-    fun toPlainText(content: String): String = Jsoup.parse(content).text()
+    fun toPlainText(content: String): String {
+        val length = content.length
+        val out = StringBuilder(length)
+        var pendingSpace = false
+        var i = 0
+
+        fun appendChar(char: Char) {
+            if (char == SOFT_HYPHEN) return
+            if (char.isWhitespace() || Character.isSpaceChar(char)) {
+                pendingSpace = out.isNotEmpty()
+            } else {
+                if (pendingSpace) out.append(' ')
+                pendingSpace = false
+                out.append(char)
+            }
+        }
+
+        while (i < length) {
+            val char = content[i]
+            if (char == '<' && i + 1 < length && isTagStart(content[i + 1])) {
+                if (content.startsWith("<!--", i)) {
+                    val end = content.indexOf("-->", i + 4)
+                    i = if (end < 0) length else end + 3
+                    pendingSpace = out.isNotEmpty()
+                    continue
+                }
+                val end = tagEnd(content, i)
+                if (end < 0) {
+                    appendChar(char)
+                    i++
+                    continue
+                }
+                var nameStart = i + 1
+                val closing = content[nameStart] == '/'
+                if (closing) nameStart++
+                var nameEnd = nameStart
+                while (nameEnd < end && content[nameEnd].isLetterOrDigit()) nameEnd++
+                val name = content.substring(nameStart, nameEnd).lowercase()
+                i = end + 1
+                if (!closing && name in SKIPPED_ELEMENTS && content[end - 1] != '/') {
+                    val close = content.indexOf("</$name", i, ignoreCase = true)
+                    i = if (close < 0) {
+                        length
+                    } else {
+                        content.indexOf('>', close).let { if (it < 0) length else it + 1 }
+                    }
+                }
+                if (name !in INLINE_ELEMENTS) pendingSpace = out.isNotEmpty()
+            } else if (char == '&') {
+                val semi = entityEnd(content, i)
+                val decoded = if (semi > 0) {
+                    val entity = content.substring(i, semi + 1)
+                    Parser.unescapeEntities(entity, false).takeIf { it != entity }
+                } else {
+                    null
+                }
+                if (decoded != null) {
+                    decoded.forEach(::appendChar)
+                    i = semi + 1
+                } else {
+                    appendChar(char)
+                    i++
+                }
+            } else {
+                appendChar(char)
+                i++
+            }
+        }
+        return out.toString()
+    }
+
+    // The ';' closing an entity at [start], or -1. Searched only within the longest entity and stopped by
+    // characters an entity can't hold, so text full of bare '&' stays linear.
+    private fun entityEnd(content: String, start: Int): Int {
+        val limit = minOf(content.length - 1, start + MAX_ENTITY_LENGTH)
+        for (j in start + 2..limit) {
+            when (content[j]) {
+                ';' -> return j
+                '&', '<' -> return -1
+                else -> if (content[j].isWhitespace()) return -1
+            }
+        }
+        return -1
+    }
+
+    private fun isTagStart(char: Char) = char.isLetter() || char == '/' || char == '!' || char == '?'
+
+    // Quoted attribute values may contain '>'; an unclosed quote falls back to the first '>'.
+    private fun tagEnd(content: String, start: Int): Int {
+        var quote = 0.toChar()
+        for (i in start + 1 until content.length) {
+            val char = content[i]
+            when {
+                quote != 0.toChar() -> if (char == quote) quote = 0.toChar()
+                char == '"' || char == '\'' -> quote = char
+                char == '>' -> return i
+                char == '<' -> return -1
+            }
+        }
+        return content.indexOf('>', start)
+    }
+
+    /** Plain query equivalent of [findMatches] without the regex engine. */
+    fun findLiteralMatches(
+        text: String,
+        query: String,
+        ignoreCase: Boolean,
+        maxSnippets: Int = MAX_SNIPPETS_PER_CHAPTER,
+        isActive: () -> Boolean = { true },
+    ): ChapterTextMatches {
+        if (text.isEmpty() || query.isEmpty()) return ChapterTextMatches(0, emptyList())
+        var count = 0
+        val snippets = mutableListOf<ChapterSearchSnippet>()
+        // Scanned in spans with a cancellation check between them, so a long scan without matches still
+        // stops. Each span is copied once and every match starting in it is taken from that copy; the copy
+        // reaches query.length - 1 past the span so a match across the boundary is found.
+        var spanStart = 0
+        var nextFree = 0
+        while (true) {
+            val spanEnd = minOf(text.length, spanStart + LITERAL_SPAN + query.length - 1)
+            val last = spanEnd == text.length
+            val span = if (spanStart == 0 && last) text else text.substring(spanStart, spanEnd)
+            var from = (nextFree - spanStart).coerceAtLeast(0)
+            while (true) {
+                val hit = span.indexOf(query, from, ignoreCase)
+                // A match starting past the span belongs to the next one.
+                if (hit < 0 || (!last && hit >= LITERAL_SPAN)) break
+                val at = spanStart + hit
+                count++
+                if (count % CANCEL_CHECK_MATCHES == 0 && !isActive()) throw CancellationException("Search cancelled")
+                if (snippets.size < maxSnippets) snippets += snippetFor(text, at, at + query.length)
+                nextFree = at + query.length
+                from = hit + query.length
+            }
+            if (last) break
+            if (!isActive()) throw CancellationException("Search cancelled")
+            spanStart += LITERAL_SPAN
+        }
+        return ChapterTextMatches(count, snippets)
+    }
 
     /**
      * Counts every non-empty match of [regex] in [text] and keeps excerpts for the first few.

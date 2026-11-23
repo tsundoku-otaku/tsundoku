@@ -45,6 +45,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Fixed
 - Textview reader scroll getting stuck after a chapter switch [@mrissaoussama](https://github.com/mrissaoussama) [#459](https://github.com/tsundoku-otaku/tsundoku/pull/459)
 
+### Improved
+- Faster parallel chapter text search with chapter range, expandable results and jump to match [@mrissaoussama](https://github.com/mrissaoussama) [#462](https://github.com/tsundoku-otaku/tsundoku/pull/462)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)
