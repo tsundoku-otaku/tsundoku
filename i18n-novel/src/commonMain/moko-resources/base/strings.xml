@@ -1040,4 +1040,7 @@
     <string name="action_define">Define</string>
     <string name="pref_novel_force_dictionary_action">Prioritize "Define" action</string>
     <string name="pref_novel_force_dictionary_action_summary">Add the Define (dictionary) action to the text selection menu when applicable</string>
+    <string name="error_cant_edit_error_page">Can\'t edit an error page</string>
+    <string name="error_cant_edit_while_loading">Can\'t edit while the chapter is loading</string>
+    <string name="error_cant_edit_no_chapter">Nothing to edit in this chapter</string>
 </resources>
