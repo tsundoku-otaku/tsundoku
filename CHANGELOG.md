@@ -12,6 +12,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 
 ## [Unreleased]
 
+### Added
+- WebView reader scrolls to in-chapter #anchor links, including paged mode [@mrissaoussama](https://github.com/mrissaoussama) [#446](https://github.com/tsundoku-otaku/tsundoku/pull/446)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)
