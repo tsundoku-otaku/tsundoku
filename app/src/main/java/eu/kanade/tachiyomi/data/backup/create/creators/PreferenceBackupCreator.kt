@@ -14,6 +14,7 @@ import eu.kanade.tachiyomi.source.sourcePreferences
 import tachiyomi.core.common.preference.Preference
 import tachiyomi.core.common.preference.PreferenceStore
 import tachiyomi.domain.source.service.SourceManager
+import tachiyomi.domain.translation.service.TranslationPreferences
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -25,6 +26,7 @@ class PreferenceBackupCreator(
     fun createApp(includePrivatePreferences: Boolean): List<BackupPreference> {
         return preferenceStore.getAll().toBackupPreferences()
             .withPrivatePreferences(includePrivatePreferences)
+            .filter { includePrivatePreferences || it.key !in TranslationPreferences.SECRET_KEYS }
     }
 
     fun createSource(includePrivatePreferences: Boolean): List<BackupSourcePreferences> {

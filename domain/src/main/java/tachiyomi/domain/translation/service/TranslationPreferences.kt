@@ -102,26 +102,17 @@ class TranslationPreferences(
     /**
      * OpenAI API key.
      */
-    fun openAiApiKey() = preferenceStore.getString(
-        "translation_openai_api_key",
-        "",
-    )
+    fun openAiApiKey() = secret(Secret.OPENAI_API_KEY, "")
 
     /**
      * NVIDIA NIM base URL.
      */
-    fun nvidiaNimBaseUrl() = preferenceStore.getString(
-        "translation_nvidia_nim_base_url",
-        "http://localhost:8000",
-    )
+    fun nvidiaNimBaseUrl() = secret(Secret.NVIDIA_NIM_BASE_URL, "http://localhost:8000")
 
     /**
      * NVIDIA NIM API key (optional).
      */
-    fun nvidiaNimApiKey() = preferenceStore.getString(
-        "translation_nvidia_nim_api_key",
-        "",
-    )
+    fun nvidiaNimApiKey() = secret(Secret.NVIDIA_NIM_API_KEY, "")
 
     /**
      * NVIDIA NIM model name.
@@ -152,10 +143,7 @@ class TranslationPreferences(
     /**
      * DeepSeek API key.
      */
-    fun deepSeekApiKey() = preferenceStore.getString(
-        "translation_deepseek_api_key",
-        "",
-    )
+    fun deepSeekApiKey() = secret(Secret.DEEPSEEK_API_KEY, "")
 
     /**
      * Custom system prompt for DeepSeek models. Blank means use [TranslationPromptDefaults.DEFAULT_SYSTEM_PROMPT].
@@ -178,50 +166,32 @@ class TranslationPreferences(
     /**
      * LibreTranslate server URL.
      */
-    fun libreTranslateUrl() = preferenceStore.getString(
-        "translation_libretranslate_url",
-        "https://libretranslate.com/translate",
-    )
+    fun libreTranslateUrl() = secret(Secret.LIBRETRANSLATE_URL, "https://libretranslate.com/translate")
 
     /**
      * LibreTranslate API key (optional).
      */
-    fun libreTranslateApiKey() = preferenceStore.getString(
-        "translation_libretranslate_api_key",
-        "",
-    )
+    fun libreTranslateApiKey() = secret(Secret.LIBRETRANSLATE_API_KEY, "")
 
     /**
      * SYSTRAN API key.
      */
-    fun systranApiKey() = preferenceStore.getString(
-        "translation_systran_api_key",
-        "",
-    )
+    fun systranApiKey() = secret(Secret.SYSTRAN_API_KEY, "")
 
     /**
      * DeepL API key.
      */
-    fun deepLApiKey() = preferenceStore.getString(
-        "translation_deepl_api_key",
-        "",
-    )
+    fun deepLApiKey() = secret(Secret.DEEPL_API_KEY, "")
 
     /**
      * Google Cloud Translation API key.
      */
-    fun googleApiKey() = preferenceStore.getString(
-        "translation_google_api_key",
-        "",
-    )
+    fun googleApiKey() = secret(Secret.GOOGLE_API_KEY, "")
 
     /**
      * Ollama server URL for local AI translation.
      */
-    fun ollamaUrl() = preferenceStore.getString(
-        "translation_ollama_url",
-        "http://localhost:11434",
-    )
+    fun ollamaUrl() = secret(Secret.OLLAMA_URL, "http://localhost:11434")
 
     /**
      * Ollama model name.
@@ -325,18 +295,12 @@ class TranslationPreferences(
      * Custom HTTP translation API URL.
      * Should accept POST requests with JSON body.
      */
-    fun customHttpUrl() = preferenceStore.getString(
-        "translation_custom_http_url",
-        "",
-    )
+    fun customHttpUrl() = secret(Secret.CUSTOM_HTTP_URL, "")
 
     /**
      * Custom HTTP API key (sent in Authorization header).
      */
-    fun customHttpApiKey() = preferenceStore.getString(
-        "translation_custom_http_api_key",
-        "",
-    )
+    fun customHttpApiKey() = secret(Secret.CUSTOM_HTTP_API_KEY, "")
 
     /**
      * Custom HTTP request method: POST or GET.
@@ -353,18 +317,15 @@ class TranslationPreferences(
      * {apiKey} in a value is replaced with the configured API key.
      * Example: x-api-key: {apiKey}; Accept: application/json
      */
-    fun customHttpHeaders() = preferenceStore.getString(
-        "translation_custom_http_headers",
-        "",
-    )
+    fun customHttpHeaders() = secret(Secret.CUSTOM_HTTP_HEADERS, "")
 
     /**
      * Custom HTTP request template.
      * Use placeholders: {text}, {texts}, {source}, {target}
      * Example: {"q": "{text}", "source": "{source}", "target": "{target}"}
      */
-    fun customHttpRequestTemplate() = preferenceStore.getString(
-        "translation_custom_http_request_template",
+    fun customHttpRequestTemplate() = secret(
+        Secret.CUSTOM_HTTP_REQUEST_TEMPLATE,
         """{"q": {texts}, "source": "{source}", "target": "{target}"}""",
     )
 
@@ -406,10 +367,7 @@ class TranslationPreferences(
 
     // Gemini (Google AI)
 
-    fun geminiApiKey() = preferenceStore.getString(
-        "translation_gemini_api_key",
-        "",
-    )
+    fun geminiApiKey() = secret(Secret.GEMINI_API_KEY, "")
 
     fun geminiModel() = preferenceStore.getString(
         "translation_gemini_model",
@@ -424,4 +382,30 @@ class TranslationPreferences(
         "translation_gemini_prompt",
         "",
     )
+
+    private fun secret(secret: Secret, defaultValue: String) = preferenceStore.getString(secret.key, defaultValue)
+
+    // Kept under their plain keys so any app version can restore them, but only backed up
+    // with "Include sensitive settings". Server URLs and the request template can embed a key.
+    private enum class Secret(val key: String) {
+        OPENAI_API_KEY("translation_openai_api_key"),
+        NVIDIA_NIM_BASE_URL("translation_nvidia_nim_base_url"),
+        NVIDIA_NIM_API_KEY("translation_nvidia_nim_api_key"),
+        DEEPSEEK_API_KEY("translation_deepseek_api_key"),
+        LIBRETRANSLATE_URL("translation_libretranslate_url"),
+        LIBRETRANSLATE_API_KEY("translation_libretranslate_api_key"),
+        SYSTRAN_API_KEY("translation_systran_api_key"),
+        DEEPL_API_KEY("translation_deepl_api_key"),
+        GOOGLE_API_KEY("translation_google_api_key"),
+        OLLAMA_URL("translation_ollama_url"),
+        CUSTOM_HTTP_URL("translation_custom_http_url"),
+        CUSTOM_HTTP_API_KEY("translation_custom_http_api_key"),
+        CUSTOM_HTTP_HEADERS("translation_custom_http_headers"),
+        CUSTOM_HTTP_REQUEST_TEMPLATE("translation_custom_http_request_template"),
+        GEMINI_API_KEY("translation_gemini_api_key"),
+    }
+
+    companion object {
+        val SECRET_KEYS: Set<String> = Secret.entries.mapTo(HashSet()) { it.key }
+    }
 }

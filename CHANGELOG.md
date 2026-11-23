@@ -52,6 +52,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Fixed
 - Lazy images not loading in the WebView reader, inline script handlers stripped when scripts are removed [@mrissaoussama](https://github.com/mrissaoussama) [#454](https://github.com/tsundoku-otaku/tsundoku/pull/454)
 
+### Fixed
+- Translation API keys and headers kept out of backups unless sensitive settings are included [@mrissaoussama](https://github.com/mrissaoussama) [#451](https://github.com/tsundoku-otaku/tsundoku/pull/451)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)
