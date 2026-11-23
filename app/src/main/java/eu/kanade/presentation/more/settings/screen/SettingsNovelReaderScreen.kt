@@ -355,6 +355,7 @@ object SettingsNovelReaderScreen : SearchableSettings {
     private fun getContentGroup(readerPreferences: ReaderPreferences): Preference.PreferenceGroup {
         val autoLoadNextAt = readerPreferences.novelAutoLoadNextChapterAt.collectAsState().value
         val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.collectAsState().value
+        val infiniteScrollEnabled = readerPreferences.novelInfiniteScroll.collectAsState().value
         val pagedModeEnabled = readerPreferences.novelPagedMode.collectAsState().value
         val pagedDragCommitPercent = readerPreferences.novelPagedDragCommitPercent.collectAsState().value
 
@@ -371,6 +372,14 @@ object SettingsNovelReaderScreen : SearchableSettings {
                         preference = readerPreferences.novelInfiniteScroll,
                         title = "Infinite scroll",
                         subtitle = "Load next chapter automatically while scrolling (non-paged reading only)",
+                    ),
+                )
+                add(
+                    Preference.PreferenceItem.SwitchPreference(
+                        preference = readerPreferences.novelHideChapterSeparator,
+                        title = stringResource(TDMR.strings.pref_novel_hide_chapter_separator),
+                        subtitle = stringResource(TDMR.strings.pref_novel_hide_chapter_separator_summary),
+                        enabled = infiniteScrollEnabled,
                     ),
                 )
                 add(

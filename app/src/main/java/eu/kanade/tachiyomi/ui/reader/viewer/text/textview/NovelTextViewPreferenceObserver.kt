@@ -12,6 +12,7 @@ internal class NovelTextViewPreferenceObserver(
     private val scope: CoroutineScope,
     private val onStylePrefChanged: () -> Unit,
     private val onContentReloadRequested: () -> Unit,
+    private val onSeparatorVisibilityChanged: () -> Unit,
     private val onTtsSettingsChanged: () -> Unit,
 ) {
 
@@ -73,6 +74,12 @@ internal class NovelTextViewPreferenceObserver(
             preferences.novelInfiniteScroll.changes()
                 .drop(1)
                 .collectLatest { onContentReloadRequested() }
+        }
+
+        scope.launch {
+            preferences.novelHideChapterSeparator.changes()
+                .drop(1)
+                .collect { onSeparatorVisibilityChanged() }
         }
 
         scope.launch {

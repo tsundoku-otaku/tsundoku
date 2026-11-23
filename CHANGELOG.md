@@ -39,6 +39,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Improved
 - Word density tiers every 500 words with no upper cap, faster word count [@mrissaoussama](https://github.com/mrissaoussama) [#461](https://github.com/tsundoku-otaku/tsundoku/pull/461)
 
+### Added
+- Option to hide the chapter separator in novel infinite scroll [@mrissaoussama](https://github.com/mrissaoussama) [#460](https://github.com/tsundoku-otaku/tsundoku/pull/460)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)

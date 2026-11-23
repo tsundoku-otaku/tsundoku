@@ -1238,9 +1238,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         NovelWebViewPreferenceObserver(
             preferences = preferences,
             scope = scope,
-            onStyleChanged = {
-                styler.injectStyles()
-                if (isPagedModeActive()) {
+            onStyleChanged = { keepPosition ->
+                val paged = isPagedModeActive()
+                styler.injectStyles(keepPosition = keepPosition && !paged)
+                if (paged) {
                     evaluateJavascriptSafe("if (window.__tdPagedRepaginate) window.__tdPagedRepaginate();")
                 }
             },
