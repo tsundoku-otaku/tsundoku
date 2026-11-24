@@ -66,6 +66,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.TSUNDOKU_OBJECT_NAME
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.quoteForJson
 import eu.kanade.tachiyomi.ui.reader.viewer.text.webview.NovelWebViewChapterMeta.unescapeJsResult
+import eu.kanade.tachiyomi.util.system.openInBrowser
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -234,6 +235,12 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     // Survives ttsController.stop() - set when TTS triggers a non-inf-scroll chapter load.
     private var pendingTtsAutoStartOnLoad = false
 
+    // Set when a reload stopped TTS, to start it again from the restored position.
+    private var resumeTtsAfterRestore = false
+
+    // Set while a media reload re-renders the chapter a paused TTS session is on, so the session survives.
+    private var keepPausedTtsOnReload = false
+
     // Single source of truth for the loaded document's lifecycle, replacing three hand-synced
     // booleans (isLoadingRealChapter/webChapterContentReady/webChapterIsError) that had to be flipped
     // together on every load/error/finish. Only these four combinations were ever legal; the enum
@@ -306,6 +313,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 if (isEditingMode) return false
                 if (e.eventTime - e.downTime >= android.view.ViewConfiguration.getLongPressTimeout()) return true
+                // A tapped link is the tap's action: an in-chapter jump, or a web link opening in the browser.
+                // The hit test is set when the touch lands, so it doesn't depend on when the page's click
+                // handler reports back.
+                if (fragmentLinkTappedAt >= e.downTime || isLinkHit()) return true
 
                 val pos = android.graphics.PointF(
                     e.x / container.width.toFloat(),
@@ -1060,6 +1071,18 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             }
 
             webViewClient = object : WebViewClient() {
+                // Tapped links never navigate the reader away from the chapter.
+                override fun shouldOverrideUrlLoading(
+                    view: WebView?,
+                    request: android.webkit.WebResourceRequest?,
+                ): Boolean {
+                    if (request == null || !request.isForMainFrame || !request.hasGesture()) return false
+                    // Tapped links never navigate the reader away from the chapter.
+                    val url = request.url
+                    if (url.scheme == "http" || url.scheme == "https") activity.openInBrowser(url)
+                    return true
+                }
+
                 override fun shouldInterceptRequest(
                     view: WebView?,
                     request: android.webkit.WebResourceRequest?,
@@ -1097,7 +1120,10 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     if (loadedDocumentIsPaged) styler.injectPagedReader()
                     // Fresh DOM lost the --tsundoku-safe-* vars and menuVisible flag; re-apply them.
                     pushReaderChrome()
+                    styler.injectFragmentLinks()
                     restoreScrollPosition()
+                    // Nothing to restore: the position is already final.
+                    if (!isRestoringScroll) resumeTtsIfPending()
                     syncShortChapterProgressIfNeeded()
                     // Paged mode's own edge-swipe chevron replaces this button; it would also
                     // render inert here anyway since paged-reader.js already moved body's content
@@ -1266,7 +1292,24 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
                     blockNetworkImage = blockMedia
                     loadsImagesAutomatically = !blockMedia
                 }
-                webView.reload()
+                // A plain WebView reload never reaches the real-chapter path that installs the reader
+                // scripts, fragment links and saved position.
+                // A second reload before the restore finds TTS already stopped, so the earlier intent is kept.
+                val resumeTts = resumeTtsAfterRestore || (ttsController.isTtsAutoPlay && !ttsController.isPaused())
+                val pausedChapterId = ttsController.ttsPlaybackChapterId.takeIf { ttsController.isPaused() }
+                keepPausedTtsOnReload = pausedChapterId != null &&
+                    pausedChapterId == activity.viewModel.state.value.viewerChapters?.currChapter?.chapter?.id
+                try {
+                    reloadChapter()
+                } finally {
+                    // The reload leaves only this chapter queued
+                    if (keepPausedTtsOnReload) {
+                        ttsController.shiftPlaybackChapterIndex(ttsController.ttsPlaybackChapterIndex - currentChapterIndex)
+                    }
+                    keepPausedTtsOnReload = false
+                }
+                // The reload stops TTS; it picks up again once the saved position is back on screen.
+                resumeTtsAfterRestore = resumeTts
             },
             onTtsSettingsChanged = {
                 if (ttsController.ttsInitialized) ttsController.applySettings()
@@ -1630,7 +1673,7 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
             return
         }
 
-        ttsController.stop()
+        if (!keepPausedTtsOnReload) ttsController.stop()
 
         // Paged mode always does a full chapter switch (never an append), same as infinite
         // scroll being off, so the queue resets here too regardless of the underlying pref.
@@ -2504,9 +2547,23 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
 
     override fun handleGenericMotionEvent(event: MotionEvent): Boolean = false
 
+    private fun isLinkHit(): Boolean = when (webView.hitTestResult.type) {
+        WebView.HitTestResult.SRC_ANCHOR_TYPE, WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> true
+        else -> false
+    }
+
+    // Uptime of the last tap that fragment-links.js turned into an in-chapter jump.
+    @Volatile
+    private var fragmentLinkTappedAt = 0L
+
     @Keep
     @Suppress("unused")
     inner class WebViewInterface {
+        @JavascriptInterface
+        fun onFragmentLinkTapped() {
+            fragmentLinkTappedAt = android.os.SystemClock.uptimeMillis()
+        }
+
         @JavascriptInterface
         fun onContentEdited() {
             activity.runOnUiThread {
@@ -2874,10 +2931,17 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     private fun liftRestoreGuard(token: Int) {
         if (token != scrollRestoreToken) return
         isRestoringScroll = false
+        resumeTtsIfPending()
         evaluateJavascriptSafe(
             "(function(){ if (window.$TSUNDOKU_OBJECT_NAME && window.$TSUNDOKU_OBJECT_NAME.runtime && window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking) window.$TSUNDOKU_OBJECT_NAME.runtime.resetChapterTracking(); })();",
             null,
         )
+    }
+
+    private fun resumeTtsIfPending() {
+        if (!resumeTtsAfterRestore) return
+        resumeTtsAfterRestore = false
+        startTtsFromViewport()
     }
 
     private suspend fun awaitPageText(page: ReaderPage, loader: PageLoader, timeoutMs: Long): Boolean =
@@ -3432,7 +3496,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun reloadChapter() {
-        val chapters = currentChapters ?: return
+        // An infinite-scroll append makes a chapter active in the view model only, so its state names
+        // the chapter being read.
+        val chapters = activity.viewModel.state.value.viewerChapters ?: currentChapters ?: return
         chapterQueue.clear()
         currentChapterIndex = 0
         setChapters(chapters)
@@ -3488,10 +3554,9 @@ class NovelWebViewViewer(val activity: ReaderActivity) : Viewer {
         logcat(LogPriority.DEBUG) {
             "TTS (WebView): stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex, ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex}, ttsResumeChunkIndex=${ttsController.ttsResumeChunkIndex}, ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex}, ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
+        resumeTtsAfterRestore = false
         pendingTtsAutoStartOnLoad = false
-        // Drop a pending real-load signal so a stale onPageFinished after stop can't inject; leave a
-        // committed READY/ERROR document intact.
-        if (docState == DocState.LOADING_REAL) docState = DocState.LOADING
+        // A chapter load in flight still has to finish setting up the reader, so docState stays as is.
         ttsController.stop()
         handoffState = TtsHandoffState.Idle
         dispatchTtsState()
