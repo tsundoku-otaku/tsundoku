@@ -64,6 +64,9 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 ### Fixed
 - Corrupted cached WebView images from cancelled prefetches [@mrissaoussama](https://github.com/mrissaoussama) [#445](https://github.com/tsundoku-otaku/tsundoku/pull/445)
 
+### Added
+- Novel-only search intent so novel extensions open novel global search [@mrissaoussama](https://github.com/mrissaoussama) [#443](https://github.com/tsundoku-otaku/tsundoku/pull/443)
+
 ## [v0.3.4] - 2026-10-16
 ### Added
 - Webview paged reader [@mrissaoussama](https://github.com/mrissaoussama) [#420](https://github.com/tsundoku-otaku/tsundoku/pull/420)

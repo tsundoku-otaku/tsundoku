@@ -105,9 +105,8 @@ abstract class SearchViewModel(
             return enabledSources
         }
 
-        return extensionManager.installedExtensionsFlow.value
-            .filter { it.pkgName == filter }
-            .flatMap { it.sources }
+        return extensionManager.getInstalledExtension(filter)
+            ?.sources.orEmpty()
             .filter { it in enabledSources }
     }
 

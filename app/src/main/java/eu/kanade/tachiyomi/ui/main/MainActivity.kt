@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -83,11 +84,14 @@ import eu.kanade.tachiyomi.util.system.dpToPx
 import eu.kanade.tachiyomi.util.system.isNavigationBarNeedsScrim
 import eu.kanade.tachiyomi.util.system.updaterEnabled
 import eu.kanade.tachiyomi.util.view.setComposeContent
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -561,15 +565,33 @@ class MainActivity : BaseActivity() {
                 }
                 null
             }
-            INTENT_SEARCH -> {
+            INTENT_SEARCH, INTENT_SEARCH_NOVEL -> {
                 val query = intent.getStringExtra(INTENT_SEARCH_QUERY)
                 if (!query.isNullOrEmpty()) {
                     val filter = intent.getStringExtra(INTENT_SEARCH_FILTER)
+                    val novelAction = intent.action == INTENT_SEARCH_NOVEL
                     navigator.popUntilRoot()
-                    if (filter != null && isNovelExtensionPackage(filter)) {
-                        navigator.push(NovelGlobalSearchScreen(query, filter))
+                    if (filter == null) {
+                        pendingSearchJob?.cancel()
+                        pushGlobalSearch(navigator, query, null, novelAction)
                     } else {
-                        navigator.push(GlobalSearchScreen(query, filter))
+                        // On a cold start the extensions are still loading when the intent arrives
+                        pendingSearchJob?.cancel()
+                        pendingSearchJob = lifecycleScope.launch {
+                            // Watched rather than compared at the end, so leaving and coming back while the
+                            // extensions load still counts as moving on.
+                            val movedOn = async {
+                                snapshotFlow { navigator.lastItem to HomeScreen.userTabChanges }.drop(1).first()
+                            }
+                            val sources = extensionManager.awaitInstalledExtension(filter)?.sources.orEmpty()
+                            if (movedOn.isCompleted) return@launch
+                            movedOn.cancel()
+                            // A single-type extension decides; a mixed one leaves it to the action
+                            val isNovel = sources.map { it.isNovelSource() }.distinct().singleOrNull() ?: novelAction
+                            // A package that isn't an installed extension (e.g. a JS plugin id) matches no
+                            // source, so search everything instead of showing an empty screen
+                            pushGlobalSearch(navigator, query, filter.takeIf { sources.isNotEmpty() }, isNovel)
+                        }
                     }
                 }
                 null
@@ -607,11 +629,13 @@ class MainActivity : BaseActivity() {
         return true
     }
 
-    private fun isNovelExtensionPackage(pkgName: String): Boolean {
-        return extensionManager.installedExtensionsFlow.value
-            .firstOrNull { it.pkgName == pkgName }
-            ?.sources
-            ?.any { it.isNovelSource() } == true
+    // A search intent waiting for the extensions to load; a newer intent replaces it.
+    private var pendingSearchJob: Job? = null
+
+    private fun pushGlobalSearch(navigator: Navigator, query: String, filter: String?, isNovel: Boolean) {
+        navigator.push(
+            if (isNovel) NovelGlobalSearchScreen(query, filter) else GlobalSearchScreen(query, filter),
+        )
     }
 
     /**
@@ -708,6 +732,7 @@ class MainActivity : BaseActivity() {
 
     companion object {
         const val INTENT_SEARCH = "eu.kanade.tachiyomi.SEARCH"
+        const val INTENT_SEARCH_NOVEL = "eu.kanade.tachiyomi.novel.SEARCH"
         const val INTENT_SEARCH_QUERY = "query"
         const val INTENT_SEARCH_FILTER = "filter"
     }
