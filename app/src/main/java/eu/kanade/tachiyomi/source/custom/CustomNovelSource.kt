@@ -788,13 +788,14 @@ class CustomNovelSource(
         } else {
             val visited = mutableSetOf<String>()
             var guard = 0
-            var repeatedPages = 0
+            var previousPage: List<String>? = null
             var firstDoc: Document? = if (url == detailsUrl) detailsDoc else null
             while (url != null && visited.add(url)) {
                 val firstPage = ++guard == 1
                 val doc = firstDoc ?: fetchChapterListPage(url, firstPage) ?: break
                 firstDoc = null
-                val fresh = addNew(parseChapterElements(doc, selectors))
+                val parsed = parseChapterElements(doc, selectors)
+                val fresh = addNew(parsed)
 
                 // First page, all already known => no updates; stop and keep the existing list.
                 if (firstPage && knownUrls.isNotEmpty() && all.isNotEmpty() &&
@@ -802,13 +803,11 @@ class CustomNovelSource(
                 ) {
                     return context!!.existingChapters
                 }
-                // Repeats only: a "next" link that changes every time without leading anywhere new. A
-                // page or two of repeats (pinned chapters) can still be followed by new ones.
-                if (!firstPage && fresh.isEmpty()) {
-                    if (++repeatedPages > MAX_REPEATED_CHAPTER_PAGES) break
-                } else {
-                    repeatedPages = 0
-                }
+                // An empty page, or the previous page served again (a "next" link past the end), ends the
+                // list. Other pages of repeats (pinned chapters) can still lead to new ones.
+                val pageUrls = parsed.map { it.url }
+                if (!firstPage && fresh.isEmpty() && (pageUrls.isEmpty() || pageUrls == previousPage)) break
+                previousPage = pageUrls
                 val next = if (selectors.nextPage.isNullOrBlank()) {
                     null
                 } else {
@@ -1420,7 +1419,6 @@ class CustomNovelSource(
 
     companion object {
         private const val MAX_CHAPTER_PAGES = 500
-        private const val MAX_REPEATED_CHAPTER_PAGES = 2
 
         private val NAV_LINK_WORDS = listOf(
             "next", "previous", "prev", "next chapter", "previous chapter",
