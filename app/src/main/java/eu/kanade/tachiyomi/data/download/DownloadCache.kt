@@ -11,24 +11,27 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
@@ -50,6 +53,8 @@ import tachiyomi.core.common.util.lang.launchNonCancellable
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.model.Chapter
 import tachiyomi.domain.manga.model.Manga
+import tachiyomi.domain.source.model.StubSource
+import tachiyomi.domain.source.repository.StubSourceRepository
 import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.domain.storage.service.StorageManager
 import uy.kohesive.injekt.Injekt
@@ -70,9 +75,10 @@ class DownloadCache(
     private val sourceManager: SourceManager = Injekt.get(),
     private val extensionManager: ExtensionManager = Injekt.get(),
     private val storageManager: StorageManager = Injekt.get(),
+    private val stubSourceRepository: StubSourceRepository = Injekt.get(),
 ) {
 
-    private val scope = CoroutineScope(Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _changes: Channel<Unit> = Channel(Channel.UNLIMITED)
     val changes = _changes.receiveAsFlow()
@@ -88,8 +94,13 @@ class DownloadCache(
     /**
      * The last time the cache was refreshed.
      */
+    @Volatile
     private var lastRenew = 0L
     private var renewalJob: Job? = null
+
+    @Volatile
+    private var generation = 0
+    private val initJob: Job
 
     private val _isInitializing = MutableStateFlow(false)
     val isInitializing = _isInitializing
@@ -99,20 +110,38 @@ class DownloadCache(
     private val diskCacheFile: File
         get() = File(context.cacheDir, "dl_index_cache_v3")
 
+    private val scanDispatcher = Dispatchers.IO.limitedParallelism(8)
+
     private val rootDownloadsDirMutex = Mutex()
-    private var rootDownloadsDir = RootDirectory(storageManager.getDownloadsDirectory())
+    private var rootDownloadsDir = RootDirectory(storageManager.getDownloadsDirectory(), scanComplete = false)
 
     init {
         // Attempt to read cache file
-        scope.launch {
+        initJob = scope.launchIO {
+            val startGeneration = generation
             rootDownloadsDirMutex.withLock {
                 try {
-                    if (diskCacheFile.exists()) {
-                        val diskCache = diskCacheFile.inputStream().use {
+                    if (diskCacheFile.exists() && generation == startGeneration) {
+                        val stored = diskCacheFile.inputStream().use {
                             ProtoBuf.decodeFromByteArray<RootDirectory>(it.readBytes())
                         }
-                        rootDownloadsDir = diskCache
-                        lastRenew = System.currentTimeMillis()
+                        // Caches written before checked ids were stored only list scanned sources. The
+                        // converted cache is marked complete, so a partial entry added later and saved
+                        // again isn't taken for a scanned one on the next start.
+                        val diskCache = if (stored.scanComplete == null) {
+                            RootDirectory(stored.dir, stored.sourceDirs, stored.sourceDirs.keys, scanComplete = true)
+                        } else {
+                            stored
+                        }
+                        // Saved before any full scan finished, e.g. right after a download: the entries
+                        // are kept but the next access still scans.
+                        if (diskCache.scanComplete != true) {
+                            synchronized(this@DownloadCache) {
+                                if (generation == startGeneration) rootDownloadsDir = diskCache
+                            }
+                            return@withLock
+                        }
+                        publishIfCurrent(startGeneration) { rootDownloadsDir = diskCache }
                     }
                 } catch (e: Throwable) {
                     logcat(LogPriority.ERROR, e) { "Failed to initialize from disk cache" }
@@ -125,10 +154,18 @@ class DownloadCache(
             .onEach { invalidateCache() }
             .launchIn(scope)
 
-        // Sources can be loaded asynchronously after app startup (notably JS/custom sources).
-        // Rebuild the cache when the source list changes so those entries get indexed too.
-        sourceManager.sources.map { it.filterIsInstance<CatalogueSource>() }
-            .onEach { invalidateCache() }
+        // Late sources (JS, custom) only get their own folders scanned
+        // A stub that gains its name only changes the stub table, not the source list.
+        merge(
+            sourceManager.sources
+                .map { sources -> sources.filterIsInstance<CatalogueSource>().mapTo(HashSet()) { it.id } }
+                .distinctUntilChanged(),
+            stubSourceRepository.subscribeAll()
+                .map { stubs -> stubs.filterNot { it.isInvalid }.mapTo(HashSet()) { it.id } }
+                .distinctUntilChanged(),
+        )
+            .debounce(1.seconds)
+            .onEach { indexNewSourcesSafely() }
             .launchIn(scope)
     }
 
@@ -211,7 +248,8 @@ class DownloadCache(
         renewCache()
         val job = renewalJob
         job?.join()
-        return job?.isCancelled != true
+        if (job?.isCancelled == true) return false
+        return indexNewSourcesSafely(waitForSources = false)
     }
 
     /**
@@ -378,9 +416,11 @@ class DownloadCache(
     }
 
     fun invalidateCache() {
-        lastRenew = 0L
-        val jobToCancel = renewalJob
-        renewalJob = null
+        val jobToCancel = synchronized(this) {
+            generation++
+            lastRenew = 0L
+            renewalJob.also { renewalJob = null }
+        }
         diskCacheFile.delete()
         scope.launchIO {
             jobToCancel?.cancelAndJoin()
@@ -392,68 +432,44 @@ class DownloadCache(
      * Renews the downloads cache.
      */
     private fun renewCache() {
+        if (!synchronized(this) { launchRenewal() }) return
+
+        // Mainly to notify the indexing notifier UI
+        notifyChanges()
+    }
+
+    private fun launchRenewal(): Boolean {
         // Avoid renewing cache if in the process nor too often
         if (lastRenew + renewInterval >= System.currentTimeMillis() || renewalJob?.isActive == true) {
-            return
+            return false
         }
 
+        val launchGeneration = generation
         renewalJob = scope.launchIO {
+            // The disk index is older than this scan and would replace it if read afterwards
+            initJob.join()
+            if (lastRenew + renewInterval >= System.currentTimeMillis()) return@launchIO
+            val startGeneration = generation
+
             if (lastRenew == 0L) {
                 _isInitializing.emit(true)
             }
 
-            // Try to wait until extensions and sources have loaded
-            var sources = emptyList<Source>()
-            withTimeoutOrNull(30.seconds) {
-                extensionManager.isInitialized.first { it }
-                sourceManager.isInitialized.first { it }
-
-                sources = getSources()
-            }
+            val sources = withTimeoutOrNull(30.seconds) { getSources() } ?: currentSources()
 
             val sourceMap = sources.associate { provider.getSourceDirName(it).lowercase() to it.id }
 
             rootDownloadsDirMutex.withLock {
-                val updatedRootDir = RootDirectory(storageManager.getDownloadsDirectory())
+                val updatedRootDir = RootDirectory(storageManager.getDownloadsDirectory(), scanComplete = true)
 
-                updatedRootDir.sourceDirs = updatedRootDir.dir?.listFiles().orEmpty()
-                    .filter { it.isDirectory && !it.name.isNullOrBlank() }
-                    .mapNotNull { dir ->
-                        val sourceId = sourceMap[dir.name!!.lowercase()]
-                        sourceId?.let { it to SourceDirectory(dir) }
-                    }
-                    .toMap()
+                updatedRootDir.sourceDirs = findSourceDirs(updatedRootDir.dir, sourceMap)
 
-                updatedRootDir.sourceDirs.values.map { sourceDir ->
-                    async {
-                        sourceDir.mangaDirs = sourceDir.dir?.listFiles().orEmpty()
-                            .filter { it.isDirectory && !it.name.isNullOrBlank() }
-                            .associate { it.name!! to MangaDirectory(it) }
-
-                        sourceDir.mangaDirs.values.forEach { mangaDir ->
-                            val chapterDirs = mangaDir.dir?.listFiles().orEmpty()
-                                .mapNotNull {
-                                    when {
-                                        // Ignore incomplete downloads
-                                        it.name?.endsWith(Downloader.TMP_DIR_SUFFIX) == true -> null
-                                        // Folder of images
-                                        it.isDirectory -> it.name
-                                        // CBZ files
-                                        it.isFile && (it.extension == "cbz" || it.extension == "zip") ->
-                                            it.nameWithoutExtension
-                                        // Anything else is irrelevant
-                                        else -> null
-                                    }
-                                }
-                                .toMutableSet()
-
-                            mangaDir.chapterDirs = chapterDirs
-                        }
-                    }
-                }
+                updatedRootDir.sourceDirs.values
+                    .map { sourceDir -> async { scanSourceDir(sourceDir) } }
                     .awaitAll()
 
-                rootDownloadsDir = updatedRootDir
+                updatedRootDir.checkedSourceIds = checkedIds(sources)
+                publishIfCurrent(startGeneration) { rootDownloadsDir = updatedRootDir }
             }
 
             _isInitializing.emit(false)
@@ -461,21 +477,145 @@ class DownloadCache(
             it.invokeOnCompletion(onCancelling = true) { exception ->
                 if (exception != null && exception !is CancellationException) {
                     logcat(LogPriority.ERROR, exception) { "DownloadCache: failed to create cache" }
-                }
-                lastRenew = if (exception is CancellationException) {
-                    0L
-                } else {
-                    System.currentTimeMillis()
+                    // A failure throttles retries only while no invalidation asked for a new scan.
+                    synchronized(this@DownloadCache) {
+                        if (generation == launchGeneration) lastRenew = System.currentTimeMillis()
+                    }
                 }
                 notifyChanges()
             }
         }
-
-        // Mainly to notify the indexing notifier UI
-        notifyChanges()
+        return true
     }
 
-    private fun getSources(): List<Source> {
+    // Checked against the generation in the monitor invalidateCache bumps it in, so a scan that an
+    // invalidation outdated can't publish its result or mark the cache fresh.
+    private inline fun publishIfCurrent(startGeneration: Int, publish: () -> Unit) {
+        synchronized(this) {
+            if (generation != startGeneration) return
+            publish()
+            lastRenew = System.currentTimeMillis()
+        }
+    }
+
+    // A stub without a name has no folder name of its own, so its real source still needs a scan.
+    private fun checkedIds(sources: List<Source>): Set<Long> =
+        sources.filterNot { it is StubSource && it.isInvalid }.mapTo(HashSet()) { it.id }
+
+    private suspend fun indexNewSourcesSafely(waitForSources: Boolean = true): Boolean {
+        return try {
+            indexNewSources(waitForSources)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "DownloadCache: failed to index new sources" }
+            false
+        }
+    }
+
+    private suspend fun indexNewSources(waitForSources: Boolean) {
+        initJob.join()
+        renewalJob?.join()
+        // Nothing indexed yet, the full scan will pick every source up
+        if (lastRenew == 0L) return
+
+        val sources = if (waitForSources) {
+            withTimeoutOrNull(30.seconds) { getSources() } ?: currentSources()
+        } else {
+            currentSources()
+        }
+        val (root, newSources, newSourceDirs) = rootDownloadsDirMutex.withLock {
+            val root = rootDownloadsDir
+            // A source can already have an entry that addChapter made for one download; that isn't a scan.
+            val newSources = sources.filter { it.id !in root.checkedSourceIds && !(it is StubSource && it.isInvalid) }
+            if (newSources.isEmpty()) return
+            val sourceMap = newSources.associate { provider.getSourceDirName(it).lowercase() to it.id }
+
+            val otherSourceUris = root.sourceDirs.filterKeys { it !in sourceMap.values }
+                .values.mapNotNullTo(HashSet()) { it.dir?.uri }
+            Triple(
+                root,
+                newSources,
+                findSourceDirs(root.dir, sourceMap).filterValues { it.dir?.uri !in otherSourceUris },
+            )
+        }
+
+        // Scanned without the lock, so downloads finishing meanwhile aren't held up by the disk walk.
+        coroutineScope {
+            newSourceDirs.values
+                .map { sourceDir -> async { scanSourceDir(sourceDir) } }
+                .awaitAll()
+        }
+
+        val found = rootDownloadsDirMutex.withLock {
+            // A rescan replaced the root meanwhile and covers these sources itself.
+            if (root !== rootDownloadsDir) return
+            // Another call may have indexed some of them first.
+            val unchecked = newSources.filter { it.id !in root.checkedSourceIds }
+            val uncheckedIds = unchecked.mapTo(HashSet()) { it.id }
+            val scannedDirs = newSourceDirs.filterKeys { it in uncheckedIds }
+            scannedDirs.forEach { (id, scanned) ->
+                val partial = root.sourceDirs[id]
+                root.sourceDirs += id to if (partial == null) scanned else partial.mergedWith(scanned)
+            }
+            root.checkedSourceIds = root.checkedSourceIds + checkedIds(unchecked)
+            scannedDirs.isNotEmpty()
+        }
+
+        if (found) notifyChanges()
+    }
+
+    private fun findSourceDirs(
+        rootDir: UniFile?,
+        sourceMap: Map<String, Long>,
+    ): Map<Long, SourceDirectory> {
+        return rootDir?.listFiles().orEmpty()
+            .filter { it.isDirectory && !it.name.isNullOrBlank() }
+            .mapNotNull { dir ->
+                val sourceId = sourceMap[dir.name!!.lowercase()]
+                sourceId?.let { it to SourceDirectory(dir) }
+            }
+            .toMap()
+    }
+
+    private suspend fun scanSourceDir(sourceDir: SourceDirectory) = coroutineScope {
+        val mangaDirs = sourceDir.dir?.listFiles().orEmpty()
+            .filter { it.isDirectory && !it.name.isNullOrBlank() }
+            .associate { it.name!! to MangaDirectory(it) }
+
+        mangaDirs.values
+            .map { mangaDir ->
+                async(scanDispatcher) {
+                    mangaDir.chapterDirs = mangaDir.dir?.listFiles().orEmpty()
+                        .mapNotNull {
+                            when {
+                                // Ignore incomplete downloads
+                                it.name?.endsWith(Downloader.TMP_DIR_SUFFIX) == true -> null
+                                // Folder of images
+                                it.isDirectory -> it.name
+                                // CBZ files
+                                it.isFile && (it.extension == "cbz" || it.extension == "zip") ->
+                                    it.nameWithoutExtension
+                                // Anything else is irrelevant
+                                else -> null
+                            }
+                        }
+                        .toMutableSet()
+                }
+            }
+            .awaitAll()
+
+        sourceDir.mangaDirs = mangaDirs
+    }
+
+    private suspend fun getSources(): List<Source> {
+        extensionManager.isInitialized.first { it }
+        sourceManager.isInitialized.first { it }
+        return currentSources()
+    }
+
+    private fun currentSources(): List<Source> {
         val catalogueSources = sourceManager.getAll().filterIsInstance<CatalogueSource>()
         val catalogueSourceIds = catalogueSources.mapTo(mutableSetOf()) { it.id }
         val offlineStubSources = sourceManager.getStubSources().filterNot { it.id in catalogueSourceIds }
@@ -520,6 +660,10 @@ private class RootDirectory(
     @Serializable(with = UniFileAsStringSerializer::class)
     val dir: UniFile?,
     var sourceDirs: Map<Long, SourceDirectory> = mapOf(),
+    // Sources whose folder was looked for, found or not; a source missing here still gets scanned.
+    var checkedSourceIds: Set<Long> = emptySet(),
+    // Null only in caches written before this was stored.
+    val scanComplete: Boolean? = null,
 )
 
 /**
@@ -530,7 +674,17 @@ private class SourceDirectory(
     @Serializable(with = UniFileAsStringSerializer::class)
     val dir: UniFile?,
     var mangaDirs: Map<String, MangaDirectory> = mapOf(),
-)
+) {
+    // Chapters added before the scan stay alongside the ones the scan found.
+    fun mergedWith(scanned: SourceDirectory): SourceDirectory {
+        val merged = scanned.mangaDirs.toMutableMap()
+        mangaDirs.forEach { (name, partial) ->
+            val found = merged[name]
+            if (found == null) merged[name] = partial else found.chapterDirs.addAll(partial.chapterDirs)
+        }
+        return SourceDirectory(scanned.dir ?: dir, merged)
+    }
+}
 
 /**
  * Class to store the files under a manga directory.
