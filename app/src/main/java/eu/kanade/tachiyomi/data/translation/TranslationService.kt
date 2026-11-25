@@ -109,6 +109,7 @@ class TranslationService(
     val queueState = _queueState.asStateFlow()
 
     private var translationJob: Job? = null
+    private var lastJob: Job? = null
 
     private val _progressState = MutableStateFlow(
         TranslationProgress(
@@ -240,31 +241,40 @@ class TranslationService(
      * Start processing the translation queue.
      */
     fun start() {
-        if (translationJob?.isActive == true) return
+        val job = synchronized(currentTaskLock) {
+            if (translationJob?.isActive == true) return
 
-        _isPaused.value = false
-        // A cancel request only applies to the run it was made in.
-        _progressState.update { it.copy(isCancelling = false) }
+            _isPaused.value = false
+            // A cancel request only applies to the run it was made in.
+            _progressState.update { it.copy(isCancelling = false) }
 
-        // Started only once assigned, so even a run that finishes at once is the one its cleanup checks for.
-        val job = scope.launch(start = CoroutineStart.LAZY) {
-            try {
-                processQueue()
-            } finally {
-                // A stop() and restart may already have handed the state to a newer run.
-                if (translationJob == null || translationJob === coroutineContext[Job]) {
-                    _progressState.update { current ->
-                        current.copy(
-                            isRunning = false,
-                            isCancelling = false,
-                            currentChapterName = null,
-                            currentChapterProgress = 0f,
-                        )
+            // A stopped run may still be saving its checkpoint, which would replace this run's.
+            val previous = lastJob
+            // Started only once assigned, so even a run that finishes at once is the one its cleanup checks for.
+            scope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    previous?.join()
+                    processQueue()
+                } finally {
+                    // A stop() and restart may already have handed the state to a newer run.
+                    synchronized(currentTaskLock) {
+                        if (translationJob == null || translationJob === coroutineContext[Job]) {
+                            _progressState.update { current ->
+                                current.copy(
+                                    isRunning = false,
+                                    isCancelling = false,
+                                    currentChapterName = null,
+                                    currentChapterProgress = 0f,
+                                )
+                            }
+                        }
                     }
                 }
+            }.also {
+                translationJob = it
+                lastJob = it
             }
         }
-        translationJob = job
         job.start()
     }
 
@@ -381,8 +391,10 @@ class TranslationService(
      * Stop translation processing.
      */
     fun stop() {
-        translationJob?.cancel()
-        translationJob = null
+        synchronized(currentTaskLock) {
+            translationJob?.cancel()
+            translationJob = null
+        }
         _currentTranslatingChapterId.value = null
         _progressState.update {
             it.copy(
@@ -532,7 +544,8 @@ class TranslationService(
         val partial = translatedChapterRepository.getTmpTranslation(locator, task.targetLanguage)
             ?.let { TranslationHtmlUtils.parsePartialHtml(it.translatedContent) }
             ?.takeIf { TranslationCachePolicy.canReuse(it, task.forceRetranslate, task.createdAt) }
-            ?.takeIf { it.sourceParagraphs != null || !TranslationHtmlUtils.hasNestedMedia(content) }
+            // One saved without its source boundary can't be lined up with the chunks, so it starts over.
+            ?.takeIf { it.sourceParagraphs != null }
 
         // Build per-chunk paragraph lists for context tracking
         val chunkParagraphsList = TranslationHtmlUtils.chunkGroups(paragraphs, chunkSize)
@@ -554,14 +567,7 @@ class TranslationService(
 
         // Translate chunks and split responses back into paragraphs
         val allTranslated = mutableListOf<String>()
-        if (partial != null && resumeFromChunk > 0) {
-            if (partial.sourceParagraphs != null) {
-                allTranslated.addAll(partial.paragraphs)
-            } else {
-                val skippedParagraphs = chunkParagraphsList.take(resumeFromChunk).sumOf { it.size }
-                allTranslated.addAll(partial.paragraphs.take(skippedParagraphs))
-            }
-        }
+        if (partial != null && resumeFromChunk > 0) allTranslated.addAll(partial.paragraphs)
 
         suspend fun saveProgress(chunksDone: Int) {
             val covered = chunkParagraphsList.take(chunksDone).sumOf { it.size }
@@ -591,12 +597,8 @@ class TranslationService(
         for ((chunkIndex, chunk) in chunks.withIndex()) {
             // Skip already-translated chunks
             if (chunkIndex < resumeFromChunk) {
+                // No anchoring context: the checkpoint doesn't say which output paragraphs the last chunk gave.
                 logcat(LogPriority.DEBUG) { "Skipping chunk ${chunkIndex + 1}/${chunks.size} (already translated)" }
-                // Only the last skipped chunk feeds the anchoring context, and it ends the resumed text.
-                if (useAnchoring) {
-                    previousRawParagraphs = chunkParagraphsList[chunkIndex]
-                    previousTranslatedParagraphs = allTranslated.takeLast(chunkParagraphsList[chunkIndex].size)
-                }
                 _progressState.update { current ->
                     current.copy(
                         currentChapterProgress = chunkProgress(chunkIndex, chunks.size),
@@ -649,9 +651,9 @@ class TranslationService(
                             } else {
                                 translated
                             }
-                            // An empty reply counts as a failed attempt; recorded as done, a resume would skip
-                            // the chunk and the finished translation would miss its text.
-                            if (cleanedTranslation.isBlank()) {
+                            // An empty or media-only reply counts as a failed attempt; recorded as done, a
+                            // resume would skip the chunk and the finished translation would miss its text.
+                            if (cleanedTranslation.replace(MEDIA_PLACEHOLDER_REGEX, "").isBlank()) {
                                 logcat(LogPriority.ERROR) {
                                     "Empty translation for chunk ${chunkIndex + 1}/${chunks.size} (attempt $attempt)"
                                 }
@@ -750,8 +752,12 @@ class TranslationService(
             translatedHtml = TranslationHtmlUtils.reinsertImages(translatedHtml, preservedImages)
         }
 
-        // Save the complete translation
-        saveTranslation(locator, task, engine.id.toString(), translatedHtml)
+        try {
+            saveTranslation(locator, task, engine.id.toString(), translatedHtml)
+        } catch (e: Exception) {
+            saveProgress(chunks.size)
+            throw e
+        }
     }
 
     private fun chunkProgress(chunkIndex: Int, chunkCount: Int): Float =
@@ -1030,6 +1036,14 @@ class TranslationService(
             return content
         }
 
+        // Extract and preserve image tags before translation
+        val (contentWithoutImages, preservedImages) = TranslationHtmlUtils.extractImages(content)
+
+        // Extract plain text from HTML for translation
+        val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
+        // Image-only chapters have nothing for the engine, and a queued translation of one only adds a title.
+        if (plainText.replace(MEDIA_PLACEHOLDER_REGEX, "").isBlank()) return content
+
         if (locator != null) {
             val existingTranslation = translatedChapterRepository.getTranslatedChapter(locator, tgtLang)
             if (TranslationCachePolicy.shouldServeCached(existingTranslation)) {
@@ -1037,14 +1051,6 @@ class TranslationService(
                 return existingTranslation!!.translatedContent
             }
         }
-
-        // Extract and preserve image tags before translation
-        val (contentWithoutImages, preservedImages) = TranslationHtmlUtils.extractImages(content)
-
-        // Extract plain text from HTML for translation
-        val plainText = TranslationHtmlUtils.extractTextFromHtml(contentWithoutImages)
-        // Image-only chapters have nothing for the engine.
-        if (plainText.replace(MEDIA_PLACEHOLDER_REGEX, "").isBlank()) return content
 
         logcat(LogPriority.DEBUG) {
             "translateChapterContent: chapter=${locator?.chapterName} srcLang=$srcLang tgtLang=$tgtLang " +

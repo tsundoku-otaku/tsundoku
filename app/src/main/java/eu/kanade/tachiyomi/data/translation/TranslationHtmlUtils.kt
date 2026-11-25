@@ -34,13 +34,6 @@ object TranslationHtmlUtils {
      *
      * @return the modified HTML **and** a map of placeholder → original outer-HTML.
      */
-    /**
-     * Whether [html] has media inside other media. Partials saved before [extractImages] kept such
-     * media whole numbered their placeholders differently.
-     */
-    fun hasNestedMedia(html: String): Boolean =
-        Jsoup.parse(html).select(MEDIA_SELECTOR).any { element -> element.parents().any { it.`is`(MEDIA_SELECTOR) } }
-
     fun extractImages(html: String): Pair<String, Map<String, String>> {
         val doc = Jsoup.parse(html)
         doc.outputSettings().prettyPrint(false)
