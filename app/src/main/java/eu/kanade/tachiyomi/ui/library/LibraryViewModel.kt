@@ -507,6 +507,30 @@ class LibraryViewModel(
             mangaRepository.markFavoritesAsNovel(novelSources)
         }
 
+        // Paged mode keeps its own copy of selected entries, so one removed from the library elsewhere
+        // would stay selected and bulk actions would still reach it.
+        viewModelScope.launchIO {
+            controller.invalidations.collect {
+                val selected = state.value.pagedSelection.keys.toList()
+                if (selected.isEmpty()) return@collect
+                val removed = try {
+                    val favorites = mangaRepository.getMangasByIds(selected)
+                        .filter { it.favorite }
+                        .mapTo(HashSet()) { it.id }
+                    selected.filterNot { it in favorites }.toSet()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e) { "Paged library: selection check failed" }
+                    return@collect
+                }
+                if (removed.isEmpty()) return@collect
+                mutableState.update {
+                    it.copy(selection = it.selection - removed, pagedSelection = it.pagedSelection - removed)
+                }
+            }
+        }
+
         viewModelScope.launchIO {
             combine(
                 categoriesForType(),
