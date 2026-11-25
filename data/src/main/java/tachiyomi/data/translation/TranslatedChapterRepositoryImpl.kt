@@ -52,6 +52,8 @@ class TranslatedChapterRepositoryImpl(
     }
 
     private companion object {
+        // Ends every checkpoint, so a scratch cut short by a crash is never read back.
+        const val CHECKPOINT_END = "<!--tsundoku-checkpoint-end-->"
         // Hex chars of the url MD5 appended to disambiguate chapters whose sanitized
         // names collide. 8 chars (~4.3B values) keeps per-novel collisions negligible.
         const val HASH_LENGTH = 8
@@ -403,7 +405,7 @@ class TranslatedChapterRepositoryImpl(
                     ?: throw IllegalStateException("Failed to create translation dir for ${locator.novelTitle}")
                 val name = tmpFileName(locator)
                 val meta = buildMetaComment(translatedChapter.engineId, translatedChapter.dateTranslated)
-                val content = (meta + translatedChapter.translatedContent).toByteArray()
+                val content = (meta + translatedChapter.translatedContent + CHECKPOINT_END).toByteArray()
 
                 // Swapped in only once fully written, so a failed write can't leave a resumable prefix.
                 val savingName = "$name.saving"
@@ -412,12 +414,13 @@ class TranslatedChapterRepositoryImpl(
                     ?: throw IllegalStateException("Failed to create tmp translation file: $name")
                 try {
                     scratch.openOutputStream().use { it.write(content) }
-                    dir.findFile(name)?.delete()
-                    check(scratch.renameTo(name)) { "Failed to finalize tmp translation file: $name" }
                 } catch (e: Exception) {
                     scratch.delete()
                     throw e
                 }
+                dir.findFile(name)?.delete()
+                // A complete scratch left by a failed rename is read back as the checkpoint.
+                check(scratch.renameTo(name)) { "Failed to finalize tmp translation file: $name" }
             }
         }
 
@@ -425,9 +428,12 @@ class TranslatedChapterRepositoryImpl(
         locator: TranslationLocator,
         targetLanguage: String,
     ): TranslatedChapter? = withContext(Dispatchers.IO) {
-        val file = findLangDir(locator, targetLanguage)?.findFile(tmpFileName(locator)) ?: return@withContext null
-        val meta = parseUniFile(file) ?: return@withContext null
-        toTranslatedChapter(meta, targetLanguage)
+        val dir = findLangDir(locator, targetLanguage) ?: return@withContext null
+        val name = tmpFileName(locator)
+        val meta = dir.findFile(name)?.let(::parseUniFile)
+            ?: dir.findFile("$name.saving")?.let(::parseUniFile)?.takeIf { it.content.endsWith(CHECKPOINT_END) }
+            ?: return@withContext null
+        toTranslatedChapter(meta.copy(content = meta.content.removeSuffix(CHECKPOINT_END)), targetLanguage)
     }
 
     // Delete operations
