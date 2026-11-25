@@ -154,6 +154,8 @@ class ChapterSearchScreen(
                 mutableState.update { it.copy(isSearching = false, pendingSearch = false) }
                 return
             }
+            // Recorded before validation, so fixing a bad range or pattern searches this query.
+            mutableState.update { it.copy(submittedQuery = query) }
 
             val regex = try {
                 ChapterTextSearch.buildRegex(query, current.options)
@@ -197,7 +199,6 @@ class ChapterSearchScreen(
 
             mutableState.update {
                 it.copy(
-                    submittedQuery = query,
                     pendingSearch = false,
                     isSearching = true,
                     searchTotal = chapters.size,

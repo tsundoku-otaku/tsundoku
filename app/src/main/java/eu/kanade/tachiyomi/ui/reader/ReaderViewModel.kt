@@ -955,11 +955,13 @@ class ReaderViewModel @JvmOverloads constructor(
                     return@withLock
                 }
 
-                val jumpEnded = synchronized(jumpLock) { jumpGeneration != reportedGeneration }
-                val held = if (jumpEnded) {
-                    heldWhenReported
-                } else {
-                    holdsJumpProgress(selectedChapter.chapter.id, clampedProgress)
+                // One lock section, so a jump can't end between the check and the hold decision.
+                val held = synchronized(jumpLock) {
+                    if (jumpGeneration != reportedGeneration) {
+                        heldWhenReported
+                    } else {
+                        holdsJumpProgress(selectedChapter.chapter.id, clampedProgress)
+                    }
                 }
                 if (held) return@withLock
 
