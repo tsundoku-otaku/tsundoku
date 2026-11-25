@@ -39,6 +39,8 @@ class LibraryPagedPlan(
     val loadInMemory: (suspend (publishCount: Boolean) -> List<LibraryManga>)?,
     // Reads the whole category through [filter]; set only when [loadInMemory] is not.
     val loadFiltered: (suspend (publishCount: Boolean) -> List<LibraryManga>)? = null,
+    // SQL alone decides which entries match, even when the order is applied in memory (Random).
+    val matchesCountedBySql: Boolean = loadInMemory == null && filter == null,
 ) {
     val inMemory: Boolean get() = loadInMemory != null
 

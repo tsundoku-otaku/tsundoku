@@ -120,10 +120,13 @@ class GetLibraryMangaPaged(
                 val tailLimit = limit - slice.size
                 val tail = keyedPage(tailLimit, end, mode)
                 val next = (end + tail.size).takeIf { tail.size == tailLimit }
-                return@withContext LibraryPagingSource.Chunk(rows + tail, next)
+                return@withContext LibraryPagingSource.Chunk(rows + snapshot.withoutOwnRows(tail), next)
             }
             if (snapshot?.complete == true) return@withContext LibraryPagingSource.Chunk(emptyList(), null)
-            LibraryPagingSource.Chunk.of(keyedPage(limit, offset, mode), limit, offset)
+            val page = keyedPage(limit, offset, mode)
+            // Offsets count the rows read, shown or not.
+            val next = (offset + page.size).takeIf { page.size == limit }
+            LibraryPagingSource.Chunk(snapshot?.withoutOwnRows(page) ?: page, next)
         }
 
         private suspend fun keyedPage(limit: Int, offset: Int, mode: Mode): List<LibraryManga> {
@@ -175,7 +178,12 @@ class GetLibraryMangaPaged(
 
     private enum class Mode { SMALL, SOURCE, NARROWED, WALK }
 
-    private class Snapshot(val ids: List<Long>, val complete: Boolean)
+    private class Snapshot(val ids: List<Long>, val complete: Boolean) {
+        private val idSet by lazy { ids.toHashSet() }
+
+        // A row whose sort key moved it past the snapshot end since was already shown from the snapshot.
+        fun withoutOwnRows(rows: List<LibraryManga>): List<LibraryManga> = rows.filterNot { it.id in idSet }
+    }
 
     suspend fun awaitAll(
         categoryId: Long,

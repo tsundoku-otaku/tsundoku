@@ -132,7 +132,7 @@ class GetLibraryMangaPagedTest {
 
         // The page crossing the snapshot end is filled from the database instead of ending short.
         boundary.ids shouldContainExactly ((size - 9L)..(size + 10L)).toList()
-        boundary.nextOffset shouldBe size + 10
+        boundary.nextOffset shouldBe size.toInt() + 10
         past.ids shouldContainExactly ((size + 11L)..(size + 30L)).toList()
         // The snapshot's last row is looked up once so the database part seeks from it.
         coVerify(exactly = 1) {
@@ -150,6 +150,25 @@ class GetLibraryMangaPagedTest {
         val prepend = generation.fetch(15, size - 5)
 
         prepend.ids shouldContainExactly ((size - 4L)..(size + 10L)).toList()
+    }
+
+    @Test
+    fun `a row moved past the snapshot end is shown once`() = runTest {
+        val size = GetLibraryMangaPaged.SNAPSHOT_SIZE.toLong()
+        val matches = (1L..size + 30L).toMutableList()
+        val repository = repository(matches)
+        val generation = generation(repository, narrowed)
+        generation.fetch(10, 0)
+
+        // Still in the category, but its new sort key puts it right after the snapshot's last row.
+        matches.remove(size - 1)
+        matches.add(matches.indexOf(size) + 1, size - 1)
+        val boundary = generation.fetch(20, size.toInt() - 10)
+        val past = generation.fetch(20, size.toInt() + 10)
+
+        boundary.ids shouldContainExactly ((size - 9L)..size).toList() + ((size + 1L)..(size + 9L)).toList()
+        boundary.nextOffset shouldBe size.toInt() + 10
+        past.ids shouldContainExactly ((size + 10L)..(size + 29L)).toList()
     }
 
     @Test

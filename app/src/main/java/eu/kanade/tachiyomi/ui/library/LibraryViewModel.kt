@@ -507,35 +507,19 @@ class LibraryViewModel(
             mangaRepository.markFavoritesAsNovel(novelSources)
         }
 
-        // Paged mode keeps its own copy of selected entries, so one removed from the library elsewhere
-        // would stay selected and bulk actions would still reach it.
         viewModelScope.launchIO {
-            controller.invalidations.collect {
-                val selected = state.value.pagedSelection.keys.toList()
-                if (selected.isEmpty()) return@collect
-                val removed = try {
-                    val favorites = mangaRepository.getMangasByIds(selected)
-                        .filter { it.favorite }
-                        .mapTo(HashSet()) { it.id }
-                    selected.filterNot { it in favorites }.toSet()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logcat(LogPriority.ERROR, e) { "Paged library: selection check failed" }
-                    return@collect
-                }
-                if (removed.isEmpty()) return@collect
-                mutableState.update {
-                    it.copy(selection = it.selection - removed, pagedSelection = it.pagedSelection - removed)
-                }
-            }
+            controller.invalidations.collect { dropRemovedFromSelection() }
         }
 
         viewModelScope.launchIO {
             combine(
                 categoriesForType(),
                 getLibraryItemPreferencesFlow(),
-                searchConfigFlow().map { it to it.spec?.let { spec -> searchSourceIds(spec) }.orEmpty() },
+                searchConfigFlow().flatMapLatest { search ->
+                    val spec = search.spec ?: return@flatMapLatest flowOf(search to emptySet())
+                    // The first favorite from a matching source changes the total.
+                    totalFlow.map { search to searchSourceIds(spec) }.retryPagedQuery("source search")
+                }.distinctUntilChanged(),
                 combine(getTracksPerManga.subscribe(), getTrackingFiltersFlow(), ::Pair),
                 metaFlow,
             ) { categories, prefs, searchAndSources, tracksAndFilters, meta ->
@@ -597,13 +581,17 @@ class LibraryViewModel(
                     val exact = plans?.values
                         ?.filter { it.hasExactCount }
                         ?.sortedBy { it.categoryId == 0L }
-                        ?.takeIf { it.isNotEmpty() }
-                        ?: return@collectLatest
+                        .orEmpty()
+                    val wholeSpec = plans?.values
+                        ?.takeIf { it.all { plan -> plan.matchesCountedBySql } }
+                        ?.firstOrNull()
+                        ?.spec
+                    if (plans == null || (exact.isEmpty() && wholeSpec == null)) return@collectLatest
                     merge(flowOf(Unit), controller.slowInvalidations(COUNT_INVALIDATION_WINDOW))
                         .conflate()
                         .collect {
                             try {
-                                publishExactCounts(plans, exact)
+                                publishExactCounts(plans, exact, wholeSpec)
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
@@ -629,7 +617,11 @@ class LibraryViewModel(
         }
     }
 
-    private suspend fun publishExactCounts(plans: Map<Long, LibraryPagedPlan>, exact: List<LibraryPagedPlan>) {
+    private suspend fun publishExactCounts(
+        plans: Map<Long, LibraryPagedPlan>,
+        exact: List<LibraryPagedPlan>,
+        wholeSpec: LibraryPageSpec?,
+    ) {
         // A count that lands after its plan changed is dropped, not shown for the new plan.
         for (plan in exact) {
             val count = getLibraryMangaPaged.awaitCount(plan.categoryId, plan.isNovel, plan.spec)
@@ -638,12 +630,8 @@ class LibraryViewModel(
                 it.copy(pagedCounts = it.pagedCounts + (plan.categoryId to count))
             }
         }
-        if (plans.values.all { it.hasExactCount }) {
-            val whole = getLibraryMangaPaged.awaitCount(
-                LibraryPageSpec.ALL_CATEGORIES,
-                pagedTypeIsNovel(),
-                exact.first().spec,
-            )
+        if (wholeSpec != null) {
+            val whole = getLibraryMangaPaged.awaitCount(LibraryPageSpec.ALL_CATEGORIES, pagedTypeIsNovel(), wholeSpec)
             mutableState.update {
                 if (it.pagedPlans != plans) return@update it
                 it.copy(pagedWholeCount = whole)
@@ -762,6 +750,7 @@ class LibraryViewModel(
             reloadOnTracks = inMemory || needsItemFilter,
             loadInMemory = loadInMemory,
             loadFiltered = loadFiltered,
+            matchesCountedBySql = !searchInMemory && !needsItemFilter,
         )
     }
 
@@ -1925,6 +1914,30 @@ class LibraryViewModel(
                     pagedSelection = state.pagedSelection.withPaged(newSelection, if (to < 0) all + manga else all),
                 )
             }
+            dropRemovedFromSelection()
+        }
+    }
+
+    // Paged mode keeps its own copy of selected entries, so one removed from the library elsewhere would
+    // stay selected and bulk actions would still reach it. Plan-wide selections run it again once published,
+    // since an entry removed while their read was pending can land after the invalidation's check.
+    private suspend fun dropRemovedFromSelection() {
+        val selected = state.value.pagedSelection.keys.toList()
+        if (selected.isEmpty()) return
+        val removed = try {
+            val favorites = mangaRepository.getMangasByIds(selected)
+                .filter { it.favorite }
+                .mapTo(HashSet()) { it.id }
+            selected.filterNot { it in favorites }.toSet()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Paged library: selection check failed" }
+            return
+        }
+        if (removed.isEmpty()) return
+        mutableState.update {
+            it.copy(selection = it.selection - removed, pagedSelection = it.pagedSelection - removed)
         }
     }
 
@@ -1953,6 +1966,7 @@ class LibraryViewModel(
                     pagedSelection = state.pagedSelection.withPaged(newSelection, all),
                 )
             }
+            dropRemovedFromSelection()
         }
     }
 
