@@ -156,7 +156,7 @@ class ChapterSearchScreen(
             val generation = searchGeneration.incrementAndGet()
             val current = state.value
             if (query.isEmpty()) {
-                mutableState.update { it.copy(isSearching = false, pendingSearch = false) }
+                mutableState.update { it.copy(submittedQuery = null, isSearching = false, pendingSearch = false) }
                 return
             }
             // Recorded before validation, so fixing a bad range or pattern searches this query.
