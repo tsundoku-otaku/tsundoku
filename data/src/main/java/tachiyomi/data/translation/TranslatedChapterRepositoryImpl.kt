@@ -405,10 +405,19 @@ class TranslatedChapterRepositoryImpl(
                 val meta = buildMetaComment(translatedChapter.engineId, translatedChapter.dateTranslated)
                 val content = (meta + translatedChapter.translatedContent).toByteArray()
 
-                dir.findFile(name)?.delete()
-                val file = dir.createFile(name)
+                // Swapped in only once fully written, so a failed write can't leave a resumable prefix.
+                val savingName = "$name.saving"
+                dir.findFile(savingName)?.delete()
+                val scratch = dir.createFile(savingName)
                     ?: throw IllegalStateException("Failed to create tmp translation file: $name")
-                file.openOutputStream().use { it.write(content) }
+                try {
+                    scratch.openOutputStream().use { it.write(content) }
+                    dir.findFile(name)?.delete()
+                    check(scratch.renameTo(name)) { "Failed to finalize tmp translation file: $name" }
+                } catch (e: Exception) {
+                    scratch.delete()
+                    throw e
+                }
             }
         }
 
