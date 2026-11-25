@@ -22,6 +22,7 @@ object MassImportStore {
     private const val URLS_PREFIX = "mi_"
     private const val URLS_SUFFIX = ".txt"
     private const val META_SUFFIX = ".json"
+    private const val NEW_SUFFIX = ".new"
     private const val LOG_SUFFIX = ".csv"
     private const val ERRORS_INFIX = "_errors"
     private const val SKIPPED_INFIX = "_skipped"
@@ -52,6 +53,10 @@ object MassImportStore {
         val preferredSourceId: Long? = null,
         val excludedHosts: List<String> = emptyList(),
         val interrupted: Boolean = false,
+        // Batches staged before this flag stored raw lines that resume has to tokenize again.
+        val tokenized: Boolean = false,
+        // Set once an old batch's progress was converted to URL tokens, before its list is rewritten.
+        val progressInTokens: Boolean = false,
     )
 
     private fun dir(): UniFile? = runCatching {
@@ -59,6 +64,11 @@ object MassImportStore {
     }.getOrNull()
 
     private fun urlsName(batchId: String) = "$URLS_PREFIX$batchId$URLS_SUFFIX"
+    private fun urlsBackupName(batchId: String) = "${urlsName(batchId)}.bak"
+
+    // A crash while a rewrite swaps the list in leaves only the moved-aside copy.
+    private fun urlsFile(dir: UniFile, batchId: String): UniFile? =
+        dir.findFile(urlsName(batchId)) ?: dir.findFile(urlsBackupName(batchId))
     private fun metaName(batchId: String) = "$URLS_PREFIX$batchId$META_SUFFIX"
     private fun errorsName(batchId: String) = "$URLS_PREFIX$batchId$ERRORS_INFIX$LOG_SUFFIX"
 
@@ -71,11 +81,19 @@ object MassImportStore {
     // Older builds wrote skipped urls to a `.csv`; still read/cleaned for old batches.
     private fun legacySkippedName(batchId: String) = "$URLS_PREFIX$batchId$SKIPPED_INFIX$LOG_SUFFIX"
 
+    // Written beside the old file and swapped in, so the old one stays readable until the new one is
+    // complete; readers fall back to the new file if a crash lands between the delete and the rename.
     private fun overwrite(dir: UniFile, name: String, content: String) {
-        dir.findFile(name)?.delete()
-        val file = dir.createFile(name) ?: return
+        val newName = "$name$NEW_SUFFIX"
+        dir.findFile(newName)?.delete()
+        val file = dir.createFile(newName) ?: error("could not create $newName")
         file.openOutputStream().bufferedWriter().use { it.write(content) }
+        dir.findFile(name)?.delete()
+        check(file.renameTo(name)) { "could not rename $newName" }
     }
+
+    private fun metaFile(dir: UniFile, batchId: String): UniFile? =
+        dir.findFile(metaName(batchId)) ?: dir.findFile(metaName(batchId) + NEW_SUFFIX)
 
     /** Write the URL list once, when the batch is created. */
     fun saveUrls(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String, urls: List<String>) {
@@ -126,10 +144,13 @@ object MassImportStore {
         }
         var count = 0
         val name = urlsName(batchId)
+        // Written aside and swapped in, so a failed rewrite keeps the existing list.
+        val tmpName = "$name.tmp"
+        val backupName = urlsBackupName(batchId)
         synchronized(ioLock) {
             runCatching {
-                dir.findFile(name)?.delete()
-                val file = dir.createFile(name) ?: return@runCatching
+                dir.findFile(tmpName)?.delete()
+                val file = dir.createFile(tmpName) ?: error("could not create $tmpName")
                 file.openOutputStream().bufferedWriter().use { writer ->
                     for (url in urls) {
                         if (count > 0) writer.write("\n")
@@ -137,29 +158,42 @@ object MassImportStore {
                         count++
                     }
                 }
+                // The old list is moved aside, not deleted, until the new one is in place.
+                val previous = dir.findFile(name)
+                if (previous != null) {
+                    dir.findFile(backupName)?.delete()
+                    check(previous.renameTo(backupName)) { "could not move $name aside" }
+                }
+                if (!file.renameTo(name)) {
+                    if (previous != null) previous.renameTo(name)
+                    error("could not rename $tmpName")
+                }
+                dir.findFile(backupName)?.delete()
                 logcat(LogPriority.DEBUG) { "MassImportStore: streamed $count urls -> $name" }
             }.onFailure {
                 logcat(LogPriority.WARN, it) { "MassImportStore: failed to stream urls for $batchId" }
-                runCatching { dir.findFile(name)?.delete() }
+                runCatching { dir.findFile(tmpName)?.delete() }
                 count = -1
             }
         }
         return count
     }
 
-    fun saveMeta(@Suppress("UNUSED_PARAMETER") context: Context, meta: PersistedMeta) {
-        if (meta.id.isEmpty()) return
-        val dir = dir() ?: return
-        synchronized(ioLock) {
+    /** False when the meta couldn't be written. */
+    fun saveMeta(@Suppress("UNUSED_PARAMETER") context: Context, meta: PersistedMeta): Boolean {
+        if (meta.id.isEmpty()) return false
+        val dir = dir() ?: return false
+        return synchronized(ioLock) {
             runCatching { overwrite(dir, metaName(meta.id), json.encodeToString(PersistedMeta.serializer(), meta)) }
                 .onFailure { logcat(LogPriority.WARN, it) { "MassImportStore: failed to save meta for ${meta.id}" } }
+                .isSuccess
         }
     }
 
     fun loadUrls(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String): List<String> {
         val dir = dir() ?: return emptyList()
         return runCatching {
-            dir.findFile(urlsName(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
+            urlsFile(dir, batchId)?.openInputStream()?.bufferedReader()?.use { reader ->
                 reader.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
             } ?: emptyList()
         }.getOrDefault(emptyList())
@@ -170,7 +204,7 @@ object MassImportStore {
         if (batchId.isEmpty()) return emptyList()
         val dir = dir() ?: return emptyList()
         return runCatching {
-            dir.findFile(urlsName(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
+            urlsFile(dir, batchId)?.openInputStream()?.bufferedReader()?.use { reader ->
                 reader.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.take(limit).toList()
             } ?: emptyList()
         }.getOrDefault(emptyList())
@@ -179,8 +213,14 @@ object MassImportStore {
     fun loadAll(@Suppress("UNUSED_PARAMETER") context: Context): List<PersistedMeta> {
         val dir = dir() ?: return emptyList()
         return runCatching {
-            dir.listFiles().orEmpty()
-                .filter { it.name?.startsWith(URLS_PREFIX) == true && it.name?.endsWith(META_SUFFIX) == true }
+            val files = dir.listFiles().orEmpty().filter { it.name?.startsWith(URLS_PREFIX) == true }
+            val names = files.mapNotNull { it.name }.toSet()
+            files
+                .filter { file ->
+                    val name = file.name.orEmpty()
+                    name.endsWith(META_SUFFIX) ||
+                        (name.endsWith(META_SUFFIX + NEW_SUFFIX) && name.removeSuffix(NEW_SUFFIX) !in names)
+                }
                 .mapNotNull { file ->
                     runCatching {
                         file.openInputStream().bufferedReader().use { reader ->
@@ -195,7 +235,7 @@ object MassImportStore {
         if (batchId.isEmpty()) return null
         val dir = dir() ?: return null
         return runCatching {
-            dir.findFile(metaName(batchId))?.openInputStream()?.bufferedReader()?.use { reader ->
+            metaFile(dir, batchId)?.openInputStream()?.bufferedReader()?.use { reader ->
                 json.decodeFromString(PersistedMeta.serializer(), reader.readText())
             }
         }.getOrNull()
@@ -209,7 +249,7 @@ object MassImportStore {
         if (batchId.isEmpty()) return null
         val dir = dir() ?: return null
         return runCatching {
-            dir.findFile(urlsName(batchId))?.openInputStream()?.bufferedReader()
+            urlsFile(dir, batchId)?.openInputStream()?.bufferedReader()
         }.getOrNull()
     }
 
@@ -260,7 +300,7 @@ object MassImportStore {
     fun loadErrors(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) =
         loadLog(batchId, ::errorsName, ::legacyErrorsName)
     fun loadSkipped(@Suppress("UNUSED_PARAMETER") context: Context, batchId: String) =
-        loadLog(batchId, ::skippedName, ::legacySkippedName)
+        loadLog(batchId, ::skippedName, ::legacySkippedName, plainUrls = true)
 
     private fun clearLog(batchId: String, vararg names: (String) -> String) {
         if (batchId.isEmpty()) return
@@ -348,16 +388,20 @@ object MassImportStore {
         batchId: String,
         nameFor: (String) -> String,
         legacyNameFor: (String) -> String,
+        plainUrls: Boolean = false,
     ): List<Pair<String, String>> {
         if (batchId.isEmpty()) return emptyList()
         val dir = dir() ?: return emptyList()
         return runCatching {
-            val file = dir.findFile(nameFor(batchId)) ?: dir.findFile(legacyNameFor(batchId))
+            val current = dir.findFile(nameFor(batchId))
+            val file = current ?: dir.findFile(legacyNameFor(batchId))
+            // The current skipped list is one whole URL per line; URLs can hold commas.
+            val wholeLine = plainUrls && current != null
             file?.openInputStream()?.bufferedReader()?.use { reader ->
                 val seen = LinkedHashMap<String, String>()
                 reader.lineSequence().forEach { line ->
                     if (line.isBlank()) return@forEach
-                    val (url, msg) = parseLogLine(line)
+                    val (url, msg) = if (wholeLine) line.trim() to "" else parseLogLine(line)
                     if (url.isEmpty()) return@forEach
                     seen.putIfAbsent(url, msg)
                 }
@@ -396,7 +440,9 @@ object MassImportStore {
         synchronized(ioLock) {
             runCatching {
                 dir.findFile(urlsName(batchId))?.delete()
+                dir.findFile(urlsBackupName(batchId))?.delete()
                 dir.findFile(metaName(batchId))?.delete()
+                dir.findFile(metaName(batchId) + NEW_SUFFIX)?.delete()
                 dir.findFile(errorsName(batchId))?.delete()
                 dir.findFile(skippedName(batchId))?.delete()
                 dir.findFile(legacyErrorsName(batchId))?.delete()

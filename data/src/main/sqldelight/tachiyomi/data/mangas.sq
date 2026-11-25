@@ -249,9 +249,9 @@ SELECT source, url
 FROM mangas
 WHERE favorite = 1;
 
--- Ultra-lightweight query for URL matching in SettingsAdvancedScreen (only _id + url)
-getFavoriteIdAndUrl:
-SELECT _id, url
+-- Lightweight query for URL matching in SettingsAdvancedScreen (only _id + url + source)
+getFavoriteIdUrlAndSource:
+SELECT _id, url, source
 FROM mangas
 WHERE favorite = 1;
 

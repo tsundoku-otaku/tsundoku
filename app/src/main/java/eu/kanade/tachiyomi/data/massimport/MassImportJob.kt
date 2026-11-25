@@ -30,6 +30,7 @@ import eu.kanade.tachiyomi.util.system.notificationBuilder
 import eu.kanade.tachiyomi.util.system.notify
 import eu.kanade.tachiyomi.util.system.workManager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -175,6 +176,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             resumeOffset,
             (persistedProgress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0),
         )
+        // Progress below the replay overlap gives an offset of 0, but the batch still carries counts and logs.
+        val isResume = inputData.getBoolean(KEY_IS_RESUME, false) || persistedProgress > 0 || effectiveResumeOffset > 0
 
         if (!trySetForeground()) {
             // Foreground start refused. Two causes: dataSync budget exhausted (6h/day on Android
@@ -213,8 +216,11 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 try {
                     // Streaming count for the progress denominator; materializing would OOM.
                     // Same tokenizer as the flow below so the denominator matches what is walked.
+                    // A url list already holds one token per line; tokenizing it again could split a URL
+                    // that was quoted in the original input.
+                    val preTokenized = urlsFilePath != null
                     val totalCount = file.bufferedReader().useLines { lines ->
-                        lines.sumOf { raw -> MassImport.tokenizeLine(raw).size }
+                        lines.sumOf { raw -> fileTokens(raw, preTokenized).size }
                     }
 
                     // Cold flow re-reads the file on collection; O(1) memory. No dedup: the
@@ -222,7 +228,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     val urlFlow = kotlinx.coroutines.flow.flow {
                         file.bufferedReader().useLines { lines ->
                             for (raw in lines) {
-                                for (t in MassImport.tokenizeLine(raw)) emit(t)
+                                for (t in fileTokens(raw, preTokenized)) emit(t)
                             }
                         }
                     }
@@ -232,6 +238,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         categoryId, addToLibrary, fetchDetails, fetchChapters, batchId,
                         excludedHostsSet, hostSourceCache, missingSourceHosts, preferredSourceId,
                         resumeOffset = effectiveResumeOffset,
+                        isResume = isResume,
                     )
 
                     Result.success()
@@ -275,6 +282,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     missingSourceHosts,
                     preferredSourceId,
                     resumeOffset = effectiveResumeOffset,
+                    isResume = isResume,
                 )
                 Result.success()
             } catch (e: Exception) {
@@ -348,6 +356,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         missingSourceHosts: MutableSet<String> = ConcurrentHashMap.newKeySet(),
         preferredSourceId: Long? = null,
         resumeOffset: Int = 0,
+        isResume: Boolean = resumeOffset > 0,
     ): ImportResult {
         hydrateBatchFromStore(batchId)
         startRunningUnlessPaused(batchId)
@@ -361,9 +370,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             return ImportResult(added = 0, skipped = 0, errored = totalCount)
         }
 
-        // Clear logs only on a fresh start; a resume (resumeOffset > 0) must append to the failures
-        // recorded before the pause, not wipe them. Degenerate aborts above keep prior logs intact.
-        if (batchId.isNotEmpty() && resumeOffset == 0) {
+        // Clear logs only on a fresh start; a resume must append to the failures recorded before the
+        // pause, not wipe them. Degenerate aborts above keep prior logs intact.
+        if (batchId.isNotEmpty() && !isResume) {
             MassImportStore.clearErrors(context, batchId)
             MassImportStore.clearSkipped(context, batchId)
         }
@@ -409,13 +418,14 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
 
         // Resume: seed counters from the persisted batch so progress/tallies continue
         // instead of restarting at 0. The dropped prefix counts as already-completed.
-        val seed = if (resumeOffset > 0) _sharedQueue.value.find { it.id == batchId } else null
+        val seed = if (isResume) _sharedQueue.value.find { it.id == batchId } else null
         // resumeOffset is intentionally below the persisted progress, so the overlap window is
         // reprocessed for coverage (URLs finish out of order). Those reprocessed URLs must NOT be
         // recounted: seed completed at the persisted progress and suppress all tallies for stream
         // indices below it (see shouldCount), so repeated resumes can't inflate counts past total
         // or regress the progress bar.
-        val countBaseline = seed?.progress ?: 0
+        // Clamped because a batch saved by an older tokenizer can have more progress than tokens now.
+        val countBaseline = (seed?.progress ?: 0).coerceIn(0, totalCount)
         val completedCount = AtomicInteger(countBaseline)
         val addedCount = AtomicInteger(seed?.added ?: 0)
         val skippedCount = AtomicInteger(seed?.skipped ?: 0)
@@ -539,7 +549,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 .interleaveByHost(MAX_LOOKAHEAD)
                 .flatMapMerge(concurrency) { (urlIndex, url) ->
                     val shouldCount = urlIndex >= countBaseline
-                    if (url.isBlank() || !(url.startsWith("http://") || url.startsWith("https://"))) {
+                    if (url.isBlank() || !MassImport.isHttpUrl(url)) {
                         return@flatMapMerge flow {
                             if (shouldCount) {
                                 skippedCount.incrementAndGet()
@@ -1280,6 +1290,9 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // System stop (time-limit / process kill), not a user pause: shows up Paused-but-resumable
         // on app start (never auto-resumed).
         val interrupted: Boolean = false,
+        // The stored list holds one URL token per line.
+        val tokenized: Boolean = true,
+        val progressInTokens: Boolean = false,
     )
 
     enum class BatchStatus {
@@ -1306,6 +1319,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // Resume cursor: how many leading URLs to skip because they were already done
         // before the pause.
         const val KEY_RESUME_OFFSET = "resumeOffset"
+        const val KEY_IS_RESUME = "isResume"
 
         // Number of URLs retained in the live queue for display; full list stays on disk.
         private const val URL_PREVIEW_LIMIT = 100
@@ -1365,6 +1379,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             preferredSourceId = preferredSourceId,
             excludedHosts = excludedHosts,
             interrupted = interrupted,
+            tokenized = tokenized,
+            progressInTokens = progressInTokens,
         )
 
         private fun MassImportStore.PersistedMeta.toBatch(urls: List<String>): Batch {
@@ -1389,7 +1405,18 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 preferredSourceId = preferredSourceId,
                 excludedHosts = excludedHosts,
                 interrupted = interrupted,
+                tokenized = tokenized,
+                progressInTokens = progressInTokens,
             )
+        }
+
+        private fun fileTokens(line: String, preTokenized: Boolean): List<String> =
+            if (preTokenized) listOfNotNull(line.trim().takeIf { it.isNotEmpty() }) else MassImport.urlTokens(line)
+
+        // False when the write failed.
+        private suspend fun saveMetaInOrder(context: Context, batch: Batch): Boolean {
+            val meta = batch.toMeta()
+            return metaPersistScope.async { MassImportStore.saveMeta(context, meta) }.await()
         }
 
         private fun persistMeta(context: Context, batchId: String, force: Boolean = true) {
@@ -1410,7 +1437,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
         // Lazy, no dedup: persisted count and the worker's progress total must agree, so both
         // tokenize identically. Never materializes the full list.
         private fun rawTextTokenSequence(rawText: String): Sequence<String> {
-            return rawText.lineSequence().flatMap { MassImport.tokenizeLine(it).asSequence() }
+            return rawText.lineSequence().flatMap { MassImport.urlTokens(it).asSequence() }
         }
 
         fun restoreActiveJobsFromWorkManager(context: Context) {
@@ -1650,6 +1677,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
             fetchChapters: Boolean = false,
             excludedHosts: List<String> = emptyList(),
             preferredSourceId: Long? = null,
+            preTokenized: Boolean = false,
         ) {
             if (!urlsFile.exists()) return
             val batchId = java.util.UUID.randomUUID().toString()
@@ -1697,7 +1725,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                 val count = runCatching {
                     staged.bufferedReader().useLines { lines ->
                         val tokens = lines
-                            .flatMap { MassImport.tokenizeLine(it).asSequence() }
+                            .flatMap { fileTokens(it, preTokenized).asSequence() }
                             .onEach { if (preview.size < URL_PREVIEW_LIMIT) preview.add(it) }
                         MassImportStore.saveUrlsStreaming(appContext, batchId, tokens)
                     }
@@ -1720,7 +1748,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     KEY_FETCH_DETAILS to fetchDetails,
                     KEY_FETCH_CHAPTERS to fetchChapters,
                     KEY_BATCH_ID to batchId,
-                    KEY_RAW_TEXT_FILE to staged.absolutePath,
+                    (if (preTokenized) KEY_URLS_FILE else KEY_RAW_TEXT_FILE) to staged.absolutePath,
                 )
                 if (normalizedExcludedHosts.isNotEmpty()) {
                     payload += KEY_EXCLUDED_HOSTS to normalizedExcludedHosts.joinToString(",")
@@ -1767,6 +1795,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         fetchChapters = fetchChapters,
                         excludedHosts = excludedHosts,
                         preferredSourceId = preferredSourceId,
+                        preTokenized = part !== source,
                     )
                 }
             }
@@ -1829,7 +1858,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     for (raw in lines) {
                         // Tokenize first so multi-URL lines route per-host instead of failing URI
                         // parse and spilling to overflow.
-                        for (line in MassImport.tokenizeLine(raw)) {
+                        for (line in MassImport.urlTokens(raw)) {
                             val host = splitHostKey(line)
                             val writer = if (host == null) overflowWriter() else writerFor(host)
                             writer.write(line)
@@ -1989,33 +2018,84 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                         ?.toBatch(emptyList())
                     ?: return@launch abortResume("no batch state")
                 val cacheFile = File(appContext.cacheDir, "mass_import_$batchId.txt")
-                // Stream store -> cache file; the url list can be huge.
+                // Stream store -> cache file; the url list can be huge. Batches staged by an older
+                // tokenizer stored raw lines and counted non-URL columns in progress, so their lines
+                // are re-tokenized once and progress is mapped onto the URL tokens.
+                var storedLines = 0
+                var tokenCount = 0
+                var mappedProgress = 0
                 val staged = runCatching {
                     MassImportStore.openUrlsReader(appContext, batchId)?.use { reader ->
-                        var any = false
                         cacheFile.bufferedWriter().use { w ->
                             reader.lineSequence().forEach { line ->
                                 val t = line.trim()
                                 if (t.isNotEmpty()) {
-                                    w.write(t)
-                                    w.newLine()
-                                    any = true
+                                    for (url in fileTokens(t, batch.tokenized)) {
+                                        w.write(url)
+                                        w.newLine()
+                                        tokenCount++
+                                    }
+                                    storedLines++
+                                    if (storedLines == batch.progress) mappedProgress = tokenCount
                                 }
                             }
                         }
-                        any
+                        tokenCount > 0
                     } ?: false
                 }.getOrDefault(false)
                 if (!staged) {
                     runCatching { cacheFile.delete() }
                     return@launch abortResume("no persisted urls")
                 }
+                var progress = batch.progress.coerceIn(0, tokenCount)
+                if (!batch.tokenized) {
+                    // The meta is saved, marked as converted, before the list is rewritten, so a resume
+                    // stopped in between doesn't convert the progress again. The total check covers batches
+                    // an earlier build converted without the mark.
+                    val metaInTokens = batch.progressInTokens ||
+                        (tokenCount != storedLines && batch.total == tokenCount)
+                    progress = when {
+                        metaInTokens -> progress
+                        batch.progress >= storedLines -> tokenCount
+                        else -> mappedProgress
+                    }
+                    // Applied to the live batch, so a pause landing meanwhile keeps its status. Old batches
+                    // counted skipped non-URL columns too; the tallies can't exceed the progress.
+                    fun migrated(b: Batch) = b.copy(
+                        progress = progress,
+                        total = tokenCount,
+                        progressInTokens = true,
+                        skipped = b.skipped.coerceAtMost((progress - b.added - b.errored).coerceAtLeast(0)),
+                    )
+                    _sharedQueue.update { list -> list.map { b -> if (b.id == batchId) migrated(b) else b } }
+                    val updated = _sharedQueue.value.find { it.id == batchId } ?: migrated(batch)
+                    // Queued behind any earlier meta save, and finished before the list changes; without the
+                    // converted progress on disk a rewritten list would resume at the wrong place.
+                    if (!saveMetaInOrder(appContext, updated)) {
+                        runCatching { cacheFile.delete() }
+                        return@launch abortResume("could not save converted progress")
+                    }
+                    val saved = runCatching {
+                        cacheFile.bufferedReader().useLines { lines ->
+                            MassImportStore.saveUrlsStreaming(appContext, batchId, lines)
+                        }
+                    }.getOrDefault(-1)
+                    if (saved != tokenCount) {
+                        runCatching { cacheFile.delete() }
+                        return@launch abortResume("could not rewrite persisted urls")
+                    }
+                    _sharedQueue.update { list ->
+                        list.map { b -> if (b.id == batchId) b.copy(tokenized = true) else b }
+                    }
+                    val marked = _sharedQueue.value.find { it.id == batchId } ?: updated.copy(tokenized = true)
+                    saveMetaInOrder(appContext, marked)
+                }
 
                 // Restart a bit before the saved progress, not exactly at it: URLs finish out
                 // of order and the interleave buffer holds some back, so a few just past the
                 // saved count may still be unfinished. Re-doing that overlap is cheap (already
                 // imported ones skip instantly); skipping it could drop a URL.
-                val resumeOffset = (batch.progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
+                val resumeOffset = (progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
                 val payload = mutableListOf<Pair<String, Any?>>(
                     KEY_CATEGORY_ID to batch.categoryId,
                     KEY_ADD_TO_LIBRARY to batch.addToLibrary,
@@ -2024,6 +2104,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     KEY_BATCH_ID to batchId,
                     KEY_URLS_FILE to cacheFile.absolutePath,
                     KEY_RESUME_OFFSET to resumeOffset,
+                    KEY_IS_RESUME to true,
                 )
                 if (batch.excludedHosts.isNotEmpty()) {
                     payload += KEY_EXCLUDED_HOSTS to batch.excludedHosts.joinToString(",")
@@ -2219,6 +2300,7 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                             // re-do the overlap rather than risk dropping an unfinished URL. URLs
                             // already imported skip instantly on the re-run.
                             val offset = (batch.progress - (MAX_LOOKAHEAD + MAX_CONCURRENCY)).coerceAtLeast(0)
+                            val retryCountsTokens = !batch.tokenized && batch.progressInTokens
                             val reader = MassImportStore.openUrlsReader(appContext, batchId)
                             if (reader != null) {
                                 reader.use {
@@ -2226,8 +2308,16 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                                     it.lineSequence().forEach { line ->
                                         val t = line.trim()
                                         if (t.isNotEmpty()) {
-                                            if (idx >= offset || t in errored) emit(t)
-                                            idx++
+                                            if (retryCountsTokens) {
+                                                // Converted progress counts tokens while the list is still raw lines.
+                                                for (token in MassImport.urlTokens(t)) {
+                                                    if (idx >= offset || token in errored) emit(token)
+                                                    idx++
+                                                }
+                                            } else {
+                                                if (idx >= offset || t in errored) emit(t)
+                                                idx++
+                                            }
                                         }
                                     }
                                 }
@@ -2263,6 +2353,8 @@ class MassImportJob(private val context: Context, workerParams: WorkerParameters
                     fetchChapters = batch.fetchChapters,
                     excludedHosts = batch.excludedHosts,
                     preferredSourceId = batch.preferredSourceId,
+                    // An old batch's stored lines are still raw, unless they were split into tokens above.
+                    preTokenized = batch.tokenized || (includeRemaining && batch.progressInTokens),
                 )
                 onQueued?.invoke(wrote)
             }
