@@ -525,7 +525,7 @@ class DownloadCache(
         } else {
             currentSources()
         }
-        val found = rootDownloadsDirMutex.withLock {
+        val (root, newSources, newSourceDirs) = rootDownloadsDirMutex.withLock {
             val root = rootDownloadsDir
             // A source can already have an entry that addChapter made for one download; that isn't a scan.
             val newSources = sources.filter { it.id !in root.checkedSourceIds && !(it is StubSource && it.isInvalid) }
@@ -534,19 +534,33 @@ class DownloadCache(
 
             val otherSourceUris = root.sourceDirs.filterKeys { it !in sourceMap.values }
                 .values.mapNotNullTo(HashSet()) { it.dir?.uri }
-            val newSourceDirs = findSourceDirs(root.dir, sourceMap).filterValues { it.dir?.uri !in otherSourceUris }
-            coroutineScope {
-                newSourceDirs.values
-                    .map { sourceDir -> async { scanSourceDir(sourceDir) } }
-                    .awaitAll()
-            }
+            Triple(
+                root,
+                newSources,
+                findSourceDirs(root.dir, sourceMap).filterValues { it.dir?.uri !in otherSourceUris },
+            )
+        }
 
-            newSourceDirs.forEach { (id, scanned) ->
+        // Scanned without the lock, so downloads finishing meanwhile aren't held up by the disk walk.
+        coroutineScope {
+            newSourceDirs.values
+                .map { sourceDir -> async { scanSourceDir(sourceDir) } }
+                .awaitAll()
+        }
+
+        val found = rootDownloadsDirMutex.withLock {
+            // A rescan replaced the root meanwhile and covers these sources itself.
+            if (root !== rootDownloadsDir) return
+            // Another call may have indexed some of them first.
+            val unchecked = newSources.filter { it.id !in root.checkedSourceIds }
+            val uncheckedIds = unchecked.mapTo(HashSet()) { it.id }
+            val scannedDirs = newSourceDirs.filterKeys { it in uncheckedIds }
+            scannedDirs.forEach { (id, scanned) ->
                 val partial = root.sourceDirs[id]
                 root.sourceDirs += id to if (partial == null) scanned else partial.mergedWith(scanned)
             }
-            root.checkedSourceIds = root.checkedSourceIds + checkedIds(newSources)
-            newSourceDirs.isNotEmpty()
+            root.checkedSourceIds = root.checkedSourceIds + checkedIds(unchecked)
+            scannedDirs.isNotEmpty()
         }
 
         if (found) notifyChanges()
