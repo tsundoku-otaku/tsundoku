@@ -341,8 +341,7 @@ class CustomSourceManager(
         }
 
         // Search
-        // A source based on an extension searches through it even without a captured search URL.
-        val hasSearch = config.searchUrl.isNotBlank() || config.basedOnSourceId != null
+        val hasSearch = source.canSearch()
         if (section == SourceTestSection.SEARCH && !hasSearch) {
             results["search"] = TestStepResult(success = false, message = "No search URL configured")
         } else if ((all && hasSearch) || section == SourceTestSection.SEARCH) {

@@ -566,6 +566,9 @@ class CustomNovelSource(
 
     // The delegate and the base URL it was resolved with, taken together once per call: an extension
     // update can swap the shared resolvedBase while the call is suspended.
+    /** Searches through the extension it is based on while that is installed, else needs a captured search URL. */
+    internal fun canSearch(): Boolean = delegate() != null || config.searchUrl.isNotBlank()
+
     private fun delegate(): Pair<CatalogueSource, String>? {
         val resolved = currentBase() ?: return null
         return resolved.source to (resolved.originalBaseUrl ?: baseUrl.trimEnd('/'))
