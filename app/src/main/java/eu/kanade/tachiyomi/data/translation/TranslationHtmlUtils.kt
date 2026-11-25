@@ -139,6 +139,8 @@ object TranslationHtmlUtils {
         }
     }
 
+    // Ends every partial, so one cut short while being written isn't resumed with paragraphs missing.
+    private const val PARTIAL_END = "<!--tsundoku-partial-end-->"
     private val PARTIAL_MARKER = Regex("""<!--tsundoku-partial:run=(-?\d+);src=(\d+)(?:;hash=([0-9a-f]+))?-->""")
 
     /** A partial (.tmp) translation of the first [sourceParagraphs] source paragraphs, from the run started at [runId]. */
@@ -149,7 +151,7 @@ object TranslationHtmlUtils {
         translatedParagraphs: List<String>,
         sourceHash: String? = null,
     ): String = "<!--tsundoku-partial:run=$runId;src=$sourceParagraphs${sourceHash?.let { ";hash=$it" }.orEmpty()}-->" +
-        buildTranslatedHtml(translatedTitle, translatedParagraphs)
+        buildTranslatedHtml(translatedTitle, translatedParagraphs) + PARTIAL_END
 
     /** Hash of [paragraphs], so a resume can tell the chapter text it was made from changed since. */
     fun paragraphsHash(paragraphs: List<String>): String =
@@ -160,7 +162,7 @@ object TranslationHtmlUtils {
 
     /** Reads back [buildPartialHtml]; older partials have no run id or source paragraph count. */
     fun parsePartialHtml(html: String): PartialTranslation {
-        val marker = PARTIAL_MARKER.find(html)
+        val marker = PARTIAL_MARKER.find(html)?.takeIf { html.trimEnd().endsWith(PARTIAL_END) }
         val doc = Jsoup.parse(html)
         val titleElement = doc.selectFirst("h1")
         val title = titleElement?.text()?.takeIf { it.isNotBlank() }

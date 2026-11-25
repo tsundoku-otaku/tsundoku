@@ -45,4 +45,13 @@ class TranslationHtmlUtilsTest {
         assertEquals(hash, parsed.sourceHash)
         assertEquals(false, hash == TranslationHtmlUtils.paragraphsHash(listOf("a", "c")))
     }
+
+    @Test
+    fun `a partial cut short while written has no source boundary`() {
+        val html = TranslationHtmlUtils.buildPartialHtml(1L, 2, null, listOf("x", "y"))
+        val truncated = html.substring(0, html.indexOf("y"))
+
+        assertEquals(2, TranslationHtmlUtils.parsePartialHtml(html).sourceParagraphs)
+        assertEquals(null, TranslationHtmlUtils.parsePartialHtml(truncated).sourceParagraphs)
+    }
 }
