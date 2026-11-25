@@ -2004,6 +2004,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             contentContainer.removeView(toRemove.headerView)
             contentContainer.removeView(toRemove.block.container)
             chapterQueue.removeFirst()
+            if (pendingTtsStart?.chapterId == toRemove.chapter.chapter.id) abortPendingTtsOnLoadFailure()
 
             if (loadedChapters.isNotEmpty()) {
                 loadedChapters.first().separatorView?.let { sep ->
