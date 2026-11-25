@@ -13,6 +13,7 @@ import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -295,6 +296,15 @@ class ReaderActivity : BaseActivity() {
 
         config = ReaderConfig()
         setMenuVisibility(viewModel.state.value.menuVisible)
+
+        combine(
+            readerPreferences.novelTheme.changes(),
+            readerPreferences.novelBackgroundColor.changes(),
+            readerPreferences.novelFontColor.changes(),
+        ) { _, _, _ -> }
+            .drop(1)
+            .onEach { updateSystemBarIcons(viewModel.state.value.menuVisible) }
+            .launchIn(lifecycleScope)
 
         // Finish when incognito mode is disabled
         preferences.incognitoMode.changes()
@@ -1441,11 +1451,30 @@ class ReaderActivity : BaseActivity() {
         }
     }
 
+    // With the menu hidden the bars sit over the reader: the novel page in fullscreen, otherwise the
+    // inset area around the viewer.
+    private fun updateSystemBarIcons(menuVisible: Boolean) {
+        val viewer = viewModel.state.value.viewer
+        val isNovel = viewer is NovelViewer || viewer is NovelWebViewViewer
+        val backdrop = when {
+            !isNovel || menuVisible -> null
+            readerPreferences.fullscreen.get() ->
+                ThemeUtils.getThemeColors(this, readerPreferences, readerPreferences.novelTheme.get()).first
+            else -> (binding.readerContainer.background as? ColorDrawable)?.color
+                ?: (viewer?.getView()?.background as? ColorDrawable)?.color
+        }
+        val nightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        val light = backdrop?.let(ThemeUtils::isLight) ?: (nightMode != Configuration.UI_MODE_NIGHT_YES)
+        windowInsetsController.isAppearanceLightStatusBars = light
+        windowInsetsController.isAppearanceLightNavigationBars = light
+    }
+
     /**
      * Sets the visibility of the menu according to [visible].
      */
     private fun setMenuVisibility(visible: Boolean) {
         viewModel.showMenus(visible)
+        updateSystemBarIcons(visible)
         if (visible) {
             windowInsetsController.show(WindowInsetsCompat.Type.systemBars())
         } else if (readerPreferences.fullscreen.get()) {
@@ -1634,7 +1663,9 @@ class ReaderActivity : BaseActivity() {
         ) {
             val wantsWebView = readerPreferences.novelRenderingMode.get() == "webview"
             val matches = if (wantsWebView) prevViewer is NovelWebViewViewer else prevViewer is NovelViewer
-            if (matches) {
+            // After a recreate (system theme switch) the retained viewer was destroyed with the old
+            // activity and its view isn't in this activity's container, so it must be rebuilt.
+            if (matches && prevViewer.getView().parent === binding.viewerContainer) {
                 setOrientation(viewModel.getMangaOrientation())
                 return
             }
@@ -1657,6 +1688,7 @@ class ReaderActivity : BaseActivity() {
             binding.viewerContainer.removeAllViews()
         }
         viewModel.onViewerLoaded(newViewer)
+        updateSystemBarIcons(viewModel.state.value.menuVisible)
         updateViewerInset(readerPreferences.fullscreen.get(), readerPreferences.drawUnderCutout.get())
         binding.viewerContainer.addView(newViewer.getView())
 
@@ -2304,6 +2336,7 @@ class ReaderActivity : BaseActivity() {
             ) { fullscreen, drawUnderCutout -> fullscreen to drawUnderCutout }
                 .onEach { (fullscreen, drawUnderCutout) ->
                     updateViewerInset(fullscreen, drawUnderCutout)
+                    updateSystemBarIcons(viewModel.state.value.menuVisible)
                 }
                 .launchIn(lifecycleScope)
 
