@@ -25,7 +25,7 @@ import logcat.LogPriority
 import mihon.domain.source.interactor.UpdateMangaFromRemote
 import tachiyomi.core.common.util.lang.withIOContext
 import tachiyomi.core.common.util.system.logcat
-import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.manga.interactor.GetFavorites
 import tachiyomi.domain.manga.interactor.GetLibraryManga
 import tachiyomi.domain.manga.model.Manga
 import tachiyomi.domain.source.service.SourceManager
@@ -42,12 +42,13 @@ class MetadataUpdateJob(private val context: Context, workerParams: WorkerParame
     CoroutineWorker(context, workerParams) {
 
     private val sourceManager: SourceManager = Injekt.get()
+    private val getFavorites: GetFavorites = Injekt.get()
     private val getLibraryManga: GetLibraryManga = Injekt.get()
     private val updateMangaFromRemote: UpdateMangaFromRemote = Injekt.get()
 
     private val notifier = LibraryUpdateNotifier(context)
 
-    private var mangaToUpdate: List<LibraryManga> = mutableListOf()
+    private var mangaToUpdate: List<Manga> = mutableListOf()
 
     override suspend fun doWork(): Result {
         setForegroundSafely()
@@ -89,7 +90,8 @@ class MetadataUpdateJob(private val context: Context, workerParams: WorkerParame
      * Adds list of manga to be updated.
      */
     private suspend fun addMangaToQueue() {
-        mangaToUpdate = getLibraryManga.await()
+        // Plain favorites: the library view with its chapter stats would hold the whole library in memory
+        mangaToUpdate = getFavorites.await()
         notifier.showQueueSizeWarningNotificationIfNeeded(mangaToUpdate)
     }
 
@@ -100,13 +102,12 @@ class MetadataUpdateJob(private val context: Context, workerParams: WorkerParame
         val libraryCacheUpdates = ConcurrentHashMap<Long, (Manga) -> Manga>()
 
         coroutineScope {
-            mangaToUpdate.groupBy { it.manga.source }
+            mangaToUpdate.groupBy { it.source }
                 .values
                 .map { mangaInSource ->
                     async {
-                        mangaInSource.forEach { libraryManga ->
+                        mangaInSource.forEach { manga ->
                             semaphore.withPermit {
-                                val manga = libraryManga.manga
                                 ensureActive()
 
                                 withUpdateNotification(

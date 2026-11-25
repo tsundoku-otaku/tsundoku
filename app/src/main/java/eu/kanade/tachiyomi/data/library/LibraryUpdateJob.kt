@@ -40,6 +40,9 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.datetime.TimeZone
@@ -300,7 +303,7 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
             .sortedBy { it.title }
             .map { it.toLibraryManga() }
 
-        notifier.showQueueSizeWarningNotificationIfNeeded(mangaToUpdate)
+        notifier.showQueueSizeWarningNotificationIfNeeded(mangaToUpdate.map { it.manga })
 
         if (skippedUpdates.isNotEmpty()) {
             // TODO: surface skipped reasons to user?
@@ -743,6 +746,11 @@ class LibraryUpdateJob(private val context: Context, workerParams: WorkerParamet
 
             return true
         }
+
+        fun isRunningFlow(context: Context): Flow<Boolean> =
+            context.workManager.getWorkInfosByTagFlow(TAG)
+                .map { infos -> infos.any { it.state == WorkInfo.State.RUNNING } }
+                .distinctUntilChanged()
 
         fun stop(context: Context) {
             val wm = context.workManager

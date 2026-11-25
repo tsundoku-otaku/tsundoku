@@ -1,0 +1,330 @@
+package tachiyomi.domain.manga.interactor
+
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.PagingSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import logcat.LogPriority
+import tachiyomi.core.common.util.system.logcat
+import tachiyomi.domain.library.model.LibraryManga
+import tachiyomi.domain.library.model.LibraryPageCursor
+import tachiyomi.domain.library.model.LibraryPageSpec
+import tachiyomi.domain.library.paging.LibraryPagingSource
+import tachiyomi.domain.library.service.LibraryPreferences
+import tachiyomi.domain.manga.repository.MangaRepository
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.random.Random
+
+class GetLibraryMangaPaged(
+    private val mangaRepository: MangaRepository,
+    private val getLibraryManga: GetLibraryManga,
+    private val libraryPreferences: LibraryPreferences,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+) {
+    private val indexMutex = Mutex()
+    private var indexesReady = false
+    private var indexRetryAt = 0L
+    private val indexBuildState = MutableStateFlow(false)
+
+    val pageSize: Int
+        get() = libraryPreferences.experimentalLibraryPageSize.get().coerceAtLeast(MIN_PAGE_SIZE)
+
+    fun changes(): Flow<Unit> = merge(mangaRepository.libraryTableChanges(), getLibraryManga.pagedChanges())
+
+    fun categoryMembershipChanges(): Flow<Unit> = mangaRepository.categoryMembershipChanges()
+
+    fun subscribe(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        invalidations: Flow<Unit>,
+    ): Flow<PagingData<LibraryManga>> = subscribe(invalidations) { QueryGeneration(categoryId, isNovel, spec)::fetch }
+
+    /** Pages a list SQL can't order or filter. [load] runs once per generation. */
+    fun subscribeLoaded(
+        invalidations: Flow<Unit>,
+        load: suspend () -> List<LibraryManga>,
+    ): Flow<PagingData<LibraryManga>> = subscribe(invalidations) {
+        val mutex = Mutex()
+        var list: List<LibraryManga>? = null
+        val fetch: suspend (Int, Int) -> LibraryPagingSource.Chunk = { limit, offset ->
+            val rows = withContext(ioDispatcher) { mutex.withLock { list ?: load().also { list = it } } }
+            val page = rows.subList(offset.coerceAtMost(rows.size), (offset + limit).coerceAtMost(rows.size))
+            LibraryPagingSource.Chunk.of(page, limit, offset)
+        }
+        fetch
+    }
+
+    private fun subscribe(
+        invalidations: Flow<Unit>,
+        fetchFactory: () -> suspend (limit: Int, offset: Int) -> LibraryPagingSource.Chunk,
+    ): Flow<PagingData<LibraryManga>> = channelFlow {
+        val current = AtomicReference<PagingSource<Int, LibraryManga>?>()
+        val pager = Pager(config()) { LibraryPagingSource(fetchFactory()).also(current::set) }
+        launch { invalidations.collect { current.get()?.invalidate() } }
+        pager.flow.collect { send(it) }
+    }
+
+    /**
+     * With few matches every walked page passes everything before it, so a filtered generation reads
+     * up to [SNAPSHOT_SIZE] ids in one walk and pages through them.
+     */
+    internal inner class QueryGeneration(
+        private val categoryId: Long,
+        private val isNovel: Boolean?,
+        private val spec: LibraryPageSpec,
+    ) {
+        private val mutex = Mutex()
+        private var resolvedMode: Mode? = null
+        private var snapshot: Snapshot? = null
+
+        // Offset -> cursor of the row just before it, so a page starting at a loaded page's end
+        // seeks the sort index instead of reading past every earlier row again.
+        private val cursors = HashMap<Int, LibraryPageCursor>()
+
+        suspend fun fetch(limit: Int, offset: Int): LibraryPagingSource.Chunk = withContext(ioDispatcher) {
+            ensureIndexes()
+            val mode = mutex.withLock { resolvedMode ?: resolveMode().also { resolvedMode = it } }
+            val snapshot = if (mode == Mode.SOURCE || mode == Mode.NARROWED) {
+                mutex.withLock { snapshot ?: takeSnapshot(mode).also { snapshot = it } }
+            } else {
+                null
+            }
+            if (snapshot != null && offset < snapshot.ids.size) {
+                val slice = snapshot.ids.subList(offset, (offset + limit).coerceAtMost(snapshot.ids.size))
+                val end = offset + slice.size
+                val rows = rowsInOrder(slice, categoryId, isNovel, spec)
+                if (snapshot.complete || slice.size == limit) {
+                    return@withContext LibraryPagingSource.Chunk(
+                        rows,
+                        end.takeUnless { snapshot.complete && end == snapshot.ids.size },
+                    )
+                }
+                // A page crossing the end of a capped snapshot takes the rest from the database, or the
+                // rows between the snapshot end and the next loaded page would never be shown.
+                // The next offset counts consumed ids, not shown rows, so a snapshot row that is gone
+                // doesn't end paging early.
+                val tailLimit = limit - slice.size
+                val tail = keyedPage(tailLimit, end, mode)
+                val next = (end + tail.size).takeIf { tail.size == tailLimit }
+                return@withContext LibraryPagingSource.Chunk(rows + snapshot.withoutOwnRows(tail), next)
+            }
+            if (snapshot?.complete == true) return@withContext LibraryPagingSource.Chunk(emptyList(), null)
+            val page = keyedPage(limit, offset, mode)
+            // Offsets count the rows read, shown or not.
+            val next = (offset + page.size).takeIf { page.size == limit }
+            LibraryPagingSource.Chunk(snapshot?.withoutOwnRows(page) ?: page, next)
+        }
+
+        private suspend fun keyedPage(limit: Int, offset: Int, mode: Mode): List<LibraryManga> {
+            val after = mutex.withLock { cursors[offset] }
+            val page = mangaRepository.getLibraryMangaKeyedPage(
+                categoryId,
+                isNovel,
+                limit.toLong(),
+                if (after != null) 0L else offset.toLong(),
+                after,
+                spec,
+                mode == Mode.SMALL,
+            )
+            page.last?.let { last -> mutex.withLock { cursors[offset + page.rows.size] = last } }
+            return page.rows
+        }
+
+        private suspend fun resolveMode(): Mode = when {
+            isSmallCategory(categoryId, isNovel) -> Mode.SMALL
+            isSourceDriven(spec) -> Mode.SOURCE
+            spec.isNarrowed || categoryId == 0L -> Mode.NARROWED
+            else -> Mode.WALK
+        }
+
+        private suspend fun takeSnapshot(mode: Mode): Snapshot {
+            val bySource = mode == Mode.SOURCE
+            val limit = if (bySource) -1L else SNAPSHOT_SIZE + 1L
+            val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, limit, spec, bySource = bySource)
+            if (bySource || ids.size <= SNAPSHOT_SIZE) return Snapshot(ids, complete = true)
+            // The first load past the snapshot seeks from its last row instead of counting rows from the
+            // start, which is slow and lands elsewhere when rows moved since the snapshot. Only used when
+            // the row is still where the snapshot saw it.
+            val boundaryOffset = SNAPSHOT_SIZE - 1L
+            val boundary = mangaRepository.getLibraryMangaKeyedPage(
+                categoryId,
+                isNovel,
+                1,
+                boundaryOffset,
+                null,
+                spec,
+                false,
+            )
+            if (boundary.rows.singleOrNull()?.id == ids[SNAPSHOT_SIZE - 1]) {
+                boundary.last?.let { cursors[SNAPSHOT_SIZE] = it }
+            }
+            return Snapshot(ids.subList(0, SNAPSHOT_SIZE), complete = false)
+        }
+    }
+
+    private enum class Mode { SMALL, SOURCE, NARROWED, WALK }
+
+    private class Snapshot(val ids: List<Long>, val complete: Boolean) {
+        private val idSet by lazy { ids.toHashSet() }
+
+        // A row whose sort key moved it past the snapshot end since was already shown from the snapshot.
+        fun withoutOwnRows(rows: List<LibraryManga>): List<LibraryManga> = rows.filterNot { it.id in idSet }
+    }
+
+    suspend fun awaitAll(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): List<LibraryManga> = withContext(ioDispatcher) {
+        val small = isSmallCategory(categoryId, isNovel)
+        if (small || !isSourceDriven(spec)) {
+            return@withContext mangaRepository.getLibraryMangaPage(categoryId, isNovel, null, 0, spec, small)
+        }
+        val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, bySource = true)
+        rowsInOrder(ids, categoryId, isNovel, spec)
+    }
+
+    suspend fun awaitFiltered(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+        predicate: (LibraryManga) -> Boolean,
+    ): List<LibraryManga> = withContext(ioDispatcher) {
+        val small = isSmallCategory(categoryId, isNovel)
+        val bySource = !small && isSourceDriven(spec)
+        val ids = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, small, bySource)
+        val result = ArrayList<LibraryManga>()
+        ids.chunked(ROWS_PER_QUERY).forEach { chunk ->
+            rowsInOrder(chunk, categoryId, isNovel, spec).filterTo(result, predicate)
+        }
+        result
+    }
+
+    suspend fun awaitCount(categoryId: Long, isNovel: Boolean?, spec: LibraryPageSpec): Long =
+        withContext(ioDispatcher) {
+            val small = isSmallCategory(categoryId, isNovel)
+            val bySource = !small && isSourceDriven(spec)
+            mangaRepository.countLibraryMangaPage(categoryId, isNovel, spec, small, bySource)
+        }
+
+    suspend fun awaitRandom(
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): LibraryManga? = withContext(ioDispatcher) {
+        // The picked row can be removed between choosing and reading it, so one fresh pick follows a miss.
+        repeat(RANDOM_ATTEMPTS) {
+            val small = isSmallCategory(categoryId, isNovel)
+            if (!small && isSourceDriven(spec)) {
+                val id = mangaRepository.getLibraryMangaPageIds(categoryId, isNovel, -1, spec, bySource = true)
+                    .randomOrNull() ?: return@withContext null
+                mangaRepository.getLibraryMangaPageRows(listOf(id), categoryId, isNovel, spec)
+                    .firstOrNull()?.let { return@withContext it }
+            } else {
+                val count = mangaRepository.countLibraryMangaPage(categoryId, isNovel, spec, small)
+                if (count <= 0L) return@withContext null
+                val offset = Random.nextLong(count)
+                mangaRepository.getLibraryMangaPage(categoryId, isNovel, 1, offset, spec, small)
+                    .firstOrNull()?.let { return@withContext it }
+            }
+        }
+        null
+    }
+
+    private suspend fun isSourceDriven(spec: LibraryPageSpec): Boolean =
+        mangaRepository.isLibraryPageSourceDriven(spec, SOURCE_DRIVEN_ROWS)
+
+    private suspend fun rowsInOrder(
+        ids: List<Long>,
+        categoryId: Long,
+        isNovel: Boolean?,
+        spec: LibraryPageSpec,
+    ): List<LibraryManga> {
+        val byId = HashMap<Long, LibraryManga>(ids.size)
+        ids.chunked(ROWS_PER_QUERY).forEach { chunk ->
+            mangaRepository.getLibraryMangaPageRows(chunk, categoryId, isNovel, spec).associateByTo(byId) { it.id }
+        }
+        return ids.mapNotNull(byId::get)
+    }
+
+    suspend fun awaitFavoriteCount(isNovel: Boolean?): Long =
+        withContext(ioDispatcher) { mangaRepository.countFavorites(isNovel) }
+
+    /** With a [scanLimit], a false answer only covers that many favorites. */
+    suspend fun awaitHasUncategorized(isNovel: Boolean?, scanLimit: Long? = null): Boolean =
+        withContext(ioDispatcher) { mangaRepository.hasUncategorizedFavorites(isNovel, scanLimit) }
+
+    // Built lazily so only paged mode pays for the indexes.
+    suspend fun ensureIndexes() {
+        indexMutex.withLock {
+            // A failed build (often a locked database) is retried later rather than on every page load.
+            if (indexesReady || System.currentTimeMillis() < indexRetryAt) return
+            try {
+                val start = System.currentTimeMillis()
+                val built = mangaRepository.ensureLibraryPagingIndexes { indexBuildState.value = true }
+                indexesReady = true
+                logcat(LogPriority.INFO) {
+                    "GetLibraryMangaPaged: paging indexes ready in ${System.currentTimeMillis() - start}ms (built=$built)"
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                indexRetryAt = System.currentTimeMillis() + INDEX_RETRY_DELAY_MS
+                logcat(LogPriority.ERROR, e) { "GetLibraryMangaPaged: failed to create paging indexes" }
+            } finally {
+                indexBuildState.value = false
+            }
+        }
+    }
+
+    fun buildingIndexes(): StateFlow<Boolean> = indexBuildState.asStateFlow()
+
+    private suspend fun isSmallCategory(categoryId: Long, isNovel: Boolean?): Boolean =
+        categoryId > 0L &&
+            mangaRepository.countCategoryMembers(categoryId, isNovel, SMALL_CATEGORY_MEMBERS + 1) <=
+            SMALL_CATEGORY_MEMBERS
+
+    private fun config(): PagingConfig {
+        val size = pageSize
+        val prefetch = (size / 3).coerceAtLeast(MIN_PAGE_SIZE / 2)
+        return PagingConfig(
+            pageSize = size,
+            prefetchDistance = prefetch,
+            enablePlaceholders = false,
+            initialLoadSize = size * 2,
+            maxSize = (size * 6).coerceAtLeast(MIN_MAX_SIZE),
+        )
+    }
+
+    companion object {
+        private const val MIN_PAGE_SIZE = 20
+
+        // Keeps small page sizes from dropping pages still on screen.
+        private const val MIN_MAX_SIZE = 500
+
+        // Above this, walking the sort index beats reading and sorting all members per page.
+        private const val SMALL_CATEGORY_MEMBERS = 30_000L
+        private const val INDEX_RETRY_DELAY_MS = 5 * 60 * 1000L
+
+        internal const val SNAPSHOT_SIZE = 10_000
+        private const val RANDOM_ATTEMPTS = 2
+
+        private const val SOURCE_DRIVEN_ROWS = 50_000L
+
+        // Below SQLite's 999 bound-variable limit before Android 11, with room for the spec's own arguments.
+        private const val ROWS_PER_QUERY = 500
+    }
+}
