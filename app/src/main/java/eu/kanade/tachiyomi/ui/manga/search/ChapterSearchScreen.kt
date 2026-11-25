@@ -36,6 +36,7 @@ import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
 import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
@@ -120,9 +121,12 @@ class ChapterSearchScreen(
                             manga.source,
                         )
                     }
-                mutableState.update { it.copy(manga = manga, chapters = chapters) }
-                val pending = state.value.submittedQuery
-                if (state.value.pendingSearch && pending != null) search(pending)
+                // On the thread searches are submitted from, so one can't slip between the check and the replay.
+                withUIContext {
+                    mutableState.update { it.copy(manga = manga, chapters = chapters) }
+                    val pending = state.value.submittedQuery
+                    if (state.value.pendingSearch && pending != null) search(pending)
+                }
             }
         }
 
@@ -161,7 +165,7 @@ class ChapterSearchScreen(
             val regex = try {
                 ChapterTextSearch.buildRegex(query, current.options)
             } catch (e: PatternSyntaxException) {
-                mutableState.update { it.copy(regexError = e.description, isSearching = false) }
+                mutableState.update { it.copy(regexError = e.description, isSearching = false, pendingSearch = false) }
                 return
             }
             mutableState.update { it.copy(regexError = null) }
