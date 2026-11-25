@@ -302,15 +302,39 @@ class BrowseSourceViewModel(
             }
         }
 
-        // Reset pendingFilters to the potentially preset-applied filters
-        mutableState.update { it.copy(pendingFilters = freshFilters) }
+        // Reset pendingFilters to the potentially preset-applied filters; a loaded preset's
+        // search text goes with the rest of it, and so does search text an applied preset set
+        mutableState.update {
+            val previous = it.pendingPreset
+            val previousToolbarQuery = if (previous != null) previous.previousToolbarQuery else it.toolbarQuery
+            if (it.searchesAppliedPresetQuery) {
+                it.copy(
+                    pendingFilters = freshFilters,
+                    toolbarQuery = null,
+                    pendingPreset = PendingPreset(
+                        query = null,
+                        previousToolbarQuery = previousToolbarQuery,
+                        previousFilters = previous?.previousFilters ?: it.pendingFilters,
+                        dropsQuery = true,
+                    ),
+                )
+            } else {
+                it.copy(
+                    pendingFilters = freshFilters,
+                    toolbarQuery = previousToolbarQuery,
+                    pendingPreset = null,
+                )
+            }
+        }
     }
 
     fun setListing(listing: Listing) {
         // Reset initial page to 1 when listing changes (e.g., switching between Popular, Latest, Search)
         _initialPage.value = 1L
         _targetEndPage.value = null
-        mutableState.update { it.copy(listing = listing, toolbarQuery = null) }
+        mutableState.update {
+            it.copy(listing = listing, toolbarQuery = null, pendingPreset = null, appliedPresetQuery = null)
+        }
     }
 
     fun setFilters(filters: FilterList) {
@@ -333,61 +357,13 @@ class BrowseSourceViewModel(
         if (source !is CatalogueSource) return
         // Get fresh filters to avoid reference sharing
         val freshFilters = source.getFilterList()
-        // Copy state from current filters to fresh filters
-        copyFilterState(state.value.filters, freshFilters)
+        ManageFilterPresets.applyPresetState(freshFilters, ManageFilterPresets.serializeFilters(state.value.filters))
 
         mutableState.update {
             it.copy(
                 pendingFilters = freshFilters, // Use fresh filters with copied state
                 dialog = Dialog.Filter,
             )
-        }
-    }
-
-    /**
-     * Copy filter states from source filters to destination filters.
-     * This avoids reference sharing issues where modifying one FilterList affects another.
-     */
-    private fun copyFilterState(source: FilterList, destination: FilterList) {
-        if (source.size != destination.size) return
-
-        source.forEachIndexed { index, srcFilter ->
-            val dstFilter = destination[index]
-
-            when {
-                srcFilter is SourceModelFilter.CheckBox && dstFilter is SourceModelFilter.CheckBox -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.TriState && dstFilter is SourceModelFilter.TriState -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.Text && dstFilter is SourceModelFilter.Text -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.Select<*> && dstFilter is SourceModelFilter.Select<*> -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.Sort && dstFilter is SourceModelFilter.Sort -> {
-                    dstFilter.state = srcFilter.state
-                }
-                srcFilter is SourceModelFilter.Group<*> && dstFilter is SourceModelFilter.Group<*> -> {
-                    srcFilter.state.forEachIndexed { groupIndex, srcGroupFilter ->
-                        if (groupIndex < dstFilter.state.size) {
-                            val dstGroupFilter = dstFilter.state[groupIndex]
-                            when {
-                                srcGroupFilter is SourceModelFilter.CheckBox &&
-                                    dstGroupFilter is SourceModelFilter.CheckBox -> {
-                                    dstGroupFilter.state = srcGroupFilter.state
-                                }
-                                srcGroupFilter is SourceModelFilter.TriState &&
-                                    dstGroupFilter is SourceModelFilter.TriState -> {
-                                    dstGroupFilter.state = srcGroupFilter.state
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -399,6 +375,7 @@ class BrowseSourceViewModel(
             ?: Listing.Search(query = null, filters = source.getFilterList())
 
         val newFilters = filters ?: input.filters
+        val newQuery = query ?: input.query
 
         // Reset initial page to 1 when search/filters change
         _initialPage.value = 1L
@@ -407,11 +384,34 @@ class BrowseSourceViewModel(
         mutableState.update {
             it.copy(
                 listing = input.copy(
-                    query = query ?: input.query,
+                    query = newQuery,
                     filters = newFilters,
                 ),
                 filters = newFilters, // Ensure state.filters is also updated
-                toolbarQuery = query ?: input.query,
+                toolbarQuery = newQuery,
+                pendingPreset = null,
+                // Submitted text, even the same text, is the user's; only a filter-only apply keeps the preset's
+                appliedPresetQuery = it.appliedPresetQuery.takeIf { _ -> query == null },
+            )
+        }
+    }
+
+    fun applyFilters() {
+        // Unsubmitted toolbar text is ignored like a plain filter apply, except a loaded preset's query
+        val preset = state.value.pendingPreset
+        val query = preset?.query ?: "".takeIf { preset?.dropsQuery == true }
+        search(query = query, filters = state.value.pendingFilters)
+        if (preset != null) mutableState.update { it.copy(appliedPresetQuery = preset.query) }
+    }
+
+    fun dismissFilterDialog() {
+        mutableState.update {
+            val preset = it.pendingPreset ?: return@update it.copy(dialog = null)
+            it.copy(
+                dialog = null,
+                toolbarQuery = preset.previousToolbarQuery,
+                pendingFilters = preset.previousFilters,
+                pendingPreset = null,
             )
         }
     }
@@ -459,6 +459,7 @@ class BrowseSourceViewModel(
                 filters = defaultFilters,
                 listing = listing,
                 toolbarQuery = listing.query,
+                pendingPreset = null,
             )
         }
     }
@@ -600,21 +601,30 @@ class BrowseSourceViewModel(
         setDialog(Dialog.FilterPresets)
     }
 
+    // The presets list is opened from the filter sheet, so closing it goes back there with any loaded
+    // preset still pending.
+    fun closePresetSheet() {
+        setDialog(Dialog.Filter)
+    }
+
     private fun refreshFilterPresets() {
         _filterPresets.value = manageFilterPresets.getPresets(sourceId).presets
     }
 
-    fun saveFilterPreset(name: String, setAsDefault: Boolean) {
+    fun saveFilterPreset(name: String, setAsDefault: Boolean, includeSearchText: Boolean) {
         if (source !is CatalogueSource) return
 
         logcat(LogPriority.DEBUG) {
-            "BrowseSource: saveFilterPreset name=$name, setAsDefault=$setAsDefault, sourceId=$sourceId"
+            "BrowseSource: saveFilterPreset name=$name, setAsDefault=$setAsDefault, " +
+                "includeSearchText=$includeSearchText, sourceId=$sourceId"
         }
+        val currentQuery = state.value.pendingQuery?.takeIf { it.isNotBlank() }
         manageFilterPresets.savePreset(
             sourceId = sourceId,
             name = name,
             filters = state.value.pendingFilters, // Save pendingFilters (what user is editing)
             setAsDefault = setAsDefault,
+            searchQuery = if (includeSearchText && !setAsDefault) currentQuery else null,
         )
         // Immediately refresh the presets list
         refreshFilterPresets()
@@ -625,21 +635,34 @@ class BrowseSourceViewModel(
         if (source !is CatalogueSource) return
 
         logcat(LogPriority.DEBUG) { "BrowseSource: loadFilterPreset presetId=$presetId, sourceId=$sourceId" }
-        val presetState = manageFilterPresets.loadPresetState(sourceId, presetId)
-        if (presetState != null) {
+        val preset = manageFilterPresets.getPreset(sourceId, presetId)
+        if (preset != null) {
             logcat(LogPriority.DEBUG) { "BrowseSource: Loaded preset state, applying..." }
             val filters = source.getFilterList()
-            ManageFilterPresets.applyPresetState(filters, presetState)
+            ManageFilterPresets.applyPresetState(filters, preset.filterState)
             // Update pendingFilters directly and open filter dialog
             mutableState.update {
+                // Loading another preset on top keeps what was there before the first one
+                val previous = it.pendingPreset
+                // An empty toolbar before the first preset is a saved state too, not a missing one
+                val previousToolbarQuery = if (previous != null) previous.previousToolbarQuery else it.toolbarQuery
+                // A preset without search text drops the text an earlier applied preset searched with
+                val dropsQuery = preset.searchQuery == null && it.searchesAppliedPresetQuery
                 it.copy(
                     pendingFilters = filters,
+                    toolbarQuery = preset.searchQuery ?: previousToolbarQuery.takeIf { !dropsQuery },
+                    pendingPreset = PendingPreset(
+                        query = preset.searchQuery,
+                        previousToolbarQuery = previousToolbarQuery,
+                        previousFilters = previous?.previousFilters ?: it.pendingFilters,
+                        dropsQuery = dropsQuery,
+                    ),
                     dialog = Dialog.Filter,
                 )
             }
             logcat(LogPriority.INFO) { "BrowseSource: Preset applied successfully" }
         } else {
-            logcat(LogPriority.WARN) { "BrowseSource: Preset state is null for presetId=$presetId" }
+            logcat(LogPriority.WARN) { "BrowseSource: Preset not found for presetId=$presetId" }
         }
     }
 
@@ -668,34 +691,13 @@ class BrowseSourceViewModel(
         manageFilterPresets.setAutoApplyEnabled(enabled)
     }
 
-    private fun applyDefaultPresetIfEnabled() {
-        if (source !is CatalogueSource) return
-        if (!manageFilterPresets.getAutoApplyEnabled()) return
-
-        logcat(LogPriority.DEBUG) { "BrowseSource: applyDefaultPresetIfEnabled sourceId=$sourceId" }
-        val presetState = manageFilterPresets.getDefaultPresetState(sourceId)
-        if (presetState != null) {
-            logcat(LogPriority.DEBUG) { "BrowseSource: Found default preset, applying..." }
-            val filters = source.getFilterList()
-            ManageFilterPresets.applyPresetState(filters, presetState)
-            mutableState.update { it.copy(filters = filters) }
-            // Force a search with the new filters if we are in a search listing
-            if (state.value.listing is Listing.Search) {
-                search(state.value.listing.query, filters)
-            }
-            logcat(LogPriority.INFO) { "BrowseSource: Default preset applied" }
-        } else {
-            logcat(LogPriority.DEBUG) { "BrowseSource: No default preset found" }
-        }
-    }
-
     fun setDialog(dialog: Dialog?) {
         logcat(LogPriority.DEBUG) { "setDialog: $dialog" }
         mutableState.update { it.copy(dialog = dialog) }
     }
 
     fun setToolbarQuery(query: String?) {
-        mutableState.update { it.copy(toolbarQuery = query) }
+        mutableState.update { it.copy(toolbarQuery = query, pendingPreset = null) }
     }
 
     sealed class Listing(open val query: String?, open val filters: FilterList) {
@@ -990,6 +992,9 @@ class BrowseSourceViewModel(
         val filters: FilterList = FilterList(),
         val pendingFilters: FilterList = FilterList(), // Filters being edited in dialog
         val toolbarQuery: String? = null,
+        val pendingPreset: PendingPreset? = null,
+        // Search text the last applied preset set; a later preset without text or a reset clears it.
+        val appliedPresetQuery: String? = null,
         val dialog: Dialog? = null,
         val selectionMode: Boolean = false,
         val selection: Set<Manga> = emptySet(),
@@ -997,5 +1002,23 @@ class BrowseSourceViewModel(
         val translatedTitles: Map<Long, String> = emptyMap(),
     ) {
         val isUserQuery get() = listing is Listing.Search && !listing.query.isNullOrEmpty()
+
+        /** The query applying the filter sheet would search with; unsubmitted toolbar text isn't it. */
+        val pendingQuery get() = when {
+            pendingPreset?.dropsQuery == true -> null
+            else -> pendingPreset?.query ?: (listing as? Listing.Search)?.query
+        }
+
+        val searchesAppliedPresetQuery get() =
+            appliedPresetQuery != null && (listing as? Listing.Search)?.query == appliedPresetQuery
     }
+
+    /** A preset loaded into the filter sheet but not applied yet, with what dismissing it puts back. */
+    @Immutable
+    data class PendingPreset(
+        val query: String?,
+        val previousToolbarQuery: String?,
+        val previousFilters: FilterList,
+        val dropsQuery: Boolean = false,
+    )
 }
