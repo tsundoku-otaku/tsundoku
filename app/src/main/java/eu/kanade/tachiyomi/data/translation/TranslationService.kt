@@ -241,19 +241,20 @@ class TranslationService(
      * Start processing the translation queue.
      */
     fun start() {
-        val job = synchronized(currentTaskLock) {
+        synchronized(currentTaskLock) {
             if (translationJob?.isActive == true) return
 
             _isPaused.value = false
             // A cancel request only applies to the run it was made in.
             _progressState.update { it.copy(isCancelling = false) }
 
-            // A stopped run may still be saving its checkpoint, which would replace this run's.
+            // A stopped run may still be saving its checkpoint, which would replace this run's. The wait
+            // can't be cut short, so a run cancelled while waiting still holds back the ones after it.
             val previous = lastJob
             // Started only once assigned, so even a run that finishes at once is the one its cleanup checks for.
             scope.launch(start = CoroutineStart.LAZY) {
                 try {
-                    previous?.join()
+                    withContext(NonCancellable) { previous?.join() }
                     processQueue()
                 } finally {
                     // A stop() and restart may already have handed the state to a newer run.
@@ -273,9 +274,10 @@ class TranslationService(
             }.also {
                 translationJob = it
                 lastJob = it
+                // Started under the lock, so a concurrent start() sees it active and returns.
+                it.start()
             }
         }
-        job.start()
     }
 
     private suspend fun processQueue() = coroutineScope {
