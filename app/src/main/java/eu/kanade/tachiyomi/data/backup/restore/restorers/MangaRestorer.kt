@@ -337,15 +337,13 @@ class MangaRestorer(
 
         val mangaCategoriesToUpdate = categories.mapNotNull { backupCategoryOrder ->
             backupCategoriesByOrder[backupCategoryOrder]?.let { backupCategory ->
-                val dbCategory = if (backupCategory.contentType !=
-                    tachiyomi.domain.category.model.Category.CONTENT_TYPE_ALL
-                ) {
-                    dbCategoriesByName[backupCategory.name]?.firstOrNull {
-                        it.contentType == backupCategory.contentType
-                    }
-                } else {
-                    dbCategoriesByName[backupCategory.name]?.firstOrNull()
-                }
+                // Same order as CategoriesRestorer: the typed name only exists for a same-name clash
+                val typedName = typedRestoreName(backupCategory.name, backupCategory.contentType)
+                val dbCategory = dbCategoriesByName[backupCategory.name].orEmpty().restoreTarget(
+                    dbCategoriesByName[typedName].orEmpty(),
+                    backupCategory.contentType,
+                    manga.isNovel,
+                )
                 dbCategory?.let { Pair(manga.id, it.id) }
             }
         }

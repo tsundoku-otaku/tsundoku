@@ -3,20 +3,29 @@ package eu.kanade.tachiyomi.ui.category
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.viewModelScope
 import dev.icerock.moko.resources.StringResource
+import eu.kanade.domain.manga.interactor.UpdateManga
+import eu.kanade.tachiyomi.source.isNovelSource
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
 import tachiyomi.domain.category.interactor.RenameCategory
 import tachiyomi.domain.category.interactor.ReorderCategory
+import tachiyomi.domain.category.interactor.SetCategoryContentType
 import tachiyomi.domain.category.model.Category
 import tachiyomi.domain.category.repository.CategoryRepository
 import tachiyomi.domain.manga.interactor.GetLibraryManga
+import tachiyomi.domain.manga.interactor.GetManga
+import tachiyomi.domain.manga.model.MangaUpdate
+import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.i18n.MR
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -27,8 +36,12 @@ class CategoryViewModel(
     private val deleteCategory: DeleteCategory = Injekt.get(),
     private val reorderCategory: ReorderCategory = Injekt.get(),
     private val renameCategory: RenameCategory = Injekt.get(),
+    private val setCategoryContentType: SetCategoryContentType = Injekt.get(),
     private val getLibraryManga: GetLibraryManga = Injekt.get(),
     private val categoryRepository: CategoryRepository = Injekt.get(),
+    private val getManga: GetManga = Injekt.get(),
+    private val updateManga: UpdateManga = Injekt.get(),
+    private val sourceManager: SourceManager = Injekt.get(),
 ) : StateViewModel<CategoryScreenState>(CategoryScreenState.Loading) {
 
     private val _events: Channel<CategoryEvent> = Channel()
@@ -91,12 +104,71 @@ class CategoryViewModel(
         }
     }
 
-    fun renameCategory(category: Category, name: String) {
+    fun editCategory(category: Category, name: String, contentType: Int) {
         viewModelScope.launch {
-            when (renameCategory.await(category, name)) {
-                is RenameCategory.Result.InternalError -> _events.send(CategoryEvent.InternalError)
-                else -> {}
+            if (contentType != category.contentType) {
+                val mismatched = try {
+                    if (contentType != Category.CONTENT_TYPE_ALL) {
+                        // Entries flagged as manga are the ones a stale flag can hide a novel in.
+                        backfillNovelFlags(
+                            setCategoryContentType.getMismatchedMangaIds(category.id, Category.CONTENT_TYPE_NOVEL),
+                        )
+                    }
+                    setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logcat(LogPriority.ERROR, e)
+                    _events.send(CategoryEvent.InternalError)
+                    return@launch
+                }
+                if (mismatched.isNotEmpty()) {
+                    // Nothing is saved until the removal is confirmed, so Cancel discards the whole edit.
+                    showDialog(CategoryDialog.ConfirmContentType(category, name, contentType, mismatched.size))
+                    return@launch
+                }
             }
+            saveEdit(category, name, contentType)
+        }
+    }
+
+    // The novel flag is only backfilled when the library loads, so a novel whose source loaded later can
+    // still read as manga: removed from a category turned novel-only, or kept in one turned manga-only.
+    // A failed write throws, so the edit stops instead of acting on entries it couldn't correct.
+    private suspend fun backfillNovelFlags(ids: List<Long>) {
+        val updates = ids.mapNotNull { id ->
+            getManga.await(id)
+                ?.takeIf { sourceManager.get(it.source)?.isNovelSource() == true }
+                ?.let { MangaUpdate(id = it.id, isNovel = true) }
+        }
+        if (updates.isEmpty()) return
+        check(updateManga.awaitAll(updates)) { "Could not mark ${updates.size} entries as novels" }
+        // The library keeps its own copy; the novel views read the flag from it.
+        getLibraryManga.applyBatchMangaDetailUpdates(updates.associate { it.id to { m -> m.copy(isNovel = true) } })
+    }
+
+    fun confirmEdit(dialog: CategoryDialog.ConfirmContentType) {
+        viewModelScope.launch { saveEdit(dialog.category, dialog.name, dialog.contentType) }
+    }
+
+    private suspend fun saveEdit(category: Category, name: String, contentType: Int) {
+        val newName = name.takeIf { it != category.name }
+        if (contentType != category.contentType) {
+            // One write, so a failure can't leave the name changed without the type.
+            changeContentType(category, contentType, newName)
+        } else if (newName != null && renameCategory.await(category, newName) is RenameCategory.Result.InternalError) {
+            _events.send(CategoryEvent.InternalError)
+        }
+    }
+
+    private suspend fun changeContentType(category: Category, contentType: Int, name: String?) {
+        when (val result = setCategoryContentType.await(category.id, contentType, name)) {
+            is SetCategoryContentType.Result.InternalError -> _events.send(CategoryEvent.InternalError)
+            is SetCategoryContentType.Result.Success -> getLibraryManga.applyCategoryUpdates(
+                mangaIds = result.removedMangaIds,
+                addCategories = emptyList(),
+                removeCategories = listOf(category.id),
+            )
         }
     }
 
@@ -121,7 +193,13 @@ class CategoryViewModel(
 
 sealed interface CategoryDialog {
     data object Create : CategoryDialog
-    data class Rename(val category: Category) : CategoryDialog
+    data class Edit(val category: Category) : CategoryDialog
+    data class ConfirmContentType(
+        val category: Category,
+        val name: String,
+        val contentType: Int,
+        val mismatchedCount: Int,
+    ) : CategoryDialog
     data class Delete(val category: Category) : CategoryDialog
 }
 

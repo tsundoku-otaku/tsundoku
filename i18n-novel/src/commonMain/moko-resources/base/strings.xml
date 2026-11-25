@@ -34,6 +34,8 @@
     <string name="category_content_type_all">All (Manga &amp; Novels)</string>
     <string name="category_content_type_manga">Manga only</string>
     <string name="category_content_type_novel">Novels only</string>
+    <string name="action_edit_category">Edit category</string>
+    <string name="category_content_type_change_title">Change content type?</string>
     <string name="action_order_by_progress">By progress</string>
     <string name="action_order_by_total_chapters">By total chapters</string>
     <string name="action_order_by_extension">By extension</string>
