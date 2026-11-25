@@ -1690,6 +1690,7 @@ class MangaViewModel(
                                 countedCounter.incrementAndGet()
                             }
                             val checked = checkedCounter.incrementAndGet()
+                            ensureActive()
                             if (checked % WORD_COUNT_PROGRESS_STEP == 0 || checked == chapters.size) {
                                 updateWordCountDialog(runId) {
                                     it.copy(checkedChapters = maxOf(it.checkedChapters, checked))

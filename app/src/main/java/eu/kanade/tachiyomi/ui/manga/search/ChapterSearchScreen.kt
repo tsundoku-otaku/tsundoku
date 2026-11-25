@@ -36,6 +36,7 @@ import kotlinx.coroutines.sync.withPermit
 import logcat.LogPriority
 import mihon.core.viewmodel.StateViewModel
 import tachiyomi.core.common.util.lang.launchIO
+import tachiyomi.core.common.util.lang.withUIContext
 import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.chapter.interactor.GetChaptersByMangaId
 import tachiyomi.domain.chapter.model.Chapter
@@ -120,8 +121,12 @@ class ChapterSearchScreen(
                             manga.source,
                         )
                     }
-                mutableState.update { it.copy(manga = manga, chapters = chapters) }
-                if (state.value.pendingSearch) search()
+                // On the thread searches are submitted from, so one can't slip between the check and the replay.
+                withUIContext {
+                    mutableState.update { it.copy(manga = manga, chapters = chapters) }
+                    val pending = state.value.submittedQuery
+                    if (state.value.pendingSearch && pending != null) search(pending)
+                }
             }
         }
 
@@ -129,6 +134,7 @@ class ChapterSearchScreen(
             mutableState.update { it.copy(query = query, regexError = null) }
         }
 
+        // Toggling an option is a new search for the text on screen, once anything was searched.
         fun updateOptions(options: ChapterSearchOptions) {
             mutableState.update { it.copy(options = options, regexError = null) }
             if (state.value.submittedQuery != null) search()
@@ -137,30 +143,32 @@ class ChapterSearchScreen(
         fun updateRange(from: String, to: String) {
             mutableState.update { it.copy(rangeFrom = from, rangeTo = to) }
             rangeJob?.cancel()
-            if (state.value.submittedQuery == null) return
+            val submitted = state.value.submittedQuery ?: return
             rangeJob = viewModelScope.launch {
                 delay(RANGE_SEARCH_DELAY)
-                search()
+                search(submitted)
             }
         }
 
-        fun search() {
+        fun search(query: String = state.value.query) {
             rangeJob?.cancel()
             searchJob?.cancel()
             val generation = searchGeneration.incrementAndGet()
             val current = state.value
-            val query = current.query
             if (query.isEmpty()) {
-                mutableState.update { it.copy(isSearching = false, pendingSearch = false) }
+                mutableState.update { it.copy(submittedQuery = null, isSearching = false, pendingSearch = false) }
                 return
             }
+            // Recorded before validation, so fixing a bad range or pattern searches this query.
+            mutableState.update { it.copy(submittedQuery = query) }
 
             val regex = try {
                 ChapterTextSearch.buildRegex(query, current.options)
             } catch (e: PatternSyntaxException) {
-                mutableState.update { it.copy(regexError = e.description, isSearching = false) }
+                mutableState.update { it.copy(regexError = e.description, isSearching = false, pendingSearch = false) }
                 return
             }
+            mutableState.update { it.copy(regexError = null) }
 
             val manga = current.manga
             val allChapters = current.chapters
@@ -174,7 +182,16 @@ class ChapterSearchScreen(
             val from = parseRangeBound(current.rangeFrom)
             val to = parseRangeBound(current.rangeTo)
             if (from == null || to == null) {
-                mutableState.update { it.copy(isSearching = false, pendingSearch = false) }
+                mutableState.update {
+                    it.copy(
+                        isSearching = false,
+                        pendingSearch = false,
+                        results = emptyList(),
+                        searchedCount = 0,
+                        searchTotal = 0,
+                        failedCount = 0,
+                    )
+                }
                 return
             }
             val chapters = if (from.isNaN() && to.isNaN()) {
@@ -187,7 +204,6 @@ class ChapterSearchScreen(
 
             mutableState.update {
                 it.copy(
-                    submittedQuery = query,
                     pendingSearch = false,
                     isSearching = true,
                     searchTotal = chapters.size,

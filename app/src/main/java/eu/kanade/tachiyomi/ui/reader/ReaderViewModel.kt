@@ -178,6 +178,56 @@ class ReaderViewModel @JvmOverloads constructor(
 
     fun isSearchJumpChapter(chapterId: Long?): Boolean = chapterId != null && chapterId == jumpedChapterId
 
+    // The match position and the progress saved before the jump. Looking at the match, or reading
+    // around it below the saved progress, must not overwrite the saved progress.
+    private var jumpTargetProgress: Int? = null
+    private var jumpBaselineProgress: Int? = null
+
+    // The jumped chapter and its progress from before the jump, put back if the jump ends unsaved.
+    private var jumpedChapter: ReaderChapter? = null
+    private var progressBeforeJump = 0
+
+    // Set once the landing at the match was reported; the end of the chapter after that is reading.
+    private var jumpLanded = false
+
+    // Saves run on IO while the jump starts and ends on the main thread.
+    private val jumpLock = Any()
+
+    // Bumped when a jump starts or ends, so a save reported during a jump that ended before the save
+    // ran keeps the decision made when it was reported.
+    private var jumpGeneration = 0
+
+    // Leaving the jumped chapter ends the jump; coming back later reads it normally.
+    private fun endSearchJumpUnless(chapter: ReaderChapter): Unit = synchronized(jumpLock) {
+        if (chapter.chapter.id == jumpedChapterId) return
+        // Nothing was saved since the jump, so the reused chapter gets its saved progress back.
+        if (jumpTargetProgress != null) jumpedChapter?.chapter?.last_page_read = progressBeforeJump
+        jumpedChapterId = null
+        jumpTargetProgress = null
+        jumpBaselineProgress = null
+        jumpedChapter = null
+        jumpLanded = false
+        jumpGeneration++
+    }
+
+    // True while a save would only record where the search jump landed. [commit] false only asks.
+    private fun holdsJumpProgress(chapterId: Long?, progress: Int, commit: Boolean = true): Boolean =
+        synchronized(jumpLock) {
+            if (chapterId == null || chapterId != jumpedChapterId) return false
+            val target = jumpTargetProgress ?: return false
+            if (kotlin.math.abs(progress - target) <= JUMP_HOLD_SLACK_PERCENT && !(progress >= 100 && jumpLanded)) {
+                if (commit) jumpLanded = true
+                return true
+            }
+            val baseline = jumpBaselineProgress
+            if (baseline != null && progress <= baseline) return true
+            if (commit) {
+                jumpTargetProgress = null
+                jumpBaselineProgress = null
+            }
+            return false
+        }
+
     /** Returned once so later restores, including after process death, use the saved progress. */
     fun takeJumpProgress(chapter: ReaderChapter): Int? {
         val chapterId = chapter.chapter.id
@@ -185,7 +235,15 @@ class ReaderViewModel @JvmOverloads constructor(
         val progress = pendingJumpProgress ?: return null
         pendingJumpProgress = null
         savedState.remove<Int>("search_progress")
-        jumpedChapterId = chapterId
+        synchronized(jumpLock) {
+            jumpedChapterId = chapterId
+            jumpTargetProgress = progress
+            jumpBaselineProgress = chapter.chapter.last_page_read.takeIf { !chapter.chapter.read }
+            jumpedChapter = chapter
+            progressBeforeJump = chapter.chapter.last_page_read
+            jumpLanded = false
+            jumpGeneration++
+        }
         // The backward-jump guard then measures from the match instead of the old position.
         chapter.chapter.last_page_read = progress
         return progress
@@ -485,6 +543,7 @@ class ReaderViewModel @JvmOverloads constructor(
      */
     private fun loadNewChapter(chapter: ReaderChapter) {
         val loader = loader ?: return
+        endSearchJumpUnless(chapter)
         val staleReload = reloadJob.takeIf { chapter !== state.value.viewerChapters?.currChapter }
 
         viewModelScope.launchIO {
@@ -511,6 +570,7 @@ class ReaderViewModel @JvmOverloads constructor(
     private suspend fun loadAdjacent(chapter: ReaderChapter): Boolean {
         val loader = loader ?: return false
         if (state.value.isLoadingAdjacentChapter) return false
+        endSearchJumpUnless(chapter)
         // Set before waiting on the reload, so a second request meanwhile is turned away.
         mutableState.update { it.copy(isLoadingAdjacentChapter = true) }
 
@@ -619,6 +679,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * Used when switching between already-appended chapters during novel infinite-scroll.
      */
     private fun setActiveChapterWithoutReload(chapter: ReaderChapter) {
+        endSearchJumpUnless(chapter)
         if (chapter !== state.value.viewerChapters?.currChapter) reloadJob?.cancel()
         viewModelScope.launchIO {
             flushReadTimerAndRestart()
@@ -867,6 +928,10 @@ class ReaderViewModel @JvmOverloads constructor(
 
         if (incognitoMode) return
 
+        val reportedGeneration = synchronized(jumpLock) { jumpGeneration }
+        val jumpedWhenReported = isSearchJumpChapter(selectedChapter.chapter.id)
+        val heldWhenReported =
+            holdsJumpProgress(selectedChapter.chapter.id, progressPercentage.coerceIn(0, 100), commit = false)
         viewModelScope.launchNonCancellable {
             // Serialize saves so concurrent calls don't race each other and save
             // old progress values over newer ones (e.g. multiple chapters in flight).
@@ -890,12 +955,23 @@ class ReaderViewModel @JvmOverloads constructor(
                     return@withLock
                 }
 
+                // One lock section, so a jump can't end between the check and the hold decision.
+                val held = synchronized(jumpLock) {
+                    if (jumpGeneration != reportedGeneration) {
+                        heldWhenReported
+                    } else {
+                        holdsJumpProgress(selectedChapter.chapter.id, clampedProgress)
+                    }
+                }
+                if (held) return@withLock
+
                 selectedChapter.chapter.last_page_read = clampedProgress
 
                 // Mark as read if at the configured threshold or more
                 val markAsReadThreshold = readerPreferences.novelMarkAsReadThreshold.get()
                 val wasRead = selectedChapter.chapter.read
-                val threshold = if (selectedChapter.chapter.id == jumpedChapterId) 100 else markAsReadThreshold
+                // A report made during the jump keeps its 100% rule even if the jump ended before it ran.
+                val threshold = if (jumpedWhenReported) 100 else markAsReadThreshold
                 if (clampedProgress >= threshold && !wasRead) {
                     selectedChapter.chapter.read = true
                     updateTrackChapterRead(selectedChapter)
@@ -1042,14 +1118,15 @@ class ReaderViewModel @JvmOverloads constructor(
         readerChapter.requestedPage = pageIndex
         chapterPageIndex = pageIndex
 
+        // For novel chapters each chapter has exactly 1 page (the full text), and last_page_read holds
+        // the reading percentage that only saveNovelProgress writes, with its search-jump protection.
+        val isNovelChapter = manga?.isNovel == true && (readerChapter.pages?.size ?: 0) <= 1
+        if (isNovelChapter) return
+
         if (!incognitoMode && page.status !is Page.State.Error) {
             readerChapter.chapter.last_page_read = pageIndex
 
-            // For novel chapters each chapter has exactly 1 page (the full text).
-            // Marking complete via page-index would always fire on selection.
-            // Novel completion is handled by saveNovelProgress (marks at >=95%).
-            val isNovelChapter = manga?.isNovel == true && (readerChapter.pages?.size ?: 0) <= 1
-            val isComplete = !isNovelChapter && readerChapter.pages?.lastIndex == pageIndex
+            val isComplete = readerChapter.pages?.lastIndex == pageIndex
             if (isComplete) {
                 readerChapter.chapter.read = true
             }
@@ -1938,3 +2015,6 @@ class ReaderViewModel @JvmOverloads constructor(
         data class CopyImage(val uri: Uri) : Event
     }
 }
+
+// How far from a search match the reader can scroll before it counts as reading on.
+private const val JUMP_HOLD_SLACK_PERCENT = 2
