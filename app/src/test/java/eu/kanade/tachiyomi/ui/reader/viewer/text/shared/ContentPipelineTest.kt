@@ -218,10 +218,10 @@ class ContentPipelineTest {
     @Test
     fun `regex pattern targeting HTML tag matches post-normalize html chapter`() = runBlocking {
         @Suppress("ktlint:standard:max-line-length")
-        val rules = """[{"title":"r","pattern":"<p>","replacement":"<P>","isRegex":false,"enabled":true,"caseSensitive":true,"matchWholeWord":false}]"""
+        val rules = """[{"title":"r","pattern":"<p>","replacement":"<p class=\"r\">","isRegex":false,"enabled":true,"caseSensitive":true,"matchWholeWord":false}]"""
         val pipeline = pipelineWith(rules)
         val result = pipeline.process("<p>foo</p>", cfg(url = "x.html"))
-        assertTrue(result.text.contains("<P>"))
+        assertTrue(result.text.contains("<p class=\"r\">"))
     }
 
     @Test

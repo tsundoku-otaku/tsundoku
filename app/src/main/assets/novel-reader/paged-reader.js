@@ -100,6 +100,16 @@
 
     function applyColumnLayout() {
         var el = container();
+        // A fractional body box wider than the whole-px column lets the next column's first pixel
+        // show at the clip edge, so pin the box to the column width. Derived from the viewport
+        // rather than by clearing and re-measuring the box, which forced two layouts per call.
+        var cs = window.getComputedStyle(document.body);
+        var hMargin = (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
+        document.body.style.boxSizing = 'border-box';
+        // Before the WebView has a width this would pin body to 0 and keep pageWidth() at 0, which
+        // also hides the resize the initial restore waits for.
+        var viewportW = document.documentElement.clientWidth;
+        document.body.style.width = viewportW - hMargin > 0 ? Math.floor(viewportW - hMargin) + 'px' : '';
         var w = pageWidth();
         el.style.columnWidth = w + 'px';
         el.style.MozColumnWidth = w + 'px';
@@ -108,13 +118,25 @@
         // clip the container - reduce by body's own margin only. Deliberately NOT by
         // __SAFE_TOP_VAR__/__SAFE_BOTTOM_VAR__ (transient menu-bar overlays) - sizing the page to
         // those turned every menu toggle into a repagination + ResizeObserver feedback loop.
-        var cs = window.getComputedStyle(document.body);
         var vMargin = (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
-        document.body.style.boxSizing = 'border-box';
         // Explicit floored px height, not `calc(100vh - Npx)`: fractional rounding there let the
         // last line's descenders clip past the overflow:hidden edge. 1px safety buffer for the rest.
         var innerH = window.innerHeight || document.documentElement.clientHeight;
-        document.body.style.height = Math.floor(innerH - vMargin - 1) + 'px';
+        var available = innerH - vMargin - 1;
+        // Snap to whole lines so the column break never lands mid-line. Read line-height from the
+        // content, not body (source CSS may override it).
+        var lineHeight = parseFloat(contentLineHeight());
+        if (lineHeight > 0) {
+            var lines = Math.floor(available / lineHeight);
+            if (lines > 0) available = Math.ceil(lines * lineHeight);
+        }
+        document.body.style.height = Math.floor(available) + 'px';
+    }
+
+    function contentLineHeight() {
+        var el = container();
+        var sample = el.querySelector('p') || el.querySelector('li, blockquote, div') || el;
+        return window.getComputedStyle(sample).lineHeight;
     }
 
     function computePageCount() {
@@ -212,6 +234,7 @@
 
     function landOnPage(idx, pc, animate) {
         idx = Math.max(0, Math.min(idx, pc - 1));
+        var samePage = idx === p.pageIndex && pc === p.pageCount;
         p.pageCount = pc;
         p.pageIndex = idx;
         hideChapterTransition();
@@ -222,7 +245,43 @@
         reportPageInfo(idx, pc);
         reportProgress(p.lastRatio);
         publishProgress(p.lastRatio, idx, pc);
+        captureAnchorAfterTurn(animate, samePage);
     }
+
+    // An animated turn captures once its transition ends (see the transitionend listener). A turn
+    // that doesn't move, or runs with transitions off, never gets a transitionend, so a timer past
+    // the transition's duration captures it instead.
+    var anchorTimer = null;
+    // True while a turn animates: the screen still shows the old page, so nothing may be read from it.
+    var turning = false;
+    // A swipe let go on the same page keeps the text taken before the drag; a content change during the
+    // drag may already have moved it, and re-taking it at the old offset would lose that. Only swipes
+    // animate back: a resize that lands on the same page moved the text and takes it again.
+    var keepAnchorOnSettle = false;
+    function captureAnchorAfterTurn(animate, samePage) {
+        clearTimeout(anchorTimer);
+        keepAnchorOnSettle = !!animate && !!samePage && !!pageAnchor && container().contains(pageAnchor.startContainer);
+        if (!animate) {
+            turning = false;
+            if (!keepAnchorOnSettle) pageAnchor = textAtPageStart();
+            return;
+        }
+        turning = true;
+        if (!keepAnchorOnSettle) pageAnchor = null;
+        var duration = (parseFloat(window.getComputedStyle(container()).transitionDuration) || 0) * 1000;
+        anchorTimer = setTimeout(settleAnchor, duration + 50);
+    }
+
+    function settleAnchor() {
+        turning = false;
+        if (!keepAnchorOnSettle) pageAnchor = textAtPageStart();
+        keepAnchorOnSettle = false;
+    }
+
+    // The text at the top of the current page, taken once the page settles and before any later
+    // content change moves it. A Range follows DOM edits around it, so after a change it still
+    // points at the same text wherever that text ended up.
+    var pageAnchor = null;
 
     // Recomputes page count/width against the current layout and lands on the page nearest
     // p.lastRatio (the authoritative position - see file header). `ratio`, when passed, ALSO
@@ -235,7 +294,13 @@
     var hasPendingRepaginate = false;
 
     function repaginate(ratio) {
+        // Edit mode runs in normal flow; pinning the column layout there would clip the editor.
         if (!enabled) return;
+        if (isSuspended()) {
+            // Kept for the resume, which lands from lastRatio.
+            if (typeof ratio === 'number') p.lastRatio = ratio;
+            return;
+        }
         if (drag) {
             hasPendingRepaginate = true;
             pendingRepaginateRatio = ratio;
@@ -364,7 +429,16 @@
         if (!atEnd && rawFraction < -cfg.dragCommitFraction) { goToPage(baseIndex + 1); runPendingRepaginate(); return; }
         if (!atStart && rawFraction > cfg.dragCommitFraction) { goToPage(baseIndex - 1); runPendingRepaginate(); return; }
         landOnPage(baseIndex, pc, true);
-        runPendingRepaginate();
+        // Back on the same page the anchor from before the drag is kept, so a layout change that came
+        // in during the drag follows that text instead of re-taking the page top; a seek still lands
+        // on its ratio.
+        if (hasPendingRepaginate && typeof pendingRepaginateRatio !== 'number') {
+            hasPendingRepaginate = false;
+            pendingRepaginateRatio = undefined;
+            reflowKeepingText();
+        } else {
+            runPendingRepaginate();
+        }
     };
 
     // target < 0 or >= pageCount always does a full chapter switch, after a brief
@@ -412,6 +486,10 @@
         }
     };
 
+    function isSuspended() {
+        return !document.documentElement.classList.contains(PAGED_CLASS);
+    }
+
     // Edit mode has its own keyboard-clearance bottom padding on body that assumes normal
     // document flow (see NovelWebViewViewer's toggleEditMode script) - that has no room to work
     // within paged mode's fixed 100vh clip, so pagination is suspended (plain scrollable flow,
@@ -421,6 +499,8 @@
         if (suspended) {
             document.documentElement.classList.remove(PAGED_CLASS);
             container().style.transform = '';
+            document.body.style.width = '';
+            document.body.style.height = '';
         } else {
             document.documentElement.classList.add(PAGED_CLASS);
             repaginate();
@@ -526,7 +606,7 @@
 
     if (typeof ResizeObserver === 'function') {
         var containerResizeObserver = new ResizeObserver(function () {
-            if (!p.restored) return;
+            if (!p.restored || isSuspended()) return;
             repaginate();
         });
         containerResizeObserver.observe(container());
@@ -535,8 +615,96 @@
 
     var resizeDebounce = null;
     window.addEventListener('resize', function () {
-        if (!p.restored) return;
+        if (!p.restored || isSuspended()) return;
         clearTimeout(resizeDebounce);
         resizeDebounce = setTimeout(function () { repaginate(); }, 100);
     });
+
+    // Added content (snippets, late images, fonts) overflows into more columns without resizing the
+    // container, so the ResizeObserver above never sees it. Event-driven, debounced like resize;
+    // attribute changes (TTS highlight, this script's transforms) are deliberately not observed.
+    // Content can grow before or after the reader (late images, snippets), so re-derive the page
+    // from the text that was at the top of the screen; the ratio alone would jump to other text.
+    // A font swap reflows everything, where the ratio is the better guess.
+    function textAtPageStart() {
+        if (!document.caretRangeFromPoint) return null;
+        var el = container();
+        var x = Math.floor(window.innerWidth / 2);
+        var h = window.innerHeight || document.documentElement.clientHeight;
+        for (var y = 8; y < h; y += 24) {
+            var range = document.caretRangeFromPoint(x, y);
+            if (range && el.contains(range.startContainer)) return range;
+        }
+        return null;
+    }
+
+    function offsetInContainer(range) {
+        var rect = range.getClientRects()[0];
+        var node = range.startContainer;
+        if (!rect && node.nodeType === 3 && range.startOffset < node.length) {
+            var oneChar = document.createRange();
+            oneChar.setStart(node, range.startOffset);
+            oneChar.setEnd(node, range.startOffset + 1);
+            rect = oneChar.getClientRects()[0];
+        }
+        // No element-box fallback: a paragraph spanning several columns starts pages back
+        if (!rect) return null;
+        return rect.left - container().getBoundingClientRect().left;
+    }
+
+    function reflowKeepingText() {
+        var anchor = pageAnchor && container().contains(pageAnchor.startContainer)
+            ? pageAnchor
+            : textAtPageStart();
+        applyColumnLayout();
+        var pc = computePageCount();
+        var offset = anchor ? offsetInContainer(anchor) : null;
+        var idx = offset !== null ? Math.floor((offset + 1) / pageWidth()) : (p.pageIndex || 0);
+        idx = Math.max(0, Math.min(idx, pc - 1));
+        // Same page and count: the text is still on screen. The anchor is kept, not re-taken,
+        // so repeated small edits can't walk the position. The column width may have changed, so the
+        // page offset is written again; without ResizeObserver nothing else would.
+        if (idx === p.pageIndex && pc === p.pageCount) {
+            setTransform(idx, false);
+            return;
+        }
+        p.lastRatio = pc > 0 ? (idx + 1) / pc : 0;
+        landOnPage(idx, pc, false);
+    }
+
+    var reflowDebounce = null;
+    var reflowKeepsText = true;
+    function scheduleReflowCheck(keepText) {
+        if (!p.restored) return;
+        reflowKeepsText = reflowKeepsText && keepText;
+        clearTimeout(reflowDebounce);
+        reflowDebounce = setTimeout(function run() {
+            if (!enabled || isSuspended()) { reflowKeepsText = true; return; }
+            // Mid-swipe the deferred repaginate would land by ratio, and mid-turn the text on screen is
+            // still the previous page's, so wait for the release or the turn to settle
+            if (drag || turning) { reflowDebounce = setTimeout(run, 150); return; }
+            var keep = reflowKeepsText;
+            reflowKeepsText = true;
+            // Text can move without the page count changing, so a keep-text reflow always checks
+            if (keep) reflowKeepingText();
+            else if (computePageCount() !== p.pageCount) repaginate();
+            // Same count, but the new font moved the text, so the old anchor would point elsewhere.
+            else pageAnchor = textAtPageStart();
+        }, 100);
+    }
+    function onContentReflow() { scheduleReflowCheck(true); }
+    if (typeof MutationObserver === 'function') {
+        new MutationObserver(onContentReflow)
+            .observe(container(), { childList: true, characterData: true, subtree: true });
+    }
+    container().addEventListener('transitionend', function (e) {
+        if (e.target !== container() || e.propertyName !== 'transform') return;
+        clearTimeout(anchorTimer);
+        settleAnchor();
+    });
+    container().addEventListener('load', onContentReflow, true);
+    container().addEventListener('error', onContentReflow, true);
+    if (document.fonts && document.fonts.addEventListener) {
+        document.fonts.addEventListener('loadingdone', function () { scheduleReflowCheck(false); });
+    }
 })();

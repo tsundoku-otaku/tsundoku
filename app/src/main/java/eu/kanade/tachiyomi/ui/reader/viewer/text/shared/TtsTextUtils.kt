@@ -1,15 +1,16 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
-import org.jsoup.Jsoup
-
 object TtsTextUtils {
 
-    data class ParagraphInfo(
-        val index: Int,
-        val startChar: Int,
-        val endChar: Int,
-        val text: String,
-    )
+    fun newlineParagraphBounds(text: String): List<Pair<Int, Int>> {
+        val bounds = mutableListOf<Pair<Int, Int>>()
+        var offset = 0
+        for (line in text.split("\n")) {
+            if (line.isNotBlank()) bounds.add(offset to offset + line.length)
+            offset += line.length + 1
+        }
+        return bounds
+    }
 
     fun splitTextForTts(text: String, maxLength: Int): List<String> {
         val chunks = mutableListOf<String>()
@@ -48,49 +49,6 @@ object TtsTextUtils {
         }
 
         return chunks
-    }
-
-    fun findParagraphs(text: String): List<ParagraphInfo> {
-        val paragraphs = mutableListOf<ParagraphInfo>()
-
-        val doc = try {
-            Jsoup.parseBodyFragment(text)
-        } catch (_: Exception) {
-            null
-        }
-        val plainText = doc?.text() ?: text.replace(Regex("<[^>]+>"), " ")
-        val blocks = doc?.select("p, div, section, article, h1, h2, h3, h4, h5, h6, li")
-
-        if (blocks == null || blocks.isEmpty()) {
-            val lines = text.split(Regex("\\n\\s*\\n"))
-            var charOffset = 0
-            for (line in lines) {
-                val trimmed = line.trim()
-                if (trimmed.isEmpty()) {
-                    charOffset += line.length + 2
-                    continue
-                }
-                val startChar = plainText.indexOf(trimmed, charOffset)
-                if (startChar < 0) continue
-                val endChar = startChar + trimmed.length
-                paragraphs.add(ParagraphInfo(paragraphs.size, startChar, endChar, trimmed))
-                charOffset = endChar
-            }
-            return paragraphs
-        }
-
-        var charOffset = 0
-        for (elem in blocks) {
-            val trimmed = elem.text().trim()
-            if (trimmed.isEmpty()) continue
-            val startChar = plainText.indexOf(trimmed, charOffset)
-            if (startChar < 0) continue
-            val endChar = startChar + trimmed.length
-            paragraphs.add(ParagraphInfo(paragraphs.size, startChar, endChar, trimmed))
-            charOffset = endChar
-        }
-
-        return paragraphs
     }
 
     fun getChunkIndexFromOffset(charOffset: Int, ttsChunks: List<String>): Int {

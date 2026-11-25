@@ -247,6 +247,8 @@ class ReaderPreferences(
     val novelTapToScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_tap_to_scroll", false)
     val novelTextSelectable: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_text_selectable", true)
 
+    val novelForceDictionaryAction: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_force_dictionary_action", false)
+
     // Block media elements (images, videos) in WebView and TextView readers
     val novelBlockMedia: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_block_media", false)
 
@@ -300,6 +302,9 @@ class ReaderPreferences(
 
     // Infinite scroll - automatically load next/previous chapters
     val novelInfiniteScroll: Preference<Boolean> = preferenceStore.getBoolean("pref_novel_infinite_scroll", false)
+
+    val novelHideChapterSeparator: Preference<Boolean> =
+        preferenceStore.getBoolean("pref_novel_hide_chapter_separator", false)
 
     // Paged mode (webview only) - swipe/tap left-right turns a page instead of scrolling;
     // chapter navigation happens only when a page turn overflows past the first/last page.

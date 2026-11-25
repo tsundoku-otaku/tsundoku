@@ -103,13 +103,13 @@ object MangaMapper {
         @Suppress("UNUSED_PARAMETER") chapterFetchedAt: Long,
         @Suppress("UNUSED_PARAMETER") lastRead: Long,
         @Suppress("UNUSED_PARAMETER") bookmarkCount: Long,
-        @Suppress("UNUSED_PARAMETER") memo: JsonObject,
+        memo: JsonObject,
     ): Manga = mapManga(
         id, source, url, artist, author, description, genre, title, alternativeTitles,
         status, thumbnailUrl, favorite, lastUpdate, nextUpdate, initialized, viewerFlags,
         chapterFlags, coverLastModified, dateAdded, updateStrategy, calculateInterval,
         lastModifiedAt, favoriteModifiedAt, version, 0, notes, isNovel,
-    )
+    ).copy(memo = memo)
 
     fun mapLibraryManga(
         id: Long,

@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 internal class NovelWebViewPreferenceObserver(
     private val preferences: ReaderPreferences,
     private val scope: CoroutineScope,
-    private val onStyleChanged: () -> Unit,
+    private val onStyleChanged: (keepPosition: Boolean) -> Unit,
     private val onScriptChanged: () -> Unit,
     private val onChapterReloadRequested: () -> Unit,
     private val onBlockMediaChanged: (Boolean) -> Unit,
@@ -40,7 +40,12 @@ internal class NovelWebViewPreferenceObserver(
                 preferences.novelCustomCssSnippets.changes().drop(1),
                 preferences.novelHideChapterTitle.changes().drop(1),
                 preferences.novelTextSelectable.changes().drop(1),
-            ).debounce(STYLE_DEBOUNCE_MS).collect { onStyleChanged() }
+            ).debounce(STYLE_DEBOUNCE_MS).collect { onStyleChanged(false) }
+        }
+
+        // Collapsing the dividers above the viewport would shift the text being read
+        scope.launch {
+            preferences.novelHideChapterSeparator.changes().drop(1).collect { onStyleChanged(true) }
         }
 
         scope.launch {

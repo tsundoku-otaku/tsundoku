@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -75,6 +76,7 @@ import eu.kanade.presentation.reader.ReadingModeSelectDialog
 import eu.kanade.presentation.reader.TranslationLanguageSelectDialog
 import eu.kanade.presentation.reader.appbars.BottomBarEditorSheet
 import eu.kanade.presentation.reader.appbars.BottomBarItem
+import eu.kanade.presentation.reader.appbars.FindInChapterBar
 import eu.kanade.presentation.reader.appbars.NovelReaderAppBars
 import eu.kanade.presentation.reader.appbars.QuotesSheet
 import eu.kanade.presentation.reader.appbars.ReaderAppBars
@@ -238,6 +240,12 @@ class ReaderActivity : BaseActivity() {
 
     // Quotes functionality
     private var showQuotesSheet by mutableStateOf(false)
+
+    // Find in chapter
+    private var showFindBar by mutableStateOf(false)
+    private var findQuery by mutableStateOf("")
+    private var findTotal by mutableStateOf(0)
+    private var findCurrent by mutableStateOf(-1)
 
     /**
      * Called when the activity is created. Initializes the presenter and configuration.
@@ -426,6 +434,13 @@ class ReaderActivity : BaseActivity() {
             )
         }
 
+        // Find matches are tied to one chapter. Close the bar when the chapter changes rather than
+        // leaving stale offsets and highlights from the previous chapter on screen.
+        val findChapterId = state.currentChapter?.chapter?.id
+        LaunchedEffect(findChapterId) {
+            if (showFindBar) dismissFindBar()
+        }
+
         val isNovelViewer = state.viewer is NovelViewer || state.viewer is NovelWebViewViewer
         val statusBarAtBottomEdge = novelStatusBarPosition != "top"
 
@@ -533,6 +548,47 @@ class ReaderActivity : BaseActivity() {
                     modifier = Modifier
                         .align(if (statusBarAtBottom) Alignment.BottomCenter else Alignment.TopCenter)
                         .then(if (statusBarAtBottom) Modifier else Modifier.statusBarsPadding()),
+                )
+            }
+
+            // Find-in-chapter bar (top overlay). Last child so it draws above the toolbars.
+            androidx.activity.compose.BackHandler(enabled = showFindBar) {
+                dismissFindBar()
+            }
+
+            if (showFindBar) {
+                FindInChapterBar(
+                    query = findQuery,
+                    total = findTotal,
+                    current = findCurrent,
+                    onQueryChange = { query ->
+                        findQuery = query
+                        searchInChapter(query)
+                    },
+                    onDismiss = ::dismissFindBar,
+                    onNext = ::findInChapterNext,
+                    onPrevious = ::findInChapterPrevious,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .then(
+                            if (state.menuVisible) {
+                                // The reader top bar already includes the system status-bar inset.
+                                Modifier.padding(top = with(density) { menuTopBarPx.intValue.toDp() })
+                            } else {
+                                Modifier
+                                    .statusBarsPadding()
+                                    .padding(
+                                        top = if (
+                                            isNovelMode && novelStatusBarEnabled && !statusBarAtBottomEdge
+                                        ) {
+                                            with(density) { statusBarHeightPx.toDp() }
+                                        } else {
+                                            0.dp
+                                        },
+                                    )
+                            },
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
         }
@@ -950,6 +1006,13 @@ class ReaderActivity : BaseActivity() {
             var showBottomBarEditor by remember { mutableStateOf(false) }
             var showEditSaveDialog by remember { mutableStateOf(false) }
             var isEditing by remember { mutableStateOf(false) }
+            val novelWebViewer = state.viewer as? NovelWebViewViewer
+            LaunchedEffect(novelWebViewer) {
+                novelWebViewer?.editModeEnded?.collect {
+                    isEditing = false
+                    showEditSaveDialog = false
+                }
+            }
 
             NovelReaderAppBars(
                 visible = state.menuVisible,
@@ -1223,17 +1286,15 @@ class ReaderActivity : BaseActivity() {
                             isEditing = false
                             (viewer as? NovelWebViewViewer)?.toggleEditMode(isEditing = false, save = false)
                         }
-                    } else {
-                        isEditing = true
-                        if (viewer is NovelWebViewViewer) {
-                            viewer.toggleEditMode(true)
-                        }
+                    } else if (viewer is NovelWebViewViewer) {
+                        isEditing = viewer.toggleEditMode(true)
                     }
                 },
 
                 isWebView = state.viewer is NovelWebViewViewer,
                 bottomBarItems = bottomBarItems,
                 onQuotes = ::onQuotesClicked,
+                onFind = ::onFindInChapterClicked,
                 ttsOverlayBottomPadding = ttsOverlayBottomPadding,
                 onTopBarHeight = onTopBarHeight,
                 onBottomBarHeight = onBottomBarHeight,
@@ -1802,8 +1863,8 @@ class ReaderActivity : BaseActivity() {
      * Called from the viewer whenever a [page] is marked as active. It updates the values of the
      * bottom menu and delegates the change to the presenter.
      */
-    fun onPageSelected(page: ReaderPage) {
-        viewModel.onPageSelected(page)
+    fun onPageSelected(page: ReaderPage, persistProgress: Boolean = true) {
+        viewModel.onPageSelected(page, persistProgress)
     }
 
     /**
@@ -2002,6 +2063,54 @@ class ReaderActivity : BaseActivity() {
      */
     fun onQuotesClicked() {
         showQuotesSheet = true
+    }
+
+    /**
+     * Called when the find-in-chapter button is clicked.
+     */
+    fun onFindInChapterClicked() {
+        showFindBar = true
+    }
+
+    /** Match state reported by the active viewer while the find bar is open. */
+    fun onNovelFindResult(total: Int, current: Int) {
+        // A viewer can finish an async search after the bar was dismissed; don't let that
+        // stale result leak into the next time the bar is opened.
+        if (!showFindBar) return
+        findTotal = total
+        findCurrent = current
+    }
+
+    fun dismissFindBar() {
+        showFindBar = false
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.clearFind()
+            is NovelWebViewViewer -> viewer.clearFind()
+        }
+        findQuery = ""
+        findTotal = 0
+        findCurrent = -1
+    }
+
+    private fun searchInChapter(query: String) {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.searchInChapter(query)
+            is NovelWebViewViewer -> viewer.searchInChapter(query)
+        }
+    }
+
+    private fun findInChapterNext() {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.findNext()
+            is NovelWebViewViewer -> viewer.findNext()
+        }
+    }
+
+    private fun findInChapterPrevious() {
+        when (val viewer = viewModel.state.value.viewer) {
+            is NovelViewer -> viewer.findPrevious()
+            is NovelWebViewViewer -> viewer.findPrevious()
+        }
     }
 
     /**

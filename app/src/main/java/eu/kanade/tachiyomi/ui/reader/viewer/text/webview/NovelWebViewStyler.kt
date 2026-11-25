@@ -98,6 +98,8 @@ internal class NovelWebViewStyler(
             ""
         }
 
+        val hideSeparatorCss = hideChapterSeparatorCss(preferences.novelHideChapterSeparator.get())
+
         val css = """
             $fontFaceDeclaration
             body {
@@ -122,6 +124,7 @@ internal class NovelWebViewStyler(
             }
             $headingSizeRules
             $hideChapterTitleCss
+            $hideSeparatorCss
             $customCss
             $enabledSnippetsCss
         """.trimIndent().replace("\n", " ")
@@ -197,7 +200,7 @@ internal class NovelWebViewStyler(
         }
     }
 
-    fun injectStyles() {
+    fun injectStyles(keepPosition: Boolean = false) {
         val payload = buildPayload()
         webView.setBackgroundColor(payload.backgroundColor)
         container.setBackgroundColor(payload.backgroundColor)
@@ -207,6 +210,10 @@ internal class NovelWebViewStyler(
             mapOf(
                 "STYLE_ID" to STYLE_ID_CUSTOM,
                 "CSS" to quoteForJson(payload.css),
+                "KEEP_POSITION" to keepPosition.toString(),
+                "CONTAINER_ID" to TSUNDOKU_CHAPTERS_CONTAINER_ID,
+                "CHAPTER_TAG" to CHAPTER_TAG_NAME.lowercase(),
+                "DIVIDER_CLASS" to CHAPTER_DIVIDER_CLASS,
             ),
         )
         evaluateJs(js)
@@ -276,6 +283,18 @@ internal class NovelWebViewStyler(
         evaluateJs(js)
     }
 
+    fun injectFragmentLinks() {
+        val js = NovelWebViewJsAssets.loadWith(
+            activity,
+            "fragment-links.js",
+            mapOf(
+                "TSUNDOKU_OBJECT_NAME" to TSUNDOKU_OBJECT_NAME,
+                "CHAPTER_TAG_NAME" to CHAPTER_TAG_NAME,
+            ),
+        )
+        evaluateJs(js)
+    }
+
     fun injectPagedReader() {
         val js = NovelWebViewJsAssets.loadWith(
             activity,
@@ -323,6 +342,13 @@ internal class NovelWebViewStyler(
         // Sentinel URL the injected @font-face points at; resolved by interceptFont() in the
         // WebView's shouldInterceptRequest. Never hits the network.
         const val FONT_URL_PREFIX = "https://tsundoku.font/custom"
+
+        // Collapsed rather than display:none, chapter tracking reads the divider positions
+        internal fun hideChapterSeparatorCss(hide: Boolean): String = if (hide) {
+            ".$CHAPTER_DIVIDER_CLASS { border: none !important; margin: 0 !important; height: 0 !important; }"
+        } else {
+            ""
+        }
 
         internal fun fontOverrideCss(sourceCssPriority: Boolean, useOriginalFonts: Boolean): Pair<String, String> {
             if (sourceCssPriority) return "" to ""

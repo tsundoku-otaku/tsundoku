@@ -11,6 +11,64 @@ The format is a modified version of [Keep a Changelog](https://keepachangelog.co
 - `Other` - for technical stuff.
 
 ## [Unreleased]
+### Added
+- Add find in chapter to the novel reader [@prabinpanta0](https://github.com/prabinpanta0)
+- Add dictionary to context menu [@wasu-code](https://github.com/wasu-code) [#473](https://github.com/tsundoku-otaku/tsundoku/pull/473)
+
+
+### Changed
+- Increase chapter title marquee scroll speed [@mrissaoussama](https://github.com/mrissaoussama) [#472](https://github.com/tsundoku-otaku/tsundoku/pull/472)
+- Mangascreen scroll to top/current/bottom buttons have option to move into/out of overflow menu [@mrissaoussama](https://github.com/mrissaoussama) [#457](https://github.com/tsundoku-otaku/tsundoku/pull/457)
+
+### Fixed
+- Reader status bar respects system clock 24h setting [@Rojikku](https://github.com/Rojikku) [#483](https://github.com/tsundoku-otaku/tsundoku/pull/483)
+- Route headset media to TTS session [@mrissaoussama](https://github.com/mrissaoussama) [#466](https://github.com/tsundoku-otaku/tsundoku/pull/466)
+- Keeps ource memo on mangas returned by insertNetworkManga [@mrissaoussama](https://github.com/mrissaoussama) [#440](https://github.com/tsundoku-otaku/tsundoku/pull/440)
+- Share one paragraph split between TTS chunking, highlight and viewport lookup [@mrissaoussama](https://github.com/mrissaoussama) [#471](https://github.com/tsundoku-otaku/tsundoku/pull/471)
+- Retry and edit on a failed WebView chapter [@mrissaoussama](https://github.com/mrissaoussama) [#455](https://github.com/tsundoku-otaku/tsundoku/pull/455)
+
+### Other
+- Add link to Mihon [@mrissaoussama](https://github.com/mrissaoussama) [#442](https://github.com/tsundoku-otaku/tsundoku/pull/442)
+
+
+### Added
+- Set categories for selected duplicates from the duplicates dialog, duplicate limit raised to 30 [@mrissaoussama](https://github.com/mrissaoussama) [#467](https://github.com/tsundoku-otaku/tsundoku/pull/467)
+
+### Fixed
+- Local novel translate no longer waits on downloads, download actions hidden for local novels, bulk translate queueing fixed [@mrissaoussama](https://github.com/mrissaoussama) [#474](https://github.com/tsundoku-otaku/tsundoku/pull/474)
+
+### Improved
+- Word density tiers every 500 words with no upper cap, faster word count [@mrissaoussama](https://github.com/mrissaoussama) [#461](https://github.com/tsundoku-otaku/tsundoku/pull/461)
+
+### Added
+- Option to hide the chapter separator in novel infinite scroll [@mrissaoussama](https://github.com/mrissaoussama) [#460](https://github.com/tsundoku-otaku/tsundoku/pull/460)
+
+### Fixed
+- Textview reader scroll getting stuck after a chapter switch [@mrissaoussama](https://github.com/mrissaoussama) [#459](https://github.com/tsundoku-otaku/tsundoku/pull/459)
+
+### Improved
+- Faster parallel chapter text search with chapter range, expandable results and jump to match [@mrissaoussama](https://github.com/mrissaoussama) [#462](https://github.com/tsundoku-otaku/tsundoku/pull/462)
+
+### Fixed
+- Lazy images not loading in the WebView reader, inline script handlers stripped when scripts are removed [@mrissaoussama](https://github.com/mrissaoussama) [#454](https://github.com/tsundoku-otaku/tsundoku/pull/454)
+
+### Fixed
+- Translation API keys and headers kept out of backups unless sensitive settings are included [@mrissaoussama](https://github.com/mrissaoussama) [#451](https://github.com/tsundoku-otaku/tsundoku/pull/451)
+
+### Fixed
+- Paged mode bleeding into the next column or breaking mid-line [@mrissaoussama](https://github.com/mrissaoussama) [#447](https://github.com/tsundoku-otaku/tsundoku/pull/447)
+
+### Added
+- WebView reader scrolls to in-chapter #anchor links, including paged mode [@mrissaoussama](https://github.com/mrissaoussama) [#446](https://github.com/tsundoku-otaku/tsundoku/pull/446)
+
+### Fixed
+- Corrupted cached WebView images from cancelled prefetches [@mrissaoussama](https://github.com/mrissaoussama) [#445](https://github.com/tsundoku-otaku/tsundoku/pull/445)
+
+### Added
+- Novel-only search intent so novel extensions open novel global search [@mrissaoussama](https://github.com/mrissaoussama) [#443](https://github.com/tsundoku-otaku/tsundoku/pull/443)
+
+### Improved
+- LNReader backup restore streams one novel at a time to reduce memory use [@mrissaoussama](https://github.com/mrissaoussama) [#438](https://github.com/tsundoku-otaku/tsundoku/pull/438)
 
 ## [v0.3.4] - 2026-10-16
 ### Added

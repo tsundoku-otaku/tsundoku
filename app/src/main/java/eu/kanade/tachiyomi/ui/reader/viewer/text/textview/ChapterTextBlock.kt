@@ -7,6 +7,7 @@ import android.text.style.ImageSpan
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
+import eu.kanade.tachiyomi.ui.reader.viewer.text.shared.TtsTextUtils
 
 /**
  * Holds a chapter's text as a column of chunk TextViews instead of one giant view.
@@ -34,6 +35,19 @@ internal class ChapterTextBlock(
 
     /** Concatenation of all chunk texts; the text TTS and offset mapping operate on. */
     var fullText: String? = null
+
+    private var paragraphBoundsCacheText: String? = null
+    private var paragraphBoundsCache: List<Pair<Int, Int>> = emptyList()
+
+    /** Cached per chapter text because TTS asks for it on every spoken chunk. */
+    fun paragraphBoundsByNewline(): List<Pair<Int, Int>> {
+        val text = fullText ?: return emptyList()
+        if (text !== paragraphBoundsCacheText) {
+            paragraphBoundsCache = TtsTextUtils.newlineParagraphBounds(text)
+            paragraphBoundsCacheText = text
+        }
+        return paragraphBoundsCache
+    }
 
     /**
      * Bumped each time a render of this block starts. A render coroutine captures the

@@ -24,9 +24,11 @@ INSERT INTO mangas_categories(manga_id, category_id)
 VALUES (:mangaId, :categoryId);
 
 -- Bulk insert for performance - inserts manga_id with single category
+-- The table has no unique pair constraint, so an existing link is skipped here.
 insertBulkMangaCategory:
-INSERT OR IGNORE INTO mangas_categories(manga_id, category_id)
-VALUES (?, ?);
+INSERT INTO mangas_categories(manga_id, category_id)
+SELECT :mangaId, :categoryId
+WHERE NOT EXISTS (SELECT 1 FROM mangas_categories WHERE manga_id = :mangaId AND category_id = :categoryId);
 
 deleteMangaCategoryByMangaId:
 DELETE FROM mangas_categories

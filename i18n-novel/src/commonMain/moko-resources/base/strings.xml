@@ -192,6 +192,15 @@
     <string name="action_edit_appbar">Edit Bottom Bar</string>
     <string name="action_scroll_to_top">Scroll to top</string>
     <string name="action_scroll_to_bottom">Scroll to bottom</string>
+    <string name="action_find_in_chapter">Search in chapter</string>
+    <string name="find_in_chapter_hint">Find in chapter</string>
+    <string name="find_no_matches">No matches</string>
+    <string name="find_next_match">Next match</string>
+    <string name="find_previous_match">Previous match</string>
+    <string name="action_scroll_to_next_unread">Scroll to next unread</string>
+    <string name="manga_no_unread_chapter">No unread chapter in the list</string>
+    <string name="pref_manga_scroll_actions_in_overflow">Scroll actions in overflow menu</string>
+    <string name="pref_manga_scroll_actions_in_overflow_summary">Show scroll to top, next unread and bottom in the overflow menu instead of the top bar</string>
     <string name="action_translate">Translate</string>
     <string name="action_translate_downloaded">Translate downloaded chapters</string>
     <string name="action_retranslate">Retranslate</string>
@@ -374,6 +383,9 @@
     <string name="duplicate_category_include_or">OR</string>
     <string name="duplicate_category_include_and">AND</string>
     <string name="duplicate_dismiss_group">Dismiss group</string>
+    <string name="duplicate_no_shared_category">No category fits the content type of the selected entries</string>
+    <string name="duplicate_categories_failed">Could not save the categories</string>
+    <string name="duplicate_categories_load_failed">Could not load the categories</string>
     <string name="duplicate_deselect_group">Deselect group</string>
     <string name="duplicate_apply_library_filters">Library filters</string>
     <string name="duplicate_full_urls_short">Full URLs</string>
@@ -575,6 +587,8 @@
     <string name="tts_prev_paragraph">Previous paragraph</string>
     <string name="tts_next_paragraph">Next paragraph</string>
     <string name="pref_novel_infinite_scroll">Infinite scroll (auto-load next chapter)</string>
+    <string name="pref_novel_hide_chapter_separator">Hide chapter separator</string>
+    <string name="pref_novel_hide_chapter_separator_summary">Remove the line between chapters in infinite scroll</string>
     <string name="pref_novel_paged_drag_commit">Page-turn swipe distance</string>
     <string name="pref_novel_paged_drag_commit_summary">How far a swipe must cross the screen to turn a page</string>
     <string name="pref_novel_progress_slider">Show progress slider</string>
@@ -639,7 +653,8 @@
     <string name="not_set">Not set</string>
     <string name="no_limit">No limit</string>
     <string name="no_downloaded_chapters">No downloaded chapters found</string>
-    <string name="translation_queued">Queued %d chapters for translation</string>
+    <string name="translation_nothing_queued">Selected chapters are already queued</string>
+    <string name="translation_disabled">Translation is disabled. Enable it in translation settings</string>
 
     <!-- Custom Source - Create dialog hint -->
     <string name="custom_source_use_repos_hint">For pre-built novel source themes (Madara, LightNovelWP, etc.), install extensions from a repository instead.</string>
@@ -1022,4 +1037,10 @@
     <string name="novel_status_bar_element_chapter">Chapter</string>
     <string name="novel_status_bar_element_progress">Progress</string>
     <string name="novel_status_bar_element_battery">Battery</string>
+    <string name="action_define">Define</string>
+    <string name="pref_novel_force_dictionary_action">Prioritize "Define" action</string>
+    <string name="pref_novel_force_dictionary_action_summary">Add the Define (dictionary) action to the text selection menu when applicable</string>
+    <string name="error_cant_edit_error_page">Can\'t edit an error page</string>
+    <string name="error_cant_edit_while_loading">Can\'t edit while the chapter is loading</string>
+    <string name="error_cant_edit_no_chapter">Nothing to edit in this chapter</string>
 </resources>
