@@ -77,6 +77,14 @@
         el.removeAttribute('data-tsundoku-contrast');
         el.style.removeProperty('--td-contrast-color');
     });
+    // A stylesheet rule rather than an inline color, so the TTS highlight can still set its own. It is in
+    // place before the scan, so text inside a corrected block is checked against the corrected color. The
+    // :not(#id) parts only raise specificity above the site's own !important rules.
+    var style = document.createElement('style');
+    style.id = '__GUARD_ID__';
+    style.textContent =
+        '[data-tsundoku-contrast]:not(#td-c):not(#td-c):not(#td-c):not(.td-tts-highlight-bg, .td-tts-highlight-bg *){color:var(--td-contrast-color)!important}';
+    document.head.appendChild(style);
     var root = document.querySelector('tsundoku-chapter') ? 'tsundoku-chapter' : 'body';
     var fixed = 0;
     Array.prototype.forEach.call(document.querySelectorAll(root + ', ' + root + ' *'), function (el) {
@@ -92,13 +100,5 @@
         el.style.setProperty('--td-contrast-color', readableColor(bg));
         fixed++;
     });
-    if (!fixed) return;
-
-    // A stylesheet rule rather than an inline color, so the TTS highlight can still set its own. The
-    // :not(#id) parts only raise specificity above the site's own !important rules.
-    var style = document.createElement('style');
-    style.id = '__GUARD_ID__';
-    style.textContent =
-        '[data-tsundoku-contrast]:not(#td-c):not(#td-c):not(#td-c):not(.td-tts-highlight-bg, .td-tts-highlight-bg *){color:var(--td-contrast-color)!important}';
-    document.head.appendChild(style);
+    if (!fixed) style.remove();
 })();

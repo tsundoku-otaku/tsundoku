@@ -135,6 +135,7 @@ internal class NovelWebViewStyler(
                 $fontInheritOverride
             }
             a:link, a:visited { color: $linkColorHex$styleImportance; }
+            .td-tts-highlight-bg a:link, .td-tts-highlight-bg a:visited { color: inherit$styleImportance; }
             $descendantBackgroundReset
             $headingSizeRules
             $hideChapterTitleCss
