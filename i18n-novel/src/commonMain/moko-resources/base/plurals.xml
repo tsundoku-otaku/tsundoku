@@ -22,6 +22,8 @@
     <plurals name="translation_queued">
         <item quantity="one">Queued %d chapter for translation</item>
         <item quantity="other">Queued %d chapters for translation</item>
+    </plurals>
+
     <plurals name="updates_new_chapters_latest_batch">
         <item quantity="one">%d new chapter</item>
         <item quantity="other">%d new chapters</item>
