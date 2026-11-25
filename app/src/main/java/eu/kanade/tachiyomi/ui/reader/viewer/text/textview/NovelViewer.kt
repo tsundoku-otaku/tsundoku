@@ -25,6 +25,7 @@ import android.widget.TextView
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
 import androidx.core.view.ViewCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
@@ -720,6 +721,19 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun reloadContent() {
         activity.runOnUiThread {
             currentChapters?.let {
+                // Only the current chapter is rendered again, so a start waiting on another rendered or
+                // appending chapter would never fire. Without infinite scroll the chapter it waits on is
+                // the one the activity is loading, which still arrives through setChapters.
+                val pendingChapterId = pendingTtsStart?.chapterId
+                if (pendingChapterId != null &&
+                    pendingChapterId != it.currChapter.chapter.id &&
+                    (
+                        preferences.novelInfiniteScroll.get() ||
+                            loadedChapters.any { c -> c.chapter.chapter.id == pendingChapterId }
+                        )
+                ) {
+                    stopTts()
+                }
                 clearChapters()
                 setChapters(it)
             }
@@ -862,7 +876,30 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         applyBackgroundColor()
     }
 
-    private var pendingTtsAutoStart = false
+    private class PendingTtsStart(val chapterId: Long?, val fromViewport: Boolean)
+
+    // A TTS start waiting for this chapter's text to render.
+    private var pendingTtsStart: PendingTtsStart? = null
+
+    // The chapter on screen when a start had to wait for TTS to initialize.
+    private var pendingInitStartChapterId: Long? = null
+
+    private val pendingTtsAutoStart: Boolean get() = pendingTtsStart != null
+
+    // Bumped by stopTts and every start, so a deferred start only runs for the request that made it.
+    private var ttsStartGeneration = 0
+
+    private fun deferTtsStart(target: LoadedChapter?, fromViewport: Boolean) {
+        if (target?.isTextSet == true) {
+            logcat(LogPriority.WARN) { "TTS: chapter rendered no text, stopping" }
+            stopTts()
+            return
+        }
+        val chapterId = target?.chapter?.chapter?.id
+            ?: currentPage?.chapter?.chapter?.id
+            ?: currentChapters?.currChapter?.chapter?.id
+        pendingTtsStart = PendingTtsStart(chapterId, fromViewport)
+    }
 
     // Set when an inf-scroll TTS handoff found nothing prefetched and kicked a prefetch.
     // The prefetch completion retries the handoff.
@@ -1196,7 +1233,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             return
         }
 
-        pendingTtsAutoStart = true
+        pendingTtsStart = PendingTtsStart(chapters.nextChapter.chapter.id, fromViewport = false)
         scope.launch {
             // Must NOT use activity.loadNextChapter(): it stops TTS (manual-nav)
             // and clears pendingTtsAutoStart, so playback never resumes.
@@ -1347,7 +1384,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             val content = cached.pendingContent
             if (content != null) {
                 cached.pendingContent = null
-                pendingTtsAutoStart = true
+                pendingTtsStart = PendingTtsStart(cached.chapter.chapter.id, fromViewport = false)
                 setChapterContent(cached, content)
             }
             return true
@@ -1417,32 +1454,35 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     }
 
     fun startTts() {
+        ttsStartGeneration++
+        // A newer start replaces a deferred one or a handoff waiting on a prefetch; deferTtsStart
+        // installs it again if still needed.
+        pendingTtsStart = null
+        pendingTtsHandoffAfterPrefetch = false
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet, waiting..." }
             ttsController.pendingStartRequest = TtsController.StartRequest.NORMAL
+            pendingInitStartChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
             return
         }
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
         syncCurrentChapterIndexWithCurrentPage()
-        val text = loadedChapters.getOrNull(currentChapterIndex)?.block?.fullText
-            ?: loadedChapters.firstOrNull()?.block?.fullText
-        if (text.isNullOrEmpty()) {
+        val target = loadedChapters.getOrNull(currentChapterIndex) ?: loadedChapters.firstOrNull()
+        val text = target?.block?.fullText
+        if (target == null || text.isNullOrEmpty()) {
             // Chapter text hasn't rendered yet; defer so onChapterTextSet starts playback
             // once it's ready instead of failing the start silently.
             logcat(LogPriority.WARN) {
                 "TTS: text not ready, deferring start. loadedChapters=${loadedChapters.size}, currentIndex=$currentChapterIndex"
             }
-            pendingTtsAutoStart = true
+            deferTtsStart(target, fromViewport = false)
             return
         }
+        currentChapterIndex = loadedChapters.indexOf(target)
         logcat(LogPriority.DEBUG) { "TTS: Starting to speak ${text.length} characters" }
-        ttsController.speak(
-            text,
-            chapterIndex = currentChapterIndex,
-            chapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id,
-        )
+        ttsController.speak(text, chapterIndex = currentChapterIndex, chapterId = target.chapter.chapter.id)
 
         // Inf-scroll TTS reads in place, so the scroll listener that normally kicks the
         // prefetch may never reach the load threshold (keep-in-view off, or a chapter shorter
@@ -1461,7 +1501,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         logcat(LogPriority.DEBUG) {
             "TTS: stopTts called ts=${System.currentTimeMillis()} currentChapterIndex=$currentChapterIndex ttsCurrentChunkIndex=${ttsController.ttsCurrentChunkIndex} ttsPlaybackChapterIndex=${ttsController.ttsPlaybackChapterIndex} ttsPlaybackChapterId=${ttsController.ttsPlaybackChapterId}"
         }
-        pendingTtsAutoStart = false
+        pendingTtsStart = null
+        pendingTtsHandoffAfterPrefetch = false
+        ttsStartGeneration++
         handoffState = TtsHandoffState.Idle
         ttsController.stop()
     }
@@ -1473,7 +1515,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
      * notification/service alive with nothing playing).
      */
     private fun abortPendingTtsOnLoadFailure() {
-        if (pendingTtsAutoStart || ttsController.isTtsAutoPlay) {
+        if (pendingTtsAutoStart || ttsController.isTtsAutoPlay || ttsController.pendingStartRequest != null) {
             stopTts()
         }
     }
@@ -1517,32 +1559,33 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     fun seekTtsToParagraph(paragraphIndex: Int) = ttsController.seekToParagraph(paragraphIndex)
 
     fun startTtsFromViewport() {
+        ttsStartGeneration++
+        pendingTtsStart = null
+        pendingTtsHandoffAfterPrefetch = false
         ttsController.ensureInitialized()
         if (!ttsController.ttsInitialized) {
             logcat(LogPriority.WARN) { "TTS: Not initialized yet" }
             ttsController.pendingStartRequest = TtsController.StartRequest.VIEWPORT
+            pendingInitStartChapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id
             return
         }
         ttsController.pendingStartRequest = null
         ttsController.isTtsAutoPlay = true
         syncCurrentChapterIndexWithCurrentPage()
-        val text = loadedChapters.getOrNull(currentChapterIndex)?.block?.fullText
-            ?: loadedChapters.firstOrNull()?.block?.fullText
-        if (text.isNullOrEmpty()) {
+        val target = loadedChapters.getOrNull(currentChapterIndex) ?: loadedChapters.firstOrNull()
+        val text = target?.block?.fullText
+        if (target == null || text.isNullOrEmpty()) {
             // Chapter text not rendered yet; defer to onChapterTextSet rather than no-op.
             logcat(LogPriority.WARN) { "TTS: text not ready for viewport start, deferring" }
-            pendingTtsAutoStart = true
+            deferTtsStart(target, fromViewport = true)
             return
         }
+        currentChapterIndex = loadedChapters.indexOf(target)
         val firstVisibleParagraphIndex = findFirstVisibleParagraphIndex(text)
         logcat(LogPriority.DEBUG) { "TTS: Starting from viewport paragraph $firstVisibleParagraphIndex" }
         ttsController.ttsViewportParagraphIndex = firstVisibleParagraphIndex.coerceAtLeast(0)
         ttsController.hasViewportStartOverride = true
-        ttsController.speak(
-            text,
-            chapterIndex = currentChapterIndex,
-            chapterId = currentPage?.chapter?.chapter?.id ?: currentChapters?.currChapter?.chapter?.id,
-        )
+        ttsController.speak(text, chapterIndex = currentChapterIndex, chapterId = target.chapter.chapter.id)
     }
 
     /**
@@ -1674,6 +1717,26 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         }
         val page = chapters.currChapter.pages?.firstOrNull() ?: return
 
+        val newChapterId = chapters.currChapter.chapter.id
+        val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == newChapterId }
+        val clearsQueue = !preferences.novelInfiniteScroll.get() || !isAlreadyLoaded
+
+        // A move to some other chapter abandons a start still waiting for its chapter, also when that
+        // chapter is loaded but about to be cleared with the queue.
+        val pendingChapterId = pendingTtsStart?.chapterId
+        if (pendingChapterId != null && pendingChapterId != newChapterId &&
+            newChapterId != currentChapters?.currChapter?.chapter?.id &&
+            (clearsQueue || loadedChapters.none { it.chapter.chapter.id == pendingChapterId })
+        ) {
+            stopTts()
+        } else if (pendingTtsStart == null && clearsQueue && ttsController.isTtsAutoPlay &&
+            ttsController.ttsPlaybackChapterId != newChapterId
+        ) {
+            // A handoff a newer start replaced still navigates here; the chapter being read is about
+            // to be cleared, so its playback can't continue against the new content.
+            stopTts()
+        }
+
         loadJob?.cancel()
         currentPage = page
         currentChapters = chapters
@@ -1681,13 +1744,11 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
         resetFindState()
         activity.onNovelFindResult(0, -1)
 
-        val isAlreadyLoaded = loadedChapters.any { it.chapter.chapter.id == chapters.currChapter.chapter.id }
-
         if (preferences.novelInfiniteScroll.get() && loadedChapters.isNotEmpty() && isAlreadyLoaded) {
             return
         }
 
-        if (!preferences.novelInfiniteScroll.get() || !isAlreadyLoaded) {
+        if (clearsQueue) {
             clearChapters()
         }
 
@@ -1706,6 +1767,7 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             if (loader == null) {
                 logcat(LogPriority.ERROR) { "NovelViewer: No page loader available" }
                 hideLoadingIndicator()
+                abortPendingTtsOnLoadFailure()
                 return@launch
             }
 
@@ -1837,6 +1899,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                 contentContainer.removeView(block.container)
                 loadedChapter.separatorView?.let { contentContainer.removeView(it) }
                 chapterQueue.removeById(chapter.chapter.id)
+                val waitsOnInit = ttsController.pendingStartRequest != null &&
+                    pendingInitStartChapterId == chapter.chapter.id
+                if (pendingTtsStart?.chapterId == chapter.chapter.id || waitsOnInit) abortPendingTtsOnLoadFailure()
                 if (!isAppend) {
                     currentChapterIndex = (loadedChapters.size - 1).coerceAtLeast(0)
                 }
@@ -1939,6 +2004,9 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             contentContainer.removeView(toRemove.headerView)
             contentContainer.removeView(toRemove.block.container)
             chapterQueue.removeFirst()
+            val trimmedId = toRemove.chapter.chapter.id
+            val waitsOnInit = ttsController.pendingStartRequest != null && pendingInitStartChapterId == trimmedId
+            if (pendingTtsStart?.chapterId == trimmedId || waitsOnInit) abortPendingTtsOnLoadFailure()
 
             if (loadedChapters.isNotEmpty()) {
                 loadedChapters.first().separatorView?.let { sep ->
@@ -2096,7 +2164,8 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
     private fun onChapterTextSet(loaded: LoadedChapter) {
         loaded.isTextSet = true
 
-        if (loaded.chapter.chapter.id == pendingRestoreChapterId) {
+        val restoresScroll = loaded.chapter.chapter.id == pendingRestoreChapterId
+        if (restoresScroll) {
             pendingRestoreChapterId = null
             val progress = pendingRestoreProgress
             val generation = contentGeneration
@@ -2113,10 +2182,18 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
             }
         }
 
-        if (pendingTtsAutoStart) {
-            pendingTtsAutoStart = false
+        val pending = pendingTtsStart
+        // A start saved before any chapter id was known takes the first chapter that renders.
+        if (pending != null && (pending.chapterId == null || pending.chapterId == loaded.chapter.chapter.id)) {
+            pendingTtsStart = null
+            if (loaded.block.fullText.isNullOrEmpty()) {
+                logcat(LogPriority.WARN) { "TTS: deferred chapter rendered no text, stopping" }
+                stopTts()
+                return
+            }
             val loadedIdx = loadedChapters.indexOf(loaded)
-            if (loadedIdx >= 0) {
+            // Scrolling while the block was still empty can move the current chapter back.
+            if (loadedIdx >= 0 && currentPage?.chapter !== loaded.chapter) {
                 currentChapterIndex = loadedIdx
                 loaded.chapter.pages?.firstOrNull()?.let { page ->
                     currentPage = page
@@ -2125,7 +2202,24 @@ class NovelViewer(val activity: ReaderActivity) : Viewer {
                     activity.onNovelProgressChanged(0f)
                 }
             }
-            startTts()
+            if (pending.fromViewport) {
+                // The visible paragraph is only known once the new text is laid out, and after the saved
+                // position is restored when that is pending too: pre-draw listeners run in the order
+                // added, so this one runs after the restore above.
+                val generation = ttsStartGeneration
+                val start = {
+                    if (generation == ttsStartGeneration && ttsController.isTtsAutoPlay && pendingTtsStart == null) {
+                        startTtsFromViewport()
+                    }
+                }
+                if (restoresScroll) {
+                    scrollView.doOnPreDraw { start() }
+                } else {
+                    loaded.block.container.doOnLayout { start() }
+                }
+            } else {
+                startTts()
+            }
         }
 
         if (loaded === loadedChapters.getOrNull(currentChapterIndex)) {
