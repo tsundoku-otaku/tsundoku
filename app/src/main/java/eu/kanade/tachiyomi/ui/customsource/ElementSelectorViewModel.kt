@@ -59,15 +59,18 @@ class ElementSelectorViewModel(
     val selectionsByStep = mutableStateMapOf<SelectorWizardStep, SnapshotStateList<SelectedElement>>()
     val detectedListState = mutableStateMapOf<SelectorWizardStep, String>()
 
+    // <html lang> of the first page loaded, used when the setup page left the language blank.
+    val detectedLanguageState = mutableStateOf("")
+
     data class State(
         val savedSuccessfully: Boolean = false,
         val error: String? = null,
     )
 
-    fun saveConfig(config: SelectorConfig, features: SourceFeatures) {
+    fun saveConfig(config: SelectorConfig, features: SourceFeatures, language: String) {
         viewModelScope.launch {
             try {
-                val sourceConfig = convertToCustomSourceConfig(config, features)
+                val sourceConfig = convertToCustomSourceConfig(config, features, language)
                 customSourceManager.createSource(sourceConfig).fold(
                     onSuccess = { mutableState.update { it.copy(savedSuccessfully = true) } },
                     onFailure = { e -> mutableState.update { it.copy(error = e.message) } },
@@ -81,6 +84,7 @@ class ElementSelectorViewModel(
     private fun convertToCustomSourceConfig(
         selectorConfig: SelectorConfig,
         features: SourceFeatures,
+        language: String,
     ): CustomSourceConfig {
         val baseUrl = selectorConfig.baseUrl.trimEnd('/')
 
@@ -127,12 +131,10 @@ class ElementSelectorViewModel(
             null
         }
 
-        val searchUrl = if (features.hasSearch) {
-            selectorConfig.searchUrl.ifBlank { "$baseUrl/?s={query}" }
-        } else {
-            ""
-        }
-        val searchPagedUrl = if (features.hasSearch && features.searchPagination) {
+        // No captured search URL means no search, not a guessed one.
+        val hasSearch = features.hasSearch && selectorConfig.searchUrl.isNotBlank()
+        val searchUrl = if (hasSearch) selectorConfig.searchUrl else ""
+        val searchPagedUrl = if (hasSearch && features.searchPagination) {
             val p1 = selectorConfig.searchSampleUrl.trim()
             val p2 = selectorConfig.searchPage2Url.trim()
             if (p1.isNotBlank() && p2.isNotBlank()) {
@@ -149,7 +151,7 @@ class ElementSelectorViewModel(
                 initialSourceName.ifEmpty { "Custom Source" }
             },
             baseUrl = baseUrl,
-            language = "en",
+            language = typedLanguageCode(language) ?: normalizeLanguageCode(detectedLanguageState.value),
             reverseChapters = selectorConfig.reverseChapters,
             popularUrl = popularUrl,
             latestUrl = latestUrl,
@@ -158,7 +160,7 @@ class ElementSelectorViewModel(
             latestPagedUrl = latestPagedUrl,
             searchPagedUrl = searchPagedUrl,
             sampleNovelUrl = selectorConfig.sampleNovelUrl.ifBlank { null },
-            testSearchQuery = if (features.hasSearch) selectorConfig.searchKeyword.ifBlank { null } else null,
+            testSearchQuery = if (hasSearch) selectorConfig.searchKeyword.ifBlank { null } else null,
             selectors = SourceSelectors(
                 popular = MangaListSelectors(
                     list = if (features.hasPopular) cardList else "",
@@ -176,7 +178,7 @@ class ElementSelectorViewModel(
                 } else {
                     null
                 },
-                search = if (features.hasSearch) {
+                search = if (hasSearch) {
                     MangaListSelectors(
                         list = cardList,
                         link = cardTitle,
@@ -275,11 +277,15 @@ class ElementSelectorViewModel(
     fun testConfig(
         selectorConfig: SelectorConfig,
         features: SourceFeatures,
+        language: String,
         section: SourceTestSection = SourceTestSection.ALL,
         onResult: (SourceTestResult) -> Unit,
     ) {
         viewModelScope.launch {
-            val result = customSourceManager.testSource(convertToCustomSourceConfig(selectorConfig, features), section)
+            val result = customSourceManager.testSource(
+                convertToCustomSourceConfig(selectorConfig, features, language),
+                section,
+            )
             onResult(result)
         }
     }
@@ -287,4 +293,25 @@ class ElementSelectorViewModel(
     fun clearError() {
         mutableState.update { it.copy(error = null) }
     }
+}
+
+// "en-US" / "pt_BR" -> "en" / "pt"; blank or junk -> "en".
+// Typed codes keep their region in the form extensions use: "pt_br" -> "pt-BR". Null when blank.
+internal fun typedLanguageCode(raw: String): String? {
+    val parts = raw.trim().replace('_', '-').split('-').filter { it.isNotEmpty() }
+    if (parts.isEmpty()) return null
+    return parts.mapIndexed { i, part ->
+        when {
+            i == 0 -> part.lowercase()
+            part.length == 4 && part.all { it.isLetter() } -> part.lowercase().replaceFirstChar { it.uppercase() }
+            (part.length == 2 && part.all { it.isLetter() }) || (part.length == 3 && part.all { it.isDigit() }) ->
+                part.uppercase()
+            else -> part
+        }
+    }.joinToString("-")
+}
+
+internal fun normalizeLanguageCode(raw: String): String {
+    val primary = raw.trim().substringBefore('-').substringBefore('_').lowercase()
+    return primary.takeIf { it.length in 2..3 && it.all { c -> c in 'a'..'z' } } ?: "en"
 }

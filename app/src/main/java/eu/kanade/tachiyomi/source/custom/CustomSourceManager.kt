@@ -341,7 +341,10 @@ class CustomSourceManager(
         }
 
         // Search
-        if (all || section == SourceTestSection.SEARCH) {
+        val hasSearch = source.canSearch()
+        if (section == SourceTestSection.SEARCH && !hasSearch) {
+            results["search"] = TestStepResult(success = false, message = "No search URL configured")
+        } else if ((all && hasSearch) || section == SourceTestSection.SEARCH) {
             try {
                 val searchQuery = config.testSearchQuery?.ifBlank { null } ?: DEFAULT_TEST_QUERY
                 val search = source.getSearchManga(1, searchQuery, eu.kanade.tachiyomi.source.model.FilterList())

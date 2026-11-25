@@ -310,13 +310,14 @@ class CustomSourcesScreen : Screen {
                     navigator.push(eu.kanade.tachiyomi.ui.customsource.WizardSetupScreen(baseUrl))
                     showCreateDialog = false
                 },
-                onBaseOnExtension = { name, baseUrl, extensionSourceId ->
+                onBaseOnExtension = { name, baseUrl, extensionSourceId, isNovel ->
                     navigator.push(
                         CustomSourceEditorScreen(
                             sourceId = null,
                             initialName = name,
                             initialBaseUrl = baseUrl,
                             basedOnSourceId = extensionSourceId,
+                            basedOnIsNovel = isNovel,
                         ),
                     )
                     showCreateDialog = false
@@ -741,7 +742,8 @@ private fun CreateSourceDialog(
     onDismiss: () -> Unit,
     onCreate: (name: String, baseUrl: String) -> Unit,
     onUseWebViewSelector: (baseUrl: String) -> Unit = {},
-    onBaseOnExtension: (name: String, baseUrl: String, sourceId: Long) -> Unit = { _, _, _ -> },
+    onBaseOnExtension: (name: String, baseUrl: String, sourceId: Long, isNovel: Boolean) -> Unit =
+        { _, _, _, _ -> },
 ) {
     var name by remember { mutableStateOf("") }
     var baseUrl by remember { mutableStateOf("https://") }
@@ -854,9 +856,9 @@ private fun CreateSourceDialog(
         BaseSourcePickerDialog(
             selectedSourceId = null,
             onDismiss = { showExtensionPicker = false },
-            onPick = { pickedSourceName, pickedSourceId, pickedBaseUrl, _ ->
+            onPick = { pickedSourceName, pickedSourceId, pickedBaseUrl, _, pickedIsNovel ->
                 showExtensionPicker = false
-                onBaseOnExtension(pickedSourceName, pickedBaseUrl, pickedSourceId)
+                onBaseOnExtension(pickedSourceName, pickedBaseUrl, pickedSourceId, pickedIsNovel)
             },
         )
     }
@@ -1013,6 +1015,7 @@ class CustomSourceEditorScreen(
     private val initialName: String? = null,
     private val initialBaseUrl: String? = null,
     private val basedOnSourceId: Long? = null,
+    private val basedOnIsNovel: Boolean? = null,
 ) : Screen {
 
     @OptIn(ExperimentalMaterial3Api::class)
@@ -1061,7 +1064,12 @@ class CustomSourceEditorScreen(
 
         var reverseChapters by remember { mutableStateOf(initialConfig?.reverseChapters ?: false) }
         var postSearch by remember { mutableStateOf(initialConfig?.postSearch ?: false) }
-        var isNovel by remember { mutableStateOf(initialConfig?.isNovel ?: true) }
+        var isNovel by remember {
+            // An edited source based on an extension takes that extension's type while it is installed
+            val baseIsNovel = basedOnIsNovel ?: initialConfig?.basedOnSourceId
+                ?.let { Injekt.get<SourceManager>().get(it)?.isNovelSource() }
+            mutableStateOf(baseIsNovel ?: initialConfig?.isNovel ?: true)
+        }
 
         // Which sections this source has — drives which selector inputs are shown. Inferred from an
         // existing config, defaults to popular+latest+search for a new one.
@@ -1085,13 +1093,13 @@ class CustomSourceEditorScreen(
 
         // Selectors
         var popularListSelector by remember {
-            mutableStateOf(initialConfig?.selectors?.popular?.list ?: "")
+            mutableStateOf(formCard(initialConfig)?.list ?: "")
         }
         var popularTitleSelector by remember {
-            mutableStateOf(initialConfig?.selectors?.popular?.title ?: "")
+            mutableStateOf(formCard(initialConfig)?.title ?: "")
         }
         var popularCoverSelector by remember {
-            mutableStateOf(initialConfig?.selectors?.popular?.cover ?: "")
+            mutableStateOf(formCard(initialConfig)?.cover ?: "")
         }
         var popularNextPageSelector by remember {
             mutableStateOf(initialConfig?.selectors?.popular?.nextPage ?: "")
@@ -1199,12 +1207,40 @@ class CustomSourceEditorScreen(
         var pickerTarget by remember { mutableStateOf<((String) -> Unit)?>(null) }
         var pickerUrl by remember { mutableStateOf("") }
         var pickerLabel by remember { mutableStateOf("") }
+        var pickerScope by remember {
+            mutableStateOf<eu.kanade.tachiyomi.ui.customsource.PickerScope>(
+                eu.kanade.tachiyomi.ui.customsource.PickerScope.Document,
+            )
+        }
+        // The listing whose selectors the shared inputs edit: for a saved source the card formCard loaded
+        // them from, which buildConfig also keeps as the baseline; for a new one the first enabled listing.
+        val loadedListingUrl = initialConfig?.let { c ->
+            when {
+                c.popularUrl.isNotBlank() -> popularUrl
+                c.latestUrl != null -> latestUrl
+                c.searchUrl.isNotBlank() -> searchUrl
+                else -> null
+            }
+        }?.ifBlank { null }
+        val listingUrl = loadedListingUrl ?: when {
+            features.hasPopular && popularUrl.isNotBlank() -> popularUrl
+            features.hasLatest && latestUrl.isNotBlank() -> latestUrl
+            else -> popularUrl
+        }
+
         fun firstPageUrl(u: String): String =
             u.replace("{baseUrl}", baseUrl).replace("{page}", "1").replace("{query}", "a").ifBlank { baseUrl }
-        fun pickTrailing(url: String, fieldLabel: String, set: (String) -> Unit): @Composable () -> Unit = {
+        fun pickTrailing(
+            url: String,
+            fieldLabel: String,
+            scope: eu.kanade.tachiyomi.ui.customsource.PickerScope =
+                eu.kanade.tachiyomi.ui.customsource.PickerScope.Document,
+            set: (String) -> Unit,
+        ): @Composable () -> Unit = {
             IconButton(onClick = {
                 pickerUrl = url.ifBlank { baseUrl }
                 pickerLabel = fieldLabel
+                pickerScope = scope
                 pickerTarget = set
             }) {
                 Icon(
@@ -1395,6 +1431,8 @@ class CustomSourceEditorScreen(
                     androidx.compose.material3.Checkbox(
                         checked = isNovel,
                         onCheckedChange = { isNovel = it },
+                        // A delegated source is whatever its base is; the reader path depends on it.
+                        enabled = selectedBasedOnSourceId == null,
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
@@ -1549,8 +1587,9 @@ class CustomSourceEditorScreen(
                         onValueChange = { popularListSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_list_item_selector)) },
                         trailingIcon = pickTrailing(
-                            firstPageUrl(popularUrl),
+                            firstPageUrl(listingUrl),
                             stringResource(TDMR.strings.custom_source_list_item_selector),
+                            eu.kanade.tachiyomi.ui.customsource.PickerScope.ListItem,
                         ) {
                             popularListSelector =
                                 it
@@ -1563,8 +1602,9 @@ class CustomSourceEditorScreen(
                         onValueChange = { popularTitleSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_title_selector)) },
                         trailingIcon = pickTrailing(
-                            firstPageUrl(popularUrl),
+                            firstPageUrl(listingUrl),
                             stringResource(TDMR.strings.custom_source_title_selector),
+                            eu.kanade.tachiyomi.ui.customsource.PickerScope.InsideItem(popularListSelector),
                         ) {
                             popularTitleSelector =
                                 it
@@ -1576,8 +1616,9 @@ class CustomSourceEditorScreen(
                         onValueChange = { popularCoverSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_cover_selector)) },
                         trailingIcon = pickTrailing(
-                            firstPageUrl(popularUrl),
+                            firstPageUrl(listingUrl),
                             stringResource(TDMR.strings.custom_source_cover_selector),
+                            eu.kanade.tachiyomi.ui.customsource.PickerScope.InsideItem(popularListSelector),
                         ) {
                             popularCoverSelector =
                                 it
@@ -1675,7 +1716,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { detailsTitleSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_title_selector_required)) },
                         trailingIcon = pickTrailing(
-                            baseUrl,
+                            sampleNovelUrl.ifBlank { baseUrl },
                             stringResource(TDMR.strings.custom_source_title_selector_required),
                         ) {
                             detailsTitleSelector =
@@ -1688,7 +1729,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { detailsDescriptionSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_description_selector)) },
                         trailingIcon = pickTrailing(
-                            baseUrl,
+                            sampleNovelUrl.ifBlank { baseUrl },
                             stringResource(TDMR.strings.custom_source_description_selector),
                         ) {
                             detailsDescriptionSelector =
@@ -1701,7 +1742,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { detailsCoverSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_details_cover_selector)) },
                         trailingIcon = pickTrailing(
-                            baseUrl,
+                            sampleNovelUrl.ifBlank { baseUrl },
                             stringResource(TDMR.strings.custom_source_details_cover_selector),
                         ) {
                             detailsCoverSelector =
@@ -1714,7 +1755,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { detailsAuthorSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_author_selector)) },
                         trailingIcon = pickTrailing(
-                            baseUrl,
+                            sampleNovelUrl.ifBlank { baseUrl },
                             stringResource(TDMR.strings.custom_source_author_selector),
                         ) {
                             detailsAuthorSelector =
@@ -1727,7 +1768,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { detailsGenreSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_genre_selector)) },
                         trailingIcon = pickTrailing(
-                            baseUrl,
+                            sampleNovelUrl.ifBlank { baseUrl },
                             stringResource(TDMR.strings.custom_source_genre_selector),
                         ) {
                             detailsGenreSelector =
@@ -1740,7 +1781,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { detailsArtistSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_artist_selector)) },
                         trailingIcon = pickTrailing(
-                            baseUrl,
+                            sampleNovelUrl.ifBlank { baseUrl },
                             stringResource(TDMR.strings.custom_source_artist_selector),
                         ) { detailsArtistSelector = it },
                         modifier = Modifier.fillMaxWidth(),
@@ -1750,7 +1791,7 @@ class CustomSourceEditorScreen(
                         onValueChange = { detailsStatusSelector = it },
                         label = { Text(stringResource(TDMR.strings.custom_source_status_selector)) },
                         trailingIcon = pickTrailing(
-                            baseUrl,
+                            sampleNovelUrl.ifBlank { baseUrl },
                             stringResource(TDMR.strings.custom_source_status_selector),
                         ) { detailsStatusSelector = it },
                         modifier = Modifier.fillMaxWidth(),
@@ -1785,7 +1826,7 @@ class CustomSourceEditorScreen(
                             onValueChange = { chapterCountSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_count_selector)) },
                             trailingIcon = pickTrailing(
-                                baseUrl,
+                                sampleNovelUrl.ifBlank { baseUrl },
                                 stringResource(TDMR.strings.custom_source_chapter_count_selector),
                             ) {
                                 chapterCountSelector =
@@ -1835,8 +1876,9 @@ class CustomSourceEditorScreen(
                             onValueChange = { chaptersListSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_list_selector)) },
                             trailingIcon = pickTrailing(
-                                baseUrl,
+                                sampleNovelUrl.ifBlank { baseUrl },
                                 stringResource(TDMR.strings.custom_source_chapter_list_selector),
+                                eu.kanade.tachiyomi.ui.customsource.PickerScope.ListItem,
                             ) {
                                 chaptersListSelector =
                                     it
@@ -1848,8 +1890,9 @@ class CustomSourceEditorScreen(
                             onValueChange = { chapterLinkSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_link_selector)) },
                             trailingIcon = pickTrailing(
-                                baseUrl,
+                                sampleNovelUrl.ifBlank { baseUrl },
                                 stringResource(TDMR.strings.custom_source_chapter_link_selector),
+                                eu.kanade.tachiyomi.ui.customsource.PickerScope.InsideItem(chaptersListSelector),
                             ) {
                                 chapterLinkSelector =
                                     it
@@ -1861,8 +1904,9 @@ class CustomSourceEditorScreen(
                             onValueChange = { chapterNameSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_name_selector)) },
                             trailingIcon = pickTrailing(
-                                baseUrl,
+                                sampleNovelUrl.ifBlank { baseUrl },
                                 stringResource(TDMR.strings.custom_source_chapter_name_selector),
+                                eu.kanade.tachiyomi.ui.customsource.PickerScope.InsideItem(chaptersListSelector),
                             ) {
                                 chapterNameSelector =
                                     it
@@ -1874,8 +1918,9 @@ class CustomSourceEditorScreen(
                             onValueChange = { chapterDateSelector = it },
                             label = { Text(stringResource(TDMR.strings.custom_source_chapter_date_selector)) },
                             trailingIcon = pickTrailing(
-                                baseUrl,
+                                sampleNovelUrl.ifBlank { baseUrl },
                                 stringResource(TDMR.strings.custom_source_chapter_date_selector),
+                                eu.kanade.tachiyomi.ui.customsource.PickerScope.InsideItem(chaptersListSelector),
                             ) {
                                 chapterDateSelector =
                                     it
@@ -1890,7 +1935,7 @@ class CustomSourceEditorScreen(
                                     Text(stringResource(TDMR.strings.custom_source_chapter_pagination_selector))
                                 },
                                 trailingIcon = pickTrailing(
-                                    baseUrl,
+                                    sampleNovelUrl.ifBlank { baseUrl },
                                     stringResource(TDMR.strings.custom_source_chapter_pagination_selector),
                                 ) {
                                     chapterNextPageSelector = it
@@ -1917,7 +1962,7 @@ class CustomSourceEditorScreen(
                                 onValueChange = { chapterIndexLinkSelector = it },
                                 label = { Text(stringResource(TDMR.strings.custom_source_chapter_index_selector)) },
                                 trailingIcon = pickTrailing(
-                                    baseUrl,
+                                    sampleNovelUrl.ifBlank { baseUrl },
                                     stringResource(TDMR.strings.custom_source_chapter_index_selector),
                                 ) {
                                     chapterIndexLinkSelector =
@@ -2149,10 +2194,11 @@ class CustomSourceEditorScreen(
             BaseSourcePickerDialog(
                 selectedSourceId = selectedBasedOnSourceId,
                 onDismiss = { showBaseSourcePicker = false },
-                onPick = { _, sourceId, baseUrlValue, lang ->
+                onPick = { _, sourceId, baseUrlValue, lang, pickedIsNovel ->
                     selectedBasedOnSourceId = sourceId
                     baseUrl = baseUrlValue
                     language = lang
+                    isNovel = pickedIsNovel
                     showBaseSourcePicker = false
                 },
             )
@@ -2164,6 +2210,7 @@ class CustomSourceEditorScreen(
                 label = pickerLabel,
                 onDismiss = { pickerTarget = null },
                 onPicked = { selector -> setter(selector) },
+                scope = pickerScope,
             )
         }
     }
@@ -2196,6 +2243,18 @@ class CustomSourceEditorScreen(
         text.split(",").map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { null }
 
     @Suppress("LongParameterList")
+    // The card the shared list/title/cover inputs edit: popular's, or the first enabled listing's when
+    // popular is off, so editing a latest-only source changes latest.
+    private fun formCard(config: CustomSourceConfig?): eu.kanade.tachiyomi.source.custom.MangaListSelectors? {
+        val c = config ?: return null
+        return when {
+            c.popularUrl.isNotBlank() -> c.selectors.popular
+            c.latestUrl != null -> c.selectors.latest ?: c.selectors.popular
+            c.searchUrl.isNotBlank() -> c.selectors.search ?: c.selectors.popular
+            else -> c.selectors.popular
+        }
+    }
+
     private fun buildConfig(
         existing: CustomSourceConfig?,
         name: String,
@@ -2255,7 +2314,23 @@ class CustomSourceEditorScreen(
         val generate = features.chapterGenerateFromPattern
         // No dedicated link input: keep the one the config already has (wizard-picked or imported),
         // and fall back to the title selector the way the wizard does for a fresh source.
-        val cardLink = existing?.selectors?.popular?.link ?: cardTitle
+        val cardLink = formCard(existing)?.link ?: cardTitle
+        // The form only edits the popular card. A latest/search card captured separately (wizard
+        // latest step, or imported JSON) differs from the stored popular one and is kept as is;
+        // one that mirrored popular follows the edited popular values.
+        val oldPopular = formCard(existing)
+        fun keepOwn(own: String?, oldShared: String?, edited: String?): String? =
+            if (own != null && own != oldShared) own else edited
+        fun sectionSelectors(
+            own: eu.kanade.tachiyomi.source.custom.MangaListSelectors?,
+            nextPage: String?,
+        ) = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
+            list = keepOwn(own?.list?.ifBlank { null }, oldPopular?.list, popularListSelector) ?: "",
+            link = keepOwn(own?.link, oldPopular?.link, cardLink),
+            title = keepOwn(own?.title, oldPopular?.title, cardTitle),
+            cover = keepOwn(own?.cover, oldPopular?.cover, cardCover),
+            nextPage = nextPage,
+        )
         val selectors = eu.kanade.tachiyomi.source.custom.SourceSelectors(
             popular = eu.kanade.tachiyomi.source.custom.MangaListSelectors(
                 list = if (features.hasPopular) popularListSelector else "",
@@ -2269,23 +2344,17 @@ class CustomSourceEditorScreen(
                 },
             ),
             latest = if (features.hasLatest) {
-                eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                    list = popularListSelector,
-                    link = existing?.selectors?.latest?.link ?: cardLink,
-                    title = cardTitle,
-                    cover = cardCover,
-                    nextPage = if (features.latestPagination) latestNextPageSelector.ifBlank { null } else null,
+                sectionSelectors(
+                    existing?.selectors?.latest,
+                    if (features.latestPagination) latestNextPageSelector.ifBlank { null } else null,
                 )
             } else {
                 null
             },
             search = if (features.hasSearch) {
-                eu.kanade.tachiyomi.source.custom.MangaListSelectors(
-                    list = popularListSelector,
-                    link = existing?.selectors?.search?.link ?: cardLink,
-                    title = cardTitle,
-                    cover = cardCover,
-                    nextPage = if (features.searchPagination) searchNextPageSelector.ifBlank { null } else null,
+                sectionSelectors(
+                    existing?.selectors?.search,
+                    if (features.searchPagination) searchNextPageSelector.ifBlank { null } else null,
                 )
             } else {
                 null
@@ -2403,7 +2472,7 @@ private fun SectionToggle(
 private fun BaseSourcePickerDialog(
     selectedSourceId: Long?,
     onDismiss: () -> Unit,
-    onPick: (sourceName: String, sourceId: Long, baseUrl: String, lang: String) -> Unit,
+    onPick: (sourceName: String, sourceId: Long, baseUrl: String, lang: String, isNovel: Boolean) -> Unit,
 ) {
     val extensionManager: ExtensionManager = remember { Injekt.get() }
     val jsPluginManager: JsPluginManager = remember { Injekt.get() }
@@ -2535,7 +2604,13 @@ private fun BaseSourcePickerDialog(
                                         },
                                     ),
                                     onClick = {
-                                        onPick(entry.sourceName, entry.sourceId, entry.baseUrl, entry.lang)
+                                        onPick(
+                                            entry.sourceName,
+                                            entry.sourceId,
+                                            entry.baseUrl,
+                                            entry.lang,
+                                            entry.isNovel,
+                                        )
                                     },
                                 ) {
                                     Column(modifier = Modifier.padding(12.dp)) {

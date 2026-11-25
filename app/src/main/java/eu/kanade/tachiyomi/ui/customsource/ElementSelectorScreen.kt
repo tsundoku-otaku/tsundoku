@@ -556,8 +556,11 @@ fun ElementSelectorScreen(
                     currentUrl = newUrl
 
                     // Dynamic search capture: if the user gave a probe word and it shows up in the
-                    // resulting URL (raw or percent-encoded), derive the {query} pattern.
-                    if (currentStep == SelectorWizardStep.SEARCH && searchProbeQuery.isNotBlank()) {
+                    // resulting URL (raw or percent-encoded), derive the {query} pattern. The step is
+                    // read from the model: this client is remembered once, so a captured local would
+                    // stay at the first step forever.
+                    val step = screenModel.currentStepState.value ?: steps.first()
+                    if (step == SelectorWizardStep.SEARCH && searchProbeQuery.isNotBlank()) {
                         val derived = deriveSearchUrl(newUrl, config.baseUrl, searchProbeQuery)
                         if (derived != null) {
                             config.searchUrl = derived
@@ -569,6 +572,11 @@ fun ElementSelectorScreen(
                             // the user knows to run the search (and that case must match).
                             searchStatus = "fail"
                         }
+                    }
+                }
+                if (screenModel.detectedLanguageState.value.isBlank()) {
+                    view.evaluateJavascript("document.documentElement.lang || ''") { result ->
+                        screenModel.detectedLanguageState.value = decodeJsString(result)
                     }
                 }
                 injectSelectionScript()
@@ -2456,6 +2464,21 @@ internal val ELEMENT_SELECTOR_JS = """
         return tighten(els[0], self0);
     };
 
+    // Selector for the element matched by [sel], relative to its enclosing list item ([listSel]), so
+    // the source can resolve it inside every item. '' when the element is the item itself; [sel]
+    // unchanged when it isn't inside an item.
+    window.relativeSelector = function(sel, listSel) {
+        let el, item;
+        try { el = document.querySelector(sel); item = el ? el.closest(listSel) : null; } catch (e) { return sel; }
+        if (!el || !item) return sel;
+        let path = [];
+        for (let cur = el; cur && cur !== item; cur = cur.parentElement) path.unshift(segmentFor(cur));
+        const rel = path.join(' > ');
+        // A same-named element nested deeper but earlier would win a plain descendant match.
+        try { if (item.querySelector(rel) === el) return rel; } catch (e) { return rel; }
+        return '> ' + rel;
+    };
+
     // Returns the parent selector + child elements of a selector, so the confirm dialog can walk up
     // AND down the DOM when the tap wasn't precise.
     window.relatives = function(sel) {
@@ -2489,9 +2512,11 @@ internal val ELEMENT_SELECTOR_JS = """
             let p = el.closest('a[href]'); if (p) return p.href;
             return '';
         }
+        // jsoup reads a leading '>' as a child of the item; the DOM needs :scope for that.
+        function inItem(scope, sel) { return scope.querySelector(sel.trim().startsWith('>') ? ':scope ' + sel : sel); }
         function txtIn(scope, sel) {
             if (!sel) return '';
-            try { let e = scope.querySelector(sel); return e ? (e.innerText || '').trim() : ''; } catch (x) { return ''; }
+            try { let e = inItem(scope, sel); return e ? (e.innerText || '').trim() : ''; } catch (x) { return ''; }
         }
         function q(sel) { try { return sel ? document.querySelectorAll(sel) : []; } catch (e) { return []; } }
         // Mirror CustomNovelSource.resolveImageUrl so the preview matches what the source will parse.
@@ -2506,7 +2531,7 @@ internal val ELEMENT_SELECTOR_JS = """
             if (style) { const m = style.match(/url\(\s*['"]?([^'")]+)/); if (m) return m[1]; }
             return el.src || '';
         }
-        function imgIn(scope, sel) { try { return sel ? imgUrl(scope.querySelector(sel)) : ''; } catch (e) { return ''; } }
+        function imgIn(scope, sel) { try { return sel ? imgUrl(inItem(scope, sel)) : ''; } catch (e) { return ''; } }
 
         try {
             if (kind === 'list' || kind === 'chapters') {
@@ -2549,6 +2574,12 @@ internal val ELEMENT_SELECTOR_JS = """
 })();
 """
 
+/** Decodes an evaluateJavascript result (a JSON value) to the string it holds; "" for null/non-string. */
+internal fun decodeJsString(result: String?): String = runCatching {
+    (kotlinx.serialization.json.Json.parseToJsonElement(result ?: "null") as? kotlinx.serialization.json.JsonPrimitive)
+        ?.takeIf { it.isString }?.content
+}.getOrNull().orEmpty()
+
 /**
  * Derives a {query} template from a URL produced by searching for [userQuery]. Handles raw and
  * percent-encoded occurrences (incl. '+' for spaces), any param/path segment. Null if not found.
@@ -2570,8 +2601,11 @@ internal fun deriveSearchUrl(url: String, baseUrl: String, userQuery: String): S
         .distinct()
         .filter { it.isNotBlank() }
 
+    // Only the path and query can carry the search text; the host can contain the same word.
+    val schemeEnd = url.indexOf("://").let { if (it < 0) 0 else it + 3 }
+    val pathStart = url.indexOfAny(charArrayOf('/', '?', '#'), schemeEnd).let { if (it < 0) url.length else it }
     for (candidate in candidates) {
-        val idx = url.indexOf(candidate, ignoreCase = true)
+        val idx = url.indexOf(candidate, pathStart, ignoreCase = true)
         if (idx >= 0) {
             return url.substring(0, idx) + "{query}" + url.substring(idx + candidate.length)
         }

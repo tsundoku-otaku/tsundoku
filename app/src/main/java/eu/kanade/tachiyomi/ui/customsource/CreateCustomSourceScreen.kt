@@ -74,6 +74,7 @@ class WizardSetupScreen(
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow
         var websiteUrl by remember { mutableStateOf(initialUrl) }
+        var language by remember { mutableStateOf("") }
         var features by remember { mutableStateOf(SourceFeatures()) }
         // At least one listing is required to reach novels in the browse UI.
         val canStart = websiteUrl.isNotBlank() && (features.hasPopular || features.hasLatest)
@@ -120,6 +121,15 @@ class WizardSetupScreen(
                     onValueChange = { websiteUrl = it },
                     label = { Text(stringResource(TDMR.strings.custom_source_url_label)) },
                     placeholder = { Text("https://example.com") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = language,
+                    onValueChange = { language = it.trim() },
+                    label = { Text(stringResource(TDMR.strings.custom_source_language_label)) },
+                    supportingText = { Text(stringResource(TDMR.strings.selector_setup_language_hint)) },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
                 )
@@ -195,7 +205,9 @@ class WizardSetupScreen(
                 Button(
                     onClick = {
                         val url = if (!websiteUrl.startsWith("http")) "https://$websiteUrl" else websiteUrl
-                        navigator.push(ElementSelectorVoyagerScreen(initialUrl = url, features = features))
+                        navigator.push(
+                            ElementSelectorVoyagerScreen(initialUrl = url, features = features, language = language),
+                        )
                     },
                     enabled = canStart,
                     modifier = Modifier.fillMaxWidth(),
@@ -212,6 +224,7 @@ class ElementSelectorVoyagerScreen(
     private val initialUrl: String,
     private val initialSourceName: String = "",
     private val features: SourceFeatures = SourceFeatures(),
+    private val language: String = "",
 ) : Screen {
 
     @Composable
@@ -256,10 +269,10 @@ class ElementSelectorVoyagerScreen(
             features = features,
             onNavigateUp = { navigator.pop() },
             onSaveConfig = { config ->
-                screenModel.saveConfig(config, features)
+                screenModel.saveConfig(config, features, language)
             },
             onTestConfig = { config, section, onResult ->
-                screenModel.testConfig(config, features, section, onResult)
+                screenModel.testConfig(config, features, language, section, onResult)
             },
         )
     }

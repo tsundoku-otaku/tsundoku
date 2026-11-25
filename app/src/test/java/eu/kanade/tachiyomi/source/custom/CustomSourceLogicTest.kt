@@ -1,11 +1,13 @@
 package eu.kanade.tachiyomi.source.custom
 
 import eu.kanade.tachiyomi.source.model.SManga
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import org.jsoup.Jsoup
 
 class CustomSourceLogicTest {
 
@@ -151,5 +153,76 @@ class CustomSourceLogicTest {
     fun `html to text collapses excess blank lines and trims`() {
         val out = htmlToFormattedText("<p>One</p><p></p><p></p><p>Two</p>")
         assertEquals("One\n\nTwo", out)
+    }
+
+    @Test
+    fun `rewrite moves only the base host and keeps path and query`() {
+        val rewritten = rewriteToCustomBase(
+            "https://source.example/novel/1?page=2".toHttpUrl(),
+            "https://source.example",
+            "https://mirror.example",
+        )
+        assertEquals("https://mirror.example/novel/1?page=2", rewritten.toString())
+    }
+
+    @Test
+    fun `rewrite leaves a url-valued query parameter alone`() {
+        val rewritten = rewriteToCustomBase(
+            "https://source.example/proxy?url=https://cdn.example/a.jpg".toHttpUrl(),
+            "https://source.example",
+            "https://mirror.example",
+        )
+        assertEquals("mirror.example", rewritten?.host)
+        assertEquals("https://cdn.example/a.jpg", rewritten?.queryParameter("url"))
+    }
+
+    @Test
+    fun `rewrite ignores requests to other hosts`() {
+        assertNull(
+            rewriteToCustomBase(
+                "https://cdn.example/a.jpg?ref=https://source.example".toHttpUrl(),
+                "https://source.example",
+                "https://mirror.example",
+            ),
+        )
+    }
+
+    @Test
+    fun `embedded absolute url is taken from a glued request url`() {
+        assertEquals(
+            "https://cdn.example.org/c/1",
+            embeddedAbsoluteUrl("https://example.com/https://cdn.example.org/c/1".toHttpUrl())?.toString(),
+        )
+        assertEquals(null, embeddedAbsoluteUrl("https://example.com/c/1".toHttpUrl()))
+        assertEquals(null, embeddedAbsoluteUrl("https://example.com/out?to=https://cdn.example.org/x".toHttpUrl()))
+        assertEquals(null, embeddedAbsoluteUrl("https://example.com/c/1#https://cdn.example.org/x".toHttpUrl()))
+    }
+
+    @Test
+    fun `rewrite ignores the same host on another explicit port`() {
+        assertNull(
+            rewriteToCustomBase(
+                "https://source.example:8443/a".toHttpUrl(),
+                "https://source.example",
+                "https://mirror.example",
+            ),
+        )
+        assertEquals(
+            "mirror.example",
+            rewriteToCustomBase(
+                "http://source.example/a".toHttpUrl(),
+                "https://source.example",
+                "https://mirror.example",
+            )?.host,
+        )
+    }
+
+    @Test
+    fun `child-anchored item selector skips a nested match`() {
+        val item = Jsoup.parse(
+            "<div class=item><div><span class=title>Other</span></div><span class=title>Novel</span></div>",
+        ).selectFirst("div.item")!!
+        assertEquals("Other", item.selectFirst("span.title")?.text())
+        assertEquals("Novel", item.selectFirst("> span.title")?.text())
     }
 }

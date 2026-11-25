@@ -68,6 +68,14 @@ class SelectorUrlAlgorithmsTest {
     }
 
     @Test
+    fun `deriveSearchUrl ignores the query inside the host`() {
+        assertEquals(
+            "https://novelsite.com/search?q={query}",
+            deriveSearchUrl("https://novelsite.com/search?q=novel", "https://novelsite.com", "novel"),
+        )
+    }
+
+    @Test
     fun `deriveSearchUrl matches percent-encoded multi-word query`() {
         assertEquals(
             "https://site.com/search/{query}",
@@ -88,5 +96,32 @@ class SelectorUrlAlgorithmsTest {
             "https://www.site.com/search?keyword={query}",
             deriveSearchUrl("https://www.site.com/search?keyword=World", "https://site.com", "World"),
         )
+    }
+
+    @Test
+    fun `language code keeps the primary subtag and falls back to en`() {
+        assertEquals("en", normalizeLanguageCode("en-US"))
+        assertEquals("pt", normalizeLanguageCode("pt_BR"))
+        assertEquals("ja", normalizeLanguageCode(" JA "))
+        assertEquals("en", normalizeLanguageCode(""))
+        assertEquals("en", normalizeLanguageCode("x"))
+    }
+
+    @Test
+    fun `typed language codes use the extension form`() {
+        assertEquals("pt-BR", typedLanguageCode(" pt_br "))
+        assertEquals("zh-Hans", typedLanguageCode("ZH-Hans"))
+        assertEquals("ja", typedLanguageCode("JA"))
+        assertEquals("zh-Hant-TW", typedLanguageCode("zh_hant_tw"))
+        assertEquals("es-419", typedLanguageCode("es-419"))
+        assertEquals(null, typedLanguageCode("  "))
+    }
+
+    @Test
+    fun `js results decode to the string they hold`() {
+        assertEquals("div.a > span", decodeJsString("\"div.a > span\""))
+        assertEquals("a<b", decodeJsString("\"a\\u003Cb\""))
+        assertEquals("", decodeJsString("null"))
+        assertEquals("", decodeJsString(null))
     }
 }
