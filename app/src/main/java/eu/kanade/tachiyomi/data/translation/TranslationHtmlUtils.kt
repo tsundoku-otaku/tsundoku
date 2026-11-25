@@ -10,6 +10,15 @@ import org.jsoup.parser.Parser
  * Extracted from [TranslationService] to satisfy SRP and allow reuse
  * from other call-sites (e.g. real-time reader translation).
  */
+data class PartialTranslation(
+    val title: String?,
+    val paragraphs: List<String>,
+    val sourceParagraphs: Int?,
+    val runId: Long?,
+    // Hash of the source paragraphs the partial covers; null in partials saved before it was recorded.
+    val sourceHash: String? = null,
+)
+
 object TranslationHtmlUtils {
 
     private const val SOURCE_HASH_COMMENT_PREFIX = "<!-- tsundoku-source-hash:"
@@ -31,6 +40,8 @@ object TranslationHtmlUtils {
         val images = mutableMapOf<String, String>()
         var index = 0
         doc.select(MEDIA_SELECTOR).forEach { element: Element ->
+            // Media inside media (img in figure or picture, source in video) goes out with its parent.
+            if (element.parents().any { it.`is`(MEDIA_SELECTOR) }) return@forEach
             val placeholder = "[IMG_PLACEHOLDER_$index]"
             images[placeholder] = element.outerHtml()
             element.replaceWith(org.jsoup.nodes.TextNode("\n$placeholder\n"))
@@ -44,10 +55,12 @@ object TranslationHtmlUtils {
      */
     fun reinsertImages(translatedHtml: String, images: Map<String, String>): String {
         var result = translatedHtml
+        val lost = StringBuilder()
         for ((placeholder, originalTag) in images) {
-            result = result.replace(placeholder, originalTag)
+            // An engine that dropped or rewrote a placeholder would lose the image; it goes at the end instead.
+            if (placeholder in result) result = result.replace(placeholder, originalTag) else lost.append(originalTag)
         }
-        return result
+        return result + lost
     }
 
     /**
@@ -126,6 +139,47 @@ object TranslationHtmlUtils {
         }
     }
 
+    // Ends every partial, so one cut short while being written isn't resumed with paragraphs missing.
+    private const val PARTIAL_END = "<!--tsundoku-partial-end-->"
+    private val PARTIAL_MARKER = Regex("""<!--tsundoku-partial:run=(-?\d+);src=(\d+)(?:;hash=([0-9a-f]+))?-->""")
+
+    /** A partial (.tmp) translation of the first [sourceParagraphs] source paragraphs, from the run started at [runId]. */
+    fun buildPartialHtml(
+        runId: Long,
+        sourceParagraphs: Int,
+        translatedTitle: String?,
+        translatedParagraphs: List<String>,
+        sourceHash: String? = null,
+    ): String = "<!--tsundoku-partial:run=$runId;src=$sourceParagraphs${sourceHash?.let { ";hash=$it" }.orEmpty()}-->" +
+        buildTranslatedHtml(translatedTitle, translatedParagraphs) + PARTIAL_END
+
+    /** Hash of [paragraphs], so a resume can tell the chapter text it was made from changed since. */
+    fun paragraphsHash(paragraphs: List<String>): String =
+        java.security.MessageDigest.getInstance("SHA-256")
+            .digest(paragraphs.joinToString("\u0000").toByteArray())
+            .take(8)
+            .joinToString("") { "%02x".format(it) }
+
+    /** Reads back [buildPartialHtml]; older partials have no run id or source paragraph count. */
+    fun parsePartialHtml(html: String): PartialTranslation {
+        val marker = PARTIAL_MARKER.find(html)?.takeIf { html.trimEnd().endsWith(PARTIAL_END) }
+        val doc = Jsoup.parse(html)
+        val titleElement = doc.selectFirst("h1")
+        val title = titleElement?.text()?.takeIf { it.isNotBlank() }
+        titleElement?.remove()
+        return PartialTranslation(
+            title = title,
+            // Partials always come from buildTranslatedHtml: one <p> per paragraph, <br/> inside.
+            paragraphs = doc.body().select("p").map { p ->
+                p.select("br").forEach { it.replaceWith(org.jsoup.nodes.TextNode("\n")) }
+                p.wholeText().trim()
+            }.filter { it.isNotBlank() },
+            sourceParagraphs = marker?.groupValues?.get(2)?.toIntOrNull(),
+            runId = marker?.groupValues?.get(1)?.toLongOrNull(),
+            sourceHash = marker?.groupValues?.get(3)?.ifEmpty { null },
+        )
+    }
+
     // ── Chunking ────────────────────────────────────────────────────
 
     /**
@@ -133,12 +187,12 @@ object TranslationHtmlUtils {
      *
      * Each chunk is a single string with paragraphs separated by `\n\n`.
      */
-    fun buildChunks(paragraphs: List<String>, chunkSize: Int): List<String> {
-        if (paragraphs.isEmpty()) return emptyList()
-        return paragraphs.chunked(chunkSize.coerceAtLeast(1)).map { group ->
-            group.joinToString("\n\n")
-        }
-    }
+    fun buildChunks(paragraphs: List<String>, chunkSize: Int): List<String> =
+        chunkGroups(paragraphs, chunkSize).map { group -> group.joinToString("\n\n") }
+
+    /** The source paragraphs of each [buildChunks] chunk. Re-splitting a chunk's text can count them differently. */
+    fun chunkGroups(paragraphs: List<String>, chunkSize: Int): List<List<String>> =
+        paragraphs.chunked(chunkSize.coerceAtLeast(1))
 
     // ── LLM helpers ─────────────────────────────────────────────────
 

@@ -162,6 +162,11 @@ class TranslatedChapterRepositoryImpl(
     private fun tmpFileName(locator: TranslationLocator): String =
         chapterFileBase(locator.chapterName, locator.chapterUrl) + ".html.tmp"
 
+    // Where a checkpoint is written before it replaces the old one. Never read back, and no longer than
+    // ".html.tmp", which the name length is reserved for.
+    private fun tmpScratchName(locator: TranslationLocator): String =
+        chapterFileBase(locator.chapterName, locator.chapterUrl) + ".tmp.new"
+
     private fun findNovelDir(sourceName: String, novelTitle: String): UniFile? =
         translationsDir.findFile(sourceDirName(sourceName))?.findFile(novelDirName(novelTitle))
 
@@ -392,6 +397,7 @@ class TranslatedChapterRepositoryImpl(
                 }
 
                 dir.findFile(tmpFileName(locator))?.delete()
+                dir.findFile(tmpScratchName(locator))?.delete()
                 Unit
             }
         }
@@ -405,10 +411,25 @@ class TranslatedChapterRepositoryImpl(
                 val meta = buildMetaComment(translatedChapter.engineId, translatedChapter.dateTranslated)
                 val content = (meta + translatedChapter.translatedContent).toByteArray()
 
-                dir.findFile(name)?.delete()
-                val file = dir.createFile(name)
+                // Swapped in only once fully written, so a failed write can't leave a resumable prefix.
+                val scratchName = tmpScratchName(locator)
+                dir.findFile(scratchName)?.delete()
+                val scratch = dir.createFile(scratchName)
                     ?: throw IllegalStateException("Failed to create tmp translation file: $name")
-                file.openOutputStream().use { it.write(content) }
+                try {
+                    scratch.openOutputStream().use { it.write(content) }
+                } catch (e: Exception) {
+                    scratch.delete()
+                    throw e
+                }
+                dir.findFile(name)?.delete()
+                if (!scratch.renameTo(name)) {
+                    // The old checkpoint is gone, so the complete one is written in place instead.
+                    scratch.delete()
+                    val file = dir.createFile(name)
+                        ?: throw IllegalStateException("Failed to create tmp translation file: $name")
+                    file.openOutputStream().use { it.write(content) }
+                }
             }
         }
 
@@ -431,6 +452,7 @@ class TranslatedChapterRepositoryImpl(
                     dir.findFile(name)?.delete()
                     dir.findFile("$name.saving")?.delete()
                     dir.findFile(tmpFileName(locator))?.delete()
+                    dir.findFile(tmpScratchName(locator))?.delete()
                 }
             }
             Unit
@@ -441,12 +463,14 @@ class TranslatedChapterRepositoryImpl(
             val novelDir = findNovelDir(locator.sourceName, locator.novelTitle) ?: return@withNovelLock
             val target = fileName(locator)
             val tmp = tmpFileName(locator)
+            val tmpScratch = tmpScratchName(locator)
             novelDir.listFiles()
                 ?.filter { it.isDirectory }
                 ?.forEach { langDir ->
                     langDir.findFile(target)?.delete()
                     langDir.findFile("$target.saving")?.delete()
                     langDir.findFile(tmp)?.delete()
+                    langDir.findFile(tmpScratch)?.delete()
                 }
         }
         Unit
@@ -462,7 +486,7 @@ class TranslatedChapterRepositoryImpl(
             val novelDir = findNovelDir(sourceName, novelTitle) ?: return@withNovelLock
             val wanted = chapters.flatMapTo(HashSet()) {
                 val base = chapterFileBase(it.name, it.url)
-                listOf("$base.html", "$base.html.saving", "$base.html.tmp")
+                listOf("$base.html", "$base.html.saving", "$base.html.tmp", "$base.tmp.new")
             }
             novelDir.listFiles()
                 ?.filter { it.isDirectory }
@@ -673,7 +697,7 @@ class TranslatedChapterRepositoryImpl(
                 val lock = novelLocks.computeIfAbsent("$srcName/$novelName") { Any() }
                 synchronized(lock) {
                     allFilesRecursive(novelDir)
-                        .filter { it.name?.endsWith(".html.tmp") == true }
+                        .filter { it.name?.let { n -> n.endsWith(".html.tmp") || n.endsWith(".tmp.new") } == true }
                         .forEach {
                             freed += it.length()
                             it.delete()
