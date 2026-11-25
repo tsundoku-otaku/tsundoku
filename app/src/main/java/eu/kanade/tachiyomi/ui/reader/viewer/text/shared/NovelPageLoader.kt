@@ -2,9 +2,13 @@ package eu.kanade.tachiyomi.ui.reader.viewer.text.shared
 
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.ui.reader.loader.PageLoader
+import eu.kanade.tachiyomi.ui.reader.loader.tryClaim
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
@@ -35,40 +39,48 @@ object NovelPageLoader {
         }
 
         var loadJob: kotlinx.coroutines.Job? = null
-        if (page.status is Page.State.Error) {
+        fun launchLoad() = scope.launch(Dispatchers.IO) {
+            try {
+                loader.loadPage(page)
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // Expected when scope is cancelled
+            }
+        }
+        val initialStatus = page.status
+        if (initialStatus is Page.State.Error) {
             // Re-fetch a page cached in Error from a prior failed attempt, else statusFlow returns
             // Error immediately and the load can never recover once the network is back. retryPage
             // resets it to Queue and re-queues.
             loader.retryPage(page)
             // retryPage is a no-op in the PageLoader base class; if the loader didn't reset the
             // state, fall back to launching the load directly so recovery still works.
-            if (page.status is Page.State.Error) {
-                // Clear the stale Error first: statusFlow replays its current value, so leaving it
-                // Error makes the first{} below match immediately and return before loadPage runs.
-                page.status = Page.State.Queue
-                loadJob = scope.launch(Dispatchers.IO) {
-                    try {
-                        loader.loadPage(page)
-                    } catch (_: kotlinx.coroutines.CancellationException) {
-                        // Expected when scope is cancelled
-                    }
-                }
-            }
-        } else if (page.status is Page.State.Queue) {
-            loadJob = scope.launch(Dispatchers.IO) {
-                try {
-                    loader.loadPage(page)
-                } catch (_: kotlinx.coroutines.CancellationException) {
-                    // Expected when scope is cancelled
-                }
-            }
+            // Clear the stale Error first: statusFlow replays its current value, so leaving it
+            // Error makes the first{} below match immediately and return before loadPage runs.
+            if (page.tryClaim(initialStatus, Page.State.Queue)) loadJob = launchLoad()
+        } else if (initialStatus is Page.State.Queue) {
+            loadJob = launchLoad()
         }
+        // A page the loader re-queued itself is its own to load; only a load this call or another
+        // caller had started is restarted when it is cancelled back to Queue.
+        val restartOnQueue = loadJob != null ||
+            page.status.let { it is Page.State.LoadPage || it is Page.State.DownloadImage }
+        fun settled(state: Page.State) = state is Page.State.Ready ||
+            state is Page.State.Error ||
+            (restartOnQueue && state is Page.State.Queue && loadJob?.isActive != true)
 
         return try {
             val finalState = withTimeout(timeoutMs) {
-                page.statusFlow.first { state ->
-                    state is Page.State.Ready || state is Page.State.Error
+                var state = page.statusFlow.first(::settled)
+                // Bounded: a loader that returns without leaving Queue would otherwise be relaunched
+                // in a tight loop until the timeout.
+                var restarts = 0
+                while (state is Page.State.Queue && restarts++ < MAX_QUEUE_RESTARTS) {
+                    scope.ensureActive()
+                    delay(QUEUE_RESTART_DELAY_MS)
+                    loadJob = launchLoad()
+                    state = page.statusFlow.first(::settled)
                 }
+                state
             }
 
             when (finalState) {
@@ -82,8 +94,19 @@ object NovelPageLoader {
                 }
                 else -> false
             }
+        } catch (e: TimeoutCancellationException) {
+            // A fetch that ignores cancellation would hold the page in LoadPage, where every later
+            // load waits on it and retry has no Error to reset, so fail it here. That includes a load
+            // another caller started, which can't be told apart from one whose caller is gone; if it
+            // still finishes, its Ready replaces the Error.
+            loadJob?.cancel()
+            page.tryClaim(Page.State.LoadPage, Page.State.Error(e))
+            throw e
         } finally {
             loadJob?.cancel()
         }
     }
+
+    private const val MAX_QUEUE_RESTARTS = 3
+    private const val QUEUE_RESTART_DELAY_MS = 250L
 }
