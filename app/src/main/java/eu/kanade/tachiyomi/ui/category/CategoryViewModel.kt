@@ -108,13 +108,13 @@ class CategoryViewModel(
         viewModelScope.launch {
             if (contentType != category.contentType) {
                 val mismatched = try {
-                    setCategoryContentType.getMismatchedMangaIds(category.id, contentType).let { ids ->
-                        if (contentType == Category.CONTENT_TYPE_NOVEL && backfillNovelFlags(ids)) {
-                            setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
-                        } else {
-                            ids
-                        }
+                    if (contentType != Category.CONTENT_TYPE_ALL) {
+                        // Entries flagged as manga are the ones a stale flag can hide a novel in.
+                        backfillNovelFlags(
+                            setCategoryContentType.getMismatchedMangaIds(category.id, Category.CONTENT_TYPE_NOVEL),
+                        )
                     }
+                    setCategoryContentType.getMismatchedMangaIds(category.id, contentType)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -133,20 +133,18 @@ class CategoryViewModel(
     }
 
     // The novel flag is only backfilled when the library loads, so a novel whose source loaded later can
-    // still read as manga and would be removed from a category turned novel-only.
-    // True when flags were corrected; a failed write throws, so the edit stops instead of offering to
-    // remove the entries it couldn't correct.
-    private suspend fun backfillNovelFlags(ids: List<Long>): Boolean {
+    // still read as manga: removed from a category turned novel-only, or kept in one turned manga-only.
+    // A failed write throws, so the edit stops instead of acting on entries it couldn't correct.
+    private suspend fun backfillNovelFlags(ids: List<Long>) {
         val updates = ids.mapNotNull { id ->
             getManga.await(id)
                 ?.takeIf { sourceManager.get(it.source)?.isNovelSource() == true }
                 ?.let { MangaUpdate(id = it.id, isNovel = true) }
         }
-        if (updates.isEmpty()) return false
+        if (updates.isEmpty()) return
         check(updateManga.awaitAll(updates)) { "Could not mark ${updates.size} entries as novels" }
         // The library keeps its own copy; the novel views read the flag from it.
         getLibraryManga.applyBatchMangaDetailUpdates(updates.associate { it.id to { m -> m.copy(isNovel = true) } })
-        return true
     }
 
     fun confirmEdit(dialog: CategoryDialog.ConfirmContentType) {
