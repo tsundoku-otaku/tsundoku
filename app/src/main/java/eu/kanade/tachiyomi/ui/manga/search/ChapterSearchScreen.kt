@@ -121,7 +121,8 @@ class ChapterSearchScreen(
                         )
                     }
                 mutableState.update { it.copy(manga = manga, chapters = chapters) }
-                if (state.value.pendingSearch) search()
+                val pending = state.value.submittedQuery
+                if (state.value.pendingSearch && pending != null) search(pending)
             }
         }
 
